@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { eqScore } from '../lib/eq';
 
-const tip = { backgroundColor: '#1C2330', border: '1px solid #2A3342', borderRadius: 8, fontSize: 12 };
+const tip = { backgroundColor: '#1C2330', border: '1px solid #2A2A2A', borderRadius: 8, fontSize: 12 };
 
 function seasonOf(m) {
   const d = new Date(m);
@@ -14,7 +14,7 @@ function seasonOf(m) {
   return mo >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
 }
 
-export function Spark({ data, color = '#E8B44A' }) {
+export function Spark({ data, color = '#FFD700' }) {
   const rows = data.map((v, i) => ({ i, v: Number(v) }));
   return (
     <ResponsiveContainer width={80} height={28}>
@@ -52,25 +52,25 @@ export function TrendPanel({ monthly, horseName, eq }) {
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <div className="flex gap-1 bg-card2 rounded-lg p-[3px] text-xs">
+        <div className="flex gap-1 bg-card2 rounded p-[3px] text-xs">
           <span className={`px-2.5 py-1 rounded-md ${mode === 'monthly' ? 'bg-line text-body' : 'text-muted'}`} style={{ cursor: 'pointer' }} onClick={() => setMode('monthly')}>Monthly</span>
           <span className={`px-2.5 py-1 rounded-md ${mode === 'season' ? 'bg-line text-body' : 'text-muted'}`} style={{ cursor: 'pointer' }} onClick={() => setMode('season')}>Season</span>
         </div>
       </div>
       <div className="flex gap-4 text-xs text-muted mb-2">
-        <span><span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: '#E8B44A' }} />Clear Round %</span>
-        <span><span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: '#3FB96B' }} />EQ Development</span>
+        <span><span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: '#FFD700' }} />Clear Round %</span>
+        <span><span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: '#00C853' }} />EQ Development</span>
         <span style={{ marginLeft: 'auto' }}>Click metric to isolate</span>
       </div>
       <ResponsiveContainer width="100%" height={230}>
         <LineChart data={rows} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
-          <CartesianGrid stroke="#232B38" strokeDasharray="4 3" vertical={false} />
-          <XAxis dataKey="label" tick={{ fill: '#5C6675', fontSize: 10 }} axisLine={false} tickLine={false} />
-          <YAxis domain={[0, 100]} tick={{ fill: '#5C6675', fontSize: 10 }} axisLine={false} tickLine={false} />
+          <CartesianGrid stroke="#2A2A2A" strokeDasharray="4 3" vertical={false} />
+          <XAxis dataKey="label" tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} />
+          <YAxis domain={[0, 100]} tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} />
           <Tooltip contentStyle={tip} labelStyle={{ color: '#fff' }} />
           <Legend onClick={(e) => toggle(e.dataKey)} wrapperStyle={{ cursor: 'pointer', fontSize: 12 }} />
-          {!hidden.clear && <Line type="monotone" dataKey="clear" name={`${horseName} clear %`} stroke="#E8B44A" strokeWidth={2} dot={{ r: 2 }} />}
-          {!hidden.dev && <Line type="monotone" dataKey="dev" name="EQ Development" stroke="#3FB96B" strokeWidth={2} dot={{ r: 2 }} />}
+          {!hidden.clear && <Line type="monotone" dataKey="clear" name={`${horseName} clear %`} stroke="#FFD700" strokeWidth={2} dot={{ r: 2 }} />}
+          {!hidden.dev && <Line type="monotone" dataKey="dev" name="EQ Development" stroke="#00C853" strokeWidth={2} dot={{ r: 2 }} />}
         </LineChart>
       </ResponsiveContainer>
       <p className="text-muted text-xs">Featured EQ Score: <b className="text-gold">{eq}</b></p>
@@ -94,11 +94,11 @@ export function BenchChart({ items }) {
             <ResponsiveContainer width="100%" height={64}>
               <BarChart data={rows} layout="vertical" margin={{ top: 0, right: 8, left: 0, bottom: 0 }} barCategoryGap="25%">
                 <XAxis type="number" hide domain={[0, mx]} />
-                <YAxis type="category" dataKey="who" tick={{ fill: '#8B94A3', fontSize: 11 }} axisLine={false} tickLine={false} width={64} />
+                <YAxis type="category" dataKey="who" tick={{ fill: '#A0A0A0', fontSize: 11 }} axisLine={false} tickLine={false} width={64} />
                 <Tooltip contentStyle={tip} cursor={{ fill: '#1C2330' }} />
-                <Bar dataKey="v" radius={[0, 4, 4, 0]} background={{ fill: '#232B38', radius: 4 }} isAnimationActive={false}>
+                <Bar dataKey="v" radius={[0, 4, 4, 0]} background={{ fill: '#2A2A2A', radius: 4 }} isAnimationActive={false}>
                   <Cell fill={x.color} />
-                  <Cell fill="#3a4356" />
+                  <Cell fill="#2A2A2A" />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>

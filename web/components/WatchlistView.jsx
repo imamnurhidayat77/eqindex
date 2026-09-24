@@ -127,7 +127,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
           ['TRACKED COMBINATIONS', combos.length, '🔗', 'text-gold'],
           ['RECENT UPDATES', recentCount, '◷', 'text-muted'],
         ].map(([lbl, n, icon, col]) => (
-          <div key={lbl} className="bg-card border border-line rounded-xl p-4">
+          <div key={lbl} className="bg-card border border-line rounded p-4">
             <div className="flex justify-between items-center">
               <span className="text-[11px] text-muted tracking-[0.4px] uppercase">{lbl}</span>
               <span className={`${col} text-sm`}>{icon}</span>
@@ -138,7 +138,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
       </div>
 
       {/* tabs */}
-      <div className="inline-flex gap-1 bg-card border border-line rounded-lg p-1 mb-5">
+      <div className="inline-flex gap-1 bg-card border border-line rounded p-1 mb-5">
         {TABS.map(([k, lbl]) => (
           <button key={k} onClick={() => setTab(k)}
             className={`px-4 py-[7px] rounded-md text-[13px] ${tab === k ? 'bg-card2 text-gold font-semibold' : 'text-muted'}`}>
@@ -305,14 +305,14 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
           {/* action bar */}
           <div className="flex flex-wrap gap-2.5 mt-1 mb-2">
             {compareHref ? (
-              <a href={compareHref} className="bg-sky text-ink font-semibold rounded-lg px-4 py-2 text-sm no-underline">Compare Selected</a>
+              <a href={compareHref} className="bg-sky text-ink font-semibold rounded px-4 py-2 text-sm no-underline">Compare Selected</a>
             ) : (
-              <button disabled title="Select 2 horses or 2 riders to compare" className="bg-sky/40 text-ink/60 font-semibold rounded-lg px-4 py-2 text-sm cursor-not-allowed">Compare Selected</button>
+              <button disabled title="Select 2 horses or 2 riders to compare" className="bg-sky/40 text-ink/60 font-semibold rounded px-4 py-2 text-sm cursor-not-allowed">Compare Selected</button>
             )}
-            <a href="/analytics" className="border border-moss text-moss font-semibold rounded-lg px-4 py-2 text-sm no-underline">View Analytics</a>
-            <button onClick={exportCsv} className="bg-card2 border border-line text-body rounded-lg px-4 py-2 text-sm">Export Report</button>
+            <a href="/analytics" className="border border-moss text-moss font-semibold rounded px-4 py-2 text-sm no-underline">View Analytics</a>
+            <button onClick={exportCsv} className="bg-card2 border border-line text-body rounded px-4 py-2 text-sm">Export Report</button>
             <button onClick={() => removeIds(sel.map((s) => s.watchId))} disabled={!sel.length || busy}
-              className="border border-blood text-blood rounded-lg px-4 py-2 text-sm disabled:opacity-40">
+              className="border border-blood text-blood rounded px-4 py-2 text-sm disabled:opacity-40">
               {busy ? 'Removing…' : `Remove Selected${sel.length ? ` (${sel.length})` : ''}`}
             </button>
           </div>
@@ -328,7 +328,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
             <div className="absolute left-[3px] top-2 bottom-2 w-px bg-line" />
             <div className="space-y-2.5">
               {timeline.map((r, i) => (
-                <div key={i} className="relative bg-card border border-line rounded-xl p-3">
+                <div key={i} className="relative bg-card border border-line rounded p-3">
                   <span className="absolute -left-4 top-4 w-[7px] h-[7px] rounded-full bg-moss" />
                   <div className="flex justify-between gap-2 items-baseline">
                     <b className="text-[13px]">{r.entity}</b>
@@ -368,7 +368,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
       <h2 className={H2}>Watchlist Intelligence</h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
         {insights.map((txt, i) => (
-          <div key={i} className="bg-card2 border border-line border-l-2 border-l-gold rounded-xl p-3.5">
+          <div key={i} className="bg-card2 border border-line border-l-2 border-l-gold rounded p-3.5">
             <div className="text-gold text-[11px] font-bold mb-1.5">✨ AI INSIGHT</div>
             <p className="text-muted text-[13px] leading-relaxed">{txt}</p>
           </div>

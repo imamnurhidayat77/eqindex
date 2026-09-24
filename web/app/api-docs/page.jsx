@@ -7,6 +7,8 @@ const GROUPS = [
   ['Rankings — ?limit&min_starts + round filters (season, region, arena, height_min, height_max, since)', [
     ['GET', '/rankings/horses', 'Horse rankings: starts, clears, clear_pct, avg_faults, wins.'],
     ['GET', '/rankings/riders', 'Rider rankings + horses_ridden.'],
+    ['GET', '/rankings/horses?metric=points&window=', 'Briefing points leaderboard: total_points, podiums, win_rate. window=all|12m|3m.'],
+    ['GET', '/rankings/riders?metric=points&window=', 'Rider points leaderboard, same windows.'],
     ['GET', '/partnerships', 'Horse–rider pairs: rounds_together, clear_pct, avg_faults.'],
   ]],
   ['Events & Classes', [

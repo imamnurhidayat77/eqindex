@@ -119,14 +119,14 @@ export default async function RiderProfile({ params }) {
   });
   const sparkFaults = chrono.map((x) => num(x.total_faults));
   const markers = [
-    { label: 'Total Rounds', delta: '+14%', value: String(starts), data: chrono.map((_, i) => i + 1), color: '#E8B44A' },
-    { label: 'Events Entered', delta: '+6%', value: String(eventsEntered), data: chrono.map((_, i) => i + 1), color: '#E8B44A' },
-    { label: 'Horses Ridden', delta: 'Stable', value: String(horsesRidden), data: chrono.map((_, i) => new Set(chrono.slice(0, i + 1).map((x) => x.horse_id)).size), color: '#E8B44A' },
-    { label: 'Clear Rate', delta: '+4.2%', value: `${Math.round(clearPct)}%`, data: sparkClear, color: '#3FB96B', good: true },
-    { label: 'Avg Faults', delta: '-15%', value: avgFaults.toFixed(2), data: sparkFaults, color: '#3FB96B', good: true },
-    { label: 'Wins', delta: '+3', value: String(wins), data: chrono.map((_, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) === 1).length), color: '#E8B44A' },
-    { label: 'Top 10 Finishes', delta: '+6', value: String(top10), data: chrono.map((_, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) <= 10 && Number(x.finish_place) >= 1).length), color: '#E8B44A' },
-    { label: 'Consistency Score', delta: '+5%', value: String(consistency), data: sparkClear, color: '#E8B44A' },
+    { label: 'Total Rounds', delta: '+14%', value: String(starts), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
+    { label: 'Events Entered', delta: '+6%', value: String(eventsEntered), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
+    { label: 'Horses Ridden', delta: 'Stable', value: String(horsesRidden), data: chrono.map((_, i) => new Set(chrono.slice(0, i + 1).map((x) => x.horse_id)).size), color: '#FFD700' },
+    { label: 'Clear Rate', delta: '+4.2%', value: `${Math.round(clearPct)}%`, data: sparkClear, color: '#00C853', good: true },
+    { label: 'Avg Faults', delta: '-15%', value: avgFaults.toFixed(2), data: sparkFaults, color: '#00C853', good: true },
+    { label: 'Wins', delta: '+3', value: String(wins), data: chrono.map((_, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) === 1).length), color: '#FFD700' },
+    { label: 'Top 10 Finishes', delta: '+6', value: String(top10), data: chrono.map((_, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) <= 10 && Number(x.finish_place) >= 1).length), color: '#FFD700' },
+    { label: 'Consistency Score', delta: '+5%', value: String(consistency), data: sparkClear, color: '#FFD700' },
   ];
 
   // ---- partnerships ----
@@ -205,7 +205,7 @@ export default async function RiderProfile({ params }) {
 
       {/* hero */}
       <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <section className="rounded-xl border border-line bg-card p-5">
+        <section className="rounded border border-line bg-card p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Showjumping Athlete</div>
@@ -213,8 +213,8 @@ export default async function RiderProfile({ params }) {
             </div>
             <div className="relative flex h-[92px] w-[92px] shrink-0 items-center justify-center">
               <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full -rotate-90">
-                <circle cx="50" cy="50" r="42" fill="none" stroke="#2A3342" strokeWidth="7" />
-                <circle cx="50" cy="50" r="42" fill="none" stroke="#E8B44A" strokeWidth="7" strokeLinecap="round"
+                <circle cx="50" cy="50" r="42" fill="none" stroke="#2A2A2A" strokeWidth="7" />
+                <circle cx="50" cy="50" r="42" fill="none" stroke="#FFD700" strokeWidth="7" strokeLinecap="round"
                   strokeDasharray={`${(2 * Math.PI * 42 * eq) / 100} ${2 * Math.PI * 42}`} />
               </svg>
               <div className="text-center">
@@ -223,17 +223,17 @@ export default async function RiderProfile({ params }) {
               </div>
             </div>
           </div>
-          <div className="mt-4 rounded-lg bg-card2 p-3 text-[12.5px] italic leading-relaxed text-muted">
+          <div className="mt-4 rounded bg-card2 p-3 text-[12.5px] italic leading-relaxed text-muted">
             “{r.name.split(' ')[0]} showcases elite technical poise on complex outdoor turf courses. {best ? `Her synergy score with ${best.horse} represents the top tier of the national showjumping circuit.` : 'Early-season form suggests top-tier potential on the national circuit.'}”
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-[#2c230f] px-2.5 py-1 text-[11px] font-bold text-gold">Elite Stride Mastery</span>
+            <span className="rounded-md bg-[#2A2500] px-2.5 py-1 text-[11px] font-bold text-gold">Elite Stride Mastery</span>
             <span className="rounded-md border border-mint/40 bg-mint/10 px-2.5 py-1 text-[11px] font-bold text-mint">Grand Prix Rider</span>
             <span className="ml-auto"><WatchButton entityType="rider" entityId={params.id} /></span>
           </div>
         </section>
 
-        <section className="rounded-xl border border-line bg-card p-5">
+        <section className="rounded border border-line bg-card p-5">
           <h2 className="mb-2 text-[15px] font-bold">Rider Registry Info</h2>
           <dl>
             {[
@@ -255,7 +255,7 @@ export default async function RiderProfile({ params }) {
       <h2 className="text-[15px] font-bold">Athlete Performance Markers</h2>
       <div className="mb-6 mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {markers.map((m) => (
-          <div key={m.label} className="rounded-xl border border-line bg-card p-3.5">
+          <div key={m.label} className="rounded border border-line bg-card p-3.5">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">{m.label}</span>
               <span className={`text-[11px] font-bold ${m.good ? 'text-mint' : m.delta === 'Stable' ? 'text-muted' : 'text-gold'}`}>{m.delta}</span>
@@ -271,7 +271,7 @@ export default async function RiderProfile({ params }) {
       {/* competition history */}
       <h2 className="text-[15px] font-bold">Competition History</h2>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rider performance logs from official New Zealand showjumping rounds.</p>
-      <section className="mb-6 overflow-x-auto rounded-xl border border-line bg-card">
+      <section className="mb-6 overflow-x-auto rounded border border-line bg-card">
         <table className="w-full min-w-[960px] border-collapse text-[13px]">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
@@ -301,20 +301,20 @@ export default async function RiderProfile({ params }) {
 
       {/* season trend */}
       <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <section className="rounded-xl border border-line bg-card p-4">
+        <section className="rounded border border-line bg-card p-4">
           <h3 className="text-[13px] font-bold">Season Performance Trend</h3>
           <p className="mb-1 text-[12px] text-muted">EQ Score monthly evaluation index for elite class</p>
           <RiderSeasonChart monthly={monthly} season={season} riderName={r.name} eq={eq} />
         </section>
         <div className="grid gap-4">
-          <section className="rounded-xl border border-line bg-card p-4">
+          <section className="rounded border border-line bg-card p-4">
             <h3 className="text-[13px] font-bold">Clear Round Trend</h3>
-            <RiderMiniTrend rows={monthly.map((m) => ({ label: m.label, v: m.clear }))} color="#3FB96B" />
+            <RiderMiniTrend rows={monthly.map((m) => ({ label: m.label, v: m.clear }))} color="#00C853" />
             <p className="mt-1 text-[12px] text-muted">Clear rate now at {Math.round(clearPct)}% across {starts} rounds.</p>
           </section>
-          <section className="rounded-xl border border-line bg-card p-4">
+          <section className="rounded border border-line bg-card p-4">
             <h3 className="text-[13px] font-bold">Average Fault Trend (Lower is Better)</h3>
-            <RiderMiniTrend rows={monthly.map((m) => ({ label: m.label, v: m.faults }))} color="#E5484D" />
+            <RiderMiniTrend rows={monthly.map((m) => ({ label: m.label, v: m.faults }))} color="#FF1744" />
             <p className="mt-1 text-[12px] text-muted">Average faults {avgFaults.toFixed(2)} — trending lower is better.</p>
           </section>
         </div>
@@ -323,7 +323,7 @@ export default async function RiderProfile({ params }) {
       {/* form forecast */}
       <h2 className="text-[15px] font-bold">Form Forecast</h2>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">One-period projection from weighted monthly trend. Transparent model, no black box.</p>
-      <section className="mb-6 rounded-xl border border-line bg-card p-5">
+      <section className="mb-6 rounded border border-line bg-card p-5">
         {forecast ? (
           <>
             <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -339,7 +339,7 @@ export default async function RiderProfile({ params }) {
                 ['Projected Clear', `${forecast.clear}%`],
                 ['Projected Faults', forecast.faults.toFixed(2)],
               ].map(([l, v]) => (
-                <div key={l} className="rounded-lg bg-card2 p-3 text-center">
+                <div key={l} className="rounded bg-card2 p-3 text-center">
                   <div className="text-[10px] uppercase tracking-wide text-faint">{l}</div>
                   <div className="mt-1 text-[22px] font-extrabold text-gold">{v}</div>
                 </div>
@@ -362,12 +362,12 @@ export default async function RiderProfile({ params }) {
       <h2 className="mb-3 text-[15px] font-bold">Horse Partnerships</h2>
       <div className="mb-6 grid gap-4 lg:grid-cols-[1fr_2fr]">
         {best ? (
-          <section className="rounded-xl border border-gold/50 bg-card p-5">
+          <section className="rounded border border-gold/50 bg-card p-5">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[12px] font-bold">Best Partnership</span>
               <span className="rounded-full bg-mint/15 px-2.5 py-0.5 text-[11px] font-bold text-mint">Top Synergy</span>
             </div>
-            <div className="rounded-lg bg-card2 px-4 py-3">
+            <div className="rounded bg-card2 px-4 py-3">
               <div className="flex items-center justify-between">
                 <div className="font-bold">{best.horse} + {r.name.split(' ')[0]}</div>
                 <div className="text-[16px] font-extrabold text-gold">{partScore(best)}/100</div>
@@ -384,9 +384,9 @@ export default async function RiderProfile({ params }) {
             </dl>
           </section>
         ) : (
-          <section className="rounded-xl border border-line bg-card p-5 text-muted">No partnership data.</section>
+          <section className="rounded border border-line bg-card p-5 text-muted">No partnership data.</section>
         )}
-        <section className="overflow-x-auto rounded-xl border border-line bg-card p-5">
+        <section className="overflow-x-auto rounded border border-line bg-card p-5">
           <h3 className="mb-3 text-[13px] font-bold">All Horse Synergies</h3>
           <table className="w-full min-w-[560px] border-collapse text-[13px]">
             <thead>
@@ -422,11 +422,11 @@ export default async function RiderProfile({ params }) {
       {/* suggested partnerships */}
       <h2 className="text-[15px] font-bold">Suggested Partnerships</h2>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Unridden horses ranked by exploratory fit: career EQ penalised by height-class distance. Trial data required to confirm.</p>
-      <section className="mb-6 rounded-xl border border-line bg-card p-5">
+      <section className="mb-6 rounded border border-line bg-card p-5">
         {suggestions.length ? (
           <div className="grid gap-3 md:grid-cols-3">
             {suggestions.map((sug) => (
-              <a key={sug.id} href={`/horses/${sug.id}`} className="group rounded-lg bg-card2 p-4 transition hover:border-gold/50 border border-transparent">
+              <a key={sug.id} href={`/horses/${sug.id}`} className="group rounded bg-card2 p-4 transition hover:border-gold/50 border border-transparent">
                 <div className="flex items-center justify-between">
                   <b>{sug.name}</b>
                   <span className="text-[16px] font-extrabold text-gold">{sug.fit}</span>
@@ -442,7 +442,7 @@ export default async function RiderProfile({ params }) {
       </section>
 
       <h2 className="mb-3 text-[15px] font-bold">Performance By Horse</h2>
-      <section className="mb-6 rounded-xl border border-line bg-card p-5">
+      <section className="mb-6 rounded border border-line bg-card p-5">
         <h3 className="mb-4 text-[13px] font-bold">Rider&apos;s Clear Round Percentage per Horse</h3>
         <div className="space-y-3">
           {parts.map((x, i) => {
@@ -450,7 +450,7 @@ export default async function RiderProfile({ params }) {
             return (
               <div key={x.horse_id} className="grid grid-cols-[140px_1fr_44px] items-center gap-3 text-[12.5px]">
                 <span className="truncate font-medium">{x.horse}</span>
-                <div className="h-2 rounded bg-[#232b38]"><div className={`h-2 rounded ${colors[i % colors.length]}`} style={{ width: `${Math.min(100, num(x.clear_pct))}%` }} /></div>
+                <div className="h-2 rounded bg-[#2A2A2A]"><div className={`h-2 rounded ${colors[i % colors.length]}`} style={{ width: `${Math.min(100, num(x.clear_pct))}%` }} /></div>
                 <span className="text-right font-bold">{num(x.clear_pct).toFixed(0)}%</span>
               </div>
             );
@@ -468,7 +468,7 @@ export default async function RiderProfile({ params }) {
           ['Best Competition Level', byLevel[0]?.key || '—', byLevel[0] ? `◦ ${byLevel[0].clear.toFixed(0)}% Clear Rate` : 'No data', 'text-mint'],
           ['Best Circuit Venue', bestVenueWins?.key || '—', bestVenueWins ? `◦ ${bestVenueWins.wins} Wins (Current Season)` : 'No data', 'text-gold'],
         ].map(([label, big, sub, subCls]) => (
-          <div key={label} className="rounded-xl border border-line bg-card p-4">
+          <div key={label} className="rounded border border-line bg-card p-4">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-faint">{label}</div>
             <div className="mt-1 truncate text-[19px] font-extrabold" title={big}>{big}</div>
             <div className={`mt-1 text-[12px] ${subCls}`}>{sub}</div>
@@ -485,7 +485,7 @@ export default async function RiderProfile({ params }) {
           ['Regional Standings', natRank === '—' ? '—' : `#${regionRank}`, `${r.region || 'NZ'} Grand Prix League`, true],
           ['National High Heights', hiHeights.length ? `${hiClear.toFixed(0)}%` : '—', '1.30m Standard League', false],
         ].map(([label, big, sub, hot]) => (
-          <div key={label} className={`rounded-xl border bg-card p-4 ${hot ? 'border-gold/60' : 'border-line'}`}>
+          <div key={label} className={`rounded border bg-card p-4 ${hot ? 'border-gold/60' : 'border-line'}`}>
             <div className="text-[10px] font-semibold uppercase tracking-wide text-faint">{label}</div>
             <div className={`mt-1 text-[30px] font-extrabold ${hot ? 'text-gold' : ''}`}>{big}</div>
             <div className="mt-1 text-[12px] text-muted">{sub}</div>
@@ -495,12 +495,12 @@ export default async function RiderProfile({ params }) {
 
       {/* career timeline */}
       <h2 className="mb-3 text-[15px] font-bold">Career Timeline</h2>
-      <section className="mb-6 rounded-xl border border-line bg-card p-5">
+      <section className="mb-6 rounded border border-line bg-card p-5">
         <ol className="relative space-y-4 border-l border-line pl-6">
           {timeline.map((t, i) => (
             <li key={i} className="relative">
               <span className={`absolute -left-[29px] top-1.5 h-2 w-2 rounded-full ${i === timeline.length - 1 ? 'bg-mint' : 'bg-gold'}`} />
-              <div className="rounded-lg bg-card2 px-4 py-3">
+              <div className="rounded bg-card2 px-4 py-3">
                 <div className="flex gap-4 text-[13px]">
                   <span className="w-20 shrink-0 font-bold text-gold">{t.date}</span>
                   <div>
@@ -519,7 +519,7 @@ export default async function RiderProfile({ params }) {
       <h2 className="mb-3 text-[15px] font-bold">EQIndex Intelligence Insights</h2>
       <div className="mb-6 grid gap-4 md:grid-cols-3">
         {insights.map((c) => (
-          <div key={c.tag} className="rounded-xl border border-line bg-card p-4">
+          <div key={c.tag} className="rounded border border-line bg-card p-4">
             <div className="mb-2 flex items-center justify-between text-[11px] font-bold">
               <span className="text-gold">ACTIVE SIGNAL</span><span className="text-muted">{c.tag}</span>
             </div>
@@ -536,7 +536,7 @@ export default async function RiderProfile({ params }) {
           ['Compare Horse Partnerships', 'Isolate rider synergy metrics per stallion', '/comparison'],
           ['View National Benchmark', 'Assess stats relative to national elite class averages', '/analytics'],
         ].map(([t, d, href]) => (
-          <a key={t} href={href} className="group flex items-center justify-between rounded-xl border border-line bg-card p-4 transition hover:border-gold/50">
+          <a key={t} href={href} className="group flex items-center justify-between rounded border border-line bg-card p-4 transition hover:border-gold/50">
             <div><div className="text-[13.5px] font-bold text-white">{t}</div><div className="mt-0.5 text-[12px] text-muted">{d}</div></div>
             <span className="text-gold transition group-hover:translate-x-0.5">→</span>
           </a>

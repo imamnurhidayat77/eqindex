@@ -65,6 +65,17 @@ test('comparison needs two distinct ids', async () => {
   await get('/comparison?type=horse&a=x&b=y', 404);
 });
 
+test('points leaderboards (Briefing S5)', async () => {
+  const h = await get('/rankings/horses?limit=3&metric=points&window=12m');
+  assert.equal(h.metric, 'points');
+  assert.ok(h.data[0].total_points !== undefined && h.data[0].podiums !== undefined);
+  assert.ok(Number(h.data[0].points_12m) >= 0);
+  const r = await get('/rankings/riders?limit=3&metric=points&window=3m');
+  assert.ok(r.data[0].win_rate !== undefined);
+  const dflt = await get('/rankings/horses?limit=1');
+  assert.ok(dflt.metric === undefined && dflt.data[0].clear_pct !== undefined);
+});
+
 test('series shape', async () => {
   const s = await get('/series');
   assert.ok(s.data[0].series_key);

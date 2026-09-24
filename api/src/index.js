@@ -37,6 +37,20 @@ app.get('/health', asyncH(async (req, res) => {
 // ---- Rankings (PRD §7.5) ----
 app.get('/rankings/horses', asyncH(async (req, res) => {
   const { limit, minStarts } = paging(req);
+  // Briefing §5 points mode: ?metric=points&window=all|12m|3m (views, pre-aggregated).
+  if (req.query.metric === 'points') {
+    const col = req.query.window === '12m' ? 'points_12m' : req.query.window === '3m' ? 'points_3m' : 'total_points';
+    const { rows } = await pool.query(
+      `SELECT p.horse_id, p.horse, p.total_starts AS starts, s.clears, s.clear_pct,
+         s.avg_faults, s.faults_stddev, p.wins, p.podiums, p.win_rate,
+         p.total_points, p.points_12m, p.points_3m, p.last_start
+       FROM horse_point_stats p LEFT JOIN horse_stats s ON s.horse_id = p.horse_id
+       WHERE p.total_starts >= $1
+       ORDER BY p.${col} DESC, p.wins DESC, p.total_starts DESC LIMIT $2`,
+      [minStarts, limit]
+    );
+    return res.json({ data: rows, metric: 'points', window: req.query.window || 'all' });
+  }
   const f = roundFilters(req.query);
   const { rows } = await pool.query(
     `SELECT h.id AS horse_id, h.name AS horse, COUNT(*) AS starts,
@@ -60,6 +74,19 @@ app.get('/rankings/horses', asyncH(async (req, res) => {
 
 app.get('/rankings/riders', asyncH(async (req, res) => {
   const { limit, minStarts } = paging(req);
+  if (req.query.metric === 'points') {
+    const col = req.query.window === '12m' ? 'points_12m' : req.query.window === '3m' ? 'points_3m' : 'total_points';
+    const { rows } = await pool.query(
+      `SELECT p.rider_id, p.rider, p.total_starts AS starts, s.clears, s.clear_pct,
+         s.avg_faults, s.wins, s.horses_ridden, p.podiums, p.win_rate,
+         p.total_points, p.points_12m, p.points_3m, p.last_start
+       FROM rider_point_stats p LEFT JOIN rider_stats s ON s.rider_id = p.rider_id
+       WHERE p.total_starts >= $1
+       ORDER BY p.${col} DESC, p.wins DESC, p.total_starts DESC LIMIT $2`,
+      [minStarts, limit]
+    );
+    return res.json({ data: rows, metric: 'points', window: req.query.window || 'all' });
+  }
   const f = roundFilters(req.query);
   const { rows } = await pool.query(
     `SELECT r.id AS rider_id, r.name AS rider, COUNT(*) AS starts,

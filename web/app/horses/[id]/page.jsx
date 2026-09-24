@@ -45,13 +45,13 @@ export default async function HorseProfile({ params }) {
   });
 
   const metrics = [
-    { label: 'Total Rounds', delta: '+12%', value: String(starts), data: chrono.map((_, i) => i + 1), color: '#E8B44A' },
-    { label: 'Events Entered', delta: '+8%', value: String(eventsEntered || s?.starts ? eventsEntered : starts), data: chrono.map((_, i) => i + 1), color: '#E8B44A' },
-    { label: 'Clear Rate', delta: '+2.4%', value: `${Math.round(clearPct)}%`, data: sparkClear, color: '#3FB96B', good: true },
-    { label: 'Avg Faults', delta: '-18%', value: avgFaults.toFixed(2), data: sparkFaults, color: '#3FB96B', good: true },
-    { label: 'Wins', delta: '+2', value: String(wins), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) === 1).length), color: '#E8B44A' },
-    { label: 'Top 10 Finishes', delta: '+4', value: String(top10), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) <= 10 && Number(x.finish_place) >= 1).length), color: '#E8B44A' },
-    { label: 'Consistency', delta: '+5.1%', value: String(consistency), data: sparkClear, color: '#E8B44A' },
+    { label: 'Total Rounds', delta: '+12%', value: String(starts), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
+    { label: 'Events Entered', delta: '+8%', value: String(eventsEntered || s?.starts ? eventsEntered : starts), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
+    { label: 'Clear Rate', delta: '+2.4%', value: `${Math.round(clearPct)}%`, data: sparkClear, color: '#00C853', good: true },
+    { label: 'Avg Faults', delta: '-18%', value: avgFaults.toFixed(2), data: sparkFaults, color: '#00C853', good: true },
+    { label: 'Wins', delta: '+2', value: String(wins), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) === 1).length), color: '#FFD700' },
+    { label: 'Top 10 Finishes', delta: '+4', value: String(top10), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) <= 10 && Number(x.finish_place) >= 1).length), color: '#FFD700' },
+    { label: 'Consistency', delta: '+5.1%', value: String(consistency), data: sparkClear, color: '#FFD700' },
   ];
 
   const monthly = (trend.data || []).map((m) => ({
@@ -109,7 +109,7 @@ export default async function HorseProfile({ params }) {
 
       {/* hero */}
       <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <section className="rounded-xl border border-line bg-card p-5">
+        <section className="rounded border border-line bg-card p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Equine Subject</div>
@@ -118,8 +118,8 @@ export default async function HorseProfile({ params }) {
             <div className="flex flex-col items-center">
               <div className="relative flex h-[92px] w-[92px] items-center justify-center">
                 <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full -rotate-90">
-                  <circle cx="50" cy="50" r="42" fill="none" stroke="#2A3342" strokeWidth="7" />
-                  <circle cx="50" cy="50" r="42" fill="none" stroke="#E8B44A" strokeWidth="7" strokeLinecap="round"
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#2A2A2A" strokeWidth="7" />
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="#FFD700" strokeWidth="7" strokeLinecap="round"
                     strokeDasharray={`${(2 * Math.PI * 42 * eq) / 100} ${2 * Math.PI * 42}`} />
                 </svg>
                 <div className="text-center">
@@ -129,17 +129,17 @@ export default async function HorseProfile({ params }) {
               </div>
             </div>
           </div>
-          <div className="mt-4 rounded-lg bg-card2 p-3 text-[12.5px] italic leading-relaxed text-muted">
+          <div className="mt-4 rounded bg-card2 p-3 text-[12.5px] italic leading-relaxed text-muted">
             “{h.name} has established a {clearPct >= 60 ? 'phenomenal' : 'developing'} pedigree rating. Demonstrates {consistency >= 70 ? 'absolute composure' : 'growing composure'} at Grand Prix heights with a highly responsive stride rhythm.”
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-[#2c230f] px-2.5 py-1 text-[11px] font-bold text-gold">Advanced Performance</span>
+            <span className="rounded-md bg-[#2A2500] px-2.5 py-1 text-[11px] font-bold text-gold">Advanced Performance</span>
             <span className="rounded-md border border-mint/40 bg-mint/10 px-2.5 py-1 text-[11px] font-bold text-mint">Grand Prix Grade</span>
             <span className="ml-auto"><WatchButton entityType="horse" entityId={params.id} /></span>
           </div>
         </section>
 
-        <section className="rounded-xl border border-line bg-card p-5">
+        <section className="rounded border border-line bg-card p-5">
           <h2 className="mb-2 text-[15px] font-bold">Biological Registry</h2>
           <dl>
             {registry.map(([k, v]) => (
@@ -156,7 +156,7 @@ export default async function HorseProfile({ params }) {
       <h2 className="text-[15px] font-bold">Circuit Metrics Summary</h2>
       <div className="mb-6 mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
         {metrics.map((m) => (
-          <div key={m.label} className="rounded-xl border border-line bg-card p-3.5">
+          <div key={m.label} className="rounded border border-line bg-card p-3.5">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">{m.label}</span>
               <span className={`text-[11px] font-bold ${m.good ? 'text-mint' : 'text-gold'}`}>{m.delta}</span>
@@ -172,7 +172,7 @@ export default async function HorseProfile({ params }) {
       {/* competition */}
       <h2 className="text-[15px] font-bold">Competition Performance</h2>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Historical performance records from the NZ Showjumping Circuit.</p>
-      <section className="mb-6 overflow-x-auto rounded-xl border border-line bg-card">
+      <section className="mb-6 overflow-x-auto rounded border border-line bg-card">
         <table className="w-full min-w-[900px] border-collapse text-[13px]">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
@@ -207,17 +207,17 @@ export default async function HorseProfile({ params }) {
           <p className="mt-0.5 text-[12.5px] text-muted">Temporal analysis of score metrics and performance markers.</p>
         </div>
         <div className="flex gap-2">
-          <span className="rounded-lg border border-line bg-card2 px-2.5 py-1.5 text-[12px] text-muted">Season 2026</span>
-          <span className="rounded-lg border border-line bg-card2 px-2.5 py-1.5 text-[12px] text-muted">All Height Classes</span>
+          <span className="rounded border border-line bg-card2 px-2.5 py-1.5 text-[12px] text-muted">Season 2026</span>
+          <span className="rounded border border-line bg-card2 px-2.5 py-1.5 text-[12px] text-muted">All Height Classes</span>
         </div>
       </div>
       <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <section className="rounded-xl border border-line bg-card p-4">
+        <section className="rounded border border-line bg-card p-4">
           <div className="mb-1 flex items-center justify-between">
             <h3 className="text-[13px] font-bold">EQ Score Monthly Index</h3>
             <div className="flex items-center gap-3 text-[11px] text-muted">
               <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-gold" />{h.name}</span>
-              <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#3a4356]" />Circuit Baseline</span>
+              <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#2A2A2A]" />Circuit Baseline</span>
             </div>
           </div>
           <EQMonthlyChart rows={monthly} />
@@ -226,14 +226,14 @@ export default async function HorseProfile({ params }) {
           </div>
         </section>
         <div className="grid gap-4">
-          <section className="rounded-xl border border-line bg-card p-4">
+          <section className="rounded border border-line bg-card p-4">
             <h3 className="text-[13px] font-bold">Clear Round Trend</h3>
-            <MiniTrend rows={monthly.map((m) => ({ label: m.month, v: m.clear }))} color="#3FB96B" />
+            <MiniTrend rows={monthly.map((m) => ({ label: m.month, v: m.clear }))} color="#00C853" />
             <p className="mt-1 text-[12px] text-muted">Steadily climbing clear round percentage, now at {Math.round(clearPct)}%.</p>
           </section>
-          <section className="rounded-xl border border-line bg-card p-4">
+          <section className="rounded border border-line bg-card p-4">
             <h3 className="text-[13px] font-bold">Average Fault Trend (Lower is Better)</h3>
-            <MiniTrend rows={monthly.map((m) => ({ label: m.month, v: m.faults }))} color="#3FB96B" />
+            <MiniTrend rows={monthly.map((m) => ({ label: m.month, v: m.faults }))} color="#00C853" />
             <p className="mt-1 text-[12px] text-muted">Significant reduction in jump &amp; time penalties over last {Math.max(monthly.length, 1)} months.</p>
           </section>
         </div>
@@ -242,7 +242,7 @@ export default async function HorseProfile({ params }) {
       {/* form forecast */}
       <h2 className="text-[15px] font-bold">Form Forecast</h2>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">One-period projection from weighted monthly trend. Transparent model, no black box.</p>
-      <section className="mb-6 rounded-xl border border-line bg-card p-5">
+      <section className="mb-6 rounded border border-line bg-card p-5">
         {forecast ? (
           <>
             <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -258,7 +258,7 @@ export default async function HorseProfile({ params }) {
                 ['Projected Clear', `${forecast.clear}%`],
                 ['Projected Faults', forecast.faults.toFixed(2)],
               ].map(([l, v]) => (
-                <div key={l} className="rounded-lg bg-card2 p-3 text-center">
+                <div key={l} className="rounded bg-card2 p-3 text-center">
                   <div className="text-[10px] uppercase tracking-wide text-faint">{l}</div>
                   <div className="mt-1 text-[22px] font-extrabold text-gold">{v}</div>
                 </div>
@@ -281,12 +281,12 @@ export default async function HorseProfile({ params }) {
       <h2 className="mb-3 text-[15px] font-bold">Rider Partnerships</h2>
       <div className="mb-6 grid gap-4 md:grid-cols-2">
         {best ? (
-          <section className="rounded-xl border border-gold/50 bg-card p-5">
+          <section className="rounded border border-gold/50 bg-card p-5">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[12px] font-bold">🏅 Best Partnership</span>
               <span className="rounded-full bg-mint/15 px-2.5 py-0.5 text-[11px] font-bold text-mint">Elite Synergy</span>
             </div>
-            <div className="flex items-center justify-between rounded-lg bg-card2 px-4 py-3">
+            <div className="flex items-center justify-between rounded bg-card2 px-4 py-3">
               <div><div className="font-bold">{best.rider}</div><div className="text-[12px] text-muted">Primary Showjumping Rider</div></div>
               <div className="text-[18px] font-extrabold text-gold">{partScore(best)}/100</div>
             </div>
@@ -300,15 +300,15 @@ export default async function HorseProfile({ params }) {
             </dl>
           </section>
         ) : (
-          <section className="rounded-xl border border-line bg-card p-5 text-muted">No partnership data.</section>
+          <section className="rounded border border-line bg-card p-5 text-muted">No partnership data.</section>
         )}
         {alt ? (
-          <section className="rounded-xl border border-line bg-card p-5">
+          <section className="rounded border border-line bg-card p-5">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[12px] font-bold text-muted">♾ Alternate Partnership</span>
               <span className="rounded-full bg-card2 border border-line px-2.5 py-0.5 text-[11px] font-bold text-muted">Active Reserve</span>
             </div>
-            <div className="flex items-center justify-between rounded-lg bg-card2 px-4 py-3">
+            <div className="flex items-center justify-between rounded bg-card2 px-4 py-3">
               <div><div className="font-bold">{alt.rider}</div><div className="text-[12px] text-muted">Secondary Class Rider</div></div>
               <div className="text-[18px] font-extrabold text-muted">{partScore(alt)}/100</div>
             </div>
@@ -322,13 +322,13 @@ export default async function HorseProfile({ params }) {
             </dl>
           </section>
         ) : (
-          <section className="rounded-xl border border-dashed border-line bg-card p-5 text-[13px] text-muted">Single-rider combination — alternate partnership unlocks after rounds with a second rider.</section>
+          <section className="rounded border border-dashed border-line bg-card p-5 text-[13px] text-muted">Single-rider combination — alternate partnership unlocks after rounds with a second rider.</section>
         )}
       </div>
 
       {/* where performs best */}
       <h2 className="mb-3 text-[15px] font-bold">Where {h.name} Performs Best</h2>
-      <section className="mb-6 grid gap-x-8 gap-y-4 rounded-xl border border-line bg-card p-5 md:grid-cols-2">
+      <section className="mb-6 grid gap-x-8 gap-y-4 rounded border border-line bg-card p-5 md:grid-cols-2">
         {[
           { t: `Best Height Class (${bestHLabel})`, v: bestHRate, pct: Math.min(100, num(bestH?.clear_pct ?? clearPct)), color: 'bg-mint' },
           { t: 'Best Level (A-Grade GP)', v: '75% Clear Rate', pct: 75, color: 'bg-gold' },
@@ -337,19 +337,19 @@ export default async function HorseProfile({ params }) {
         ].map((b) => (
           <div key={b.t}>
             <div className="mb-1.5 flex justify-between text-[12.5px]"><span className="font-semibold text-mint">{b.t}</span><span className="text-gold">{b.v}</span></div>
-            <div className="h-2 rounded bg-[#232b38]"><div className={`h-2 rounded ${b.color}`} style={{ width: `${b.pct}%` }} /></div>
+            <div className="h-2 rounded bg-[#2A2A2A]"><div className={`h-2 rounded ${b.color}`} style={{ width: `${b.pct}%` }} /></div>
           </div>
         ))}
       </section>
 
       {/* timeline */}
       <h2 className="mb-3 text-[15px] font-bold">Development Timeline</h2>
-      <section className="mb-6 rounded-xl border border-line bg-card p-5">
+      <section className="mb-6 rounded border border-line bg-card p-5">
         <ol className="relative space-y-5 border-l border-line pl-6">
           {(timeline.data || []).slice(0, 8).map((t, i) => (
             <li key={i} className="relative">
               <span className={`absolute -left-[29px] top-1 h-2 w-2 rounded-full ${t.kind === 'competition' ? 'bg-gold' : t.kind === 'training' ? 'bg-info' : 'bg-mint'}`} />
-              <div className="rounded-lg bg-card2 px-4 py-3">
+              <div className="rounded bg-card2 px-4 py-3">
                 <div className="flex gap-4 text-[13px]">
                   <span className="w-20 shrink-0 font-bold text-gold">{fmtDate(t.date)}</span>
                   <div>
@@ -375,7 +375,7 @@ export default async function HorseProfile({ params }) {
       <h2 className="mb-3 mt-6 text-[15px] font-bold">EQIndex Intelligence Insights</h2>
       <div className="mb-6 grid gap-4 md:grid-cols-3">
         {insights.map((c) => (
-          <div key={c.title} className="rounded-xl border border-line bg-card p-4">
+          <div key={c.title} className="rounded border border-line bg-card p-4">
             <div className="mb-2 flex items-center justify-between text-[11px] font-bold">
               <span>✨</span><span className="text-gold">ACTIVE SIGNAL</span>
             </div>
@@ -392,7 +392,7 @@ export default async function HorseProfile({ params }) {
           ['Compare Rider Partnerships', 'Isolate synergy metrics', '/comparison'],
           ['View Category Benchmark', 'Compare to national class', '/analytics'],
         ].map(([t, d, href]) => (
-          <a key={t} href={href} className="group flex items-center justify-between rounded-xl border border-line bg-card p-4 transition hover:border-gold/50">
+          <a key={t} href={href} className="group flex items-center justify-between rounded border border-line bg-card p-4 transition hover:border-gold/50">
             <div><div className="text-[13.5px] font-bold text-white">{t}</div><div className="mt-0.5 text-[12px] text-muted">{d}</div></div>
             <span className="text-gold transition group-hover:translate-x-0.5">→</span>
           </a>

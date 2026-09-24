@@ -4,9 +4,9 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
-const tip = { backgroundColor: '#1C2330', border: '1px solid #2A3342', borderRadius: 8, fontSize: 12 };
+const tip = { backgroundColor: '#1C2330', border: '1px solid #2A2A2A', borderRadius: 8, fontSize: 12 };
 
-export function Spark({ data, color = '#E8B44A' }) {
+export function Spark({ data, color = '#FFD700' }) {
   if (!data || data.length < 2) {
     return (
       <svg width="72" height="26" className="overflow-visible">
@@ -35,25 +35,25 @@ export function EQMonthlyChart({ rows }) {
   return (
     <ResponsiveContainer width="100%" height={220}>
       <LineChart data={data} margin={{ top: 10, right: 12, left: -22, bottom: 0 }}>
-        <CartesianGrid stroke="#232B38" strokeDasharray="4 3" vertical={false} />
-        <XAxis dataKey="label" tick={{ fill: '#5C6675', fontSize: 10 }} axisLine={false} tickLine={false} />
-        <YAxis domain={[0, 100]} tick={{ fill: '#5C6675', fontSize: 10 }} axisLine={false} tickLine={false} />
+        <CartesianGrid stroke="#2A2A2A" strokeDasharray="4 3" vertical={false} />
+        <XAxis dataKey="label" tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} />
+        <YAxis domain={[0, 100]} tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} />
         <Tooltip contentStyle={tip} labelStyle={{ color: '#fff' }} />
-        <Line type="monotone" dataKey="EQ" stroke="#E8B44A" strokeWidth={2} dot={{ r: 2.5, fill: '#E8B44A' }} />
-        <Line type="monotone" dataKey="Circuit" stroke="#3a4356" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
+        <Line type="monotone" dataKey="EQ" stroke="#FFD700" strokeWidth={2} dot={{ r: 2.5, fill: '#FFD700' }} />
+        <Line type="monotone" dataKey="Circuit" stroke="#2A2A2A" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
       </LineChart>
     </ResponsiveContainer>
   );
 }
 
-export function MiniTrend({ rows, dataKey = 'v', color = '#3FB96B' }) {
+export function MiniTrend({ rows, dataKey = 'v', color = '#00C853' }) {
   const data = (rows || []).map((r, i) => ({ i: r.label ?? i, v: Number(r[dataKey] ?? r.v ?? 0) }));
   return (
     <ResponsiveContainer width="100%" height={64}>
       <LineChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-        <CartesianGrid stroke="#232B38" strokeDasharray="4 3" vertical={false} />
+        <CartesianGrid stroke="#2A2A2A" strokeDasharray="4 3" vertical={false} />
         <XAxis dataKey="i" hide />
-        <YAxis tick={{ fill: '#5C6675', fontSize: 9 }} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
+        <YAxis tick={{ fill: '#666666', fontSize: 9 }} axisLine={false} tickLine={false} width={30} domain={['auto', 'auto']} />
         <Tooltip contentStyle={tip} labelStyle={{ color: '#fff' }} />
         <Line type="monotone" dataKey="v" stroke={color} strokeWidth={2} dot={false} />
       </LineChart>

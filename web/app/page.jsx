@@ -150,14 +150,14 @@ export default async function Dashboard({ searchParams }) {
           <p className={SUB}>High-level circuit metrics and aggregated analytics</p>
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
             {[
-              ['HORSES ANALYSED', diffBadge(dPct(last.horses, prev.horses)), false, ranked.length, spark('horses'), '#E8B44A'],
-              ['RIDERS ANALYSED', diffBadge(dPct(last.riders, prev.riders)), false, rankedR.length, spark('riders'), '#E8B44A'],
-              ['COMPETITION ROUNDS', diffBadge(dPct(last.starts, prev.starts)), false, totalRounds.toLocaleString(), spark('starts'), '#E8B44A'],
-              ['EVENTS TRACKED', diffBadge(dPct(last.events, prev.events)), false, events.data.length, spark('events'), '#E8B44A'],
-              ['CLEAR ROUND RATE', diffBadge(Number(last.clear_pct) - Number(prev.clear_pct)), true, pct(circuitClear), spark('clear_pct'), '#3FB96B'],
-              ['AVERAGE FAULTS', diffBadge(-dPct(last.avg_faults, prev.avg_faults)), true, circuitAvg.toFixed(2), spark('avg_faults'), '#3FB96B'],
+              ['HORSES ANALYSED', diffBadge(dPct(last.horses, prev.horses)), false, ranked.length, spark('horses'), '#FFD700'],
+              ['RIDERS ANALYSED', diffBadge(dPct(last.riders, prev.riders)), false, rankedR.length, spark('riders'), '#FFD700'],
+              ['COMPETITION ROUNDS', diffBadge(dPct(last.starts, prev.starts)), false, totalRounds.toLocaleString(), spark('starts'), '#FFD700'],
+              ['EVENTS TRACKED', diffBadge(dPct(last.events, prev.events)), false, events.data.length, spark('events'), '#FFD700'],
+              ['CLEAR ROUND RATE', diffBadge(Number(last.clear_pct) - Number(prev.clear_pct)), true, pct(circuitClear), spark('clear_pct'), '#00C853'],
+              ['AVERAGE FAULTS', diffBadge(-dPct(last.avg_faults, prev.avg_faults)), true, circuitAvg.toFixed(2), spark('avg_faults'), '#00C853'],
             ].map(([lbl, d, good, big, sp, col]) => (
-              <div className="bg-card border border-line rounded-xl p-3.5 px-4" key={lbl}>
+              <div className="bg-card border border-line rounded p-3.5 px-4" key={lbl}>
                 <div className="flex justify-between items-baseline gap-2"><span className="text-[11px] text-muted tracking-[0.4px] uppercase">{lbl}</span><span className={`font-bold whitespace-nowrap ${good ? 'text-moss' : 'text-gold'}`}>{d}</span></div>
                 <div className="text-[30px] font-extrabold mt-1.5 flex items-end justify-between">{big}<Spark data={sp} color={col} /></div>
               </div>
@@ -181,12 +181,12 @@ export default async function Dashboard({ searchParams }) {
                   <span className="inline-block text-[11px] font-bold rounded-md px-2 py-[3px] border border-gold text-gold">Elite Performance</span>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 my-3.5">
-                  <div className="bg-card2 rounded-lg p-2.5 px-3"><div className="text-[11px] text-muted">Clear Round Rate</div><div className="text-[15px] font-bold mt-0.5 text-moss">{pct(feat.clear_pct)}</div></div>
-                  <div className="bg-card2 rounded-lg p-2.5 px-3"><div className="text-[11px] text-muted">Average Faults</div><div className="text-[15px] font-bold mt-0.5 text-moss">{Number(feat.avg_faults).toFixed(2)}</div></div>
-                  <div className="bg-card2 rounded-lg p-2.5 px-3"><div className="text-[11px] text-muted">Rounds Analysed</div><div className="text-[15px] font-bold mt-0.5 text-sky">{feat.starts}</div></div>
-                  <div className="bg-card2 rounded-lg p-2.5 px-3"><div className="text-[11px] text-muted">Season Trend</div><div className="text-[15px] font-bold mt-0.5 text-gold">{diffBadge(seasonDelta)}</div></div>
+                  <div className="bg-card2 rounded p-2.5 px-3"><div className="text-[11px] text-muted">Clear Round Rate</div><div className="text-[15px] font-bold mt-0.5 text-moss">{pct(feat.clear_pct)}</div></div>
+                  <div className="bg-card2 rounded p-2.5 px-3"><div className="text-[11px] text-muted">Average Faults</div><div className="text-[15px] font-bold mt-0.5 text-moss">{Number(feat.avg_faults).toFixed(2)}</div></div>
+                  <div className="bg-card2 rounded p-2.5 px-3"><div className="text-[11px] text-muted">Rounds Analysed</div><div className="text-[15px] font-bold mt-0.5 text-sky">{feat.starts}</div></div>
+                  <div className="bg-card2 rounded p-2.5 px-3"><div className="text-[11px] text-muted">Season Trend</div><div className="text-[15px] font-bold mt-0.5 text-gold">{diffBadge(seasonDelta)}</div></div>
                 </div>
-                <div className="bg-card2 rounded-lg p-3 px-3.5 text-muted italic text-[13px]">“{feat.horse} shows {consistencyWord} consistency across recent competitions, with strong performance in {bestH ? `${bestH.height_cm}cm` : 'medium height'} classes.”</div>
+                <div className="bg-card2 rounded p-3 px-3.5 text-muted italic text-[13px]">“{feat.horse} shows {consistencyWord} consistency across recent competitions, with strong performance in {bestH ? `${bestH.height_cm}cm` : 'medium height'} classes.”</div>
               </section>
               <section className={CARD}>
                 <h2 className={H2}>🔗 Best Partnership</h2>
@@ -216,9 +216,9 @@ export default async function Dashboard({ searchParams }) {
                 <h2 className={H2}>Performance Benchmarking</h2>
                 <p className={SUB}>{feat.horse} vs. Showjumping Circuit Avg</p>
                 <BenchChart items={[
-                  { label: 'Clear Round Rate', short: feat.horse.split(' ')[0] + ' S.', mine: feat.clear_pct, avg: circuitClear, text: `${pct(feat.clear_pct)} vs ${pct(circuitClear)}`, color: '#3FB96B' },
-                  { label: 'Average Faults (Lower is Better)', short: feat.horse.split(' ')[0] + ' S.', mine: feat.avg_faults, avg: circuitAvg, text: `${Number(feat.avg_faults).toFixed(2)} vs ${circuitAvg.toFixed(2)}`, color: '#E5484D' },
-                  { label: 'Consistency Score', short: feat.horse.split(' ')[0] + ' S.', mine: consistencyPts(feat.faults_stddev), avg: consistencyPts(circuitStd), text: `${consistencyPts(feat.faults_stddev)}pts vs ${consistencyPts(circuitStd)}pts`, color: '#E8B44A' },
+                  { label: 'Clear Round Rate', short: feat.horse.split(' ')[0] + ' S.', mine: feat.clear_pct, avg: circuitClear, text: `${pct(feat.clear_pct)} vs ${pct(circuitClear)}`, color: '#00C853' },
+                  { label: 'Average Faults (Lower is Better)', short: feat.horse.split(' ')[0] + ' S.', mine: feat.avg_faults, avg: circuitAvg, text: `${Number(feat.avg_faults).toFixed(2)} vs ${circuitAvg.toFixed(2)}`, color: '#FF1744' },
+                  { label: 'Consistency Score', short: feat.horse.split(' ')[0] + ' S.', mine: consistencyPts(feat.faults_stddev), avg: consistencyPts(circuitStd), text: `${consistencyPts(feat.faults_stddev)}pts vs ${consistencyPts(circuitStd)}pts`, color: '#FFD700' },
                 ]} />
               </section>
             </div>

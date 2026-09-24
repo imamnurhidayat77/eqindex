@@ -7,6 +7,14 @@ export const metadata = { title: 'EQIndex — Horse Intelligence' };
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Oswald:wght@500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="bg-ink text-body text-sm">
         <SeasonProvider>
         <header className="flex justify-center bg-navbg border-b border-line sticky top-0 z-10">
@@ -19,7 +27,7 @@ export default function RootLayout({ children }) {
             <div className="flex-1" />
             <NavSearch />
             <NavSeason />
-            <button className="bg-card border border-line rounded-lg text-body w-8 h-8" title="Notifications">🔔</button>
+            <button className="bg-card border border-line rounded text-body w-8 h-8" title="Notifications">🔔</button>
             <span className="w-8 h-8 rounded-full border-[1.5px] border-gold inline-flex items-center justify-center text-[15px]">🐎</span>
           </div>
         </header>

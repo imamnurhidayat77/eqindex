@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
-import { BTN, BTN_DANGER, BTN_PRIMARY, CARD, EMPTY, H1, H2, INP, MUT, SUB } from '../../../lib/tokens';
+import { BTN_SECONDARY, BTN_DANGER, BTN_PRIMARY, CARD, EMPTY, H1, H2, INP, MUT, SUB } from '../../../lib/tokens';
 
 export default function ReviewQueue() {
   const [items, setItems] = useState([]);
@@ -56,7 +56,7 @@ export default function ReviewQueue() {
           {q.suggested_match_name && (
             <p className={MUT}>Suggested match: <b className="text-body">{q.suggested_match_name}</b>{' '}
               {q.suggested_match_id && (
-                <button className={BTN} onClick={() => act(q.id, 'merge', q.suggested_match_id)}>Accept suggestion →</button>
+                <button className={BTN_SECONDARY} onClick={() => act(q.id, 'merge', q.suggested_match_id)}>Accept suggestion →</button>
               )}
             </p>
           )}
@@ -66,7 +66,7 @@ export default function ReviewQueue() {
               <option value="">—</option>
               {(cands[q.kind] || []).map((c) => <option key={c[key(q.kind)]} value={c[key(q.kind)]}>{c[nm(q.kind)]}</option>)}
             </select></label>
-            <button className={BTN} onClick={() => act(q.id, 'merge', match[q.id])} disabled={!match[q.id]}>Merge</button>
+            <button className={BTN_SECONDARY} onClick={() => act(q.id, 'merge', match[q.id])} disabled={!match[q.id]}>Merge</button>
             <button className={BTN_DANGER} onClick={() => act(q.id, 'reject')}>Reject</button>
           </div>
         </section>

@@ -4,18 +4,18 @@ import { HEIGHT_BANDS, heightParams } from '../lib/heights';
 
 export { HEIGHT_BANDS, heightParams };
 
-const selCls = 'bg-ink border border-line text-body rounded-lg px-2.5 py-2 text-[13px] max-w-[160px]';
+const selCls = 'bg-ink border border-line text-body rounded px-2.5 py-2 text-[13px] max-w-[160px]';
 
 export function FilterBar({ f, set, seasons, regions, arenas, showHeight = true, showMinStarts = true }) {
   const upd = (k) => (e) => set({ ...f, [k]: e.target.value });
   const clear = () => set({ q: '', season: '', region: '', arena: '', height: '', minStarts: '1' });
   const active = [f.q, f.season, f.region, f.arena, f.height].some(Boolean) || f.minStarts !== '1';
   return (
-    <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded-xl border border-line bg-card p-4">
+    <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
       <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
         Search
         <input value={f.q} onChange={upd('q')} placeholder="Name…"
-          className="w-[170px] rounded-lg border border-line bg-ink px-2.5 py-2 text-[13px] normal-case text-white placeholder:text-faint focus:border-gold/60 focus:outline-none" />
+          className="w-[170px] rounded border border-line bg-ink px-2.5 py-2 text-[13px] normal-case text-white placeholder:text-faint focus:border-gold/60 focus:outline-none" />
       </label>
       <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
         Season
@@ -55,7 +55,7 @@ export function FilterBar({ f, set, seasons, regions, arenas, showHeight = true,
         </label>
       )}
       {active && (
-        <button onClick={clear} className="rounded-lg px-2 py-2 text-[13px] text-sky hover:underline">
+        <button onClick={clear} className="rounded px-2 py-2 text-[13px] text-sky hover:underline">
           Reset
         </button>
       )}
@@ -70,7 +70,7 @@ export function Pagination({ page, pages, setPage, perPage, setPerPage, total })
   const hi = Math.min(pages, lo + 4);
   for (let i = lo; i <= hi; i++) nums.push(i);
   const btn = (active) =>
-    `min-w-[32px] rounded-lg border px-2 py-1.5 text-[13px] font-semibold ${
+    `min-w-[32px] rounded border px-2 py-1.5 text-[13px] font-semibold ${
       active ? 'border-gold/60 bg-goldbg text-gold' : 'border-line bg-card2 text-muted hover:text-white'
     }`;
   return (
@@ -80,7 +80,7 @@ export function Pagination({ page, pages, setPage, perPage, setPerPage, total })
       </div>
       <div className="flex items-center gap-1.5">
         <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
-          className="mr-1 rounded-lg border border-line bg-ink px-2 py-1.5 text-[13px] text-body">
+          className="mr-1 rounded border border-line bg-ink px-2 py-1.5 text-[13px] text-body">
           {[10, 20, 50].map((n) => <option key={n} value={n}>{n} / page</option>)}
         </select>
         <button disabled={page <= 1} onClick={() => setPage(page - 1)} className={btn(false) + ' disabled:opacity-40'}>‹</button>

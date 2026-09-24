@@ -46,10 +46,10 @@ export default async function EventDetail({ params }) {
     return { label: hi >= 999 ? '1.40m - 1.50m+' : `1.${String(lo).slice(1)}0m - 1.${String(hi).slice(1)}0m`, n: rs.length, p: rs.length ? 100 * rs.filter((r) => r.clear_round).length / rs.length : 0 };
   }).filter((b) => b.n > 0);
   const fb = [
-    ['Clear (0 Faults)', rounds.filter((r) => Number(r.total_faults) === 0).length, '#3FB96B'],
+    ['Clear (0 Faults)', rounds.filter((r) => Number(r.total_faults) === 0).length, '#00C853'],
     ['1 - 4 Faults', rounds.filter((r) => Number(r.total_faults) >= 1 && Number(r.total_faults) <= 4).length, '#4C9AFF'],
-    ['5 - 8 Faults', rounds.filter((r) => Number(r.total_faults) >= 5 && Number(r.total_faults) <= 8).length, '#E8B44A'],
-    ['9+ Faults', rounds.filter((r) => Number(r.total_faults) >= 9).length, '#E5484D'],
+    ['5 - 8 Faults', rounds.filter((r) => Number(r.total_faults) >= 5 && Number(r.total_faults) <= 8).length, '#FFD700'],
+    ['9+ Faults', rounds.filter((r) => Number(r.total_faults) >= 9).length, '#FF1744'],
   ].map(([label, c, color]) => ({ label, p: n ? 100 * c / n : 0, color }));
 
   // arena section
@@ -57,7 +57,7 @@ export default async function EventDetail({ params }) {
   const bestArena = [...arenas.data].sort((x, y) => Number(y.clear_pct) - Number(x.clear_pct))[0];
   const arenaColors = {};
   [...arenas.data].sort((x, y) => Number(y.clear_pct) - Number(x.clear_pct))
-    .forEach((x, i, arr) => { arenaColors[x.arena] = i === 0 ? '#3FB96B' : i === arr.length - 1 ? '#E5484D' : '#4C9AFF'; });
+    .forEach((x, i, arr) => { arenaColors[x.arena] = i === 0 ? '#00C853' : i === arr.length - 1 ? '#FF1744' : '#4C9AFF'; });
 
   // event micro-rankings from rounds
   const byHorse = {};
@@ -114,11 +114,11 @@ export default async function EventDetail({ params }) {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-6 items-center">
-        <span className="bg-card2 border border-line rounded-2xl pl-3 pr-1.5 py-[5px] text-xs text-muted">Event: <b className="text-body font-semibold">{e.name}</b></span>
-        <span className="bg-card2 border border-line rounded-2xl pl-3 pr-1.5 py-[5px] text-xs text-muted">Height Category: <b className="text-body font-semibold">1.00m–1.50m+</b></span>
-        <span className="bg-card2 border border-line rounded-2xl pl-3 pr-1.5 py-[5px] text-xs text-muted">Region: <b className="text-body font-semibold">{e.region || '—'}</b></span>
-        <span className="bg-card2 border border-line rounded-2xl pl-3 pr-1.5 py-[5px] text-xs text-muted">Arena Type: <b className="text-body font-semibold">{e.arena_type || '—'}</b></span>
-        <span className="bg-card2 border border-line rounded-2xl pl-3 pr-1.5 py-[5px] text-xs text-muted">Season: <b className="text-body font-semibold">{(e.season || '').replace('-', '–')}</b></span>
+        <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Event: <b className="text-body font-semibold">{e.name}</b></span>
+        <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Height Category: <b className="text-body font-semibold">1.00m–1.50m+</b></span>
+        <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Region: <b className="text-body font-semibold">{e.region || '—'}</b></span>
+        <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Arena Type: <b className="text-body font-semibold">{e.arena_type || '—'}</b></span>
+        <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Season: <b className="text-body font-semibold">{(e.season || '').replace('-', '–')}</b></span>
         <a className={LINK} href="/events">Reset Filters</a>
       </div>
 
@@ -154,7 +154,7 @@ export default async function EventDetail({ params }) {
           ['AVG FAULTS', `${(avgF - circAvg) >= 0 ? '+' : ''}${(avgF - circAvg).toFixed(1)} penalty`, avgF.toFixed(1), true],
           ['FIELD STRENGTH', `${strength} field`, score, false],
         ].map(([lbl, delta, big, _g]) => (
-          <div className="bg-card border border-line rounded-xl p-3.5 px-4" key={lbl}>
+          <div className="bg-card border border-line rounded p-3.5 px-4" key={lbl}>
             <div className="text-[11px] text-muted tracking-[0.4px] uppercase">{lbl} <span className="text-gold font-bold">{delta}</span></div>
             <div className="text-[30px] font-extrabold mt-1.5">{big}</div>
           </div>
@@ -303,17 +303,17 @@ export default async function EventDetail({ params }) {
       <h2 className={H2}>Event Benchmarking</h2>
       <p className={SUB}>{e.name} vs National, Regional, A-Grade Average.</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-        <div className="bg-card border border-line rounded-xl p-4">
+        <div className="bg-card border border-line rounded p-4">
           <div className="text-[11px] text-muted uppercase">Clear Round Rate <span className="text-blood font-bold">{clearPct < circClear ? 'Harder Course' : 'Softer Course'}</span></div>
           <div className="text-[30px] font-extrabold mt-1">{clearPct.toFixed(0)}%</div>
           <div className="text-xs text-muted">{circClear.toFixed(0)}% Avg</div>
         </div>
-        <div className="bg-card border border-line rounded-xl p-4">
+        <div className="bg-card border border-line rounded p-4">
           <div className="text-[11px] text-muted uppercase">Average Faults <span className="text-blood font-bold">{avgF > circAvg ? 'Higher Penalties' : 'Lower Penalties'}</span></div>
           <div className="text-[30px] font-extrabold mt-1">{avgF.toFixed(1)}</div>
           <div className="text-xs text-muted">{circAvg.toFixed(1)} Avg</div>
         </div>
-        <div className="bg-card border border-line rounded-xl p-4">
+        <div className="bg-card border border-line rounded p-4">
           <div className="text-[11px] text-muted uppercase">Field Strength <span className="text-moss font-bold">{score >= circScore ? 'Elite Field' : 'Open Field'}</span></div>
           <div className="text-[30px] font-extrabold mt-1">{strength}</div>
           <div className="text-xs text-muted">{strengthLabel(circScore)}</div>
@@ -325,26 +325,26 @@ export default async function EventDetail({ params }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <section className={CARD}>
           <h2 className={H2}>Participation Volume Trend</h2>
-          <MiniTrend points={months} color="#E8B44A" />
+          <MiniTrend points={months} color="#FFD700" />
         </section>
         <section className={CARD}>
           <h2 className={H2}>Historical Course Difficulty Index</h2>
-          <MiniTrend points={diffm} color="#E5484D" />
+          <MiniTrend points={diffm} color="#FF1744" />
         </section>
       </div>
 
       <h2 className={H2}>Event Rankings</h2>
       <p className={SUB}>Segmented micro rankings calculated on current {e.name} metrics.</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-        <div className="bg-card border border-line rounded-xl p-4">
+        <div className="bg-card border border-line rounded p-4">
           <div className="text-[13px] font-bold mb-2">Best Horses (EQ Score)</div>
           {evHorses.map((x, i) => <div key={x.horse} className="flex justify-between text-[13px] py-1"><span>#{i + 1} {x.horse}</span><span className="text-muted">EQ {x.eq}</span></div>)}
         </div>
-        <div className="bg-card border border-line rounded-xl p-4">
+        <div className="bg-card border border-line rounded p-4">
           <div className="text-[13px] font-bold mb-2">Best Riders (Performance)</div>
           {evRiders.map((x, i) => <div key={x.rider} className="flex justify-between text-[13px] py-1"><span>#{i + 1} {x.rider}</span><span className="text-muted">Index {x.eq}</span></div>)}
         </div>
-        <div className="bg-card border border-line rounded-xl p-4">
+        <div className="bg-card border border-line rounded p-4">
           <div className="text-[13px] font-bold mb-2">Best Partnerships</div>
           {evParts.map((x, i) => <div key={`${x.horse}-${x.rider}`} className="flex justify-between text-[13px] py-1"><span>#{i + 1} {x.horse} + {x.rider.split(' ')[0]}</span><span className="text-muted">{x.match} Match</span></div>)}
         </div>
@@ -353,7 +353,7 @@ export default async function EventDetail({ params }) {
       <h2 className={H2}>EQIndex Intelligence Insights</h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
         {insights.map((t, i) => (
-          <div className="bg-card border border-line rounded-xl p-4" key={i}>
+          <div className="bg-card border border-line rounded p-4" key={i}>
             <span className={badge(BADGE.red)}>⚠ ACTIVE SIGNAL</span>
             <p className="text-[13px] mt-2 mb-0">{t}</p>
           </div>
@@ -368,7 +368,7 @@ export default async function EventDetail({ params }) {
           ['View Riders Entered', 'Evaluate athlete index ratings', '/riders'],
           ['Explore Class Rankings', 'Detailed class difficulty index', '/analytics'],
         ].map(([t, d, href]) => (
-          <a key={t} href={href} className="bg-card border border-line rounded-xl p-4 no-underline hover:border-gold">
+          <a key={t} href={href} className="bg-card border border-line rounded p-4 no-underline hover:border-gold">
             <div className="text-[13px] font-bold text-body">{t}</div>
             <div className="text-xs text-muted mt-1">{d}</div>
           </a>

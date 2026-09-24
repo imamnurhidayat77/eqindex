@@ -49,7 +49,7 @@ export default function Comparison() {
           Entity {side} ({type === 'horse' ? 'Stallion / Mare' : type === 'rider' ? 'Athlete' : 'Pair'})
         </div>
         <select value={id} onChange={(e) => setId(e.target.value)}
-          className="w-full bg-ink border border-line text-body rounded-lg px-3 py-2.5 text-sm mb-3">
+          className="w-full bg-ink border border-line text-body rounded px-3 py-2.5 text-sm mb-3">
           {list.map((x) => (
             <option key={idOf(type, x)} value={idOf(type, x)}>
               {nameOf(type, x)} — EQ {eqScore(x.clear_pct, x.avg_faults, startsOf(type, x))}
@@ -57,7 +57,7 @@ export default function Comparison() {
           ))}
         </select>
         {cur && (
-          <div className="bg-card2 border border-line rounded-lg px-4 py-3 flex justify-between items-center">
+          <div className="bg-card2 border border-line rounded px-4 py-3 flex justify-between items-center">
             <b>{nameOf(type, cur)}</b>
             <span className="text-gold text-sm">EQ {eqScore(cur.clear_pct, cur.avg_faults, startsOf(type, cur))}</span>
           </div>
@@ -103,8 +103,8 @@ export default function Comparison() {
 
   return (
     <>
-      <section className="bg-card border border-line rounded-xl px-5 py-[18px] mb-6">
-        <div className="flex gap-2 bg-card2 rounded-lg p-1 w-fit mb-5">
+      <section className="bg-card border border-line rounded px-5 py-[18px] mb-6">
+        <div className="flex gap-2 bg-card2 rounded p-1 w-fit mb-5">
           {MODES.map(([k, l]) => (
             <button key={k} onClick={() => setType(k)}
               className={`px-4 py-2 rounded-md text-sm font-semibold ${type === k ? 'border border-gold text-gold' : 'text-muted'}`}>
@@ -116,8 +116,8 @@ export default function Comparison() {
           <Picker side="A" id={aId} setId={setAId} />
           <div className="flex md:flex-col items-center justify-center gap-3 pt-7">
             <span className="w-10 h-10 rounded-full border-[1.5px] border-gold text-gold inline-flex items-center justify-center text-xs font-bold">VS</span>
-            <button onClick={compare} className="rounded-lg bg-gold px-6 py-2.5 text-sm font-bold text-black">Compare</button>
-            {R && <button onClick={save} className="rounded-lg border border-line bg-card2 px-4 py-2 text-xs text-muted">Save to Elite</button>}
+            <button onClick={compare} className="rounded bg-gold px-6 py-2.5 text-sm font-bold text-black">Compare</button>
+            {R && <button onClick={save} className="rounded border border-line bg-card2 px-4 py-2 text-xs text-muted">Save to Elite</button>}
           </div>
           <Picker side="B" id={bId} setId={setBId} />
         </div>
@@ -128,9 +128,9 @@ export default function Comparison() {
         <>
           <h2 className="text-[17px] font-bold mb-0.5">Performance Overview Matchup</h2>
           <p className="text-muted text-sm mb-[18px]">Direct scoring index contrast and high-level wins tally</p>
-          <section className="bg-card border border-line rounded-xl px-5 py-[18px] mb-6">
+          <section className="bg-card border border-line rounded px-5 py-[18px] mb-6">
             <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-center">
-              {[['A', R.a, '#E8B44A'], ['VS', null, null], ['B', R.b, '#4C9AFF']].map(([side, x, color]) => {
+              {[['A', R.a, '#FFD700'], ['VS', null, null], ['B', R.b, '#4C9AFF']].map(([side, x, color]) => {
                 if (!x) return <div key={side} className="text-center text-muted text-xs w-10 h-10 rounded-full bg-card2 inline-flex items-center justify-center mx-auto">VS</div>;
                 const [t, cls] = tier(x.eq);
                 return (
@@ -150,7 +150,7 @@ export default function Comparison() {
               ['AVG FAULTS', Number(R.a.avg_faults).toFixed(2), Number(R.b.avg_faults).toFixed(2), null, Number(R.a.avg_faults) <= Number(R.b.avg_faults)],
               ['WINS TRACKED', R.a.wins ?? '–', R.b.wins ?? '–', null, null],
             ].map(([lbl, av, bv, aGreen, aqGreen]) => (
-              <div className="bg-card border border-line rounded-xl p-3.5 px-4" key={lbl}>
+              <div className="bg-card border border-line rounded p-3.5 px-4" key={lbl}>
                 <div className="text-[11px] text-muted tracking-[0.4px] uppercase">{lbl}</div>
                 <div className="flex justify-between items-baseline mt-1">
                   <b className={`text-xl ${aGreen ? 'text-moss' : ''}`}>{av}</b>
@@ -165,7 +165,7 @@ export default function Comparison() {
             const edge = matchupEdge(R.a.eq, R.b.eq, startsOf(type, R.a), startsOf(type, R.b));
             const favName = edge.favored === 'A' ? R.a.label : edge.favored === 'B' ? R.b.label : null;
             return (
-              <section className="bg-card border border-line rounded-xl px-5 py-[18px] mb-6">
+              <section className="bg-card border border-line rounded px-5 py-[18px] mb-6">
                 <div className="flex flex-wrap items-center gap-2.5">
                   <span className="text-[11px] font-bold uppercase tracking-wide text-faint">🔮 Matchup prediction</span>
                   <span className={statusBadge(edge.favored === 'Even' ? 'Stable' : edge.confidence === 'High' ? 'Active' : 'Improving')}>
@@ -182,7 +182,7 @@ export default function Comparison() {
 
           <h2 className="text-[17px] font-bold mb-0.5">Performance Metrics Comparison</h2>
           <p className="text-muted text-sm mb-[18px]">Comprehensive metric evaluation and raw data delta analysis</p>
-          <section className="bg-card border border-line rounded-xl px-5 py-[18px] mb-6">
+          <section className="bg-card border border-line rounded px-5 py-[18px] mb-6">
             <table className="w-full border-collapse text-sm">
               <thead><tr>
                 <th className="text-left text-[11px] uppercase tracking-[0.4px] text-muted font-semibold px-2 py-2.5 border-b border-line">Evaluation Metric</th>

@@ -32,36 +32,36 @@ export default function TrainingPanel({ horseId, riders = [], compact = false })
     load();
   }
   return (
-    <section className="mb-6 overflow-hidden rounded-xl border border-line bg-card">
+    <section className="mb-6 overflow-hidden rounded border border-line bg-card">
       {!compact && <h2 className="px-5 pt-4 text-[15px] font-bold">Training</h2>}
       <div className="flex justify-end px-4 pt-3">
-        <button onClick={() => setOpen((o) => !o)} className="rounded-lg border border-line bg-card2 px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-white">
+        <button onClick={() => setOpen((o) => !o)} className="rounded border border-line bg-card2 px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-white">
           {open ? '− Close' : '+ Log session'}
         </button>
       </div>
       {open && (
         <form onSubmit={add} className="flex flex-wrap items-end gap-3 px-5 pb-4 pt-2">
-          <label className="text-[12px] text-muted">Date<br /><input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="mt-1 rounded-lg border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
+          <label className="text-[12px] text-muted">Date<br /><input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
           <label className="text-[12px] text-muted">Type<br />
-            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="mt-1 rounded-lg border border-line bg-ink px-2.5 py-2 text-slate-100">
+            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100">
               {['Flatwork', 'Jumping gridwork', 'Course practice', 'Pole work', 'Hacking', 'Lunging', 'Gymnastics'].map((t) => <option key={t}>{t}</option>)}
             </select>
           </label>
           <label className="text-[12px] text-muted">Intensity<br />
-            <select value={form.intensity} onChange={(e) => setForm({ ...form, intensity: e.target.value })} className="mt-1 rounded-lg border border-line bg-ink px-2.5 py-2 text-slate-100">
+            <select value={form.intensity} onChange={(e) => setForm({ ...form, intensity: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100">
               {['Low', 'Medium', 'High'].map((t) => <option key={t}>{t}</option>)}
             </select>
           </label>
           {!!riders.length && (
             <label className="text-[12px] text-muted">Rider<br />
-              <select value={form.rider_id} onChange={(e) => setForm({ ...form, rider_id: e.target.value })} className="mt-1 rounded-lg border border-line bg-ink px-2.5 py-2 text-slate-100">
+              <select value={form.rider_id} onChange={(e) => setForm({ ...form, rider_id: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100">
                 <option value="">—</option>
                 {riders.map((r) => <option key={r.rider_id} value={r.rider_id}>{r.rider}</option>)}
               </select>
             </label>
           )}
-          <label className="min-w-[220px] flex-1 text-[12px] text-muted">Notes / Objective<br /><input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Focus, distances, response..." className="mt-1 w-full rounded-lg border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
-          <button className="rounded-lg bg-gold px-4 py-2 text-[13px] font-bold text-black">Add</button>
+          <label className="min-w-[220px] flex-1 text-[12px] text-muted">Notes / Objective<br /><input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Focus, distances, response..." className="mt-1 w-full rounded border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
+          <button className="rounded bg-gold px-4 py-2 text-[13px] font-bold text-black">Add</button>
         </form>
       )}
       <div className="overflow-x-auto">

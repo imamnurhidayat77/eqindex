@@ -11,5 +11,5 @@ export default function WatchButton({ entityType, entityId }) {
     });
     setState(res.ok ? '✓ Watching' : 'Failed');
   }
-  return <button className="bg-card2 border border-line text-body rounded-lg px-3.5 py-2 text-sm" onClick={add}>{state}</button>;
+  return <button className="bg-card2 border border-line text-body rounded px-3.5 py-2 text-sm" onClick={add}>{state}</button>;
 }

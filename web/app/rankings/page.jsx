@@ -42,7 +42,7 @@ function Tab({ href, active, children }) {
   return (
     <a
       href={href}
-      className={`px-3 py-[7px] rounded-lg text-[13px] no-underline whitespace-nowrap ${
+      className={`px-3 py-[7px] rounded text-[13px] no-underline whitespace-nowrap ${
         active ? 'bg-goldbg text-gold font-semibold' : 'text-muted'
       }`}
     >
@@ -59,6 +59,10 @@ export default async function Rankings({ searchParams }) {
   const heightQ = q('height') || '';
   const minRounds = q('min_rounds') || '5';
   const search = (q('q') || '').toLowerCase();
+  const by = q('by') === 'points' ? 'points' : 'eq';
+  const window = q('window') === '12m' ? '12m' : q('window') === '3m' ? '3m' : 'all';
+  const ptsCol = window === '12m' ? 'points_12m' : window === '3m' ? 'points_3m' : 'total_points';
+  const winLabel = window === 'all' ? 'All Time' : window === '12m' ? '12 Months' : '3 Months';
 
   // seasons first — default to latest (2026/27 mock season) when ?season absent
   let events = { data: [] };
@@ -84,8 +88,8 @@ export default async function Rankings({ searchParams }) {
   let horses = { data: [] }, riders = { data: [] }, classes = { data: [] }, heights = { data: [] };
   try {
     [horses, riders, classes, heights] = await Promise.all([
-      getJSON(`/rankings/horses?limit=100${Q ? '&' + qs : ''}`),
-      getJSON(`/rankings/riders?limit=100${Q ? '&' + qs : ''}`),
+      getJSON(`/rankings/horses?limit=100${Q ? '&' + qs : ''}${by === 'points' ? `&metric=points&window=${window}` : ''}`),
+      getJSON(`/rankings/riders?limit=100${Q ? '&' + qs : ''}${by === 'points' ? `&metric=points&window=${window}` : ''}`),
       getJSON('/classes?limit=100'),
       getJSON('/height-stats?limit=200'),
     ]);
@@ -95,11 +99,15 @@ export default async function Rankings({ searchParams }) {
 
   const rankedH = horses.data
     .map((h) => ({ ...h, eq: eqScore(h.clear_pct, h.avg_faults, h.starts) }))
-    .sort((a, b) => b.eq - a.eq || Number(b.clear_pct) - Number(a.clear_pct))
+    .sort((a, b) => by === 'points'
+      ? Number(b[ptsCol]) - Number(a[ptsCol]) || Number(b.wins) - Number(a.wins)
+      : b.eq - a.eq || Number(b.clear_pct) - Number(a.clear_pct))
     .slice(0, 8);
   const rankedR = riders.data
     .map((r) => ({ ...r, eq: eqScore(r.clear_pct, r.avg_faults, r.starts) }))
-    .sort((a, b) => b.eq - a.eq)
+    .sort((a, b) => by === 'points'
+      ? Number(b[ptsCol]) - Number(a[ptsCol]) || Number(b.wins) - Number(a.wins)
+      : b.eq - a.eq)
     .slice(0, 6);
 
   // per-horse detail for trend + partnerships (top 8 only)
@@ -185,6 +193,8 @@ export default async function Rankings({ searchParams }) {
     if (region) p.set('region', region);
     if (heightQ) p.set('height', heightQ);
     if (minRounds) p.set('min_rounds', minRounds);
+    if (by !== 'eq') p.set('by', by);
+    if (window !== 'all') p.set('window', window);
     for (const [k, v] of Object.entries(patch)) {
       if (!v) p.delete(k); else p.set(k, v);
     }
@@ -209,7 +219,7 @@ export default async function Rankings({ searchParams }) {
       </div>
 
       {/* tabs */}
-      <div className="flex gap-1 bg-card border border-line rounded-xl p-1.5 mb-3 overflow-x-auto">
+      <div className="flex gap-1 bg-card border border-line rounded p-1.5 mb-3 overflow-x-auto">
         <Tab href="#horses" active>Horse Rankings</Tab>
         <Tab href="#riders">Rider Rankings</Tab>
         <Tab href="#combos">Horse-Rider Rankings</Tab>
@@ -231,6 +241,19 @@ export default async function Rankings({ searchParams }) {
         <a href="/rankings" className={LINK}>Reset Filters</a>
       </div>
 
+      {/* metric + window toggles (Briefing §7: time-filtered leaderboards) */}
+      <div className="flex flex-wrap gap-2 mb-5 items-center">
+        <span className="text-[11px] uppercase tracking-wide text-faint font-bold">Metric:</span>
+        {[['eq', 'EQ Score'], ['points', 'Points']].map(([v, l]) => (
+          <a key={v} href={baseQ({ by: v === 'eq' ? '' : v })} className={`text-xs rounded-full px-3 py-[6px] border no-underline ${by === v ? 'bg-goldbg border-gold text-gold' : 'bg-card2 border-line text-muted'}`}><b>{l}</b></a>
+        ))}
+        <span className="text-[11px] uppercase tracking-wide text-faint font-bold ml-2">Window:</span>
+        {[['all', 'All Time'], ['12m', '12 Months'], ['3m', '3 Months']].map(([v, l]) => (
+          <a key={v} href={baseQ({ window: v === 'all' ? '' : v, ...(by === 'eq' ? { by: 'points' } : {}) })} className={`text-xs rounded-full px-3 py-[6px] border no-underline ${window === v ? 'bg-goldbg border-gold text-gold' : 'bg-card2 border-line text-muted'}`}>{l}</a>
+        ))}
+        {by === 'points' && <span className="text-[11px] text-faint">Points: 12/9/7/6/5/4/3/2/1/1 × class multiplier ({winLabel})</span>}
+      </div>
+
       {/* Horse Rankings */}
       <h2 id="horses" className={H2}>Horse Rankings</h2>
       <p className={SUB}>Rankings consider performance consistency, competition history, and quality of results.</p>
@@ -239,9 +262,15 @@ export default async function Rankings({ searchParams }) {
         <table className={TABLE}>
           <thead><tr>
             <th className={TH}>Rank</th><th className={TH}>Horse</th>
-            <th className={`${TH} ${NUM}`}>EQ Score</th><th className={`${TH} ${NUM}`}>Clear %</th>
-            <th className={`${TH} ${NUM}`}>Avg Faults</th><th className={`${TH} ${NUM}`}>Rounds</th>
-            <th className={`${TH} ${NUM}`}>Wins</th><th className={TH}>Trend</th>
+            {by === 'points' ? (
+              <><th className={`${TH} ${NUM}`}>Points</th><th className={`${TH} ${NUM}`}>Podiums</th>
+              <th className={`${TH} ${NUM}`}>Win Rate</th><th className={`${TH} ${NUM}`}>Rounds</th>
+              <th className={`${TH} ${NUM}`}>Wins</th><th className={TH}>Trend</th></>
+            ) : (
+              <><th className={`${TH} ${NUM}`}>EQ Score</th><th className={`${TH} ${NUM}`}>Clear %</th>
+              <th className={`${TH} ${NUM}`}>Avg Faults</th><th className={`${TH} ${NUM}`}>Rounds</th>
+              <th className={`${TH} ${NUM}`}>Wins</th><th className={TH}>Trend</th></>
+            )}
           </tr></thead>
           <tbody>
             {rankedH.map((h, i) => {
@@ -251,11 +280,19 @@ export default async function Rankings({ searchParams }) {
                 <tr key={h.horse_id}>
                   <td className={`px-2 py-[11px] border-b border-rowline ${i === 0 ? 'text-gold font-bold' : 'text-muted'}`}>#{i + 1}</td>
                   <td className={TD}><a href={`/horses/${h.horse_id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{h.horse}</a></td>
-                  <td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{h.eq}</b></td>
-                  <td className={`${TD} ${NUM} ${i === 0 ? 'text-moss font-bold' : 'text-muted'}`}>{pct1(h.clear_pct)}</td>
-                  <td className={`${TD} ${NUM} text-muted`}>{Number(h.avg_faults).toFixed(2)}</td>
-                  <td className={`${TD} ${NUM} text-muted`}>{h.starts}</td>
-                  <td className={`${TD} ${NUM} text-muted`}>{h.wins}</td>
+                  {by === 'points' ? (
+                    <><td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{Number(h[ptsCol])}</b></td>
+                    <td className={`${TD} ${NUM} text-muted`}>{h.podiums ?? '–'}</td>
+                    <td className={`${TD} ${NUM} text-muted`}>{h.win_rate === null || h.win_rate === undefined ? '–' : `${Number(h.win_rate).toFixed(1)}%`}</td>
+                    <td className={`${TD} ${NUM} text-muted`}>{h.starts}</td>
+                    <td className={`${TD} ${NUM} text-muted`}>{h.wins}</td></>
+                  ) : (
+                    <><td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{h.eq}</b></td>
+                    <td className={`${TD} ${NUM} ${i === 0 ? 'text-moss font-bold' : 'text-muted'}`}>{pct1(h.clear_pct)}</td>
+                    <td className={`${TD} ${NUM} text-muted`}>{Number(h.avg_faults).toFixed(2)}</td>
+                    <td className={`${TD} ${NUM} text-muted`}>{h.starts}</td>
+                    <td className={`${TD} ${NUM} text-muted`}>{h.wins}</td></>
+                  )}
                   <td className={TD}><span className={badge(cls)}>{txt}</span></td>
                 </tr>
               );
@@ -274,9 +311,15 @@ export default async function Rankings({ searchParams }) {
         <table className={TABLE}>
           <thead><tr>
             <th className={TH}>Rank</th><th className={TH}>Rider</th>
-            <th className={`${TH} ${NUM}`}>EQ Score</th><th className={`${TH} ${NUM}`}>Clear %</th>
-            <th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Wins</th>
-            <th className={TH}>Top Partnership</th><th className={TH}>Trend</th>
+            {by === 'points' ? (
+              <><th className={`${TH} ${NUM}`}>Points</th><th className={`${TH} ${NUM}`}>Podiums</th>
+              <th className={`${TH} ${NUM}`}>Win Rate</th><th className={`${TH} ${NUM}`}>Rounds</th>
+              <th className={`${TH} ${NUM}`}>Wins</th><th className={TH}>Top Partnership</th></>
+            ) : (
+              <><th className={`${TH} ${NUM}`}>EQ Score</th><th className={`${TH} ${NUM}`}>Clear %</th>
+              <th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Wins</th>
+              <th className={TH}>Top Partnership</th><th className={TH}>Trend</th></>
+            )}
           </tr></thead>
           <tbody>
             {rankedR.map((r, i) => {
@@ -286,12 +329,21 @@ export default async function Rankings({ searchParams }) {
                 <tr key={r.rider_id}>
                   <td className={`px-2 py-[11px] border-b border-rowline ${i === 0 ? 'text-gold font-bold' : 'text-muted'}`}>#{i + 1}</td>
                   <td className={TD}><a href={`/riders/${r.rider_id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{r.rider}</a></td>
-                  <td className={`${TD} ${NUM}`}><b>{r.eq}</b></td>
-                  <td className={`${TD} ${NUM} ${i === 0 ? 'text-moss' : 'text-muted'}`}>{pct1(r.clear_pct)}</td>
-                  <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
-                  <td className={`${TD} ${NUM} text-muted`}>{r.wins}</td>
-                  <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_id}`}>{best.horse}</a> : <span className="text-faint">—</span>}</td>
-                  <td className={`px-2 py-[11px] border-b border-rowline ${up ? 'text-moss' : 'text-muted'}`}>{up ? '↑' : '→'}</td>
+                  {by === 'points' ? (
+                    <><td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{Number(r[ptsCol])}</b></td>
+                    <td className={`${TD} ${NUM} text-muted`}>{r.podiums ?? '–'}</td>
+                    <td className={`${TD} ${NUM} text-muted`}>{r.win_rate === null || r.win_rate === undefined ? '–' : `${Number(r.win_rate).toFixed(1)}%`}</td>
+                    <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
+                    <td className={`${TD} ${NUM} text-muted`}>{r.wins}</td>
+                    <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_id}`}>{best.horse}</a> : <span className="text-faint">—</span>}</td></>
+                  ) : (
+                    <><td className={`${TD} ${NUM}`}><b>{r.eq}</b></td>
+                    <td className={`${TD} ${NUM} ${i === 0 ? 'text-moss' : 'text-muted'}`}>{pct1(r.clear_pct)}</td>
+                    <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
+                    <td className={`${TD} ${NUM} text-muted`}>{r.wins}</td>
+                    <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_id}`}>{best.horse}</a> : <span className="text-faint">—</span>}</td>
+                    <td className={`px-2 py-[11px] border-b border-rowline ${up ? 'text-moss' : 'text-muted'}`}>{up ? '↑' : '→'}</td></>
+                  )}
                 </tr>
               );
             })}
@@ -347,8 +399,8 @@ export default async function Rankings({ searchParams }) {
               <div className="flex gap-4 items-center my-3">
                 <div className="relative shrink-0 w-24 h-24">
                   <svg width="96" height="96" viewBox="0 0 96 96">
-                    <circle cx="48" cy="48" r="42" fill="none" stroke="#232B38" strokeWidth="6" />
-                    <circle cx="48" cy="48" r="42" fill="none" stroke="#E8B44A" strokeWidth="6"
+                    <circle cx="48" cy="48" r="42" fill="none" stroke="#2A2A2A" strokeWidth="6" />
+                    <circle cx="48" cy="48" r="42" fill="none" stroke="#FFD700" strokeWidth="6"
                       strokeDasharray={`${(2 * Math.PI * 42 * featElite) / 100} ${2 * Math.PI * 42}`}
                       transform="rotate(-90 48 48)" strokeLinecap="round" />
                   </svg>
@@ -366,9 +418,9 @@ export default async function Rankings({ searchParams }) {
                 </div>
               </div>
               <div className="text-[12px] text-muted mt-2">Performance<span className="float-right text-body font-semibold">{Math.min(99, feat.eq)} / 100</span></div>
-              <Bar pct={feat.eq} color="#3FB96B" />
+              <Bar pct={feat.eq} color="#00C853" />
               <div className="text-[12px] text-muted mt-2.5">Competition Difficulty<span className="float-right text-body font-semibold">95 / 100</span></div>
-              <Bar pct={95} color="#E8B44A" />
+              <Bar pct={95} color="#FFD700" />
               <div className="text-[12px] text-muted mt-2.5">Consistency<span className="float-right text-body font-semibold">{featCons ?? '–'} / 100</span></div>
               <Bar pct={featCons ?? 0} color="#4C9AFF" />
               <p className="text-[11px] text-faint mt-2.5">*Elite rankings weight higher-level competition, field strength, and consistency.</p>
@@ -389,9 +441,9 @@ export default async function Rankings({ searchParams }) {
           <h2 className="text-[15px] font-bold">Benchmark Context</h2>
           <p className="text-muted text-xs mb-3">{feat ? `${feat.horse} (#1 Rank)` : '—'} vs. 130cm National Category Average</p>
           {[
-            { label: 'Clear Round Rate', mine: Number(feat?.clear_pct) || 0, avg: circuitClear, text: `${pct1(feat?.clear_pct)} vs ${pct1(circuitClear)}`, color: '#3FB96B' },
-            { label: 'Average Faults (Lower is Better)', mine: Number(feat?.avg_faults) || 0, avg: circuitAvg, text: `${Number(feat?.avg_faults || 0).toFixed(2)} vs ${circuitAvg.toFixed(2)}`, color: '#E5484D' },
-            { label: 'Consistency Score', mine: featCons || 0, avg: consistencyPts(circuitStd) || 0, text: `${featCons ?? '–'} vs ${consistencyPts(circuitStd) ?? '–'}`, color: '#E8B44A' },
+            { label: 'Clear Round Rate', mine: Number(feat?.clear_pct) || 0, avg: circuitClear, text: `${pct1(feat?.clear_pct)} vs ${pct1(circuitClear)}`, color: '#00C853' },
+            { label: 'Average Faults (Lower is Better)', mine: Number(feat?.avg_faults) || 0, avg: circuitAvg, text: `${Number(feat?.avg_faults || 0).toFixed(2)} vs ${circuitAvg.toFixed(2)}`, color: '#FF1744' },
+            { label: 'Consistency Score', mine: featCons || 0, avg: consistencyPts(circuitStd) || 0, text: `${featCons ?? '–'} vs ${consistencyPts(circuitStd) ?? '–'}`, color: '#FFD700' },
           ].map((x) => {
             const mx = Math.max(x.mine, x.avg, 0.01);
             return (
@@ -400,7 +452,7 @@ export default async function Rankings({ searchParams }) {
                 <div className="text-[10px] text-muted mb-0.5">{feat?.horse?.split(' ')[0]} S.</div>
                 <div className="h-[6px] rounded-full bg-barbg/60 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${(100 * x.mine) / mx}%`, background: x.color }} /></div>
                 <div className="text-[10px] text-muted mt-1 mb-0.5">Avg.</div>
-                <div className="h-[6px] rounded-full bg-barbg/60 overflow-hidden"><div className="h-full rounded-full bg-[#3a4356]" style={{ width: `${(100 * x.avg) / mx}%` }} /></div>
+                <div className="h-[6px] rounded-full bg-barbg/60 overflow-hidden"><div className="h-full rounded-full bg-[#2A2A2A]" style={{ width: `${(100 * x.avg) / mx}%` }} /></div>
               </div>
             );
           })}
@@ -424,20 +476,20 @@ export default async function Rankings({ searchParams }) {
               <span><b>{b}</b> <span className="text-muted">{t}</span></span>
             </div>
           ))}
-          <div className="bg-card2 rounded-lg px-3.5 py-2.5 text-gold italic text-[12px] mt-3">“A clear round in a stronger field contributes more than a result from a small regional field.”</div>
+          <div className="bg-card2 rounded px-3.5 py-2.5 text-gold italic text-[12px] mt-3">“A clear round in a stronger field contributes more than a result from a small regional field.”</div>
         </section>
 
         <section className={CARD}>
           <h2 className="text-[15px] font-bold mb-3">Ranking Movement</h2>
-          <div className="border border-greenbg bg-greenbg/30 rounded-lg p-3 mb-2.5">
+          <div className="border border-greenbg bg-greenbg/30 rounded p-3 mb-2.5">
             <div className="flex justify-between text-[12px]"><b className="text-moss">↑ Rising</b><span className="text-faint text-[11px]">Improved rank</span></div>
             <div className="text-[12px] mt-1">{buckets.Rising.join(', ') || '—'}</div>
           </div>
-          <div className="border border-line bg-card2 rounded-lg p-3 mb-2.5">
+          <div className="border border-line bg-card2 rounded p-3 mb-2.5">
             <div className="flex justify-between text-[12px]"><b className="text-muted">→ Stable</b><span className="text-faint text-[11px]">Consistent performance</span></div>
             <div className="text-[12px] mt-1">{buckets.Stable.join(', ') || '—'}</div>
           </div>
-          <div className="border border-redbg bg-redbg/30 rounded-lg p-3">
+          <div className="border border-redbg bg-redbg/30 rounded p-3">
             <div className="flex justify-between text-[12px]"><b className="text-blood">↓ Declining</b><span className="text-faint text-[11px]">Performance decrease</span></div>
             <div className="text-[12px] mt-1">{buckets.Declining.join(', ') || '—'}</div>
           </div>
@@ -478,7 +530,7 @@ export default async function Rankings({ searchParams }) {
           </form>
           <div className="text-[11px] uppercase tracking-wide text-faint font-bold mt-3 mb-1.5">Active Results</div>
           {spotlight ? (
-            <div className="bg-card2 border border-line rounded-lg p-3">
+            <div className="bg-card2 border border-line rounded p-3">
               <div className="flex justify-between items-center">
                 <b>{spotlight.horse} (Stallion)</b>
                 <span className="text-gold text-[11px] font-bold">#1 Ranked</span>
@@ -500,7 +552,7 @@ export default async function Rankings({ searchParams }) {
         <section className={CARD}>
           <h2 className="text-[15px] font-bold mb-2.5">Watchlist</h2>
           {watchHorse && (
-            <div className="bg-card2 rounded-lg p-3 mb-2">
+            <div className="bg-card2 rounded p-3 mb-2">
               <div className="flex justify-between items-center">
                 <div><div className="font-semibold text-[13px]">{watchHorse.horse}</div><div className="text-[11px] text-muted">Elite Watchlist</div></div>
                 <b className="text-gold text-[13px]">{watchHorse.eq} Score</b>
@@ -508,7 +560,7 @@ export default async function Rankings({ searchParams }) {
             </div>
           )}
           {watchRider && (
-            <div className="bg-card2 rounded-lg p-3 mb-2">
+            <div className="bg-card2 rounded p-3 mb-2">
               <div className="flex justify-between items-center">
                 <div><div className="font-semibold text-[13px]">{watchRider.rider}</div><div className="text-[11px] text-muted">Rider Watch</div></div>
                 <b className="text-[13px]">{watchRider.eq} Score</b>
@@ -517,7 +569,7 @@ export default async function Rankings({ searchParams }) {
           )}
           <div className="flex gap-2 mt-2">
             {watchHorse && <WatchButton entityType="horse" entityId={watchHorse.horse_id} />}
-            <a href="/watchlist" className="flex-1 text-center bg-card2 border border-line text-gold rounded-lg px-3.5 py-2 text-sm no-underline">+ Add to active watchlist</a>
+            <a href="/watchlist" className="flex-1 text-center bg-card2 border border-line text-gold rounded px-3.5 py-2 text-sm no-underline">+ Add to active watchlist</a>
           </div>
         </section>
       </div>

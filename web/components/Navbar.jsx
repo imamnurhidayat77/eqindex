@@ -33,7 +33,7 @@ export default function Navbar() {
         ))}
       </nav>
       <button
-        className="md:hidden bg-card border border-line rounded-lg text-body w-8 h-8"
+        className="md:hidden bg-card border border-line rounded text-body w-8 h-8"
         onClick={() => setOpen((o) => !o)}
         aria-label="Menu"
       >
@@ -120,10 +120,10 @@ export function NavSearch() {
           else if (e.key === 'Escape') setOpen(false);
         }}
         placeholder="⌕  Search Intelligence..."
-        className="bg-card border border-line rounded-lg text-body px-3 py-[7px] w-[180px] text-[13px] placeholder:text-muted focus:border-gold/60 focus:outline-none"
+        className="bg-card border border-line rounded text-body px-3 py-[7px] w-[180px] text-[13px] placeholder:text-muted focus:border-gold/60 focus:outline-none"
       />
       {open && !!hits.length && (
-        <div className="absolute right-0 z-20 mt-1 w-[260px] overflow-hidden rounded-lg border border-line bg-card2 shadow-xl">
+        <div className="absolute right-0 z-20 mt-1 w-[260px] overflow-hidden rounded border border-line bg-card2 shadow-xl">
           {hits.map((t, i) => (
             <button key={`${t.kind}-${t.id}`} onMouseDown={(e) => e.preventDefault()} onClick={() => go(i)}
               onMouseEnter={() => setHi(i)}
@@ -137,7 +137,7 @@ export function NavSearch() {
         </div>
       )}
       {open && q.trim().length >= 2 && !hits.length && (
-        <div className="absolute right-0 z-20 mt-1 w-[260px] rounded-lg border border-line bg-card2 px-3 py-2 text-[12px] text-muted">
+        <div className="absolute right-0 z-20 mt-1 w-[260px] rounded border border-line bg-card2 px-3 py-2 text-[12px] text-muted">
           No horses or riders found.
         </div>
       )}
@@ -152,7 +152,7 @@ export function NavSeason() {
       value={season}
       onChange={(e) => setSeason(e.target.value)}
       title="Season filter — applies to Horses, Riders & Events lists"
-      className="hidden sm:block bg-card border border-line rounded-lg text-body px-2 py-[7px] text-[13px] max-w-[150px] cursor-pointer focus:border-gold/60 focus:outline-none"
+      className="hidden sm:block bg-card border border-line rounded text-body px-2 py-[7px] text-[13px] max-w-[150px] cursor-pointer focus:border-gold/60 focus:outline-none"
     >
       <option value="">Season: All ▾</option>
       {seasons.map((s) => (

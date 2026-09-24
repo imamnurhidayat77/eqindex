@@ -69,7 +69,7 @@ export default async function SeriesPage({ params }) {
       </div>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <section className="rounded-xl border border-line bg-card p-5">
+        <section className="rounded border border-line bg-card p-5">
           <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Series Leader</div>
           {leader ? (
             <>
@@ -78,13 +78,13 @@ export default async function SeriesPage({ params }) {
                 <div><span className="text-[30px] font-extrabold text-gold">{leader.pts}</span> <span className="text-muted text-[13px]">points</span></div>
                 <div className="pb-1 text-[13px] text-muted">{leader.shows} shows counted · Rank #{leader.rank}</div>
               </div>
-              <div className="mt-4 rounded-lg bg-card2 p-3 text-[12.5px] italic leading-relaxed text-muted">
+              <div className="mt-4 rounded bg-card2 p-3 text-[12.5px] italic leading-relaxed text-muted">
                 “{leader.rider_name} sets the pace in {first.event_name} — consistency across {leader.shows} counting shows built an unbroken points streak.”
               </div>
             </>
           ) : <p className="mt-2 text-muted">No standings published yet.</p>}
         </section>
-        <section className="rounded-xl border border-line bg-card p-5">
+        <section className="rounded border border-line bg-card p-5">
           <h2 className="mb-2 text-[15px] font-bold">Series Registry</h2>
           <dl>
             {[
@@ -111,7 +111,7 @@ export default async function SeriesPage({ params }) {
           ['Average Points', avgPts.toFixed(0)],
           ['Lead Gap', gap ? `+${gap}` : '—'],
         ].map(([l, v]) => (
-          <div key={l} className="rounded-xl border border-line bg-card p-4">
+          <div key={l} className="rounded border border-line bg-card p-4">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-muted">{l}</div>
             <div className="mt-1 text-[26px] font-extrabold leading-none">{v}</div>
           </div>
@@ -123,7 +123,7 @@ export default async function SeriesPage({ params }) {
           <h2 className="mb-3 text-[15px] font-bold">Podium</h2>
           <div className="mb-6 grid gap-4 md:grid-cols-3">
             {table.slice(0, 3).map((r, i) => (
-              <div key={i} className={`rounded-xl border bg-card p-4 ${i === 0 ? 'border-gold/60' : 'border-line'}`}>
+              <div key={i} className={`rounded border bg-card p-4 ${i === 0 ? 'border-gold/60' : 'border-line'}`}>
                 <div className="mb-1 flex items-center justify-between">
                   <span className={`text-[12px] font-extrabold ${i === 0 ? 'text-gold' : 'text-muted'}`}>#{r.rank}</span>
                   <span className={statusBadge(i === 0 ? '1st' : i === 1 ? '2nd' : '3rd')}>{i === 0 ? 'Leader' : `Chaser +${r.pts ? leader.pts - r.pts : 0}`}</span>
@@ -138,12 +138,12 @@ export default async function SeriesPage({ params }) {
       )}
 
       <h2 className="mb-3 text-[15px] font-bold">Points Race</h2>
-      <section className="mb-6 rounded-xl border border-line bg-card p-5">
+      <section className="mb-6 rounded border border-line bg-card p-5">
         <div className="space-y-2.5">
           {table.slice(0, 10).map((r) => (
             <div key={`${r.rider_name}-${r.horse_name}`} className="grid grid-cols-[150px_1fr_52px] items-center gap-3 text-[12.5px]">
               <span className="truncate font-medium">#{r.rank} {r.rider_name}</span>
-              <div className="h-2 rounded bg-[#232b38]">
+              <div className="h-2 rounded bg-[#2A2A2A]">
                 <div className={`h-2 rounded ${r.rank === 1 ? 'bg-gold' : 'bg-info'}`} style={{ width: `${(100 * r.pts) / maxPts}%` }} />
               </div>
               <span className="text-right font-bold tabular-nums">{r.pts}</span>
@@ -155,7 +155,7 @@ export default async function SeriesPage({ params }) {
 
       <h2 className="text-[15px] font-bold">Full Standings</h2>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Every combination in {first?.series_name || 'this series'} — EQ matched from career rankings.</p>
-      <section className="mb-6 overflow-x-auto rounded-xl border border-line bg-card">
+      <section className="mb-6 overflow-x-auto rounded border border-line bg-card">
         <table className="w-full min-w-[760px] border-collapse text-[13px]">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
@@ -194,7 +194,7 @@ export default async function SeriesPage({ params }) {
           <h2 className="mb-3 text-[15px] font-bold">Series Intelligence</h2>
           <div className="mb-6 grid gap-4 md:grid-cols-3">
             {insights.map((t, i) => (
-              <div key={i} className="rounded-xl border border-line bg-card p-4">
+              <div key={i} className="rounded border border-line bg-card p-4">
                 <div className="mb-2 text-[11px] font-bold text-gold">ACTIVE SIGNAL</div>
                 <p className="text-[12.5px] leading-relaxed text-muted">{t}</p>
               </div>
@@ -210,7 +210,7 @@ export default async function SeriesPage({ params }) {
           ['Rankings', 'National EQ leaderboard', '/rankings'],
           ['Compare Leaders', 'Head-to-head the top two', leader && table[1] && leader.h && table[1].h ? `/comparison?type=horse&a=${leader.h.id}&b=${table[1].h.id}` : '/comparison'],
         ].map(([t, d, href]) => (
-          <a key={t} href={href} className="group flex items-center justify-between rounded-xl border border-line bg-card p-4 transition hover:border-gold/50">
+          <a key={t} href={href} className="group flex items-center justify-between rounded border border-line bg-card p-4 transition hover:border-gold/50">
             <div><div className="text-[13.5px] font-bold text-white">{t}</div><div className="mt-0.5 text-[12px] text-muted">{d}</div></div>
             <span className="text-gold transition group-hover:translate-x-0.5">→</span>
           </a>

@@ -35,24 +35,24 @@ export default function HealthPanel({ horseId, compact = false }) {
     load();
   }
   return (
-    <section className="mb-6 overflow-hidden rounded-xl border border-line bg-card">
+    <section className="mb-6 overflow-hidden rounded border border-line bg-card">
       {!compact && <h2 className="px-5 pt-4 text-[15px] font-bold">Health &amp; care</h2>}
       <div className="flex justify-end px-4 pt-3">
-        <button onClick={() => setOpen((o) => !o)} className="rounded-lg border border-line bg-card2 px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-white">
+        <button onClick={() => setOpen((o) => !o)} className="rounded border border-line bg-card2 px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-white">
           {open ? '− Close' : '+ Log record'}
         </button>
       </div>
       {open && (
         <form onSubmit={add} className="flex flex-wrap items-end gap-3 px-5 pb-4 pt-2">
-          <label className="text-[12px] text-muted">Date<br /><input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="mt-1 rounded-lg border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
+          <label className="text-[12px] text-muted">Date<br /><input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
           <label className="text-[12px] text-muted">Category<br />
-            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 rounded-lg border border-line bg-ink px-2.5 py-2 text-slate-100">
+            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100">
               {CATS.map((c) => <option key={c}>{c}</option>)}
             </select>
           </label>
-          <label className="min-w-[220px] flex-1 text-[12px] text-muted">Description<br /><input required value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Check-up, shoeing, booster..." className="mt-1 w-full rounded-lg border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
-          <label className="text-[12px] text-muted">Provider<br /><input value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })} placeholder="Clinic / farrier" className="mt-1 rounded-lg border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
-          <button className="rounded-lg bg-gold px-4 py-2 text-[13px] font-bold text-black">Add</button>
+          <label className="min-w-[220px] flex-1 text-[12px] text-muted">Description<br /><input required value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Check-up, shoeing, booster..." className="mt-1 w-full rounded border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
+          <label className="text-[12px] text-muted">Provider<br /><input value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })} placeholder="Clinic / farrier" className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
+          <button className="rounded bg-gold px-4 py-2 text-[13px] font-bold text-black">Add</button>
         </form>
       )}
       <div className="overflow-x-auto">

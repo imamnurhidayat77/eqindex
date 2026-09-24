@@ -58,28 +58,28 @@ export default function SeriesIndex() {
           ['Seasons', String(seasons.length)],
           ['Events', String(new Set(filtered.map((x) => x.event_name)).size)],
         ].map(([l, v]) => (
-          <div key={l} className="rounded-xl border border-line bg-card p-4">
+          <div key={l} className="rounded border border-line bg-card p-4">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-faint">{l}</div>
             <div className="mt-1 text-[26px] font-extrabold leading-none">{v}</div>
           </div>
         ))}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded-xl border border-line bg-card p-4">
+      <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
           Search
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Series or event…"
-            className="w-[200px] rounded-lg border border-line bg-ink px-2.5 py-2 text-[13px] normal-case text-white placeholder:text-faint focus:border-gold/60 focus:outline-none" />
+            className="w-[200px] rounded border border-line bg-ink px-2.5 py-2 text-[13px] normal-case text-white placeholder:text-faint focus:border-gold/60 focus:outline-none" />
         </label>
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
           Season
           <select value={seasonF} onChange={(e) => setSeasonF(e.target.value)}
-            className="rounded-lg border border-line bg-ink px-2.5 py-2 text-[13px] text-body">
+            className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body">
             <option value="">All seasons</option>
             {seasons.map((s) => <option key={s} value={s}>{s.replace('-', '/')}</option>)}
           </select>
         </label>
-        {(q || seasonF) && <button onClick={() => { setQ(''); setSeasonF(''); }} className="rounded-lg px-2 py-2 text-[13px] text-sky hover:underline">Reset</button>}
+        {(q || seasonF) && <button onClick={() => { setQ(''); setSeasonF(''); }} className="rounded px-2 py-2 text-[13px] text-sky hover:underline">Reset</button>}
       </div>
 
       <section className={CARD}>
@@ -104,8 +104,8 @@ export default function SeriesIndex() {
           <div className="mt-4 flex items-center justify-between">
             <div className="text-[12.5px] text-muted">Page {page} of {pages}</div>
             <div className="flex gap-1.5">
-              <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-lg border border-line bg-card2 px-3 py-1.5 text-[13px] text-muted disabled:opacity-40">‹</button>
-              <button disabled={page >= pages} onClick={() => setPage(page + 1)} className="rounded-lg border border-line bg-card2 px-3 py-1.5 text-[13px] text-muted disabled:opacity-40">›</button>
+              <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded border border-line bg-card2 px-3 py-1.5 text-[13px] text-muted disabled:opacity-40">‹</button>
+              <button disabled={page >= pages} onClick={() => setPage(page + 1)} className="rounded border border-line bg-card2 px-3 py-1.5 text-[13px] text-muted disabled:opacity-40">›</button>
             </div>
           </div>
         )}
