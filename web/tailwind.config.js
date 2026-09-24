@@ -1,0 +1,36 @@
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ['./app/**/*.{js,jsx}', './components/**/*.{js,jsx}'],
+  theme: {
+    extend: {
+      colors: {
+        ink: '#0A0E14',
+        navbg: '#0B0E13',
+        card: '#12161D',
+        card2: '#171D26',
+        line: '#232B38',
+        rowline: '#1A212C',
+        body: '#F2F5F9',
+        muted: '#8B94A3',
+        faint: '#5C6675',
+        gold: '#E8B44A',
+        golddim: '#D9A238',
+        goldbg: '#2C230F',
+        moss: '#3FB96B',
+        mint: '#3FB96B',
+        greenbg: '#0F2C1B',
+        blood: '#E5484D',
+        danger: '#E5484D',
+        redbg: '#2C1415',
+        sky: '#4C9AFF',
+        info: '#4C9AFF',
+        bluebg: '#10233D',
+        viol: '#8E7CFF',
+        violet: '#8E7CFF',
+        barbg: '#3A4356',
+      },
+      maxWidth: { shell: '1240px' },
+    },
+  },
+  plugins: [],
+};
