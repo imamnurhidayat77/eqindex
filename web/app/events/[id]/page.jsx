@@ -90,10 +90,14 @@ export default async function EventDetail({ params }) {
     (byClass[k] ||= { class_id: r.class_id, name: r.class_name || 'Unnamed class', height_cm: r.height_cm, class_type: null, rounds: [] });
     byClass[k].rounds.push(r);
   }
-  const classTypeOf = Object.fromEntries((a.classes || []).map((c) => [c.class_id, c.class_type]));
+  const classMeta = Object.fromEntries((a.classes || []).map((c) => [c.class_id, c]));
   const classOrder = Object.fromEntries((a.classes || []).map((c, i) => [c.class_id, i]));
   const groups = Object.values(byClass).map((g) => {
-    if (g.class_id && classTypeOf[g.class_id]) g.class_type = classTypeOf[g.class_id];
+    const meta = (g.class_id && classMeta[g.class_id]) || {};
+    for (const k of ['class_type', 'class_number', 'format', 'sponsor', 'series_key', 'result_status', 'height_cm']) {
+      if (g[k] === null || g[k] === undefined) g[k] = meta[k] ?? g[k];
+    }
+    if (!g.height_cm && meta.height_cm) g.height_cm = meta.height_cm;
     const rs = [...g.rounds].sort((x, y) => (x.finish_place ?? 9999) - (y.finish_place ?? 9999));
     return { ...g, rounds: rs, clears: rs.filter((r) => r.clear_round).length };
   }).sort((x, y) => (classOrder[x.class_id] ?? 999) - (classOrder[y.class_id] ?? 999));
