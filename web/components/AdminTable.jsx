@@ -78,7 +78,7 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
       </div>
       <section className={CARD}>
         <div className={TABLEWRAP}>
-        <table className={TABLE}>
+        <table className={`${TABLE} sticky-head`}>
           <thead><tr>
             {columns.map((c) => <th key={c.k} className={`${TH} ${c.num ? NUM : ''}`}>{c.label}</th>)}
             <th className={TH}></th>

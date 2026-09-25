@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { API } from '../../lib/api';
 import { CARD, LINK } from '../../lib/tokens';
+import AdminNav from '../../components/AdminNav';
 
 async function currentUser() {
   try {
@@ -15,23 +16,6 @@ async function currentUser() {
     return null;
   }
 }
-
-const NAV = [
-  ['/admin', 'Overview'],
-  ['/admin/import', 'CSV Import'],
-  ['/admin/results/add', 'Add Result'],
-  ['/admin/horses', 'Horses'],
-  ['/admin/riders', 'Riders'],
-  ['/admin/events', 'Events'],
-  ['/admin/review', 'Naming Review'],
-  ['/admin/claims', 'Rider Claims'],
-  ['/admin/corrections', 'Corrections'],
-  ['/admin/users', 'Users'],
-  ['/admin/series', 'Series'],
-  ['/admin/data', 'Data Tools'],
-  ['/admin/activity', 'Audit Log'],
-  ['/admin/settings', 'Settings'],
-];
 
 export default async function AdminLayout({ children }) {
   const user = await currentUser();
@@ -48,19 +32,20 @@ export default async function AdminLayout({ children }) {
     );
   }
   return (
-    <div className="grid gap-5 lg:grid-cols-[210px_1fr] items-start">
-      <aside className="rounded border border-line bg-card p-2 lg:sticky lg:top-[76px]">
-        <div className="px-2.5 py-2 text-[11px] uppercase tracking-wide text-faint font-bold">Admin console</div>
-        <div className="px-2.5 pb-2 text-[12px] text-muted truncate">{user.name}</div>
-        {NAV.map(([href, label]) => (
-          <a key={href} href={href}
-            className="block rounded px-2.5 py-2 text-[13px] font-semibold text-muted no-underline hover:bg-white/5 hover:text-white">
-            {label}
-          </a>
-        ))}
-        <a href="/" className="block rounded px-2.5 py-2 text-[13px] text-faint no-underline hover:text-white">← Back to site</a>
-      </aside>
-      <div className="min-w-0">{children}</div>
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <div className="text-[11px] uppercase tracking-[0.8px] text-faint font-bold">
+          EQIndex <span className="text-gold">/</span> Administration
+        </div>
+        <div className="flex items-center gap-2 text-[12px] text-muted">
+          <span className="w-2 h-2 rounded-full bg-moss inline-block" title="API reachable" />
+          Console live
+        </div>
+      </div>
+      <div className="grid gap-5 lg:grid-cols-[220px_1fr] items-start">
+        <AdminNav user={user} />
+        <div className="min-w-0">{children}</div>
+      </div>
     </div>
   );
 }

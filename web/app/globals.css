@@ -41,3 +41,10 @@ pre code { display: block; padding: 12px 14px; overflow-x: auto; }
 
 /* shared rank highlight (replaces dead .rank1) */
 .rank1 { color: #FFD700; font-weight: 800; }
+
+/* ---------- admin console ---------- */
+.sticky-head thead th {
+  position: sticky; top: 60px; z-index: 5;
+  background: #141414;
+  box-shadow: 0 1px 0 #2A2A2A;
+}
