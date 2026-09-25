@@ -1,11 +1,68 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const pool = require('./db');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: process.env.WEB_ORIGIN ? process.env.WEB_ORIGIN.split(',') : true,
+  credentials: true,
+}));
 app.use(express.json());
+
+// ---- Session auth (best practice: opaque token, sha256 at rest, httpOnly cookie) ----
+const SESSION_COOKIE = 'eq_session';
+const SESSION_DAYS = 30;
+function getCookie(req, name) {
+  const h = req.headers.cookie || '';
+  for (const part of h.split(';')) {
+    const i = part.indexOf('=');
+    if (i > 0 && part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return null;
+}
+function setSessionCookie(req, res, token) {
+  const secure = process.env.COOKIE_SECURE === '1' || req.secure;
+  res.cookie(SESSION_COOKIE, token, {
+    httpOnly: true, sameSite: 'lax', secure, path: '/',
+    maxAge: SESSION_DAYS * 24 * 3600 * 1000,
+  });
+}
+async function sessionUser(req) {
+  const token = getCookie(req, SESSION_COOKIE);
+  if (!token) return null;
+  const hash = crypto.createHash('sha256').update(token).digest('hex');
+  const { rows } = await pool.query(
+    `SELECT u.id, u.name, u.email, u.role FROM sessions s
+     JOIN users u ON u.id = s.user_id
+     WHERE s.token_hash = $1 AND s.expires_at > NOW()`, [hash]);
+  return rows[0] || null;
+}
+// attach once, before all routes
+app.use(async (req, _res, next) => {
+  try { req.authUser = await sessionUser(req); } catch { req.authUser = null; }
+  next();
+});
+async function newSession(res, req, userId) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const hash = crypto.createHash('sha256').update(token).digest('hex');
+  await pool.query(
+    `INSERT INTO sessions (user_id, token_hash, user_agent, ip, expires_at)
+     VALUES ($1, $2, $3, $4, NOW() + INTERVAL '30 days')`,
+    [userId, hash, (req.headers['user-agent'] || '').slice(0, 200), (req.ip || '').slice(0, 60)]);
+  setSessionCookie(req, res, token);
+}
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const loginHits = new Map(); // ip -> {n, reset}
+function throttled(ip) {
+  const now = Date.now();
+  const rec = loginHits.get(ip) || { n: 0, reset: now + 10 * 60e3 };
+  if (now > rec.reset) { rec.n = 0; rec.reset = now + 10 * 60e3; }
+  rec.n += 1; loginHits.set(ip, rec);
+  return rec.n > 10;
+}
 
 function paging(req, def = 20, max = 100) {
   const limit = Math.min(parseInt(req.query.limit || def, 10) || def, max);
@@ -522,7 +579,16 @@ app.get('/arenas', asyncH(async (req, res) => {
 
 // ---- Elite MVP: user scope via ?user_id= or X-User-Id header (full auth later) ----
 function userId(req) {
-  return req.query.user_id || req.headers['x-user-id'] || null;
+  return (req.authUser && req.authUser.id) || req.query.user_id || req.headers['x-user-id'] || null;
+}
+function needRole(role) {
+  return async (req, res, next) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (req.authUser.role !== role && req.authUser.role !== 'ADMIN') {
+      return res.status(403).json({ error: `${role} role required` });
+    }
+    next();
+  };
 }
 function needUser(req, res) {
   const id = userId(req);
@@ -711,6 +777,115 @@ app.delete('/comparisons/:id', asyncH(async (req, res) => {
     'DELETE FROM saved_comparisons WHERE id = $1 AND user_id = $2', [req.params.id, uid]
   );
   if (!rowCount) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+}));
+
+
+// ---- Auth: register / login / logout / me ----
+app.post('/auth/register', asyncH(async (req, res) => {
+  const { name, email, password, role } = req.body || {};
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (!name || !String(name).trim() || !EMAIL_RE.test(cleanEmail)) {
+    return res.status(400).json({ error: 'need {name, valid email}' });
+  }
+  if (!password || String(password).length < 8 || String(password).length > 72) {
+    return res.status(400).json({ error: 'password must be 8-72 chars' });
+  }
+  const wantRole = ['PUBLIC', 'RIDER', 'COACH'].includes(role) ? role : 'PUBLIC';
+  const exists = await pool.query('SELECT 1 FROM users WHERE email = $1', [cleanEmail]);
+  if (exists.rows.length) return res.status(409).json({ error: 'email already registered' });
+  const hash = await bcrypt.hash(String(password), 12);
+  const { rows } = await pool.query(
+    'INSERT INTO users (name, email, role, password_hash) VALUES ($1,$2,$3,$4) RETURNING id, name, email, role',
+    [String(name).trim().slice(0, 100), cleanEmail, wantRole, hash]);
+  await newSession(res, req, rows[0].id);
+  res.status(201).json({ data: rows[0] });
+}));
+
+app.post('/auth/login', asyncH(async (req, res) => {
+  if (throttled(req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
+  const { email, password } = req.body || {};
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [cleanEmail]);
+  const u = rows[0];
+  const ok = u && u.password_hash && await bcrypt.compare(String(password || ''), u.password_hash);
+  if (!ok) return res.status(401).json({ error: 'invalid email or password' });
+  await newSession(res, req, u.id);
+  res.json({ data: { id: u.id, name: u.name, email: u.email, role: u.role } });
+}));
+
+app.post('/auth/logout', asyncH(async (req, res) => {
+  const token = getCookie(req, SESSION_COOKIE);
+  if (token) {
+    const hash = crypto.createHash('sha256').update(token).digest('hex');
+    await pool.query('DELETE FROM sessions WHERE token_hash = $1', [hash]);
+  }
+  res.clearCookie(SESSION_COOKIE, { path: '/' });
+  res.json({ ok: true });
+}));
+
+app.get('/auth/me', asyncH(async (req, res) => {
+  if (!req.authUser) return res.status(401).json({ error: 'not logged in' });
+  res.json({ data: req.authUser });
+}));
+
+// ---- Rider claims (RIDER verifies ownership of a riders row) ----
+app.post('/riders/:id/claim', asyncH(async (req, res) => {
+  if (!req.authUser) return res.status(401).json({ error: 'login required' });
+  const rider = await pool.query('SELECT id FROM riders WHERE id = $1', [req.params.id]);
+  if (!rider.rows.length) return res.status(404).json({ error: 'rider not found' });
+  const { rows } = await pool.query(
+    `INSERT INTO rider_claims (rider_id, user_id, note) VALUES ($1,$2,$3)
+     ON CONFLICT (rider_id, user_id) DO UPDATE SET status='pending', note=EXCLUDED.note RETURNING *`,
+    [req.params.id, req.authUser.id, (req.body || {}).note || null]);
+  await pool.query("UPDATE riders SET claim_status='pending' WHERE id=$1 AND claim_status='unclaimed'", [req.params.id]);
+  res.status(201).json({ data: rows[0] });
+}));
+
+app.get('/claims', needRole('ADMIN'), asyncH(async (req, res) => {
+  const status = req.query.status || 'pending';
+  const { rows } = await pool.query(
+    `SELECT c.*, r.name AS rider, u.name AS claimant FROM rider_claims c
+     JOIN riders r ON r.id = c.rider_id JOIN users u ON u.id = c.user_id
+     WHERE c.status = $1 ORDER BY c.created_at`, [status]);
+  res.json({ data: rows });
+}));
+
+app.post('/claims/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  const { approve } = req.body || {};
+  const q = await pool.query('SELECT * FROM rider_claims WHERE id = $1', [req.params.id]);
+  if (!q.rows.length) return res.status(404).json({ error: 'not found' });
+  const c = q.rows[0];
+  if (approve) {
+    await pool.query("UPDATE rider_claims SET status='approved' WHERE id=$1", [c.id]);
+    await pool.query('UPDATE riders SET user_id=$2, claim_status=$3 WHERE id=$1', [c.rider_id, c.user_id, 'verified']);
+  } else {
+    await pool.query("UPDATE rider_claims SET status='rejected' WHERE id=$1", [c.id]);
+    await pool.query("UPDATE riders SET claim_status='unclaimed' WHERE id=$1 AND user_id IS NULL", [c.rider_id]);
+  }
+  res.json({ ok: true, approved: !!approve });
+}));
+
+// ---- Coach roster ----
+app.get('/coach/athletes', needRole('COACH'), asyncH(async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT r.* FROM coach_athletes ca JOIN riders r ON r.id = ca.rider_id
+     WHERE ca.coach_user_id = $1 ORDER BY r.name`, [req.authUser.id]);
+  res.json({ data: rows });
+}));
+
+app.post('/coach/athletes', needRole('COACH'), asyncH(async (req, res) => {
+  const { rider_id } = req.body || {};
+  const r = await pool.query('SELECT id FROM riders WHERE id = $1', [rider_id]);
+  if (!r.rows.length) return res.status(404).json({ error: 'rider not found' });
+  await pool.query('INSERT INTO coach_athletes (coach_user_id, rider_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+    [req.authUser.id, rider_id]);
+  res.status(201).json({ ok: true });
+}));
+
+app.delete('/coach/athletes/:riderId', needRole('COACH'), asyncH(async (req, res) => {
+  await pool.query('DELETE FROM coach_athletes WHERE coach_user_id=$1 AND rider_id=$2',
+    [req.authUser.id, req.params.riderId]);
   res.json({ ok: true });
 }));
 

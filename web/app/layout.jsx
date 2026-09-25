@@ -1,6 +1,8 @@
 import './globals.css';
 import Navbar, { NavSearch, NavSeason } from '../components/Navbar';
 import { SeasonProvider } from '../components/global';
+import { AuthProvider } from '../components/auth';
+import UserMenu from '../components/UserMenu';
 
 export const metadata = { title: 'EQIndex — Horse Intelligence' };
 
@@ -17,6 +19,7 @@ export default function RootLayout({ children }) {
       </head>
       <body className="bg-ink text-body text-sm">
         <SeasonProvider>
+        <AuthProvider>
         <header className="flex justify-center bg-navbg border-b border-line sticky top-0 z-10">
           <div className="w-full max-w-shell mx-auto px-4 md:px-7 flex items-center gap-3 md:gap-5 h-[60px]">
             <a href="/" className="font-extrabold text-lg text-white no-underline flex items-center gap-2 whitespace-nowrap">
@@ -28,10 +31,11 @@ export default function RootLayout({ children }) {
             <NavSearch />
             <NavSeason />
             <button className="bg-card border border-line rounded text-body w-8 h-8" title="Notifications">🔔</button>
-            <span className="w-8 h-8 rounded-full border-[1.5px] border-gold inline-flex items-center justify-center text-[15px]">🐎</span>
+            <UserMenu />
           </div>
         </header>
         <main className="max-w-shell mx-auto px-4 md:px-7 py-5 md:py-7">{children}</main>
+        </AuthProvider>
         </SeasonProvider>
         <footer className="border-t border-rowline mt-12 flex justify-center">
           <div className="w-full max-w-shell mx-auto px-7 pt-[26px] pb-[30px] flex justify-between items-start gap-4 text-muted text-xs flex-wrap">

@@ -89,6 +89,34 @@ test('review queue reads', async () => {
   assert.ok(Array.isArray(q.data));
 });
 
+test('auth: register/login/me/logout cycle', async () => {
+  const email = `smoke${Date.now()}@test.local`;
+  const reg = await fetch(`${BASE}/auth/register`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Smoke', email, password: 'secret123', role: 'COACH' }),
+  });
+  assert.equal(reg.status, 201);
+  const cookie = reg.headers.get('set-cookie');
+  assert.ok(cookie && cookie.includes('eq_session'));
+  const me = await fetch(`${BASE}/auth/me`, { headers: { cookie } });
+  assert.equal(me.status, 200);
+  assert.equal((await me.json()).data.role, 'COACH');
+  const dup = await fetch(`${BASE}/auth/register`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Smoke', email, password: 'secret123' }),
+  });
+  assert.equal(dup.status, 409);
+  const bad = await fetch(`${BASE}/auth/register`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'x', email: 'bad', password: 'short' }),
+  });
+  assert.equal(bad.status, 400);
+  const out = await fetch(`${BASE}/auth/logout`, { method: 'POST', headers: { cookie } });
+  assert.equal(out.status, 200);
+  const gone = await fetch(`${BASE}/auth/me`, { headers: { cookie } });
+  assert.equal(gone.status, 401);
+});
+
 test('404s are honest JSON', async () => {
   const bad = await get('/horses/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(bad.error);
