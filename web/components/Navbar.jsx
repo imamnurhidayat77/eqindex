@@ -25,6 +25,7 @@ export const NAV = [
   { href: '/watchlist', label: 'Watchlist', match: (p) => p.startsWith('/watchlist') },
   { href: '/comparison', label: 'Compare', match: (p) => p.startsWith('/comparison') },
   { href: '/series', label: 'Series', match: (p) => p.startsWith('/series') },
+  { href: '/my-stable', label: 'My Stable', match: (p) => p.startsWith('/my-stable') },
 ]; // NOTE: Analytics hidden for now — route still live at /analytics
 
 export default function Navbar() {
