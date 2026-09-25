@@ -1247,6 +1247,105 @@ app.get('/admin/imports', needRole('ADMIN'), asyncH(async (req, res) => {
   res.json({ data: rows });
 }));
 
+
+// ---- Admin manage: search lists (including zero-start records) ----
+app.get('/admin/horses', needRole('ADMIN'), asyncH(async (req, res) => {
+  const q = `%${String(req.query.q || '').trim()}%`;
+  const { rows } = await pool.query(
+    `SELECT h.*, (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.horse_id = h.id) AS starts
+     FROM horses h ${req.query.q ? 'WHERE h.name ILIKE $1' : ''}
+     ORDER BY h.name LIMIT ${req.query.q ? '50' : '200'}`,
+    req.query.q ? [q] : []);
+  res.json({ data: rows });
+}));
+
+app.get('/admin/riders', needRole('ADMIN'), asyncH(async (req, res) => {
+  const q = `%${String(req.query.q || '').trim()}%`;
+  const { rows } = await pool.query(
+    `SELECT r.*, (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.rider_id = r.id) AS starts
+     FROM riders r ${req.query.q ? 'WHERE r.name ILIKE $1' : ''}
+     ORDER BY r.name LIMIT ${req.query.q ? '50' : '200'}`,
+    req.query.q ? [q] : []);
+  res.json({ data: rows });
+}));
+
+app.get('/admin/events', needRole('ADMIN'), asyncH(async (req, res) => {
+  const q = `%${String(req.query.q || '').trim()}%`;
+  const { rows } = await pool.query(
+    `SELECT e.*, (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id) AS class_count,
+       (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.event_id = e.id) AS round_count
+     FROM events e ${req.query.q ? 'WHERE e.name ILIKE $1' : ''}
+     ORDER BY e.date_start DESC LIMIT ${req.query.q ? '50' : '200'}`,
+    req.query.q ? [q] : []);
+  res.json({ data: rows });
+}));
+
+const normFn = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+const HORSE_FIELDS = ['name', 'breed', 'gender', 'sire', 'dam', 'damsire', 'breeder', 'year_of_birth', 'color', 'height', 'country', 'image_url'];
+const RIDER_FIELDS = ['name', 'region', 'series_category', 'nationality', 'bio', 'image_url', 'first_name', 'last_name'];
+const EVENT_FIELDS = ['name', 'venue', 'region', 'date_start', 'date_end', 'arena_type', 'event_type', 'status', 'description', 'image_url'];
+
+function patcher(table, fields, label) {
+  return asyncH(async (req, res) => {
+    const body = req.body || {};
+    const sets = [], vals = [];
+    for (const f of fields) {
+      if (body[f] !== undefined) {
+        let v = body[f] === '' ? null : body[f];
+        if (f === 'year_of_birth' && v !== null) {
+          v = parseInt(v, 10);
+          if (!(v >= 1980 && v <= 2100)) return res.status(400).json({ error: 'year_of_birth out of range' });
+        }
+        if ((f === 'date_start' || f === 'date_end') && v !== null && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+          return res.status(400).json({ error: `${f} must be YYYY-MM-DD` });
+        }
+        vals.push(v); sets.push(`${f} = $${vals.length}`);
+      }
+    }
+    if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
+    if (body.name !== undefined) { vals.push(normFn(body.name)); sets.push(`normalized_name = $${vals.length}`); }
+    vals.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE ${table} SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
+    if (!rows.length) return res.status(404).json({ error: `${label} not found` });
+    audit(req, `${label}.edit`, table, req.params.id, { fields: Object.keys(body) });
+    res.json({ data: rows[0] });
+  });
+}
+
+app.patch('/admin/horses/:id', needRole('ADMIN'), patcher('horses', HORSE_FIELDS, 'horse'));
+app.patch('/admin/riders/:id', needRole('ADMIN'), patcher('riders', RIDER_FIELDS, 'rider'));
+app.patch('/admin/events/:id', needRole('ADMIN'), patcher('events', EVENT_FIELDS, 'event'));
+
+app.delete('/admin/horses/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  const n = (await pool.query('SELECT COUNT(*)::INT AS n FROM round_results WHERE horse_id = $1', [req.params.id])).rows[0].n;
+  if (n > 0) return res.status(409).json({ error: `horse has ${n} rounds — delete results first` });
+  const { rowCount } = await pool.query('DELETE FROM horses WHERE id = $1', [req.params.id]);
+  if (!rowCount) return res.status(404).json({ error: 'horse not found' });
+  audit(req, 'horse.delete', 'horses', req.params.id, {});
+  res.json({ ok: true });
+}));
+
+app.delete('/admin/riders/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  const n = (await pool.query('SELECT COUNT(*)::INT AS n FROM round_results WHERE rider_id = $1', [req.params.id])).rows[0].n;
+  if (n > 0) return res.status(409).json({ error: `rider has ${n} rounds — delete results first` });
+  const { rowCount } = await pool.query('DELETE FROM riders WHERE id = $1', [req.params.id]);
+  if (!rowCount) return res.status(404).json({ error: 'rider not found' });
+  audit(req, 'rider.delete', 'riders', req.params.id, {});
+  res.json({ ok: true });
+}));
+
+app.delete('/admin/events/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  const c = await pool.query(
+    'SELECT (SELECT COUNT(*)::INT FROM classes WHERE event_id = $1) AS classes, (SELECT COUNT(*)::INT FROM round_results WHERE event_id = $1) AS rounds',
+    [req.params.id]);
+  const { rowCount } = await pool.query('DELETE FROM events WHERE id = $1', [req.params.id]);
+  if (!rowCount) return res.status(404).json({ error: 'event not found' });
+  audit(req, 'event.delete', 'events', req.params.id, { cascade: c.rows[0] });
+  res.json({ ok: true, cascade: c.rows[0] });
+}));
+
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('[api]', err.message);

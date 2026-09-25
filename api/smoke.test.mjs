@@ -160,6 +160,15 @@ test('admin results + lookup gates', async () => {
   assert.equal(bad.status, 401);
 });
 
+test('admin manage gates + guards', async () => {
+  await get('/admin/horses?q=kiwi', 401);
+  const bad = await fetch(`${BASE}/admin/horses/00000000-0000-0000-0000-000000000000`, { method: 'PATCH' });
+  assert.equal(bad.status, 401);
+  const HID = (await get('/rankings/horses?limit=1')).data[0].horse_id;
+  const del = await fetch(`${BASE}/admin/horses/${HID}`, { method: 'DELETE' });
+  assert.equal(del.status, 401);
+});
+
 test('404s are honest JSON', async () => {
   const bad = await get('/horses/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(bad.error);

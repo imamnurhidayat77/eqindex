@@ -29,6 +29,9 @@ export default async function AdminOverview() {
   const actions = [
     ['Import CSV results', 'Weekly organiser upload with preview', '/admin/import', 'gold'],
     ['Add single result', 'Manual entry with live points preview', '/admin/results/add', null],
+    ['Manage horses', 'Edit profiles, pedigrees and photos', '/admin/horses', null],
+    ['Manage riders', 'Regions, series categories and bios', '/admin/riders', null],
+    ['Manage events', 'Details, status and cascade delete', '/admin/events', null],
     ['Naming review', `${c.pendingReview} ambiguous names awaiting decision`, '/admin/review', null],
     ['Rider claims', `${c.pendingClaims} ownership claims awaiting approval`, '/admin/claims', null],
     ['Audit log', 'Every material change, who and when', '/admin/activity', null],
