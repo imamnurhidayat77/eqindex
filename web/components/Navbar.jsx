@@ -5,11 +5,13 @@ import { API } from '../lib/api';
 import { useSeason } from './global';
 import { useAuth } from './auth';
 
-// Landing (/) shows no nav controls to logged-out visitors — logo + Join stay.
+// Minimal header (landing + auth pages): no nav controls for logged-out
+// visitors — logo + Join stay.
+const MINIMAL_PATHS = ['/', '/login', '/register'];
 function useLandingHidden() {
   const pathname = usePathname() || '/';
   const { user, loading } = useAuth();
-  return pathname === '/' && !loading && !user;
+  return MINIMAL_PATHS.includes(pathname) && !loading && !user;
 }
 
 export const NAV = [
