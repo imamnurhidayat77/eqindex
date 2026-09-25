@@ -18,16 +18,18 @@ function useLandingHidden() {
 
 export const NAV = [
   { href: '/dashboard', label: 'Dashboard', match: (p) => p.startsWith('/dashboard') },
-  { href: '/horses', label: 'Horses', match: (p) => p.startsWith('/horses') },
-  { href: '/riders', label: 'Riders', match: (p) => p.startsWith('/riders') },
-  { href: '/events', label: 'Events', match: (p) => p.startsWith('/events') },
-  { href: '/rankings', label: 'Rankings', match: (p) => p.startsWith('/rankings') },
 ]; // NOTE: Analytics hidden for now — route still live at /analytics
 
 export const NAV_GROUPS = [
-  { label: 'More', items: [
-    { href: '/comparison', label: 'Compare', match: (p) => p.startsWith('/comparison') },
+  { label: 'Explore', items: [
+    { href: '/horses', label: 'Horses', match: (p) => p.startsWith('/horses') },
+    { href: '/riders', label: 'Riders', match: (p) => p.startsWith('/riders') },
+    { href: '/events', label: 'Events', match: (p) => p.startsWith('/events') },
     { href: '/series', label: 'Series', match: (p) => p.startsWith('/series') },
+  ]},
+  { label: 'Intelligence', items: [
+    { href: '/rankings', label: 'Rankings', match: (p) => p.startsWith('/rankings') },
+    { href: '/comparison', label: 'Compare', match: (p) => p.startsWith('/comparison') },
   ]},
   { label: 'Workspace', items: [
     { href: '/watchlist', label: 'Watchlist', match: (p) => p.startsWith('/watchlist') },
