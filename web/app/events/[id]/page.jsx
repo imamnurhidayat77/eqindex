@@ -3,6 +3,7 @@ import { eqScore, fieldScore, strengthLabel, ordinal } from '../../../lib/eq';
 import { BADGE, CARD, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
 import { ScoreRing } from '../../../components/charts';
 import MiniTrend from '../../../components/MiniTrend';
+import ClassResults from '../../../components/ClassResults';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,6 +82,21 @@ export default async function EventDetail({ params }) {
   })).sort((x, y) => y.eq - x.eq).slice(0, 5);
   const evParts = [...a.partnerships].sort((x, y) => Number(y.clear_pct) - Number(x.clear_pct)).slice(0, 3)
     .map((p) => ({ ...p, match: eqScore(p.clear_pct, p.avg_faults, p.rounds) }));
+
+  // per-class result groups (accordion), sorted by placing, nulls last
+  const byClass = {};
+  for (const r of rounds) {
+    const k = r.class_id || r.class_name;
+    (byClass[k] ||= { class_id: r.class_id, name: r.class_name || 'Unnamed class', height_cm: r.height_cm, class_type: null, rounds: [] });
+    byClass[k].rounds.push(r);
+  }
+  const classTypeOf = Object.fromEntries((a.classes || []).map((c) => [c.class_id, c.class_type]));
+  const classOrder = Object.fromEntries((a.classes || []).map((c, i) => [c.class_id, i]));
+  const groups = Object.values(byClass).map((g) => {
+    if (g.class_id && classTypeOf[g.class_id]) g.class_type = classTypeOf[g.class_id];
+    const rs = [...g.rounds].sort((x, y) => (x.finish_place ?? 9999) - (y.finish_place ?? 9999));
+    return { ...g, rounds: rs, clears: rs.filter((r) => r.clear_round).length };
+  }).sort((x, y) => (classOrder[x.class_id] ?? 999) - (classOrder[y.class_id] ?? 999));
 
   // insights
   const sim = allClasses.data.filter((c) => c.event !== e.name && c.avg_faults !== null
@@ -186,6 +202,10 @@ export default async function EventDetail({ params }) {
         </table>
         </div>
       </section>
+
+      <h2 className={H2}>Class Results</h2>
+      <p className={SUB}>Every round of this event, grouped by class — expand to inspect placings, faults and points.</p>
+      <ClassResults groups={groups} />
 
       <h2 className={H2}>Competition Performance Analytics</h2>
       <p className={SUB}>Real-time physical metric tracking across rounds</p>
