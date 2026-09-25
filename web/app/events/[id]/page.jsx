@@ -98,7 +98,7 @@ export default async function EventDetail({ params }) {
   const classOrder = Object.fromEntries((a.classes || []).map((c, i) => [c.class_id, i]));
   const groups = Object.values(byClass).map((g) => {
     const meta = (g.class_id && classMeta[g.class_id]) || {};
-    for (const k of ['class_type', 'class_number', 'format', 'sponsor', 'series_key', 'result_status', 'height_cm']) {
+    for (const k of ['class_type', 'class_number', 'format', 'sponsor', 'series_key', 'result_status', 'height_cm', 'arena_type', 'surface']) {
       if (g[k] === null || g[k] === undefined) g[k] = meta[k] ?? g[k];
     }
     if (!g.height_cm && meta.height_cm) g.height_cm = meta.height_cm;
@@ -330,6 +330,33 @@ export default async function EventDetail({ params }) {
           ))}
         </section>
       </div>
+
+      {(a.weather || []).length > 0 && (
+        <>
+          <h2 className={H2}>Measured Weather</h2>
+          <p className={SUB}>Service-measured conditions at {e.venue}. Daily aggregates are labelled estimates — rain at the venue is not automatically poor footing.</p>
+          <section className={CARD}>
+            <div className={TABLEWRAP}>
+            <table className={TABLE}>
+              <thead><tr><th className={TH}>Date</th><th className={`${TH} ${NUM}`}>Temp</th><th className={`${TH} ${NUM}`}>Rain</th><th className={`${TH} ${NUM}`}>Wind</th><th className={`${TH} ${NUM}`}>Humidity</th><th className={TH}>Classification</th><th className={TH}>Basis</th></tr></thead>
+              <tbody>
+                {a.weather.map((w) => (
+                  <tr key={w.date}>
+                    <td className={TD}>{(w.date || '').slice(0, 10)}</td>
+                    <td className={`${TD} ${NUM}`}>{w.temp_c === null ? '–' : `${Number(w.temp_c).toFixed(1)}°C`}</td>
+                    <td className={`${TD} ${NUM}`}>{w.rainfall_mm === null ? '–' : `${Number(w.rainfall_mm).toFixed(1)}mm`}</td>
+                    <td className={`${TD} ${NUM}`}>{w.wind_kph === null ? '–' : `${Number(w.wind_kph).toFixed(0)}kph`}</td>
+                    <td className={`${TD} ${NUM}`}>{w.humidity_pct === null ? '–' : `${w.humidity_pct}%`}</td>
+                    <td className={TD}><span className={badge(w.classification && w.classification !== 'dry' ? BADGE.goldfill : BADGE.green)}>{w.classification || '–'}</span></td>
+                    <td className={TD}>{w.is_estimate ? <span className="text-faint text-[12px]">Daily estimate · {w.source}</span> : <span className="text-moss text-[12px]">Pinned hour · {w.source}</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          </section>
+        </>
+      )}
 
       <h2 className={H2}>Event Benchmarking</h2>
       <p className={SUB}>{e.name} vs National, Regional, A-Grade Average.</p>

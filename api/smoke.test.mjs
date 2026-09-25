@@ -134,6 +134,16 @@ test('phase B: audit trail + visibility + activity gate', async () => {
   await get('/admin/activity', 401);
 });
 
+test('arena & weather (spec v2 S12)', async () => {
+  const EV = (await get('/events?limit=1')).data[0].id;
+  const a = await get(`/events/${EV}/analytics`);
+  assert.ok(Array.isArray(a.weather));
+  const w = await get('/weather?venue=Glistening%20Waters');
+  assert.ok(Array.isArray(w.data));
+  const cls = await get('/classes?limit=1');
+  assert.ok('arena_type' in cls.data[0] && 'surface' in cls.data[0]);
+});
+
 test('404s are honest JSON', async () => {
   const bad = await get('/horses/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(bad.error);

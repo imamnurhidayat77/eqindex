@@ -553,9 +553,15 @@ app.get('/events/:id/analytics', asyncH(async (req, res) => {
      GROUP BY h.name, r.name ORDER BY clear_pct DESC, avg_faults ASC LIMIT 5`,
     [e.id]
   );
+  const weather = await pool.query(
+    `SELECT * FROM weather_cache WHERE venue_norm = lower(trim($1))
+     ORDER BY date`,
+    [e.venue]
+  );
   res.json({
     event: e, classes: classes.rows, rounds: rounds.rows,
     horses: horses.rows, riders: riders.rows, partnerships: partnerships.rows,
+    weather: weather.rows,
   });
 }));
 
@@ -937,6 +943,18 @@ app.get('/admin/activity', needRole('ADMIN'), asyncH(async (req, res) => {
   const { rows } = await pool.query(
     `SELECT * FROM entity_audit ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
      ORDER BY created_at DESC LIMIT $${params.length}`, params);
+  res.json({ data: rows });
+}));
+
+// ---- Weather cache (measured service data; estimates labelled) ----
+app.get('/weather', asyncH(async (req, res) => {
+  const { venue, from, to } = req.query;
+  const conds = [], params = [];
+  if (venue) { params.push(venue); conds.push(`venue_norm = lower(trim($${params.length}))`); }
+  if (from) { params.push(from); conds.push(`date >= $${params.length}`); }
+  if (to) { params.push(to); conds.push(`date <= $${params.length}`); }
+  const { rows } = await pool.query(
+    `SELECT * FROM weather_cache ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''} ORDER BY date LIMIT 200`, params);
   res.json({ data: rows });
 }));
 

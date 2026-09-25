@@ -44,6 +44,9 @@ export default function ClassResults({ groups }) {
               {g.class_type && g.class_type !== 'Standard' && (
                 <span className={badge(BADGE.blue)}>{g.class_type}</span>
               )}
+              {(g.surface || g.arena_type) && (
+                <span className="text-[11px] text-muted">{[g.arena_type, g.surface].filter(Boolean).join(' · ')}</span>
+              )}
               {g.sponsor && <span className="text-[11px] text-gold">· {g.sponsor}</span>}
               <span className="flex-1" />
               {resultBadge(g.result_status)}
