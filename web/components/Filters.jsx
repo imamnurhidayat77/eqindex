@@ -30,7 +30,7 @@ export default function Filters({ current, seasons, regions, arenas }) {
       for (const [k, v] of Object.entries(current)) {
         if (v && v !== 'all' && v !== '' && k !== 'season') p.set(k, v);
       }
-      router.replace(`/?${p.toString()}`);
+      router.replace(`/dashboard?${p.toString()}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gSeason]);
@@ -42,7 +42,7 @@ export default function Filters({ current, seasons, regions, arenas }) {
     // height uses '' for all (shared HEIGHT_BANDS vocabulary)
     if (patch.height === '') p.delete('height');
     const qs = p.toString();
-    router.push(qs ? `/?${qs}` : '/');
+    router.push(qs ? `/dashboard?${qs}` : '/dashboard');
   };
   const season = current.season || 'all';
   const entity = current.entity || 'combination';
@@ -93,7 +93,7 @@ export default function Filters({ current, seasons, regions, arenas }) {
           {RANGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
       </Pill>
-      <span className="text-sky text-xs cursor-pointer" onClick={() => router.push('/')}>Reset Filters</span>
+      <span className="text-sky text-xs cursor-pointer" onClick={() => router.push('/dashboard')}>Reset Filters</span>
     </div>
   );
 }

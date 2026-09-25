@@ -5,7 +5,7 @@ import { API } from '../lib/api';
 import { useSeason } from './global';
 
 export const NAV = [
-  { href: '/', label: 'Dashboard', match: (p) => p === '/' },
+  { href: '/dashboard', label: 'Dashboard', match: (p) => p.startsWith('/dashboard') },
   { href: '/horses', label: 'Horses', match: (p) => p.startsWith('/horses') },
   { href: '/riders', label: 'Riders', match: (p) => p.startsWith('/riders') },
   { href: '/events', label: 'Events', match: (p) => p.startsWith('/events') },
