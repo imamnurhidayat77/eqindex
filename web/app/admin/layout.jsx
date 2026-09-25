@@ -19,6 +19,7 @@ async function currentUser() {
 const NAV = [
   ['/admin', 'Overview'],
   ['/admin/import', 'CSV Import'],
+  ['/admin/results/add', 'Add Result'],
   ['/admin/review', 'Naming Review'],
   ['/admin/claims', 'Rider Claims'],
   ['/admin/activity', 'Audit Log'],

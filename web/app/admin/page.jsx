@@ -28,6 +28,7 @@ export default async function AdminOverview() {
   ];
   const actions = [
     ['Import CSV results', 'Weekly organiser upload with preview', '/admin/import', 'gold'],
+    ['Add single result', 'Manual entry with live points preview', '/admin/results/add', null],
     ['Naming review', `${c.pendingReview} ambiguous names awaiting decision`, '/admin/review', null],
     ['Rider claims', `${c.pendingClaims} ownership claims awaiting approval`, '/admin/claims', null],
     ['Audit log', 'Every material change, who and when', '/admin/activity', null],

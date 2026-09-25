@@ -1154,6 +1154,92 @@ app.get('/admin/overview', needRole('ADMIN'), asyncH(async (req, res) => {
   }});
 }));
 
+app.get('/admin/lookup', needRole('ADMIN'), asyncH(async (req, res) => {
+  const t = req.query.type, q = `%${String(req.query.q || '').trim()}%`;
+  if (!['horse', 'rider', 'event', 'class'].includes(t) || String(req.query.q || '').trim().length < 2) {
+    return res.json({ data: [] });
+  }
+  const map = {
+    horse: 'SELECT id, name FROM horses WHERE name ILIKE $1 ORDER BY name LIMIT 8',
+    rider: 'SELECT id, name FROM riders WHERE name ILIKE $1 ORDER BY name LIMIT 8',
+    event: 'SELECT id, name FROM events WHERE name ILIKE $1 ORDER BY date_start DESC LIMIT 8',
+    class: 'SELECT c.id, c.name, c.class_date FROM classes c WHERE c.name ILIKE $1 ORDER BY c.class_date DESC NULLS LAST LIMIT 8',
+  };
+  const { rows } = await pool.query(map[t], [q]);
+  res.json({ data: rows });
+}));
+
+app.get('/admin/event-classes', needRole('ADMIN'), asyncH(async (req, res) => {
+  if (!req.query.event_id) return res.status(400).json({ error: 'need ?event_id=' });
+  const { rows } = await pool.query(
+    'SELECT id, name, class_date, height_cm, class_type FROM classes WHERE event_id = $1 ORDER BY class_date, name',
+    [req.query.event_id]);
+  res.json({ data: rows });
+}));
+
+app.post('/admin/results', needRole('ADMIN'), asyncH(async (req, res) => {
+  const { class_id, event_id, new_class, horse_id, horse_name, rider_id, rider_name,
+    placing, jump_faults, time_faults, time_seconds, status, notes } = req.body || {};
+  const errs = [];
+  const place = placing === null || placing === undefined || placing === '' ? null : parseInt(placing, 10);
+  if (place !== null && !(place >= 1)) errs.push('placing must be a positive integer');
+  const num = (v, n) => {
+    if (v === null || v === undefined || v === '') return null;
+    const x = Number(v);
+    if (!Number.isFinite(x)) errs.push(`${n} must be numeric`);
+    return x;
+  };
+  const jf = num(jump_faults, 'jump_faults'), tf = num(time_faults, 'time_faults'),
+    ts = num(time_seconds, 'time_seconds');
+  const st = ['finished', 'eliminated', 'withdrawn', 'retired', 'disqualified'].includes(status) ? status : 'finished';
+  if (!class_id && !(event_id && new_class)) errs.push('need class_id or event_id + new_class');
+  if (!horse_id && !horse_name) errs.push('need horse_id or horse_name');
+  if (!rider_id && !rider_name) errs.push('need rider_id or rider_name');
+  if (errs.length) return res.status(400).json({ error: errs.join('; ') });
+
+  const norm = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  const idOf = async (table, id, name, label) => {
+    if (id) {
+      const ex = await pool.query(`SELECT id FROM ${table} WHERE id = $1`, [id]);
+      if (!ex.rows.length) throw Object.assign(new Error(`${label} not found`), { status: 404 });
+      return id;
+    }
+    const nn = norm(name);
+    const ex = await pool.query(`SELECT id FROM ${table} WHERE normalized_name = $1`, [nn]);
+    if (ex.rows.length) return ex.rows[0].id;
+    const col = table === 'horses' ? 'name, normalized_name' : 'name, normalized_name';
+    return (await pool.query(`INSERT INTO ${table} (${col}) VALUES ($1,$2) RETURNING id`, [String(name).trim(), nn])).rows[0].id;
+  };
+  try {
+    let cid = class_id || null;
+    if (!cid) {
+      const ev = await pool.query('SELECT id FROM events WHERE id = $1', [event_id]);
+      if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
+      cid = (await pool.query(
+        'INSERT INTO classes (event_id, name, class_date, source) VALUES ($1,$2,$3,\'MANUAL\') RETURNING id',
+        [event_id, String(new_class).trim(), null])).rows[0].id;
+    }
+    const hid = await idOf('horses', horse_id, horse_name, 'horse');
+    const rid = await idOf('riders', rider_id, rider_name, 'rider');
+    const dup = await pool.query(
+      'SELECT id FROM round_results WHERE class_id = $1 AND horse_id = $2 AND rider_id = $3', [cid, hid, rid]);
+    if (dup.rows.length) return res.status(409).json({ error: 'duplicate of an existing round' });
+    const tot = (jf ?? 0) + (tf ?? 0);
+    const ev = (await pool.query('SELECT event_id FROM classes WHERE id = $1', [cid])).rows[0];
+    const { rows } = await pool.query(
+      `INSERT INTO round_results (event_id, class_id, horse_id, rider_id, jump_faults, time_faults,
+        total_faults, time_seconds, finish_place, clear_round, status, notes, source, points)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'MANUAL',0) RETURNING id, points`,
+      [ev.event_id, cid, hid, rid, jf ?? 0, tf ?? 0, tot, ts, place,
+       st === 'finished' && tot === 0, st, notes || null]);
+    audit(req, 'result.create', 'result', rows[0].id, { class_id: cid, place });
+    res.status(201).json({ data: rows[0] });
+  } catch (e) {
+    return res.status(e.status || 500).json({ error: e.status ? e.message : 'internal error' });
+  }
+}));
+
 app.get('/admin/imports', needRole('ADMIN'), asyncH(async (req, res) => {
   const { rows } = await pool.query(
     `SELECT l.*, e.name AS event_name FROM import_logs l

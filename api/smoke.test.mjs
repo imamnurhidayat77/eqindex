@@ -152,6 +152,14 @@ test('admin overview gate + password guard', async () => {
   assert.equal(bad.status, 401);
 });
 
+test('admin results + lookup gates', async () => {
+  await get('/admin/lookup?type=horse&q=ki', 401);
+  const bad = await fetch(`${BASE}/admin/results`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+  });
+  assert.equal(bad.status, 401);
+});
+
 test('404s are honest JSON', async () => {
   const bad = await get('/horses/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(bad.error);
