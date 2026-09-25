@@ -37,7 +37,7 @@ export default function AdminActivity() {
       {err && <section className={CARD}><p className="text-blood text-sm">{err}</p></section>}
       <section className={CARD}>
         <div className={TABLEWRAP}>
-        <table className={`${TABLE} sticky-head`}>
+        <table className={TABLE}>
           <thead><tr><th className={TH}>When</th><th className={TH}>Actor</th><th className={TH}>Action</th><th className={TH}>Entity</th><th className={TH}>Detail</th></tr></thead>
           <tbody>
             {rows.map((r) => (

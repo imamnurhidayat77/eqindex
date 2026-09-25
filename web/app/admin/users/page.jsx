@@ -50,7 +50,7 @@ export default function AdminUsers() {
       </div>
       <section className={CARD}>
         <div className={TABLEWRAP}>
-        <table className={`${TABLE} sticky-head`}>
+        <table className={TABLE}>
           <thead><tr><th className={TH}>Name</th><th className={TH}>Email</th><th className={TH}>Role</th><th className={`${TH} ${NUM}`}>Sessions</th><th className={TH}>Since</th><th className={TH}></th></tr></thead>
           <tbody>
             {rows.map((u) => (
