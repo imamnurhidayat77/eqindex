@@ -4,6 +4,7 @@ import { eqScore, trendBadge, consistencyPts } from '../lib/eq';
 import { ScoreRing } from '../components/charts';
 import { Spark, TrendPanel, BenchChart } from '../components/Graphs';
 import Filters from '../components/Filters';
+import EventCarousel from '../components/EventCarousel';
 import { heightParams } from '../lib/heights';
 
 export const dynamic = 'force-dynamic';
@@ -126,6 +127,10 @@ export default async function Dashboard({ searchParams }) {
     if (w > 0) return `${w} win${w === 1 ? '' : 's'} from ${t.h.starts} starts this season.`;
     return `Holding a ${pct(t.h.clear_pct)} clear rate.`;
   };
+  const latestEvents = [...(events.data || [])]
+    .sort((a, b) => new Date(b.date_start || 0) - new Date(a.date_start || 0))
+    .slice(0, 8);
+
   const consistencyWord = feat
     ? (Number(feat.faults_stddev) <= 2 ? 'exceptional'
       : Number(feat.faults_stddev) <= 4 ? 'strong' : 'developing') : '';
@@ -223,6 +228,10 @@ export default async function Dashboard({ searchParams }) {
               </section>
             </div>
           )}
+
+          <h2 className={H2}>Latest Events</h2>
+          <p className={SUB}>Newest competitions on the circuit — scroll sideways.</p>
+          <EventCarousel events={latestEvents} />
 
           {showHorses && (
             <>
