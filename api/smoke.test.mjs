@@ -144,6 +144,14 @@ test('arena & weather (spec v2 S12)', async () => {
   assert.ok('arena_type' in cls.data[0] && 'surface' in cls.data[0]);
 });
 
+test('admin overview gate + password guard', async () => {
+  await get('/admin/overview', 401);
+  const bad = await fetch(`${BASE}/auth/password`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+  });
+  assert.equal(bad.status, 401);
+});
+
 test('404s are honest JSON', async () => {
   const bad = await get('/horses/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(bad.error);

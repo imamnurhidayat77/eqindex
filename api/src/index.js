@@ -1114,6 +1114,44 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
   }
 }));
 
+app.post('/auth/password', asyncH(async (req, res) => {
+  if (!req.authUser) return res.status(401).json({ error: 'login required' });
+  const { current, next } = req.body || {};
+  if (!next || String(next).length < 8 || String(next).length > 72) {
+    return res.status(400).json({ error: 'new password must be 8-72 chars' });
+  }
+  const { rows } = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.authUser.id]);
+  const u = rows[0];
+  if (!u || !u.password_hash || !(await bcrypt.compare(String(current || ''), u.password_hash))) {
+    return res.status(401).json({ error: 'current password incorrect' });
+  }
+  await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2',
+    [await bcrypt.hash(String(next), 12), req.authUser.id]);
+  await pool.query('DELETE FROM sessions WHERE user_id = $1', [req.authUser.id]);
+  res.clearCookie(SESSION_COOKIE, { path: '/' });
+  audit(req, 'auth.password_change', 'user', req.authUser.id, {});
+  res.json({ ok: true, relogin: true });
+}));
+
+app.get('/admin/overview', needRole('ADMIN'), asyncH(async (req, res) => {
+  const q = async (sql, args = []) => (await pool.query(sql, args)).rows[0];
+  const horses = await q('SELECT COUNT(*)::INT AS n FROM horses');
+  const riders = await q('SELECT COUNT(*)::INT AS n FROM riders');
+  const events = await q('SELECT COUNT(*)::INT AS n FROM events');
+  const rounds = await q('SELECT COUNT(*)::INT AS n FROM round_results');
+  const pendingReview = await q("SELECT COUNT(*)::INT AS n FROM review_queue WHERE status='pending'");
+  const pendingClaims = await q("SELECT COUNT(*)::INT AS n FROM rider_claims WHERE status='pending'");
+  const users = await q('SELECT COUNT(*)::INT AS n FROM users');
+  const lastImport = await q('SELECT created_at, rows_ok, rows_failed FROM import_logs ORDER BY created_at DESC LIMIT 1');
+  const recent = (await pool.query(
+    'SELECT action, actor, entity_type, created_at FROM entity_audit ORDER BY created_at DESC LIMIT 8')).rows;
+  res.json({ data: {
+    counts: { horses: horses.n, riders: riders.n, events: events.n, rounds: rounds.n,
+              pendingReview: pendingReview.n, pendingClaims: pendingClaims.n, users: users.n },
+    lastImport: lastImport || null, recent,
+  }});
+}));
+
 app.get('/admin/imports', needRole('ADMIN'), asyncH(async (req, res) => {
   const { rows } = await pool.query(
     `SELECT l.*, e.name AS event_name FROM import_logs l
