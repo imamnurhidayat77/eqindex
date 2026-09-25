@@ -825,6 +825,7 @@ app.delete('/comparisons/:id', asyncH(async (req, res) => {
 
 // ---- Auth: register / login / logout / me ----
 app.post('/auth/register', asyncH(async (req, res) => {
+  if (req.authUser) return res.status(409).json({ error: 'already logged in — log out first' });
   const { name, email, password, role } = req.body || {};
   const cleanEmail = String(email || '').trim().toLowerCase();
   if (!name || !String(name).trim() || !EMAIL_RE.test(cleanEmail)) {
@@ -845,6 +846,7 @@ app.post('/auth/register', asyncH(async (req, res) => {
 }));
 
 app.post('/auth/login', asyncH(async (req, res) => {
+  if (req.authUser) return res.status(409).json({ error: 'already logged in — log out first' });
   if (throttled(req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
   const { email, password } = req.body || {};
   const cleanEmail = String(email || '').trim().toLowerCase();

@@ -11,7 +11,7 @@ const ROLES = [
 ];
 
 export default function Register() {
-  const { register } = useAuth();
+  const { user, loading, register, logout } = useAuth();
   const router = useRouter();
   const [form, setForm] = useState({ name: '', email: '', password: '', password2: '', role: 'PUBLIC' });
   const [show, setShow] = useState(false);
@@ -33,6 +33,21 @@ export default function Register() {
   }
   return (
     <div className="py-6 md:py-10">
+      {!loading && user ? (
+        <div className="mx-auto w-full max-w-[520px] rounded border border-line bg-card p-6 sm:p-8 text-center">
+          <h1 className="font-display text-[24px] font-bold uppercase tracking-tight">Already logged in</h1>
+          <p className="text-muted text-sm mt-2 mb-5">
+            You are logged in as <b className="text-body">{user.name}</b> ({user.email}).
+            Log out first to create another account.
+          </p>
+          <button
+            onClick={async () => { await logout(); router.refresh(); }}
+            className="border border-blood/60 text-blood rounded px-5 py-2.5 text-sm font-bold hover:bg-redbg/40"
+          >
+            Log out {user.name.split(' ')[0]} →
+          </button>
+        </div>
+      ) : (
       <div className="mx-auto w-full max-w-[880px] grid md:grid-cols-2 overflow-hidden rounded border border-line bg-card">
         {/* brand panel */}
         <div className="hidden md:flex flex-col justify-between bg-gold p-8 text-black">
@@ -91,6 +106,7 @@ export default function Register() {
           <p className="text-muted text-sm mt-4 text-center">Have an account? <a className={LINK} href="/login">Log in →</a></p>
         </div>
       </div>
+      )}
     </div>
   );
 }

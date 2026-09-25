@@ -5,7 +5,7 @@ import { useAuth } from '../../components/auth';
 import { INP, BTN_PRIMARY, LINK } from '../../lib/tokens';
 
 function LoginForm() {
-  const { login } = useAuth();
+  const { user, loading, login, logout } = useAuth();
   const router = useRouter();
   const next = useSearchParams().get('next') || '/watchlist';
   const [email, setEmail] = useState('');
@@ -19,6 +19,23 @@ function LoginForm() {
     try { await login(email.trim(), password); router.push(next); router.refresh(); }
     catch (ex) { setErr(ex.message); }
     setBusy(false);
+  }
+  if (!loading && user) {
+    return (
+      <div className="mx-auto w-full max-w-[520px] rounded border border-line bg-card p-6 sm:p-8 text-center">
+        <h1 className="font-display text-[24px] font-bold uppercase tracking-tight">Already logged in</h1>
+        <p className="text-muted text-sm mt-2 mb-5">
+          You are logged in as <b className="text-body">{user.name}</b> ({user.email}).
+          Log out first to switch accounts.
+        </p>
+        <button
+          onClick={async () => { await logout(); router.refresh(); }}
+          className="border border-blood/60 text-blood rounded px-5 py-2.5 text-sm font-bold hover:bg-redbg/40"
+        >
+          Log out {user.name.split(' ')[0]} →
+        </button>
+      </div>
+    );
   }
   return (
     <div className="mx-auto w-full max-w-[880px] grid md:grid-cols-2 overflow-hidden rounded border border-line bg-card">
