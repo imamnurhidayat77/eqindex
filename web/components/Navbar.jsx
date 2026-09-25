@@ -22,17 +22,25 @@ export const NAV = [
   { href: '/riders', label: 'Riders', match: (p) => p.startsWith('/riders') },
   { href: '/events', label: 'Events', match: (p) => p.startsWith('/events') },
   { href: '/rankings', label: 'Rankings', match: (p) => p.startsWith('/rankings') },
-  { href: '/watchlist', label: 'Watchlist', match: (p) => p.startsWith('/watchlist') },
-  { href: '/comparison', label: 'Compare', match: (p) => p.startsWith('/comparison') },
-  { href: '/series', label: 'Series', match: (p) => p.startsWith('/series') },
-  { href: '/my-stable', label: 'My Stable', match: (p) => p.startsWith('/my-stable') },
 ]; // NOTE: Analytics hidden for now — route still live at /analytics
+
+export const NAV_GROUPS = [
+  { label: 'More', items: [
+    { href: '/comparison', label: 'Compare', match: (p) => p.startsWith('/comparison') },
+    { href: '/series', label: 'Series', match: (p) => p.startsWith('/series') },
+  ]},
+  { label: 'Workspace', items: [
+    { href: '/watchlist', label: 'Watchlist', match: (p) => p.startsWith('/watchlist') },
+    { href: '/my-stable', label: 'My Stable', match: (p) => p.startsWith('/my-stable') },
+  ]},
+];
 
 export default function Navbar() {
   const pathname = usePathname() || '/';
   const router = useRouter();
   const hidden = useLandingHidden();
   const [open, setOpen] = useState(false);
+  const [drop, setDrop] = useState(null); // open desktop dropdown label
   if (hidden) return null;
   const linkCls = (active) =>
     `no-underline text-sm px-0.5 pt-5 pb-[18px] transition-colors hover:text-white ${
@@ -46,6 +54,30 @@ export default function Navbar() {
             {item.label}
           </a>
         ))}
+        {NAV_GROUPS.map((g) => {
+          const active = g.items.some((i) => i.match(pathname));
+          return (
+            <span key={g.label} className="relative" onMouseLeave={() => setDrop(null)}>
+              <button onClick={() => setDrop((d) => (d === g.label ? null : g.label))}
+                onMouseEnter={() => setDrop(g.label)}
+                className={`bg-none cursor-pointer flex items-center gap-1 no-underline text-sm px-0.5 pt-5 pb-[18px] transition-colors hover:text-white border-0 border-b-2 ${active ? 'text-white border-gold' : 'text-muted border-transparent'}`}>
+                {g.label} <span className="text-[10px]">▾</span>
+              </button>
+              {drop === g.label && (
+                <span className="absolute left-0 top-full pt-1 z-30 block">
+                  <span className="block min-w-[160px] rounded border border-line bg-card2 py-1 shadow-xl">
+                    {g.items.map((item) => (
+                      <a key={item.href} href={item.href} onClick={() => setDrop(null)}
+                        className={`block px-3.5 py-2 text-[13px] no-underline hover:bg-white/5 ${item.match(pathname) ? 'text-gold font-bold' : 'text-muted hover:text-white'}`}>
+                        {item.label}
+                      </a>
+                    ))}
+                  </span>
+                </span>
+              )}
+            </span>
+          );
+        })}
       </nav>
       <button
         className="md:hidden bg-card border border-line rounded text-body w-8 h-8"
@@ -55,7 +87,7 @@ export default function Navbar() {
         ☰
       </button>
       {open && (
-        <div className="absolute top-[60px] left-0 right-0 md:hidden bg-navbg border-b border-line px-7 py-2 flex flex-col">
+        <div className="absolute top-[60px] left-0 right-0 md:hidden bg-navbg border-b border-line px-7 py-2 flex flex-col max-h-[70vh] overflow-y-auto">
           {NAV.map((item) => {
             const active = item.match(pathname);
             return (
@@ -71,6 +103,26 @@ export default function Navbar() {
               </a>
             );
           })}
+          {NAV_GROUPS.map((g) => (
+            <span key={g.label}>
+              <span className="block text-[10px] uppercase tracking-wide text-faint font-bold pt-3 pb-1">{g.label}</span>
+              {g.items.map((item) => {
+                const active = item.match(pathname);
+                return (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    className={`block no-underline text-sm py-2.5 border-b border-line/50 last:border-0 pl-3 ${
+                      active ? 'text-gold font-bold' : 'text-muted'
+                    }`}
+                  >
+                    {item.label}
+                  </a>
+                );
+              })}
+            </span>
+          ))}
         </div>
       )}
     </>
