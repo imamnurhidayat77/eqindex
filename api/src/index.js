@@ -958,6 +958,169 @@ app.get('/weather', asyncH(async (req, res) => {
   res.json({ data: rows });
 }));
 
+
+// ---- Admin CSV import (spec §8A): paste/upload → validate → preview → commit.
+// Body: { event_id?, event?: {name,date_start,date_end,venue,region,arena_type},
+//         csv, filename?, source?, dry_run? }
+// Header vocab (case-insensitive): class_name|class, class_type, class_date,
+// rider_name|rider, horse_name|horse, placing|finish_place, faults|jump_faults,
+// time|time_seconds, time_faults, height_cm, status (finished|E|R|W|DQ...), notes.
+// dry_run runs the SAME writes inside a rolled-back transaction: preview points
+// come from the real trigger, never a duplicated formula.
+function normName(v) {
+  return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+}
+function parseCsv(text) {
+  const rows = [];
+  let cur = [''], q = false;
+  const push = () => { rows.push(cur); cur = ['']; };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { cur[cur.length - 1] += '"'; i++; } else q = false; }
+      else cur[cur.length - 1] += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') cur.push('');
+    else if (c === '\n') push();
+    else if (c === '\r') { /* skip */ }
+    else cur[cur.length - 1] += c;
+  }
+  if (cur.length > 1 || cur[0] !== '') push();
+  return rows.filter((r) => r.some((x) => String(x).trim() !== ''));
+}
+const CLASS_TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
+const STATUS_MAP = { E: 'eliminated', R: 'retired', W: 'withdrawn', DQ: 'disqualified', ELIM: 'eliminated', RET: 'retired', WD: 'withdrawn' };
+
+app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
+  const { event_id, event, csv, filename, source, dry_run } = req.body || {};
+  if (!csv || typeof csv !== 'string' || !csv.trim()) {
+    return res.status(400).json({ error: 'need {csv} text' });
+  }
+  const src = ['CSV', 'MANUAL', 'ESNZ', 'EQUIPE', 'FEI'].includes(source) ? source : 'CSV';
+  const grid = parseCsv(csv.trim());
+  if (grid.length < 2) return res.status(400).json({ error: 'csv needs a header row + data' });
+  const head = grid[0].map((h) => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
+  const col = (...names) => { const i = head.findIndex((h) => names.includes(h)); return i; };
+  const ci = {
+    cls: col('class_name', 'class'), ctype: col('class_type'), cdate: col('class_date', 'date'),
+    rider: col('rider_name', 'rider'), horse: col('horse_name', 'horse'),
+    place: col('placing', 'finish_place', 'place'), faults: col('faults', 'jump_faults'),
+    time: col('time', 'time_seconds'), tfaults: col('time_faults'), height: col('height_cm', 'height'),
+    status: col('status'), notes: col('notes'),
+  };
+  for (const k of ['cls', 'rider', 'horse']) {
+    if (ci[k] < 0) return res.status(400).json({ error: `missing required column for ${k} (class_name, rider_name, horse_name)` });
+  }
+  const num = (v) => { const t = String(v ?? '').trim(); if (!t) return null; const n = Number(t); return Number.isFinite(n) ? n : NaN; };
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    let evId = event_id || null;
+    if (!evId && event && event.name && event.date_start) {
+      const ex = await client.query('SELECT id FROM events WHERE name = $1 AND date_start = $2', [event.name, event.date_start]);
+      if (ex.rows.length) evId = ex.rows[0].id;
+      else {
+        const season = (() => { const y = Number(String(event.date_start).slice(0, 4)); const m = Number(String(event.date_start).slice(5, 7)); return m >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`; })();
+        const ins = await client.query(
+          `INSERT INTO events (name, date_start, date_end, venue, region, arena_type, season, source)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'MANUAL') RETURNING id`,
+          [event.name, event.date_start, event.date_end || event.date_start, event.venue || 'Unknown',
+           event.region || null, event.arena_type || null, season]);
+        evId = ins.rows[0].id;
+      }
+    }
+    if (!evId) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'need event_id or event{name,date_start}' }); }
+    const evRow = (await client.query('SELECT season FROM events WHERE id = $1', [evId])).rows[0];
+    if (!evRow) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'event not found' }); }
+
+    const out = [];
+    let okCount = 0;
+    for (let li = 1; li < grid.length; li++) {
+      const r = grid[li];
+      const g = (i) => (i < 0 ? '' : String(r[i] ?? '').trim());
+      const errs = [];
+      const rider = g(ci.rider), horse = g(ci.horse), cls = g(ci.cls);
+      if (!rider) errs.push('rider_name required');
+      if (!horse) errs.push('horse_name required');
+      if (!cls) errs.push('class_name required');
+      let ctype = g(ci.ctype) || 'Standard';
+      if (!CLASS_TYPES.includes(ctype)) errs.push(`class_type must be ${CLASS_TYPES.join('|')}`);
+      const place = g(ci.place) === '' ? null : parseInt(g(ci.place), 10);
+      if (g(ci.place) !== '' && !(place >= 1)) errs.push('placing must be a positive integer');
+      const faults = num(g(ci.faults)); const tsec = num(g(ci.time));
+      const tf = num(g(ci.tfaults)); const hcm = num(g(ci.height));
+      for (const [v, n] of [[faults, 'faults'], [tsec, 'time'], [tf, 'time_faults'], [hcm, 'height_cm']]) {
+        if (v !== null && (typeof v !== 'number' || Number.isNaN(v))) errs.push(`${n} must be numeric`);
+      }
+      let status = 'finished';
+      const stRaw = g(ci.status).toUpperCase();
+      if (stRaw) {
+        if (['FINISHED', 'E', 'R', 'W', 'DQ', 'ELIM', 'RET', 'WD', 'ELIMINATED', 'RETIRED', 'WITHDRAWN', 'DISQUALIFIED'].includes(stRaw)) {
+          status = STATUS_MAP[stRaw] || 'finished';
+        } else errs.push('status must be finished|E|R|W|DQ');
+      }
+      const cdate = g(ci.cdate) || null;
+      if (cdate && !/^\d{4}-\d{2}-\d{2}$/.test(cdate)) errs.push('class_date must be YYYY-MM-DD');
+      if (errs.length) { out.push({ line: li + 1, ok: false, errors: errs }); continue; }
+
+      // identity (mirrors ingest/normalize.py)
+      const rn = normName(rider), hn = normName(horse);
+      let hRow = (await client.query('SELECT id FROM horses WHERE normalized_name = $1', [hn])).rows[0];
+      let rRow = (await client.query('SELECT id FROM riders WHERE normalized_name = $1', [rn])).rows[0];
+      const newHorse = !hRow, newRider = !rRow;
+      if (!hRow) hRow = (await client.query('INSERT INTO horses (name, normalized_name) VALUES ($1,$2) RETURNING id', [horse, hn])).rows[0];
+      if (!rRow) rRow = (await client.query('INSERT INTO riders (name, normalized_name) VALUES ($1,$2) RETURNING id', [rider, rn])).rows[0];
+      let cRow = (await client.query('SELECT id FROM classes WHERE event_id = $1 AND name = $2 AND COALESCE(class_date::TEXT,\'\') = COALESCE($3,\'\')', [evId, cls, cdate])).rows[0];
+      const newClass = !cRow;
+      if (!cRow) {
+        cRow = (await client.query(
+          'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, source) VALUES ($1,$2,$3,$4,$5,\'MANUAL\') RETURNING id',
+          [evId, cls, cdate || null, hcm, ctype])).rows[0];
+      }
+      const dup = await client.query(
+        'SELECT id FROM round_results WHERE class_id = $1 AND horse_id = $2 AND rider_id = $3',
+        [cRow.id, hRow.id, rRow.id]);
+      if (dup.rows.length) { out.push({ line: li + 1, ok: false, errors: ['duplicate of an existing round'] }); continue; }
+      const tot = (faults ?? 0) + (tf ?? 0);
+      const ins = await client.query(
+        `INSERT INTO round_results (event_id, class_id, horse_id, rider_id, jump_faults, time_faults,
+          total_faults, time_seconds, finish_place, clear_round, height_cm, status, notes, source, points)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'MANUAL',0) RETURNING id, points`,
+        [evId, cRow.id, hRow.id, rRow.id, faults ?? 0, tf ?? 0, tot, tsec, place,
+         status === 'finished' && tot === 0, hcm, status, g(ci.notes) || null]);
+      okCount++;
+      out.push({ line: li + 1, ok: true, errors: [], preview: {
+        rider, horse, class: cls, place, points: ins.rows[0].points,
+        new_horse: newHorse, new_rider: newRider, new_class: newClass,
+      }});
+    }
+    const summary = { total: grid.length - 1, ok: okCount, failed: out.filter((x) => !x.ok).length };
+    if (dry_run) {
+      await client.query('ROLLBACK');
+      return res.json({ data: { dry_run: true, rows: out, summary } });
+    }
+    await client.query(
+      'INSERT INTO import_logs (actor, source, filename, event_id, rows_total, rows_ok, rows_failed) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+      [(req.authUser && req.authUser.name) || 'admin', src, filename || null, evId, summary.total, summary.ok, summary.failed]);
+    await client.query('COMMIT');
+    audit(req, 'import.commit', 'event', evId, { ...summary, filename });
+    res.status(201).json({ data: { dry_run: false, rows: out, summary } });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch { /* noop */ }
+    throw e;
+  } finally {
+    client.release();
+  }
+}));
+
+app.get('/admin/imports', needRole('ADMIN'), asyncH(async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT l.*, e.name AS event_name FROM import_logs l
+     LEFT JOIN events e ON e.id = l.event_id ORDER BY l.created_at DESC LIMIT 50`);
+  res.json({ data: rows });
+}));
+
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('[api]', err.message);
