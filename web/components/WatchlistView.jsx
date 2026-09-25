@@ -72,6 +72,24 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
     setBusy(false);
   }
 
+  async function flipVisibility(watchId, current) {
+    setBusy(true);
+    await fetch(`${API}/watchlist/${watchId}?user_id=${DEMO_USER}`, {
+      method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_public: !current }),
+    });
+    router.refresh();
+    setBusy(false);
+  }
+
+  const visBtn = (row) => row.watchId ? (
+    <button disabled={busy} title={row.isPublic ? 'Public — visible to others' : 'Private — only you'}
+      onClick={() => flipVisibility(row.watchId, row.isPublic)}
+      className={`text-[11px] font-bold rounded-md px-2 py-[3px] cursor-pointer border ${row.isPublic ? 'bg-bluebg text-sky border-sky/40' : 'bg-card2 text-faint border-line'}`}>
+      {row.isPublic ? '🌐 Public' : '🔒 Private'}
+    </button>
+  ) : null;
+
   async function watchBody(body) {
     setBusy(true);
     await fetch(`${API}/watchlist`, {
@@ -159,7 +177,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                     <th className={TH}></th><th className={TH}>Horse Name</th>
                     <th className={`${TH} ${NUM}`}>EQ Score</th><th className={`${TH} ${NUM}`}>Current Rank</th>
                     <th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg Faults</th>
-                    <th className={TH}>Recent Trend</th><th className={TH}>Last Update</th>
+                    <th className={TH}>Recent Trend</th><th className={TH}>Visibility</th><th className={TH}>Last Update</th>
                   </tr></thead>
                   <tbody>
                     {horses.map((h) => (
@@ -171,6 +189,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                         <td className={`${TD} ${NUM} text-muted`}>{Number(h.clear).toFixed(1)}%</td>
                         <td className={`${TD} ${NUM} text-muted`}>{Number(h.avg).toFixed(2)}</td>
                         <td className={`${TD} font-semibold text-[13px] ${trendCls(h.trend)}`}>{trendArrow(h.trend)} {h.trend}</td>
+                        <td className={TD}>{visBtn(h)}</td>
                         <td className={TD}>
                           <div className="text-muted text-[13px]">{h.last}</div>
                           <div className="text-[11px] mt-0.5">
@@ -198,7 +217,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                     <th className={TH}></th><th className={TH}>Rider Name</th>
                     <th className={`${TH} ${NUM}`}>Performance Score</th><th className={`${TH} ${NUM}`}>Rank</th>
                     <th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Rounds</th>
-                    <th className={TH}>Trend</th><th className={TH}>Last Update</th>
+                    <th className={TH}>Trend</th><th className={TH}>Visibility</th><th className={TH}>Last Update</th>
                   </tr></thead>
                   <tbody>
                     {riders.map((r) => (
@@ -210,6 +229,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                         <td className={`${TD} ${NUM} text-muted`}>{Number(r.clear).toFixed(0)}%</td>
                         <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
                         <td className={`${TD} font-semibold text-[13px] ${trendCls(r.trend)}`}>{trendArrow(r.trend)} {r.trend}</td>
+                        <td className={TD}>{visBtn(r)}</td>
                         <td className={TD}>
                           <div className="text-muted text-[13px]">{r.last}</div>
                           <div className="text-[11px] mt-0.5">
@@ -252,6 +272,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                         <td className={`${TD} ${NUM} text-muted`}>{Number(c.avg).toFixed(2)}</td>
                         <td className={`${TD} font-semibold text-[13px] ${trendCls(c.trend)}`}>{trendArrow(c.trend)} {c.trend}</td>
                         <td className={TD}>
+                          <span className="mr-2">{visBtn(c)}</span>
                           {c.watchId ? (
                             <button className="text-sky bg-none border-0 p-0 text-[11px] cursor-pointer" onClick={() => removeIds([c.watchId])}>Remove</button>
                           ) : (
@@ -288,6 +309,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                         <td className={`${TD} ${NUM} text-muted`}>{e.rounds}</td>
                         <td className={`${TD} ${NUM} text-muted`}>{e.best ? `#${e.best}` : '–'}</td>
                         <td className={TD}>
+                          {e.watchId && <span className="mr-2">{visBtn(e)}</span>}
                           {e.watchId ? (
                             <button className="text-sky bg-none border-0 p-0 text-[11px] cursor-pointer" onClick={() => removeIds([e.watchId])}>Remove</button>
                           ) : e.eventId ? (

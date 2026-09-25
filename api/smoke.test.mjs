@@ -117,6 +117,23 @@ test('auth: register/login/me/logout cycle', async () => {
   assert.equal(gone.status, 401);
 });
 
+test('phase B: audit trail + visibility + activity gate', async () => {
+  const U = '11111111-1111-1111-1111-111111111111';
+  const HID = (await get('/rankings/horses?limit=1')).data[0].horse_id;
+  const w = await (await fetch(`${BASE}/watchlist`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: U, entity_type: 'horse', entity_id: HID }),
+  })).json();
+  assert.equal(w.data.is_public, false);
+  const patched = await (await fetch(`${BASE}/watchlist/${w.data.id}?user_id=${U}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ is_public: true }),
+  })).json();
+  assert.equal(patched.data.is_public, true);
+  await fetch(`${BASE}/watchlist/${w.data.id}?user_id=${U}`, { method: 'DELETE' });
+  await get('/admin/activity', 401);
+});
+
 test('404s are honest JSON', async () => {
   const bad = await get('/horses/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(bad.error);

@@ -66,6 +66,7 @@ export default async function SeriesPage({ params }) {
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-[26px] font-extrabold tracking-tight">{first ? first.series_name : 'Series'}</h1>
         <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ Points Race</span>
+        <span className="rounded-full border border-mint/40 bg-mint/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-mint">◦ Published table · EQ computed independently</span>
       </div>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">

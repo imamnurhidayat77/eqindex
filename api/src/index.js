@@ -256,12 +256,14 @@ app.post('/horses/:id/training', asyncH(async (req, res) => {
      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
     [req.params.id, rider_id || null, date, type, intensity || null, notes || null]
   );
+  audit(req, 'training.create', 'horse', req.params.id, { id: rows[0].id, type, date });
   res.status(201).json({ data: rows[0] });
 }));
 
 app.delete('/training/:id', asyncH(async (req, res) => {
   const { rowCount } = await pool.query('DELETE FROM training_records WHERE id = $1', [req.params.id]);
   if (!rowCount) return res.status(404).json({ error: 'not found' });
+  audit(req, 'training.delete', 'training', req.params.id, {});
   res.json({ ok: true });
 }));
 
@@ -286,12 +288,14 @@ app.post('/horses/:id/health', asyncH(async (req, res) => {
      VALUES ($1,$2,$3,$4,$5) RETURNING *`,
     [req.params.id, date, category, description, provider || null]
   );
+  audit(req, 'health.create', 'horse', req.params.id, { id: rows[0].id, category, date });
   res.status(201).json({ data: rows[0] });
 }));
 
 app.delete('/health/:id', asyncH(async (req, res) => {
   const { rowCount } = await pool.query('DELETE FROM health_records WHERE id = $1', [req.params.id]);
   if (!rowCount) return res.status(404).json({ error: 'not found' });
+  audit(req, 'health.delete', 'health', req.params.id, {});
   res.json({ ok: true });
 }));
 
@@ -350,6 +354,7 @@ app.post('/review/:id', asyncH(async (req, res) => {
     );
     await pool.query("UPDATE review_queue SET status='approved', resolved_id=$2 WHERE id=$1",
       [item.id, rows[0].id]);
+    audit(req, 'review.approve_new', item.kind, rows[0].id, { raw: item.raw_name });
     return res.json({ ok: true, status: 'approved', id: rows[0].id });
   }
   if (action === 'merge') {
@@ -363,10 +368,12 @@ app.post('/review/:id', asyncH(async (req, res) => {
     );
     await pool.query("UPDATE review_queue SET status='merged', resolved_id=$2 WHERE id=$1",
       [item.id, match_id]);
+    audit(req, 'review.merge', item.kind, match_id, { raw: item.raw_name });
     return res.json({ ok: true, status: 'merged' });
   }
   if (action === 'reject') {
     await pool.query("UPDATE review_queue SET status='rejected' WHERE id=$1", [item.id]);
+    audit(req, 'review.reject', item.kind, item.id, { raw: item.raw_name });
     return res.json({ ok: true, status: 'rejected' });
   }
   return res.status(400).json({ error: 'action must be approve_new|merge|reject' });
@@ -581,6 +588,17 @@ app.get('/arenas', asyncH(async (req, res) => {
 function userId(req) {
   return (req.authUser && req.authUser.id) || req.query.user_id || req.headers['x-user-id'] || null;
 }
+// ---- Audit trail (spec v2 §11): every material change logged, never blocking ----
+async function audit(req, action, entity_type, entity_id, detail) {
+  try {
+    const actor = req.authUser ? `${req.authUser.name} <${req.authUser.id}>`
+      : (req.body && req.body.user_id) || req.query.user_id || 'anonymous';
+    await pool.query(
+      'INSERT INTO entity_audit (actor, action, entity_type, entity_id, detail) VALUES ($1,$2,$3,$4,$5)',
+      [String(actor).slice(0, 200), action, entity_type, entity_id ? String(entity_id).slice(0, 120) : null, JSON.stringify(detail || {})]);
+  } catch { /* audit must never break the request */ }
+}
+
 function needRole(role) {
   return async (req, res, next) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
@@ -616,7 +634,8 @@ app.get('/watchlist', asyncH(async (req, res) => {
 }));
 
 app.post('/watchlist', asyncH(async (req, res) => {
-  const { user_id, entity_type, entity_id, horse_id, rider_id, note } = req.body || {};
+  const { user_id, entity_type, entity_id, horse_id, rider_id, note, is_public } = req.body || {};
+  const pub = !!is_public;
   if (!user_id || !['horse', 'rider', 'combination', 'event'].includes(entity_type)) {
     return res.status(400).json({ error: 'need {user_id, entity_type: horse|rider|combination|event}' });
   }
@@ -640,6 +659,7 @@ app.post('/watchlist', asyncH(async (req, res) => {
     const row = rows[0] || (await pool.query(
       `SELECT * FROM watchlist_items WHERE user_id = $1 AND entity_type = 'combination'
        AND horse_id = $2 AND rider_id = $3`, [user_id, horse_id, rider_id])).rows[0];
+    audit(req, 'watchlist.add', 'combination', row.id, { horse_id, rider_id });
     return res.status(201).json({ data: row });
   }
   if (!entity_id) return res.status(400).json({ error: 'need entity_id' });
@@ -647,13 +667,14 @@ app.post('/watchlist', asyncH(async (req, res) => {
   const exists = await pool.query(`SELECT 1 FROM ${table} WHERE id = $1`, [entity_id]);
   if (!exists.rows.length) return res.status(404).json({ error: `${entity_type} not found` });
   const { rows } = await pool.query(
-    `INSERT INTO watchlist_items (user_id, entity_type, entity_id, note)
-     VALUES ($1,$2,$3,$4)
+    `INSERT INTO watchlist_items (user_id, entity_type, entity_id, note, is_public)
+     VALUES ($1,$2,$3,$4,$5)
      ON CONFLICT (user_id, entity_type, entity_id)
      WHERE entity_type IN ('horse','rider','event')
-     DO UPDATE SET note = EXCLUDED.note RETURNING *`,
-    [user_id, entity_type, entity_id, note || null]
+     DO UPDATE SET note = EXCLUDED.note, is_public = EXCLUDED.is_public RETURNING *`,
+    [user_id, entity_type, entity_id, note || null, pub]
   );
+  audit(req, 'watchlist.add', entity_type, rows[0].id, { entity_id });
   res.status(201).json({ data: rows[0] });
 }));
 
@@ -663,7 +684,20 @@ app.delete('/watchlist/:id', asyncH(async (req, res) => {
     'DELETE FROM watchlist_items WHERE id = $1 AND user_id = $2', [req.params.id, uid]
   );
   if (!rowCount) return res.status(404).json({ error: 'not found' });
+  audit(req, 'watchlist.remove', 'watchlist', req.params.id, {});
   res.json({ ok: true });
+}));
+
+app.patch('/watchlist/:id', asyncH(async (req, res) => {
+  const uid = needUser(req, res); if (!uid) return;
+  const { is_public, note } = req.body || {};
+  const { rows } = await pool.query(
+    `UPDATE watchlist_items SET is_public = COALESCE($3, is_public), note = COALESCE($4, note)
+     WHERE id = $1 AND user_id = $2 RETURNING *`,
+    [req.params.id, uid, is_public === undefined ? null : !!is_public, note === undefined ? null : note]);
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  audit(req, 'watchlist.edit', 'watchlist', req.params.id, { is_public: rows[0].is_public });
+  res.json({ data: rows[0] });
 }));
 
 // Recent rounds from everything the user watches (powers Recent Updates).
@@ -768,6 +802,7 @@ app.post('/comparisons', asyncH(async (req, res) => {
     'INSERT INTO saved_comparisons (user_id, type, a_id, b_id, label) VALUES ($1,$2,$3,$4,$5) RETURNING *',
     [user_id, type, a_id, b_id, label || null]
   );
+  audit(req, 'comparison.save', type, rows[0].id, { label });
   res.status(201).json({ data: rows[0] });
 }));
 
@@ -777,6 +812,7 @@ app.delete('/comparisons/:id', asyncH(async (req, res) => {
     'DELETE FROM saved_comparisons WHERE id = $1 AND user_id = $2', [req.params.id, uid]
   );
   if (!rowCount) return res.status(404).json({ error: 'not found' });
+  audit(req, 'comparison.remove', 'comparison', req.params.id, {});
   res.json({ ok: true });
 }));
 
@@ -858,9 +894,11 @@ app.post('/claims/:id', needRole('ADMIN'), asyncH(async (req, res) => {
   const c = q.rows[0];
   if (approve) {
     await pool.query("UPDATE rider_claims SET status='approved' WHERE id=$1", [c.id]);
+    audit(req, 'claim.approve', 'rider', c.rider_id, { user: c.user_id });
     await pool.query('UPDATE riders SET user_id=$2, claim_status=$3 WHERE id=$1', [c.rider_id, c.user_id, 'verified']);
   } else {
     await pool.query("UPDATE rider_claims SET status='rejected' WHERE id=$1", [c.id]);
+    audit(req, 'claim.reject', 'rider', c.rider_id, { user: c.user_id });
     await pool.query("UPDATE riders SET claim_status='unclaimed' WHERE id=$1 AND user_id IS NULL", [c.rider_id]);
   }
   res.json({ ok: true, approved: !!approve });
@@ -887,6 +925,19 @@ app.delete('/coach/athletes/:riderId', needRole('COACH'), asyncH(async (req, res
   await pool.query('DELETE FROM coach_athletes WHERE coach_user_id=$1 AND rider_id=$2',
     [req.authUser.id, req.params.riderId]);
   res.json({ ok: true });
+}));
+
+// ---- Audit activity feed (admin) ----
+app.get('/admin/activity', needRole('ADMIN'), asyncH(async (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || '50', 10) || 50, 200);
+  const conds = [], params = [];
+  if (req.query.action) { params.push(req.query.action); conds.push(`action = $${params.length}`); }
+  if (req.query.entity) { params.push(req.query.entity); conds.push(`entity_type = $${params.length}`); }
+  params.push(limit);
+  const { rows } = await pool.query(
+    `SELECT * FROM entity_audit ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
+     ORDER BY created_at DESC LIMIT $${params.length}`, params);
+  res.json({ data: rows });
 }));
 
 // eslint-disable-next-line no-unused-vars

@@ -28,6 +28,10 @@ export default async function EventDetail({ params }) {
   const strength = strengthLabel(score);
   const maxH = Math.max(0, ...rounds.map((r) => Number(r.height_cm) || 0));
   const grade = maxH >= 140 ? 'A-Grade Event' : maxH >= 130 ? 'B-Grade Event' : 'Club Event';
+  const statuses = (a.classes || []).map((c) => c.result_status).filter(Boolean);
+  const eventStatus = !statuses.length ? null
+    : statuses.every((x) => x === 'official') ? 'official'
+    : statuses.some((x) => x === 'provisional') ? 'provisional' : 'complete';
   const horsesN = new Set(rounds.map((r) => r.horse)).size;
   const ridersN = new Set(rounds.map((r) => r.rider)).size;
 
@@ -147,6 +151,9 @@ export default async function EventDetail({ params }) {
           <h2 className={H2}>🎖 Active Competition Summary</h2>
           <div className="flex-1" />
           <span className={badge(BADGE.gold)}>{grade}</span>
+          {eventStatus === 'official' && <span className={badge(BADGE.green)}>Official Results</span>}
+          {eventStatus === 'complete' && <span className={badge(BADGE.blue)}>Complete</span>}
+          {eventStatus === 'provisional' && <span className={badge(BADGE.goldfill)}>Provisional</span>}
         </div>
         <div className="flex gap-5 items-center">
           <ScoreRing score={score} />

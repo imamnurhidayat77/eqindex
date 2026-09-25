@@ -100,7 +100,7 @@ export default async function Watchlist() {
       const [trend] = trendBadge(clear, (d.history || []).slice(0, 5));
       const p = (d.partnerships || [])[0] || null;
       return {
-        kind: 'horse', watchId: w.id, id: w.entity_id, name: d.data?.name || w.name,
+        kind: 'horse', watchId: w.id, id: w.entity_id, isPublic: !!w.is_public, name: d.data?.name || w.name,
         eq: eqScore(clear, avg, starts), clear, avg, starts, wins: st.wins ?? 0,
         rank: horseRank[w.entity_id] ?? null, trend,
         last: fmtRel(lastOf(d), now),
@@ -122,7 +122,7 @@ export default async function Watchlist() {
       const [trend] = trendBadge(clear, (d.history || []).slice(0, 5));
       const p = (d.partnerships || [])[0] || null;
       return {
-        kind: 'rider', watchId: w.id, id: w.entity_id, name: d.data?.name || w.name,
+        kind: 'rider', watchId: w.id, id: w.entity_id, isPublic: !!w.is_public, name: d.data?.name || w.name,
         eq: eqScore(clear, avg, starts), clear, avg, starts, wins: st.wins ?? 0,
         rank: riderRank[w.entity_id] ?? null, trend,
         last: fmtRel(lastOf(d), now),
@@ -150,6 +150,7 @@ export default async function Watchlist() {
       avg: Number(p.avg_faults), trend,
       watchId: watchItem ? watchItem.id : null,
       note: watchItem ? watchItem.note : null,
+      isPublic: !!watchItem?.is_public,
     };
   };
   for (const h of horses) {
@@ -207,7 +208,7 @@ export default async function Watchlist() {
   const evRows = Object.values(evMap).map((e) => ({
     ...e, when: fmtRel(e.date, now),
     eventId: evIdByName[(e.event || '').trim().toLowerCase()] || null,
-    watchId: null,
+    watchId: null, isPublic: false,
   }));
   for (const w of eventItems) {
     const meta = evById[w.entity_id];
@@ -218,7 +219,7 @@ export default async function Watchlist() {
     evRows.push({
       event: meta?.name || w.name || '–', date: meta?.date_start || null,
       when: fmtRel(meta?.date_start, now), rounds: 0, best: null,
-      eventId: w.entity_id, watchId: w.id,
+      eventId: w.entity_id, watchId: w.id, isPublic: !!w.is_public,
     });
   }
   const eventsTop = evRows.sort(byDate).slice(0, 8);
