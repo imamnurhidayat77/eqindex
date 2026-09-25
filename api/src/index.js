@@ -994,15 +994,32 @@ function parseCsv(text) {
 const CLASS_TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
 const STATUS_MAP = { E: 'eliminated', R: 'retired', W: 'withdrawn', DQ: 'disqualified', ELIM: 'eliminated', RET: 'retired', WD: 'withdrawn' };
 
+// Canonical import record (JSON mode uses these exact keys; CSV headers map to them).
+const IMPORT_FIELDS = ['class_name', 'class_type', 'class_date', 'rider_name', 'horse_name',
+  'placing', 'faults', 'time', 'time_faults', 'height_cm', 'status', 'notes'];
+
 app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
-  const { event_id, event, csv, filename, source, dry_run } = req.body || {};
-  if (!csv || typeof csv !== 'string' || !csv.trim()) {
-    return res.status(400).json({ error: 'need {csv} text' });
-  }
+  const { event_id, event, csv, records, filename, source, dry_run } = req.body || {};
   const src = ['CSV', 'MANUAL', 'ESNZ', 'EQUIPE', 'FEI'].includes(source) ? source : 'CSV';
-  const grid = parseCsv(csv.trim());
-  if (grid.length < 2) return res.status(400).json({ error: 'csv needs a header row + data' });
-  const head = grid[0].map((h) => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
+  let grid, head;
+  if (Array.isArray(records)) {
+    if (!records.length) return res.status(400).json({ error: 'records is empty' });
+    const keys = [...new Set(records.flatMap((r) => Object.keys(r || {})))];
+    const normKey = (k) => String(k).trim().toLowerCase().replace(/\s+/g, '_');
+    head = keys.map(normKey);
+    grid = [head, ...records.map((r) => head.map((_, i) => {
+      const orig = keys[i];
+      const v = r[orig];
+      return v === null || v === undefined ? '' : String(v);
+    }))];
+  } else {
+    if (!csv || typeof csv !== 'string' || !csv.trim()) {
+      return res.status(400).json({ error: 'need {csv} text or {records} array' });
+    }
+    grid = parseCsv(csv.trim());
+    if (grid.length < 2) return res.status(400).json({ error: 'csv needs a header row + data' });
+    head = grid[0].map((h) => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
+  }
   const col = (...names) => { const i = head.findIndex((h) => names.includes(h)); return i; };
   const ci = {
     cls: col('class_name', 'class'), ctype: col('class_type'), cdate: col('class_date', 'date'),

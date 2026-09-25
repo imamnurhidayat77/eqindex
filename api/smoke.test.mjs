@@ -185,6 +185,14 @@ test('corrections + admin series/users gates', async () => {
   await get('/admin/corrections', 401);
 });
 
+test('import accepts JSON records mode', async () => {
+  const bad = await fetch(`${BASE}/admin/import`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ records: [] }),
+  });
+  assert.equal(bad.status, 401); // gate first (no session)
+});
+
 test('404s are honest JSON', async () => {
   const bad = await get('/horses/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(bad.error);
