@@ -3,6 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { API } from '../lib/api';
 import { useSeason } from './global';
+import { useAuth } from './auth';
+
+// Landing (/) shows no nav controls to logged-out visitors — logo + Join stay.
+function useLandingHidden() {
+  const pathname = usePathname() || '/';
+  const { user, loading } = useAuth();
+  return pathname === '/' && !loading && !user;
+}
 
 export const NAV = [
   { href: '/dashboard', label: 'Dashboard', match: (p) => p.startsWith('/dashboard') },
@@ -18,7 +26,9 @@ export const NAV = [
 export default function Navbar() {
   const pathname = usePathname() || '/';
   const router = useRouter();
+  const hidden = useLandingHidden();
   const [open, setOpen] = useState(false);
+  if (hidden) return null;
   const linkCls = (active) =>
     `no-underline text-sm px-0.5 pt-5 pb-[18px] transition-colors hover:text-white ${
       active ? 'text-white border-b-2 border-gold' : 'text-muted'
@@ -64,6 +74,7 @@ export default function Navbar() {
 
 export function NavSearch() {
   const router = useRouter();
+  const hidden = useLandingHidden();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
@@ -108,6 +119,7 @@ export function NavSearch() {
   }
 
   return (
+    hidden ? null :
     <div className="relative hidden sm:block" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
       <input
         value={q}
@@ -147,6 +159,8 @@ export function NavSearch() {
 
 export function NavSeason() {
   const { season, seasons, setSeason } = useSeason();
+  const hidden = useLandingHidden();
+  if (hidden) return null;
   return (
     <select
       value={season}
