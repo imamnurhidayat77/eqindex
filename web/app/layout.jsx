@@ -17,7 +17,7 @@ export default function RootLayout({ children }) {
           rel="stylesheet"
         />
       </head>
-      <body className="bg-ink text-body text-sm">
+      <body className="bg-ink text-body text-sm min-h-screen flex flex-col">
         <SeasonProvider>
         <AuthProvider>
         <header className="flex justify-center bg-navbg border-b border-line sticky top-0 z-10">
@@ -30,11 +30,10 @@ export default function RootLayout({ children }) {
             <div className="flex-1" />
             <NavSearch />
             <NavSeason />
-            <button className="bg-card border border-line rounded text-body w-8 h-8" title="Notifications">🔔</button>
             <UserMenu />
           </div>
         </header>
-        <main className="max-w-shell mx-auto px-4 md:px-7 py-5 md:py-7">{children}</main>
+        <main className="flex-1 w-full max-w-shell mx-auto px-4 md:px-7 py-5 md:py-7">{children}</main>
         </AuthProvider>
         </SeasonProvider>
         <footer className="border-t border-rowline mt-12 flex justify-center">
