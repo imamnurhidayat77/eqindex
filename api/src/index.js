@@ -1036,6 +1036,17 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
   try {
     await client.query('BEGIN');
     let evId = event_id || null;
+    const ensureVenue = async (name, region) => {
+      if (!name) return null;
+      const nn = String(name).trim().toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+      if (!nn) return null;
+      let v = (await client.query('SELECT id FROM venues WHERE normalized_name = $1', [nn])).rows[0];
+      if (!v) {
+        v = (await client.query('INSERT INTO venues (name, normalized_name, region) VALUES ($1,$2,$3) RETURNING id',
+          [String(name).trim(), nn, region || null])).rows[0];
+      }
+      return v.id;
+    };
     if (!evId && event && event.name && event.date_start) {
       const ex = await client.query('SELECT id FROM events WHERE name = $1 AND date_start = $2', [event.name, event.date_start]);
       if (ex.rows.length) evId = ex.rows[0].id;
@@ -1050,8 +1061,12 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       }
     }
     if (!evId) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'need event_id or event{name,date_start}' }); }
-    const evRow = (await client.query('SELECT season FROM events WHERE id = $1', [evId])).rows[0];
+    const evRow = (await client.query('SELECT season, venue, region, venue_id FROM events WHERE id = $1', [evId])).rows[0];
     if (!evRow) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'event not found' }); }
+    if (!evRow.venue_id) {
+      const vid = await ensureVenue(evRow.venue, evRow.region);
+      if (vid) await client.query('UPDATE events SET venue_id = $2 WHERE id = $1', [evId, vid]);
+    }
 
     const out = [];
     let okCount = 0;
@@ -1507,6 +1522,32 @@ app.post('/admin/wipe', needRole('ADMIN'), asyncH(async (req, res) => {
   }
   audit(req, 'admin.wipe', 'system', null, counts);
   res.json({ ok: true, deleted: counts });
+}));
+
+// ---- Surface splits (arena × surface per horse/rider) ----
+app.get('/horses/:id/splits', asyncH(async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT arena_type, surface, starts, clears, clear_pct, avg_faults FROM horse_surface_stats WHERE horse_id = $1 ORDER BY starts DESC',
+    [req.params.id]);
+  res.json({ data: rows });
+}));
+
+app.get('/riders/:id/splits', asyncH(async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT arena_type, surface, starts, clears, clear_pct, avg_faults FROM rider_surface_stats WHERE rider_id = $1 ORDER BY starts DESC',
+    [req.params.id]);
+  res.json({ data: rows });
+}));
+
+// ---- Venues ----
+app.get('/venues', asyncH(async (req, res) => {
+  const q = `%${String(req.query.q || '').trim()}%`;
+  const { rows } = await pool.query(
+    `SELECT v.*, (SELECT COUNT(*)::INT FROM events e WHERE e.venue_id = v.id) AS events,
+       (SELECT COUNT(*)::INT FROM round_results rr JOIN events e ON e.id = rr.event_id WHERE e.venue_id = v.id) AS rounds
+     FROM venues v ${req.query.q ? 'WHERE v.name ILIKE $1' : ''} ORDER BY v.name LIMIT 100`,
+    req.query.q ? [q] : []);
+  res.json({ data: rows });
 }));
 
 // eslint-disable-next-line no-unused-vars

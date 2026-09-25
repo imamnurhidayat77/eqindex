@@ -193,6 +193,17 @@ test('import accepts JSON records mode', async () => {
   assert.equal(bad.status, 401); // gate first (no session)
 });
 
+test('venues + surface splits', async () => {
+  const v = await get('/venues');
+  assert.ok(v.data.length > 0 && v.data[0].name);
+  const HID = (await get('/rankings/horses?limit=1')).data[0].horse_id;
+  const sp = await get(`/horses/${HID}/splits`);
+  assert.ok(Array.isArray(sp.data) && sp.data[0].arena_type);
+  const RID = (await get('/rankings/riders?limit=1')).data[0].rider_id;
+  const rsp = await get(`/riders/${RID}/splits`);
+  assert.ok(Array.isArray(rsp.data));
+});
+
 test('404s are honest JSON', async () => {
   const bad = await get('/horses/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(bad.error);

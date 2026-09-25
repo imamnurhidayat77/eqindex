@@ -4,6 +4,7 @@ import { projectForm, recommendHeight } from '../../../lib/forecast';
 import { statusBadge } from '../../../lib/tokens';
 import WatchButton from '../../../components/WatchButton';
 import TrainingPanel from '../../../components/TrainingPanel';
+import SurfaceSplits from '../../../components/SurfaceSplits';
 import HealthPanel from '../../../components/HealthPanel';
 import { Spark, EQMonthlyChart, MiniTrend } from '../../../components/horse-profile-charts';
 
@@ -20,11 +21,12 @@ function placingBadge(place) {
 }
 
 export default async function HorseProfile({ params }) {
-  const [p, timeline, trend, heights] = await Promise.all([
+  const [p, timeline, trend, heights, splits] = await Promise.all([
     getJSON(`/horses/${params.id}`),
     getJSON(`/horses/${params.id}/timeline`).catch(() => ({ data: [] })),
     getJSON(`/horses/${params.id}/trend`).catch(() => ({ data: [] })),
     getJSON('/height-stats?limit=200').catch(() => ({ data: [] })),
+    getJSON(`/horses/${params.id}/splits`).catch(() => ({ data: [] })),
   ]);
   const { data: h, stats: s, history = [], partnerships = [] } = p;
 
@@ -341,6 +343,8 @@ export default async function HorseProfile({ params }) {
           </div>
         ))}
       </section>
+
+      <SurfaceSplits rows={splits.data} subject={h.name} />
 
       {/* timeline */}
       <h2 className="mb-3 text-[15px] font-bold">Development Timeline</h2>

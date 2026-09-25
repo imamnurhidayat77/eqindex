@@ -73,7 +73,16 @@ def geocode(name):
     return None
 
 
-def coords_for(venue, region):
+def coords_for(venue, region, conn=None):
+    # Best practice: venues table is the authority; curated map + geocode are fallback.
+    if conn is not None:
+        try:
+            r = conn.execute("SELECT lat, lon FROM venues WHERE normalized_name = %s",
+                             (norm_venue(venue),)).fetchone()
+            if r and r[0] is not None and r[1] is not None:
+                return (float(r[0]), float(r[1])), "venues-table"
+        except Exception:
+            pass
     v = (venue or "").strip().lower()
     if v in VENUES:
         return VENUES[v], "curated"
@@ -133,6 +142,14 @@ def load_dotenv(path=".env"):
             return
 
 
+def norm_venue(name):
+    # MUST match db/migrations/018_venues.sql convention (lowercase).
+    import re, unicodedata
+    s = unicodedata.normalize("NFKD", (name or "").strip().lower())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", "", s)).strip()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=40)
@@ -155,7 +172,7 @@ def main():
     print(f"[weather] {len(rows)} venue-dates to fill")
     done = 0
     for venue, region, day in rows:
-        (latlon, how) = coords_for(venue, region)
+        (latlon, how) = coords_for(venue, region, conn)
         if not latlon:
             print(f"[weather] SKIP {venue} {day} (no coords)")
             continue

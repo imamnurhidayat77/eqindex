@@ -5,6 +5,7 @@ import { statusBadge } from '../../../lib/tokens';
 import WatchButton from '../../../components/WatchButton';
 import { Spark } from '../../../components/horse-profile-charts';
 import { RiderSeasonChart, RiderMiniTrend } from '../../../components/rider-profile-charts';
+import SurfaceSplits from '../../../components/SurfaceSplits';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,12 +45,13 @@ function groupBest(rows, keyFn, labelFn) {
 }
 
 export default async function RiderProfile({ params }) {
-  const [p, allRiders, events, allHorses, heightStats] = await Promise.all([
+  const [p, allRiders, events, allHorses, heightStats, splits] = await Promise.all([
     getJSON(`/riders/${params.id}`),
     getJSON('/rankings/riders?limit=100').catch(() => ({ data: [] })),
     getJSON('/events?limit=100').catch(() => ({ data: [] })),
     getJSON('/rankings/horses?limit=100').catch(() => ({ data: [] })),
     getJSON('/height-stats?limit=200').catch(() => ({ data: [] })),
+    getJSON(`/riders/${params.id}/splits`).catch(() => ({ data: [] })),
   ]);
   const { data: r, stats: s, history = [], partnerships = [] } = p;
   const regional = await getJSON(`/rankings/riders?limit=100&region=${encodeURIComponent(r.region || '')}`).catch(() => ({ data: [] }));
@@ -492,6 +494,8 @@ export default async function RiderProfile({ params }) {
           </div>
         ))}
       </div>
+
+      <SurfaceSplits rows={splits.data} subject={r.name} />
 
       {/* career timeline */}
       <h2 className="mb-3 text-[15px] font-bold">Career Timeline</h2>
