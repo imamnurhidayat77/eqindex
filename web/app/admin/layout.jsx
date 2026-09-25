@@ -25,6 +25,10 @@ const NAV = [
   ['/admin/events', 'Events'],
   ['/admin/review', 'Naming Review'],
   ['/admin/claims', 'Rider Claims'],
+  ['/admin/corrections', 'Corrections'],
+  ['/admin/users', 'Users'],
+  ['/admin/series', 'Series'],
+  ['/admin/data', 'Data Tools'],
   ['/admin/activity', 'Audit Log'],
   ['/admin/settings', 'Settings'],
 ];

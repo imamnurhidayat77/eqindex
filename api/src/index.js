@@ -1346,6 +1346,152 @@ app.delete('/admin/events/:id', needRole('ADMIN'), asyncH(async (req, res) => {
   res.json({ ok: true, cascade: c.rows[0] });
 }));
 
+
+// ---- Corrections inbox (public form + admin curation) ----
+app.post('/corrections', asyncH(async (req, res) => {
+  const { name, email, subject, entity_type, entity_id, message } = req.body || {};
+  const errs = [];
+  if (!name || !String(name).trim()) errs.push('name required');
+  if (!EMAIL_RE.test(String(email || '').trim().toLowerCase())) errs.push('valid email required');
+  if (!message || !String(message).trim()) errs.push('message required');
+  if (entity_type && !['horse', 'rider', 'event', 'class', 'result', 'other'].includes(entity_type)) {
+    errs.push('bad entity_type');
+  }
+  if (errs.length) return res.status(400).json({ error: errs.join('; ') });
+  const { rows } = await pool.query(
+    `INSERT INTO correction_reports (name, email, subject, entity_type, entity_id, message)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, created_at`,
+    [String(name).trim().slice(0, 100), String(email).trim().toLowerCase().slice(0, 200),
+     String(subject || 'Correction').slice(0, 150), entity_type || null, entity_id || null,
+     String(message).trim().slice(0, 5000)]);
+  res.status(201).json({ data: rows[0] });
+}));
+
+app.get('/admin/corrections', needRole('ADMIN'), asyncH(async (req, res) => {
+  const status = req.query.status || 'open';
+  if (!['open', 'in_review', 'resolved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'bad status' });
+  }
+  const { rows } = await pool.query(
+    'SELECT * FROM correction_reports WHERE status = $1 ORDER BY created_at DESC LIMIT 100', [status]);
+  res.json({ data: rows });
+}));
+
+app.post('/admin/corrections/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  const { status, resolved_note } = req.body || {};
+  if (!['in_review', 'resolved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'status must be in_review|resolved|rejected' });
+  }
+  const { rows } = await pool.query(
+    'UPDATE correction_reports SET status = $2, resolved_note = $3 WHERE id = $1 RETURNING *',
+    [req.params.id, status, resolved_note || null]);
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  audit(req, 'correction.resolve', 'correction', req.params.id, { status });
+  res.json({ data: rows[0] });
+}));
+
+// ---- Users management ----
+app.get('/admin/users', needRole('ADMIN'), asyncH(async (req, res) => {
+  const q = `%${String(req.query.q || '').trim()}%`;
+  const { rows } = await pool.query(
+    `SELECT u.id, u.name, u.email, u.role, u.email_verified_at, u.created_at,
+       (SELECT COUNT(*)::INT FROM sessions s WHERE s.user_id = u.id AND s.expires_at > NOW()) AS active_sessions
+     FROM users u ${req.query.q ? 'WHERE u.name ILIKE $1 OR u.email ILIKE $1' : ''}
+     ORDER BY u.created_at DESC LIMIT 100`,
+    req.query.q ? [q] : []);
+  res.json({ data: rows });
+}));
+
+app.patch('/admin/users/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  const { role } = req.body || {};
+  if (!['PUBLIC', 'RIDER', 'COACH', 'OWNER', 'BREEDER', 'ADMIN'].includes(role)) {
+    return res.status(400).json({ error: 'bad role' });
+  }
+  if (req.params.id === req.authUser.id && role !== 'ADMIN') {
+    return res.status(400).json({ error: 'cannot demote yourself' });
+  }
+  const { rows } = await pool.query('UPDATE users SET role = $2 WHERE id = $1 RETURNING id, name, email, role', [req.params.id, role]);
+  if (!rows.length) return res.status(404).json({ error: 'user not found' });
+  audit(req, 'user.role', 'user', req.params.id, { role });
+  res.json({ data: rows[0] });
+}));
+
+app.delete('/admin/users/:id/sessions', needRole('ADMIN'), asyncH(async (req, res) => {
+  if (req.params.id === req.authUser.id) {
+    return res.status(400).json({ error: 'cannot revoke your own sessions here — use logout' });
+  }
+  const { rowCount } = await pool.query('DELETE FROM sessions WHERE user_id = $1', [req.params.id]);
+  audit(req, 'user.revoke_sessions', 'user', req.params.id, { count: rowCount });
+  res.json({ ok: true, revoked: rowCount });
+}));
+
+// ---- Series management ----
+app.get('/admin/series', needRole('ADMIN'), asyncH(async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT s.series_key, MIN(s.series_name) AS series_name, MIN(s.event_name) AS event_name,
+       MIN(s.season) AS season, COUNT(*)::INT AS entries,
+       MIN(i.display_name) AS display_name, MIN(i.qual_rules) AS qual_rules,
+       BOOL_OR(COALESCE(i.is_official, FALSE)) AS is_official,
+       MIN(i.official_source) AS official_source, MIN(i.description) AS description
+     FROM series_standings s LEFT JOIN series_info i ON i.series_key = s.series_key
+     GROUP BY s.series_key ORDER BY series_key`);
+  res.json({ data: rows });
+}));
+
+app.patch('/admin/series/:key', needRole('ADMIN'), asyncH(async (req, res) => {
+  const { display_name, description, qual_rules, is_official, official_source } = req.body || {};
+  const { rows } = await pool.query(
+    `INSERT INTO series_info (series_key, display_name, description, qual_rules, is_official, official_source, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,NOW())
+     ON CONFLICT (series_key) DO UPDATE SET display_name = EXCLUDED.display_name,
+       description = EXCLUDED.description, qual_rules = EXCLUDED.qual_rules,
+       is_official = EXCLUDED.is_official, official_source = EXCLUDED.official_source,
+       updated_at = NOW() RETURNING *`,
+    [req.params.key, display_name || null, description || null, qual_rules || null,
+     !!is_official, official_source || null]);
+  audit(req, 'series.edit', 'series', req.params.key, { is_official: !!is_official });
+  res.json({ data: rows[0] });
+}));
+
+app.delete('/admin/series/:key', needRole('ADMIN'), asyncH(async (req, res) => {
+  const st = await pool.query('DELETE FROM series_standings WHERE series_key = $1', [req.params.key]);
+  await pool.query('DELETE FROM series_info WHERE series_key = $1', [req.params.key]);
+  audit(req, 'series.delete', 'series', req.params.key, { rows: st.rowCount });
+  res.json({ ok: true, deleted: st.rowCount });
+}));
+
+// ---- Export (full backup JSON) ----
+app.get('/admin/export', needRole('ADMIN'), asyncH(async (req, res) => {
+  const dump = async (t) => (await pool.query(`SELECT * FROM ${t}`)).rows;
+  const data = {};
+  for (const t of ['users', 'horses', 'riders', 'events', 'classes', 'round_results', 'raw_results',
+      'horse_aliases', 'rider_aliases', 'breeder_aliases', 'training_records', 'health_records',
+      'review_queue', 'series_standings', 'series_info', 'watchlist_items', 'saved_comparisons',
+      'alert_prefs', 'sessions', 'rider_claims', 'coach_athletes', 'correction_reports',
+      'import_logs', 'entity_audit', 'admin_settings', 'weather_cache']) {
+    try { data[t] = await dump(t); } catch { data[t] = { error: 'unavailable' }; }
+  }
+  // never export password hashes
+  if (Array.isArray(data.users)) data.users = data.users.map((u) => ({ ...u, password_hash: undefined }));
+  audit(req, 'admin.export', 'system', null, {});
+  res.setHeader('Content-Disposition', `attachment; filename="eqindex-backup-${new Date().toISOString().slice(0, 10)}.json"`);
+  res.json({ exported_at: new Date().toISOString(), data });
+}));
+
+// ---- Danger: wipe competition data (typed confirmation) ----
+app.post('/admin/wipe', needRole('ADMIN'), asyncH(async (req, res) => {
+  if (req.body?.confirm !== 'WIPE COMPETITION DATA') {
+    return res.status(400).json({ error: 'send {confirm: "WIPE COMPETITION DATA"}' });
+  }
+  const counts = {};
+  for (const t of ['round_results', 'raw_results', 'series_standings', 'classes', 'events', 'weather_cache']) {
+    counts[t] = (await pool.query(`SELECT COUNT(*)::INT AS n FROM ${t}`)).rows[0].n;
+    await pool.query(`TRUNCATE ${t} CASCADE`);
+  }
+  audit(req, 'admin.wipe', 'system', null, counts);
+  res.json({ ok: true, deleted: counts });
+}));
+
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('[api]', err.message);

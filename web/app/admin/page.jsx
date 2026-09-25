@@ -34,6 +34,10 @@ export default async function AdminOverview() {
     ['Manage events', 'Details, status and cascade delete', '/admin/events', null],
     ['Naming review', `${c.pendingReview} ambiguous names awaiting decision`, '/admin/review', null],
     ['Rider claims', `${c.pendingClaims} ownership claims awaiting approval`, '/admin/claims', null],
+    ['Corrections inbox', 'Public reports awaiting triage', '/admin/corrections', null],
+    ['Users', 'Roles and session control', '/admin/users', null],
+    ['Series', 'Qual rules and official labelling', '/admin/series', null],
+    ['Data tools', 'Backup export and danger-zone wipe', '/admin/data', null],
     ['Audit log', 'Every material change, who and when', '/admin/activity', null],
     ['Settings', 'Password, sessions and workspace', '/admin/settings', null],
   ];

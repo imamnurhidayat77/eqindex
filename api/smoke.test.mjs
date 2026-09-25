@@ -169,6 +169,22 @@ test('admin manage gates + guards', async () => {
   assert.equal(del.status, 401);
 });
 
+test('corrections + admin series/users gates', async () => {
+  const bad = await fetch(`${BASE}/corrections`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'T', email: 'bad', message: 'x' }),
+  });
+  assert.equal(bad.status, 400);
+  const ok = await fetch(`${BASE}/corrections`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'T', email: 't@x.nz', message: 'placing typo' }),
+  });
+  assert.equal(ok.status, 201);
+  await get('/admin/users', 401);
+  await get('/admin/series', 401);
+  await get('/admin/corrections', 401);
+});
+
 test('404s are honest JSON', async () => {
   const bad = await get('/horses/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(bad.error);
