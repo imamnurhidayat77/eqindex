@@ -30,6 +30,10 @@ export default async function HorseProfile({ params }) {
     getJSON(`/horses/${params.id}/splits`).catch(() => ({ data: [] })),
   ]);
   const { data: h, stats: s, history = [], partnerships = [] } = p;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(params.id) && h.slug && h.slug !== params.id) {
+    const { redirect } = await import('next/navigation');
+    redirect(`/horses/${h.slug}`);
+  }
 
   const starts = num(s?.starts ?? history.length);
   const clearPct = num(s?.clear_pct ?? 0);

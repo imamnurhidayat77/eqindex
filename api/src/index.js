@@ -134,14 +134,15 @@ app.get('/rankings/riders', asyncH(async (req, res) => {
   const cat = req.query.series || '';
   if (req.query.metric === 'points') {
     const col = req.query.window === '12m' ? 'points_12m' : req.query.window === '3m' ? 'points_3m' : 'total_points';
+    const catFilter = cat ? ` AND p.series_category = $3` : '';
     const { rows } = await pool.query(
-      `SELECT p.rider_id, p.rider, p.total_starts AS starts, s.clears, s.clear_pct,
+      `SELECT p.rider_id, p.rider, p.series_category, p.total_starts AS starts, s.clears, s.clear_pct,
          s.avg_faults, s.wins, s.horses_ridden, p.podiums, p.win_rate,
          p.total_points, p.points_12m, p.points_3m, p.last_start
        FROM rider_point_stats p LEFT JOIN rider_stats s ON s.rider_id = p.rider_id
-       WHERE p.total_starts >= $1
+       WHERE p.total_starts >= $1${catFilter}
        ORDER BY p.${col} DESC, p.wins DESC, p.total_starts DESC LIMIT $2`,
-      [minStarts, limit]
+      cat ? [minStarts, limit, cat] : [minStarts, limit]
     );
     return res.json({ data: rows, metric: 'points', window: req.query.window || 'all' });
   }

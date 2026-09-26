@@ -19,6 +19,10 @@ export default async function EventDetail({ params }) {
     getJSON('/trends/circuit'),
   ]);
   const e = a.event;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(params.id) && e.slug && e.slug !== params.id) {
+    const { redirect } = await import('next/navigation');
+    redirect(`/events/${e.slug}`);
+  }
   const rounds = a.rounds;
   const n = rounds.length;
   const clears = rounds.filter((r) => r.clear_round).length;

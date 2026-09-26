@@ -55,6 +55,10 @@ export default async function RiderProfile({ params }) {
     getJSON(`/riders/${params.id}/splits`).catch(() => ({ data: [] })),
   ]);
   const { data: r, stats: s, history = [], partnerships = [] } = p;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(params.id) && r.slug && r.slug !== params.id) {
+    const { redirect } = await import('next/navigation');
+    redirect(`/riders/${r.slug}`);
+  }
   const regional = await getJSON(`/rankings/riders?limit=100&region=${encodeURIComponent(r.region || '')}`).catch(() => ({ data: [] }));
 
   const starts = num(s?.starts ?? history.length);

@@ -51,6 +51,12 @@ export default function SeriesIndex() {
         <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ National Circuit</span>
       </div>
       <p className={SUB}>Season-long points races across the NZ showjumping circuit.</p>
+      <div className="mb-4 flex flex-wrap gap-2 items-center">
+        <span className="text-[11px] uppercase tracking-wide text-faint font-bold">Rider categories:</span>
+        {[['junior', 'Junior'], ['young-rider', 'Young Rider'], ['under-25', 'Under 25'], ['amateur', 'Amateur'], ['pony', 'Pony']].map(([k, l]) => (
+          <a key={k} href={`/series/category/${k}`} className="text-xs rounded-full px-3 py-[6px] border border-line bg-card2 text-muted no-underline hover:text-gold hover:border-gold/50">{l}</a>
+        ))}
+      </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
