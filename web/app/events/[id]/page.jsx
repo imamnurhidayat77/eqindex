@@ -1,6 +1,6 @@
 import { getJSON } from '../../../lib/api';
 import { eqScore, fieldScore, strengthLabel, ordinal } from '../../../lib/eq';
-import { BADGE, CARD, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
+import { BADGE, CARD, EMPTY, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
 import { ScoreRing } from '../../../components/charts';
 import MiniTrend from '../../../components/MiniTrend';
 import ClassResults from '../../../components/ClassResults';
@@ -23,6 +23,8 @@ export default async function EventDetail({ params }) {
     const { redirect } = await import('next/navigation');
     redirect(`/events/${e.slug}`);
   }
+  const editions = await getJSON(`/events/compare?name=${encodeURIComponent(e.name)}`).catch(() => ({ data: [] }));
+  const pastEditions = (editions.data || []).filter((x) => x.id !== e.id);
   const rounds = a.rounds;
   const n = rounds.length;
   const clears = rounds.filter((r) => r.clear_round).length;
@@ -421,6 +423,35 @@ export default async function EventDetail({ params }) {
           </div>
         ))}
       </div>
+
+      <h2 className={H2}>Past Editions</h2>
+      <p className={SUB}>Same event family across seasons — year-on-year.</p>
+      <section className={CARD}>
+        <div className={TABLEWRAP}>
+        <table className={TABLE}>
+          <thead><tr><th className={TH}>Edition</th><th className={TH}>Dates</th><th className={`${TH} ${NUM}`}>Classes</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Avg Faults</th></tr></thead>
+          <tbody>
+            <tr>
+              <td className={TD}><b>{e.name} (this edition)</b></td>
+              <td className={`${TD} text-muted`}>{(e.date_start || '').slice(0, 10)}</td>
+              <td className={`${TD} ${NUM} text-muted`}>{a.classes.length}</td>
+              <td className={`${TD} ${NUM} text-muted`}>{n}</td>
+              <td className={`${TD} ${NUM} text-muted`}>{avgF.toFixed(2)}</td>
+            </tr>
+            {pastEditions.map((x) => (
+              <tr key={x.id}>
+                <td className={TD}><a className={LINK} href={`/events/${x.id}`}>{x.name}</a></td>
+                <td className={`${TD} text-muted`}>{(x.date_start || '').slice(0, 10)}</td>
+                <td className={`${TD} ${NUM} text-muted`}>{x.class_count}</td>
+                <td className={`${TD} ${NUM} text-muted`}>{x.round_count}</td>
+                <td className={`${TD} ${NUM} text-muted`}>{x.avg_faults === null ? '–' : Number(x.avg_faults).toFixed(2)}</td>
+              </tr>
+            ))}
+            {!pastEditions.length && <tr><td colSpan={5} className={EMPTY}>No other editions recorded.</td></tr>}
+          </tbody>
+        </table>
+        </div>
+      </section>
 
       <h2 className={H2}>Interactive Tools & Actions</h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">

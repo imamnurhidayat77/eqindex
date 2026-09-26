@@ -40,7 +40,7 @@ export default function ClassResults({ groups }) {
               {g.class_number && <span className="text-[11px] text-faint font-bold">#{g.class_number}</span>}
               <span className="font-bold text-[14px] text-white">{g.name}</span>
               {g.height_cm && <span className="text-[11px] text-faint">{(Number(g.height_cm) / 100).toFixed(2)}m</span>}
-              {g.format && <span className="text-[11px] text-muted">{g.format}</span>}
+              {g.format && <span className={badge(g.format === 'Two-phase' ? BADGE.goldfill : BADGE.gray)}>{g.format}</span>}
               {g.class_type && g.class_type !== 'Standard' && (
                 <span className={badge(BADGE.blue)}>{g.class_type}</span>
               )}

@@ -16,9 +16,10 @@ Usage:
 
 Expected header (1 row = 1 round):
   event_name,date_start,date_end,venue,venue_country,region,arena_type,season,
-  class_name,class_date,height_cm,level,rider,horse,
+  class_name,class_date,height_cm,level,format,rider,horse,
   jump_faults,time_faults,time_seconds,finish_place,source_result_id
   - season: optional, auto-derived (Aug-Jul season) when empty.
+  - format: optional jumping format (Two-phase, Jump-off, Speed, Power & Speed).
   - source_result_id: optional, auto-generated when empty.
   - empty faults = 0; empty time_seconds/finish_place = NULL.
 """
@@ -35,6 +36,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from normalize import normalize_name, slug
 
 SOURCES = ("FEI", "EQUIPE", "ESNZ", "CSV", "MANUAL")
+FORMATS = ("Two-phase", "Jump-off", "Speed", "Power & Speed")
+
+
+def clean_format(value):
+    v = (value or "").strip()
+    return v if v in FORMATS else None
 
 
 def load_dotenv(path=".env"):
@@ -120,11 +127,12 @@ def get_or_create_event(cur, r, source):
 def get_or_create_class(cur, event_id, r, source, show_id):
     class_id_ext = slug(f"{r['class_name']}-{r.get('class_date') or r['date_start']}")
     cur.execute(
-        """INSERT INTO classes (event_id, name, class_date, height_cm, level, source, external_class_id)
-           VALUES (%s,%s,%s,%s,%s,%s,%s)
+        """INSERT INTO classes (event_id, name, class_date, height_cm, level, format, source, external_class_id)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
            ON CONFLICT (event_id, external_class_id) DO NOTHING""",
         (event_id, r["class_name"].strip(), (r.get("class_date") or "").strip() or None,
          int_or_none(r.get("height_cm")), (r.get("level") or "").strip() or None,
+         clean_format(r.get("format")),
          source, class_id_ext),
     )
     cur.execute(

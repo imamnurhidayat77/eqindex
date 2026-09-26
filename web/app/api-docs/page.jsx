@@ -16,7 +16,7 @@ const GROUPS = [
     ['GET', '/events/:id', 'One event + its class_stats rows.'],
     ['GET', '/events/:id/analytics', 'Full analytics: rounds, horses, riders, partnerships.'],
     ['GET', '/arenas', 'Arena aggregates: rounds, clear_pct, avg_faults, top_horse.'],
-    ['GET', '/classes', 'Class difficulty ?limit&season&region&arena.'],
+    ['GET', '/classes', 'Class difficulty ?limit&season&region&arena&type&format.'],
     ['GET', '/height-stats', 'Per-horse height progression ?limit.'],
     ['GET', '/trends/circuit', 'Monthly circuit aggregates + round filters.'],
   ]],
@@ -25,7 +25,8 @@ const GROUPS = [
     ['GET', '/horses/:id/trend', 'Monthly trend for one horse.'],
     ['GET', '/horses/:id/timeline', 'Training + health + competition feed (100).'],
     ['GET', '/riders/:id', 'Rider row, stats, 50-round history, partnerships.'],
-    ['GET', '/comparison?type=horse|rider&a=&b=', 'Head-to-head stat rows for two ids.'],
+    ['GET', '/comparison?type=horse|rider|combination|event&a=&b=', 'Head-to-head stat rows (event = edition matchup, YoY verdict).'],
+    ['GET', '/peers?horse_id=', 'Same-age-band (±1y) horses with career stats + peer averages.'],
   ]],
   ['Stable records', [
     ['GET', '/horses/:id/training', 'Training records + rider names.'],

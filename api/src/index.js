@@ -187,6 +187,37 @@ app.get('/events', asyncH(async (req, res) => {
   res.json({ data: rows });
 }));
 
+// ---- Year-on-year: same venue+name family across seasons ----
+app.get('/events/compare', asyncH(async (req, res) => {
+  const name = String(req.query.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'need ?name=' });
+  const base = name.toLowerCase().replace(/20\d\d.*/g, '').trim();
+  const { rows } = await pool.query(
+    `SELECT e.*, (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id) AS class_count,
+       (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.event_id = e.id) AS round_count,
+       (SELECT ROUND(AVG(rr.total_faults), 2) FROM round_results rr WHERE rr.event_id = e.id) AS avg_faults
+     FROM events e WHERE lower(regexp_replace(e.name, '20\\d\\d.*', '')) = $1
+     ORDER BY e.date_start`, [base]);
+  res.json({ data: rows });
+}));
+
+// ---- Age cohort: horses born within ±2 years, ranked by points ----
+app.get('/horses/:id/cohort', asyncH(async (req, res) => {
+  const me = await pool.query('SELECT year_of_birth FROM horses WHERE id = $1', [req.params.id]);
+  if (!me.rows.length) return res.status(404).json({ error: 'horse not found' });
+  const yob = me.rows[0].year_of_birth;
+  if (!yob) return res.json({ data: { yob: null, peers: [] } });
+  const { rows } = await pool.query(
+    `SELECT h.id AS horse_id, h.name AS horse, h.year_of_birth,
+       COALESCE(p.total_points, 0) AS total_points,
+       COALESCE(p.wins, 0) AS wins, COALESCE(p.total_starts, 0) AS starts
+     FROM horses h LEFT JOIN horse_point_stats p ON p.horse_id = h.id
+     WHERE h.year_of_birth BETWEEN $1 AND $2
+     ORDER BY total_points DESC LIMIT 20`,
+    [yob - 2, yob + 2]);
+  res.json({ data: { yob, peers: rows } });
+}));
+
 app.get('/events/:id', asyncH(async (req, res) => {
   req.params.id = await resolveId('events', req.params.id, res);
   if (!req.params.id) return;
@@ -403,8 +434,31 @@ app.post('/review/:id', asyncH(async (req, res) => {
 // type=combination uses composite ids "horseId:riderId".
 app.get('/comparison', asyncH(async (req, res) => {
   const { type, a, b } = req.query;
-  if (!['horse', 'rider', 'combination'].includes(type) || !a || !b) {
-    return res.status(400).json({ error: 'use ?type=horse|rider|combination&a=<id>&b=<id>' });
+  if (!['horse', 'rider', 'combination', 'event'].includes(type) || !a || !b) {
+    return res.status(400).json({ error: 'use ?type=horse|rider|combination|event&a=<id>&b=<id>' });
+  }
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (type === 'event') {
+    if (!uuid.test(a) || !uuid.test(b)) {
+      return res.status(404).json({ error: 'one or both ids not found' });
+    }
+    const { rows } = await pool.query(
+      `SELECT e.id AS event_id, e.name AS event, e.season, e.venue, e.region,
+         e.date_start, e.date_end, COUNT(*)::INT AS rounds,
+         SUM(rr.clear_round::INT)::INT AS clears,
+         ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
+         ROUND(AVG(rr.total_faults), 2) AS avg_faults,
+         COUNT(*) FILTER (WHERE rr.finish_place = 1)::INT AS wins,
+         COUNT(DISTINCT rr.class_id)::INT AS classes,
+         MIN(rr.finish_place) AS best_place
+       FROM round_results rr JOIN events e ON e.id = rr.event_id
+       WHERE rr.event_id = ANY($1::uuid[])
+       GROUP BY e.id, e.name, e.season, e.venue, e.region, e.date_start, e.date_end`,
+      [[a, b]]
+    );
+    if (rows.length < 2) return res.status(404).json({ error: 'one or both ids not found' });
+    const byId = Object.fromEntries(rows.map((r) => [r.event_id, r]));
+    return res.json({ a: byId[a], b: byId[b] });
   }
   if (type === 'combination') {
     const pair = (s) => String(s).split(':');
@@ -419,7 +473,6 @@ app.get('/comparison', asyncH(async (req, res) => {
   }
   const view = type === 'horse' ? 'horse_stats' : 'rider_stats';
   const key = type === 'horse' ? 'horse_id' : 'rider_id';
-  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!uuid.test(a) || !uuid.test(b)) {
     return res.status(404).json({ error: 'one or both ids not found' });
   }
@@ -436,6 +489,40 @@ app.get('/partnerships', asyncH(async (req, res) => {
     [limit]
   );
   res.json({ data: rows });
+}));
+
+// ---- Age-group peers (PRD §9: comparison with horses of similar age) ----
+// ?horse_id= — same-age band (±1 year) with career stats for benchmarking.
+app.get('/peers', asyncH(async (req, res) => {
+  const { horse_id } = req.query;
+  if (!horse_id) return res.status(400).json({ error: 'use ?horse_id=<id or slug>' });
+  const id = await resolveId('horses', horse_id, res);
+  if (!id) return;
+  const sub = await pool.query('SELECT id, name, age FROM horses WHERE id = $1', [id]);
+  if (!sub.rows.length) return res.status(404).json({ error: 'horse not found' });
+  const age = sub.rows[0].age;
+  if (age === null || age === undefined) {
+    return res.status(404).json({ error: 'age unknown for this horse' });
+  }
+  const { rows } = await pool.query(
+    `SELECT h.id AS horse_id, h.name AS horse, h.age,
+       s.starts, s.clears, s.clear_pct, s.avg_faults, s.wins
+     FROM horses h JOIN horse_stats s ON s.horse_id = h.id
+     WHERE h.age BETWEEN $1 AND $2
+     ORDER BY s.clear_pct DESC NULLS LAST, s.avg_faults ASC`,
+    [age - 1, age + 1]
+  );
+  const withStats = rows.filter((r) => r.starts !== null);
+  const avg = (k) => withStats.length
+    ? withStats.reduce((t, r) => t + Number(r[k]), 0) / withStats.length : null;
+  res.json({
+    subject: sub.rows[0],
+    band: [age - 1, age + 1],
+    peers: rows,
+    peer_count: rows.length,
+    avg_clear_pct: avg('clear_pct') === null ? null : Math.round(avg('clear_pct') * 10) / 10,
+    avg_faults: avg('avg_faults') === null ? null : Math.round(avg('avg_faults') * 100) / 100,
+  });
 }));
 
 // ---- Series standings (NZ series points, PRD §7.5) ----
@@ -502,6 +589,13 @@ app.get('/classes', asyncH(async (req, res) => {
   if (req.query.season) push('e.season = ?', req.query.season);
   if (req.query.region) push('e.region = ?', req.query.region);
   if (req.query.arena) push('e.arena_type = ?', req.query.arena);
+  if (req.query.type) push('cs.class_type = ?', req.query.type);
+  if (req.query.format) push('cs.format = ?', req.query.format);
+  if (req.query.height_min) push('cs.height_cm >= ?', Number(req.query.height_min));
+  if (req.query.height_max) push('cs.height_cm <= ?', Number(req.query.height_max));
+  if (req.query.series_key) push('cs.series_key = ?', req.query.series_key);
+  if (req.query.q) { params.push(`%${req.query.q}%`); params.push(`%${req.query.q}%`);
+    conds.push(`(cs.class ILIKE $${params.length - 1} OR cs.event ILIKE $${params.length})`); }
   const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
   const { rows } = await pool.query(
     `SELECT cs.* FROM class_stats cs
@@ -878,6 +972,31 @@ app.post('/admin/snapshots', needRole('ADMIN'), asyncH(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ---- Venue detail: events at venue + top performers there ----
+app.get('/venues/:id', asyncH(async (req, res) => {
+  const v = await pool.query('SELECT * FROM venues WHERE id = $1', [req.params.id]);
+  if (!v.rows.length) return res.status(404).json({ error: 'venue not found' });
+  const events = await pool.query(
+    `SELECT e.*, (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id) AS class_count,
+       (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.event_id = e.id) AS round_count
+     FROM events e WHERE e.venue_id = $1 ORDER BY e.date_start DESC`, [req.params.id]);
+  const rounds = events.rows.length
+    ? (await pool.query('SELECT COUNT(*)::INT AS n FROM round_results rr JOIN events e ON e.id = rr.event_id WHERE e.venue_id = $1', [req.params.id])).rows[0].n : 0;
+  const topH = await pool.query(
+    `SELECT h.id AS horse_id, h.name AS horse, COUNT(*)::INT AS starts,
+       ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct
+     FROM round_results rr JOIN horses h ON h.id = rr.horse_id
+     JOIN events e ON e.id = rr.event_id WHERE e.venue_id = $1
+     GROUP BY h.id, h.name HAVING COUNT(*) >= 2 ORDER BY clear_pct DESC LIMIT 5`, [req.params.id]);
+  const topR = await pool.query(
+    `SELECT r.id AS rider_id, r.name AS rider, COUNT(*)::INT AS starts,
+       ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct
+     FROM round_results rr JOIN riders r ON r.id = rr.rider_id
+     JOIN events e ON e.id = rr.event_id WHERE e.venue_id = $1
+     GROUP BY r.id, r.name HAVING COUNT(*) >= 2 ORDER BY clear_pct DESC LIMIT 5`, [req.params.id]);
+  res.json({ data: { ...v.rows[0], event_count: events.rows.length, rounds, events: events.rows, topHorses: topH.rows, topRiders: topR.rows } });
+}));
+
 // eslint-disable-next-line no-unused-vars
 // ---- Rank snapshots: capture today's points ranks (idempotent per day) ----
 async function captureSnapshots() {
@@ -1048,7 +1167,8 @@ app.get('/weather', asyncH(async (req, res) => {
 //         csv, filename?, source?, dry_run? }
 // Header vocab (case-insensitive): class_name|class, class_type, class_date,
 // rider_name|rider, horse_name|horse, placing|finish_place, faults|jump_faults,
-// time|time_seconds, time_faults, height_cm, status (finished|E|R|W|DQ...), notes.
+// time|time_seconds, time_faults, height_cm, format (Two-phase|Jump-off|Speed|Power & Speed),
+// status (finished|E|R|W|DQ...), notes.
 // dry_run runs the SAME writes inside a rolled-back transaction: preview points
 // come from the real trigger, never a duplicated formula.
 function normName(v) {
@@ -1074,11 +1194,12 @@ function parseCsv(text) {
   return rows.filter((r) => r.some((x) => String(x).trim() !== ''));
 }
 const CLASS_TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
+const FORMATS = ['Two-phase', 'Jump-off', 'Speed', 'Power & Speed'];
 const STATUS_MAP = { E: 'eliminated', R: 'retired', W: 'withdrawn', DQ: 'disqualified', ELIM: 'eliminated', RET: 'retired', WD: 'withdrawn' };
 
 // Canonical import record (JSON mode uses these exact keys; CSV headers map to them).
 const IMPORT_FIELDS = ['class_name', 'class_type', 'class_date', 'rider_name', 'horse_name',
-  'placing', 'faults', 'time', 'time_faults', 'height_cm', 'status', 'notes', 'series_key'];
+  'placing', 'faults', 'time', 'time_faults', 'height_cm', 'format', 'status', 'notes', 'series_key'];
 
 app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
   const { event_id, event, csv, records, filename, source, dry_run } = req.body || {};
@@ -1108,7 +1229,7 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
     rider: col('rider_name', 'rider'), horse: col('horse_name', 'horse'),
     place: col('placing', 'finish_place', 'place'), faults: col('faults', 'jump_faults'),
     time: col('time', 'time_seconds'), tfaults: col('time_faults'), height: col('height_cm', 'height'),
-    status: col('status'), notes: col('notes'),
+    format: col('format'), status: col('status'), notes: col('notes'),
   };
   ci.series = col('series_key', 'series');
   for (const k of ['cls', 'rider', 'horse']) {
@@ -1163,6 +1284,9 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       if (!cls) errs.push('class_name required');
       let ctype = g(ci.ctype) || 'Standard';
       if (!CLASS_TYPES.includes(ctype)) errs.push(`class_type must be ${CLASS_TYPES.join('|')}`);
+      const fmtRaw = g(ci.format);
+      if (fmtRaw && !FORMATS.includes(fmtRaw)) errs.push(`format must be ${FORMATS.join('|')}`);
+      const fmt = fmtRaw || null;
       const place = g(ci.place) === '' ? null : parseInt(g(ci.place), 10);
       if (g(ci.place) !== '' && !(place >= 1)) errs.push('placing must be a positive integer');
       const faults = num(g(ci.faults)); const tsec = num(g(ci.time));
@@ -1193,8 +1317,8 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       const newClass = !cRow;
       if (!cRow) {
         cRow = (await client.query(
-          'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, series_key, source) VALUES ($1,$2,$3,$4,$5,$6,\'MANUAL\') RETURNING id',
-          [evId, cls, cdate || null, hcm, ctype, seriesKey])).rows[0];
+          'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, format, series_key, source) VALUES ($1,$2,$3,$4,$5,$6,$7,\'MANUAL\') RETURNING id',
+          [evId, cls, cdate || null, hcm, ctype, fmt, seriesKey])).rows[0];
       } else if (seriesKey && !cRow.series_key) {
         await client.query('UPDATE classes SET series_key = $2 WHERE id = $1', [cRow.id, seriesKey]);
         cRow.series_key = seriesKey;

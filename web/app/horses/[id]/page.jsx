@@ -21,13 +21,15 @@ function placingBadge(place) {
   return <span className={statusBadge(lbl)}>{lbl}</span>;
 }
 
-export default async function HorseProfile({ params }) {
-  const [p, timeline, trend, heights, splits] = await Promise.all([
+export default async function HorseProfile({ params, searchParams }) {
+  const hBand = (searchParams && searchParams.h) || '';
+  const [p, timeline, trend, heights, splits, peers] = await Promise.all([
     getJSON(`/horses/${params.id}`),
     getJSON(`/horses/${params.id}/timeline`).catch(() => ({ data: [] })),
     getJSON(`/horses/${params.id}/trend`).catch(() => ({ data: [] })),
     getJSON('/height-stats?limit=200').catch(() => ({ data: [] })),
     getJSON(`/horses/${params.id}/splits`).catch(() => ({ data: [] })),
+    getJSON(`/peers?horse_id=${params.id}`).catch(() => null),
   ]);
   const { data: h, stats: s, history = [], partnerships = [] } = p;
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(params.id) && h.slug && h.slug !== params.id) {
@@ -177,9 +179,15 @@ export default async function HorseProfile({ params }) {
       </div>
 
       {/* competition */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-[15px] font-bold">Competition Performance</h2>
-        <ExportCsv rows={history} filename={`${h.name}-record.csv`} />
+        <span className="flex items-center gap-1.5">
+          <ExportCsv rows={history} filename={`${h.name}-record.csv`} />
+          {[['', 'All'], ['110-120', '1.10–1.20'], ['120-130', '1.20–1.30'], ['130-140', '1.30–1.40'], ['140-', '1.40m+']].map(([v, l]) => {
+            const href = `/horses/${params.id}${v ? `?h=${v}` : ''}`;
+            return <a key={v || 'all'} href={href} className={`text-[11px] rounded-full px-2 py-0.5 border no-underline ${hBand === v ? 'bg-goldbg border-gold text-gold font-bold' : 'border-line text-muted'}`}>{l}</a>;
+          })}
+        </span>
       </div>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Historical performance records from the NZ Showjumping Circuit.</p>
       <section className="mb-6 overflow-x-auto rounded border border-line bg-card">
@@ -192,7 +200,13 @@ export default async function HorseProfile({ params }) {
             </tr>
           </thead>
           <tbody>
-            {history.map((r) => (
+            {history.filter((r) => {
+              if (!hBand) return true;
+              const cm = num(r.height_cm, 0);
+              if (!cm) return false;
+              const [lo, hi] = hBand.split('-');
+              return cm >= Number(lo) && (!hi || cm <= Number(hi));
+            }).map((r) => (
               <tr key={r.id} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
                 <td className="whitespace-nowrap px-3 py-2.5 text-muted">{fmtDate(r.class_date)}</td>
                 <td className="px-3 py-2.5 font-semibold">{r.event_name}</td>
@@ -395,6 +409,58 @@ export default async function HorseProfile({ params }) {
           </div>
         ))}
       </div>
+
+      {/* age-group benchmark — PRD §9: comparison with horses of similar age */}
+      <h2 className="mb-3 text-[15px] font-bold">Age-Group Benchmark{peers ? <span className="ml-2 text-[11px] font-bold text-faint">AGES {peers.band[0]}–{peers.band[1]}</span> : null}</h2>
+      <section className="rounded border border-line bg-card p-4 mb-6">
+        {!peers ? (
+          <p className="text-[13px] text-faint">Age unknown for this horse — peer comparison unavailable.</p>
+        ) : (() => {
+          const rank = peers.peers.findIndex((x) => x.horse_id === p.data.id) + 1;
+          const mx = Math.max(clearPct, num(peers.avg_clear_pct), 1);
+          return (
+            <>
+              <p className="text-[13px] text-muted mb-3">
+                Ranked <b className="text-white">#{rank || '–'} of {peers.peer_count}</b> among {peers.band[0]}–{peers.band[1]}-year-olds
+                (peer average <b className="text-white">{num(peers.avg_clear_pct).toFixed(1)}%</b> clear, <b className="text-white">{num(peers.avg_faults).toFixed(2)}</b> avg faults).
+              </p>
+              <div className="space-y-2 mb-3">
+                {[{ l: `${p.data.name} (you)`, v: clearPct, c: '#E8B44A' }, { l: 'Peer average', v: num(peers.avg_clear_pct), c: '#3a4356' }].map((b) => (
+                  <div key={b.l} className="flex items-center gap-2 text-[12px]">
+                    <span className="w-[130px] truncate text-muted">{b.l}</span>
+                    <span className="flex-1 h-2 rounded bg-barbg/60 overflow-hidden">
+                      <span className="block h-full rounded" style={{ width: `${Math.min(100, (b.v / mx) * 100)}%`, background: b.c }} />
+                    </span>
+                    <span className="w-[52px] text-right text-white font-semibold">{b.v.toFixed(1)}%</span>
+                  </div>
+                ))}
+              </div>
+              <table className="w-full border-collapse text-[13px]">
+                <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
+                  <th className="border-b border-line px-2 py-2 font-semibold">Peer</th>
+                  <th className="border-b border-line px-2 py-2 font-semibold text-right">Age</th>
+                  <th className="border-b border-line px-2 py-2 font-semibold text-right">Clear %</th>
+                  <th className="border-b border-line px-2 py-2 font-semibold text-right">Avg</th>
+                </tr></thead>
+                <tbody>
+                  {peers.peers.slice(0, 6).map((x) => (
+                    <tr key={x.horse_id}>
+                      <td className="px-2 py-2 border-b border-rowline">
+                        {x.horse_id === p.data.id
+                          ? <b className="text-gold">{x.horse} (you)</b>
+                          : <a href={`/horses/${x.horse_id}`} className="text-white font-semibold no-underline hover:text-gold">{x.horse}</a>}
+                      </td>
+                      <td className="px-2 py-2 border-b border-rowline text-right text-muted">{x.age}</td>
+                      <td className="px-2 py-2 border-b border-rowline text-right text-moss">{x.clear_pct === null ? '–' : `${Number(x.clear_pct).toFixed(0)}%`}</td>
+                      <td className="px-2 py-2 border-b border-rowline text-right text-muted">{x.avg_faults === null ? '–' : Number(x.avg_faults).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          );
+        })()}
+      </section>
 
       {/* benchmarking */}
       <h2 className="mb-3 text-[15px] font-bold">Benchmarking Tools</h2>
