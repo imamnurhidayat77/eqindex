@@ -10,11 +10,8 @@ import { useAuth } from './auth';
 // app nav/search/season only render once a session is known.
 // NB: intentionally ignore `loading` — render nothing until session is known,
 // so logged-out visitors never see the menu flash before it hides.
-const MINIMAL_PATHS = ['/', '/login', '/register'];
 function useLandingHidden() {
-  const pathname = usePathname() || '/';
   const { user } = useAuth();
-  if (MINIMAL_PATHS.includes(pathname)) return !user;
   return !user;
 }
 
