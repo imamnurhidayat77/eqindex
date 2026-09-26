@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
 import { CARD, EMPTY, H1, LINK, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
 import { useSeason } from '../../components/global';
+import Dropdown from '../../components/Dropdown';
 
 export default function SeriesIndex() {
   const [rows, setRows] = useState([]);
@@ -73,11 +74,10 @@ export default function SeriesIndex() {
         </label>
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
           Season
-          <select value={seasonF} onChange={(e) => setSeasonF(e.target.value)}
-            className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body">
-            <option value="">All seasons</option>
-            {seasons.map((s) => <option key={s} value={s}>{s.replace('-', '/')}</option>)}
-          </select>
+          <Dropdown ariaLabel="Season" value={seasonF} placeholder="All seasons"
+            options={[{ value: '', label: 'All seasons' },
+              ...seasons.map((s) => ({ value: s, label: s.replace('-', '/') }))]}
+            onSelect={(o) => setSeasonF(o.value)} />
         </label>
         {(q || seasonF) && <button onClick={() => { setQ(''); setSeasonF(''); }} className="rounded px-2 py-2 text-[13px] text-sky hover:underline">Reset</button>}
       </div>

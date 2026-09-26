@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
+import Dropdown from './Dropdown';
 
 const CATS = ['VET', 'TREATMENT', 'FARRIER', 'VACCINATION', 'OTHER'];
 const CAT_STYLE = {
@@ -46,9 +47,9 @@ export default function HealthPanel({ horseId, compact = false }) {
         <form onSubmit={add} className="flex flex-wrap items-end gap-3 px-5 pb-4 pt-2">
           <label className="text-[12px] text-muted">Date<br /><input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
           <label className="text-[12px] text-muted">Category<br />
-            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100">
-              {CATS.map((c) => <option key={c}>{c}</option>)}
-            </select>
+            <Dropdown ariaLabel="Category" value={form.category}
+              options={CATS.map((c) => ({ value: c, label: c }))}
+              onSelect={(o) => setForm({ ...form, category: o.value })} />
           </label>
           <label className="min-w-[220px] flex-1 text-[12px] text-muted">Description<br /><input required value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Check-up, shoeing, booster..." className="mt-1 w-full rounded border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
           <label className="text-[12px] text-muted">Provider<br /><input value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })} placeholder="Clinic / farrier" className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>

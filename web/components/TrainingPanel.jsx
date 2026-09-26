@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
+import Dropdown from './Dropdown';
 
 const INTENSITY_STYLE = {
   High: 'bg-danger/15 text-danger border border-danger/30',
@@ -43,21 +44,20 @@ export default function TrainingPanel({ horseId, riders = [], compact = false })
         <form onSubmit={add} className="flex flex-wrap items-end gap-3 px-5 pb-4 pt-2">
           <label className="text-[12px] text-muted">Date<br /><input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
           <label className="text-[12px] text-muted">Type<br />
-            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100">
-              {['Flatwork', 'Jumping gridwork', 'Course practice', 'Pole work', 'Hacking', 'Lunging', 'Gymnastics'].map((t) => <option key={t}>{t}</option>)}
-            </select>
+            <Dropdown ariaLabel="Type" value={form.type}
+              options={['Flatwork', 'Jumping gridwork', 'Course practice', 'Pole work', 'Hacking', 'Lunging', 'Gymnastics'].map((t) => ({ value: t, label: t }))}
+              onSelect={(o) => setForm({ ...form, type: o.value })} />
           </label>
           <label className="text-[12px] text-muted">Intensity<br />
-            <select value={form.intensity} onChange={(e) => setForm({ ...form, intensity: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100">
-              {['Low', 'Medium', 'High'].map((t) => <option key={t}>{t}</option>)}
-            </select>
+            <Dropdown ariaLabel="Intensity" value={form.intensity}
+              options={['Low', 'Medium', 'High'].map((t) => ({ value: t, label: t }))}
+              onSelect={(o) => setForm({ ...form, intensity: o.value })} />
           </label>
           {!!riders.length && (
             <label className="text-[12px] text-muted">Rider<br />
-              <select value={form.rider_id} onChange={(e) => setForm({ ...form, rider_id: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100">
-                <option value="">—</option>
-                {riders.map((r) => <option key={r.rider_id} value={r.rider_id}>{r.rider}</option>)}
-              </select>
+              <Dropdown ariaLabel="Rider" value={form.rider_id} placeholder="—"
+                options={[{ value: '', label: '—' }, ...riders.map((r) => ({ value: r.rider_id, label: r.rider }))]}
+                onSelect={(o) => setForm({ ...form, rider_id: o.value })} />
             </label>
           )}
           <label className="min-w-[220px] flex-1 text-[12px] text-muted">Notes / Objective<br /><input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Focus, distances, response..." className="mt-1 w-full rounded border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>

@@ -1,6 +1,7 @@
 import { getJSON } from '../../lib/api';
 import { BADGE, BTN, CARD, EMPTY, H1, H2, INP, LINK, LIVE, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../lib/tokens';
 import { HEIGHT_BANDS, heightParams } from '../../lib/heights';
+import ChipSelect from '../../components/ChipSelect';
 import { eqScore, trendBadge, consistencyPts } from '../../lib/eq';
 import WatchButton from '../../components/WatchButton';
 
@@ -28,20 +29,6 @@ function Bar({ pct, color }) {
     <div className="h-[5px] rounded-full bg-barbg/60 overflow-hidden mt-1">
       <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: color }} />
     </div>
-  );
-}
-
-function Chip({ href, label, value, clearHref }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 bg-card2 border border-line rounded-full pl-3 pr-1.5 py-[5px] text-xs text-muted whitespace-nowrap">
-      {label}: <b className="text-body font-semibold">{value}</b>
-      {href && (
-        <a href={href} className="text-sky no-underline text-[11px] ml-0.5" title="filter">▾</a>
-      )}
-      {clearHref && (
-        <a href={clearHref} className="ml-1 bg-line rounded-full w-4 h-4 inline-flex items-center justify-center text-[10px] text-body no-underline">×</a>
-      )}
-    </span>
   );
 }
 
@@ -119,6 +106,8 @@ export default async function Rankings({ searchParams }) {
   }
   const seasons = [...new Set(events.data.map((e) => e.season).filter(Boolean))].sort().reverse();
   const season = seasonParam === undefined ? (seasons[0] || '') : seasonParam;
+  const regions = [...new Set(events.data.map((e) => e.region).filter(Boolean))].sort();
+  const RCATS = ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Open'];
 
   // map height chip -> cm range (shared HEIGHT_BANDS vocabulary)
   const { height_min, height_max } = heightParams(heightQ);
@@ -238,10 +227,6 @@ export default async function Rankings({ searchParams }) {
     ? riders.data.filter((r) => r.rider.toLowerCase().includes(search)).slice(0, 3) : [];
   const spotlight = hitH[0] || (search ? null : feat && { ...feat });
 
-  const seasonLabel = (() => {
-    const m = (season || '').match(/^(\d{4})-(\d{4})$/);
-    return m ? `${m[1]}/${m[2].slice(2)}` : (season || '2025/26');
-  })();
   const baseQ = (patch) => {
     const p = new URLSearchParams();
     if (season) p.set('season', season);
@@ -289,17 +274,25 @@ export default async function Rankings({ searchParams }) {
         <Tab href="#events">Event Rankings</Tab>
       </div>
 
-      {/* filter chips */}
+      {/* filter chips — real dropdowns navigate via precomputed hrefs */}
       <div className="flex flex-wrap gap-2 mb-5 items-center">
-        <Chip label="Season" value={seasonLabel} clearHref={baseQ({ season: '' })} href={baseQ({})} />
-        <Chip label="Height Category" value={heightQ ? (HEIGHT_BANDS.find((h) => h.v === heightQ)?.label || heightQ) : 'All Heights'} clearHref={baseQ({ height: '' })} href={baseQ({})} />
+        <ChipSelect label="Season" value={season} active={!!season} clearHref={baseQ({ season: '' })}
+          options={[{ value: '', label: 'All Seasons', href: baseQ({ season: '' }) },
+            ...seasons.map((s) => ({ value: s, label: s.replace('-', '/'), href: baseQ({ season: s }) }))]} />
+        <ChipSelect label="Height Category" value={heightQ} active={!!heightQ} clearHref={baseQ({ height: '' })}
+          options={HEIGHT_BANDS.map((h) => ({ value: h.v, label: h.v ? h.label : 'All Heights', href: baseQ({ height: h.v }) }))} />
         {HEIGHT_BANDS.slice(1).map((h) => (
           <a key={h.v} href={baseQ({ height: h.v })} className={`text-xs rounded-full px-3 py-[6px] border no-underline ${heightQ === h.v ? 'bg-goldbg border-gold text-gold' : 'bg-card2 border-line text-muted'}`}>Height: <b>{h.label}</b></a>
         ))}
-        <Chip label="Region" value={region || 'All Regions'} clearHref={baseQ({ region: '' })} href={baseQ({})} />
-        <Chip label="Min Rounds" value={`${minRounds}+ Rounds`} clearHref={baseQ({ min_rounds: '' })} href={baseQ({})} />
-        <Chip label="Rider Category" value={rCat || 'All Categories'} clearHref={baseQ({ series: '' })} href={baseQ({})} />
-        {['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Open'].map((c) => (
+        <ChipSelect label="Region" value={region} active={!!region} clearHref={baseQ({ region: '' })}
+          options={[{ value: '', label: 'All Regions', href: baseQ({ region: '' }) },
+            ...regions.map((r) => ({ value: r, label: r, href: baseQ({ region: r }) }))]} />
+        <ChipSelect label="Min Rounds" value={minRounds} active={minRounds !== '5'} clearHref={baseQ({ min_rounds: '' })}
+          options={['0', '3', '5', '10'].map((n) => ({ value: n, label: `${n}+ Rounds`, href: baseQ({ min_rounds: n }) }))} />
+        <ChipSelect label="Rider Category" value={rCat} active={!!rCat} clearHref={baseQ({ series: '' })}
+          options={[{ value: '', label: 'All Categories', href: baseQ({ series: '' }) },
+            ...RCATS.map((c) => ({ value: c, label: c, href: baseQ({ series: c }) }))]} />
+        {RCATS.map((c) => (
           <a key={c} href={baseQ({ series: c })} className={`text-xs rounded-full px-3 py-[6px] border no-underline ${rCat === c ? 'bg-goldbg border-gold text-gold' : 'bg-card2 border-line text-muted'}`}>{c}</a>
         ))}
         <span className="inline-flex items-center bg-card2 border border-line rounded-full px-3 py-[5px] text-xs text-muted">Level: <b className="text-body ml-1">National</b></span>

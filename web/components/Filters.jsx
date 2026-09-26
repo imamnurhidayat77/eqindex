@@ -2,6 +2,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { HEIGHT_BANDS } from '../lib/heights';
+import Dropdown from './Dropdown';
 import { useSeason } from './global';
 
 const RANGES = [['all', 'All time'], ['12m', 'Last 12 Months'], ['season', 'This Season']];
@@ -16,8 +17,6 @@ function Pill({ label, active, onClear, children }) {
     </span>
   );
 }
-
-const sel = 'bg-transparent border-0 text-body text-xs font-semibold cursor-pointer max-w-[150px] focus:outline-none';
 
 export default function Filters({ current, seasons, regions, arenas }) {
   const router = useRouter();
@@ -54,44 +53,40 @@ export default function Filters({ current, seasons, regions, arenas }) {
   return (
     <div className="flex flex-wrap gap-2 mb-6 items-center">
       <Pill label="Season" active={season !== 'all'} onClear={() => go({ season: '' })}>
-        <select className={sel} value={season} onChange={(e) => go({ season: e.target.value })}>
-          <option value="all">All Seasons</option>
-          {seasons.map((s) => <option key={s} value={s}>{s.replace('-', '/')}</option>)}
-        </select>
+        <Dropdown variant="bare" ariaLabel="Season" value={season}
+          options={[{ value: 'all', label: 'All Seasons' },
+            ...seasons.map((s) => ({ value: s, label: s.replace('-', '/') }))]}
+          onSelect={(o) => go({ season: o.value })} />
       </Pill>
       <Pill label="Entity Type" active={entity !== 'combination'} onClear={() => go({ entity: '' })}>
-        <select className={sel} value={entity} onChange={(e) => go({ entity: e.target.value })}>
-          <option value="combination">Combination</option>
-          <option value="horse">Horse</option>
-          <option value="rider">Rider</option>
-        </select>
+        <Dropdown variant="bare" ariaLabel="Entity Type" value={entity}
+          options={[{ value: 'combination', label: 'Combination' }, { value: 'horse', label: 'Horse' }, { value: 'rider', label: 'Rider' }]}
+          onSelect={(o) => go({ entity: o.value })} />
       </Pill>
       <Pill label="Height Category" active={height !== ''} onClear={() => go({ height: '' })}>
-        <select className={sel} value={height} onChange={(e) => go({ height: e.target.value })}>
-          {HEIGHT_BANDS.map((h) => <option key={h.v || 'all'} value={h.v}>{h.v ? h.label : 'All Heights'}</option>)}
-        </select>
+        <Dropdown variant="bare" ariaLabel="Height Category" value={height}
+          options={HEIGHT_BANDS.map((h) => ({ value: h.v, label: h.v ? h.label : 'All Heights' }))}
+          onSelect={(o) => go({ height: o.value })} />
       </Pill>
       <Pill label="Region" active={!!region} onClear={() => go({ region: '' })}>
-        <select className={sel} value={region} onChange={(e) => go({ region: e.target.value })}>
-          <option value="">All Regions</option>
-          {regions.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
+        <Dropdown variant="bare" ariaLabel="Region" value={region} placeholder="All Regions"
+          options={[{ value: '', label: 'All Regions' }, ...regions.map((r) => ({ value: r, label: r }))]}
+          onSelect={(o) => go({ region: o.value })} />
       </Pill>
       <Pill label="Arena Type" active={!!arena} onClear={() => go({ arena: '' })}>
-        <select className={sel} value={arena} onChange={(e) => go({ arena: e.target.value })}>
-          <option value="">All Arenas</option>
-          {arenas.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
+        <Dropdown variant="bare" ariaLabel="Arena Type" value={arena} placeholder="All Arenas"
+          options={[{ value: '', label: 'All Arenas' }, ...arenas.map((a) => ({ value: a, label: a }))]}
+          onSelect={(o) => go({ arena: o.value })} />
       </Pill>
       <Pill label="Minimum Rounds" active={minRounds !== '0'} onClear={() => go({ min_rounds: '' })}>
-        <select className={sel} value={minRounds} onChange={(e) => go({ min_rounds: e.target.value })}>
-          {['0', '3', '5', '10'].map((n) => <option key={n} value={n}>{n}+ Rounds</option>)}
-        </select>
+        <Dropdown variant="bare" ariaLabel="Minimum Rounds" value={minRounds}
+          options={['0', '3', '5', '10'].map((n) => ({ value: n, label: `${n}+ Rounds` }))}
+          onSelect={(o) => go({ min_rounds: o.value })} />
       </Pill>
       <Pill label="Date Range" active={range !== 'all'} onClear={() => go({ range: '' })}>
-        <select className={sel} value={range} onChange={(e) => go({ range: e.target.value })}>
-          {RANGES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-        </select>
+        <Dropdown variant="bare" ariaLabel="Date Range" value={range}
+          options={RANGES.map(([k, l]) => ({ value: k, label: l }))}
+          onSelect={(o) => go({ range: o.value })} />
       </Pill>
       <span className="text-sky text-xs cursor-pointer" onClick={() => router.push('/dashboard')}>Reset Filters</span>
     </div>

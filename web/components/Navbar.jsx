@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { API } from '../lib/api';
 import { useSeason } from './global';
+import Dropdown from './Dropdown';
 import { useAuth } from './auth';
 
 // Minimal header (landing + auth pages): no nav controls for logged-out
@@ -221,16 +222,12 @@ export function NavSeason() {
   const hidden = useLandingHidden();
   if (hidden) return null;
   return (
-    <select
-      value={season}
-      onChange={(e) => setSeason(e.target.value)}
-      title="Season filter — applies to Horses, Riders & Events lists"
-      className="hidden sm:block bg-card border border-line rounded text-body px-2 py-[7px] text-[13px] max-w-[150px] cursor-pointer focus:border-gold/60 focus:outline-none"
-    >
-      <option value="">Season: All ▾</option>
-      {seasons.map((s) => (
-        <option key={s} value={s}>Season {s.replace('-', '/')}</option>
-      ))}
-    </select>
+    <span title="Season filter — applies to Horses, Riders & Events lists" className="hidden sm:block">
+      <Dropdown ariaLabel="Season filter" value={season} placeholder="Season: All"
+        options={[{ value: '', label: 'Season: All' },
+          ...seasons.map((s) => ({ value: s, label: `Season ${s.replace('-', '/')}` }))]}
+        onSelect={(o) => setSeason(o.value)}
+        buttonClassName="bg-card max-w-[170px]" menuClassName="min-w-[170px]" />
+    </span>
   );
 }

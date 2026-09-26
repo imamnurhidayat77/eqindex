@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../../../../lib/api';
 import { briefPoints } from '../../../../lib/eq';
 import { CARD, H1, SUB, INP, BTN_PRIMARY, badge, BADGE } from '../../../../lib/tokens';
+import Dropdown from '../../../../components/Dropdown';
 
 const CLASS_TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
 const STATUSES = ['finished', 'eliminated', 'withdrawn', 'retired', 'disqualified'];
@@ -112,15 +113,15 @@ export default function AddResult() {
       <section className={CARD}>
         <div className="grid md:grid-cols-2 gap-3">
           <label className="text-xs text-muted flex flex-col gap-1">Event
-            <select className={INP} value={eventId} onChange={(e) => setEventId(e.target.value)}>
-              <option value="">— select —</option>
-              {events.map((e) => <option key={e.id} value={e.id}>{e.name} · {(e.date_start || '').slice(0, 10)}</option>)}
-            </select></label>
+            <Dropdown ariaLabel="Event" value={eventId} searchable placeholder="— select —"
+              options={[{ value: '', label: '— select —' },
+                ...events.map((e) => ({ value: e.id, label: `${e.name} · ${(e.date_start || '').slice(0, 10)}` }))]}
+              onSelect={(o) => setEventId(o.value)} /></label>
           <label className="text-xs text-muted flex flex-col gap-1">Class
-            <select className={INP} value={classId} onChange={(e) => { setClassId(e.target.value); setNewClass(''); }} disabled={!eventId}>
-              <option value="">— select or type new below —</option>
-              {classes.map((c) => <option key={c.id} value={c.id}>{c.name}{c.class_date ? ` · ${c.class_date.slice(0, 10)}` : ''}</option>)}
-            </select></label>
+            <Dropdown ariaLabel="Class" value={classId} searchable placeholder="— select or type new below —" disabled={!eventId}
+              options={[{ value: '', label: '— select or type new below —' },
+                ...classes.map((c) => ({ value: c.id, label: `${c.name}${c.class_date ? ` · ${c.class_date.slice(0, 10)}` : ''}` }))]}
+              onSelect={(o) => { setClassId(o.value); setNewClass(''); }} /></label>
           {!classId && (
             <label className="text-xs text-muted flex flex-col gap-1">+ New class name
               <input className={INP} value={newClass} onChange={(e) => setNewClass(e.target.value)} placeholder="e.g. 1.30m Championship" /></label>
@@ -136,9 +137,9 @@ export default function AddResult() {
           <label className="text-xs text-muted flex flex-col gap-1">Time (s)
             <input className={INP} inputMode="decimal" value={f.time_seconds} onChange={set('time_seconds')} placeholder="65.42" /></label>
           <label className="text-xs text-muted flex flex-col gap-1">Status
-            <select className={INP} value={f.status} onChange={set('status')}>
-              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select></label>
+            <Dropdown ariaLabel="Status" value={f.status}
+              options={STATUSES.map((s) => ({ value: s, label: s }))}
+              onSelect={(o) => setF({ ...f, status: o.value })} /></label>
           <label className="text-xs text-muted flex flex-col gap-1">Notes
             <input className={INP} value={f.notes} onChange={set('notes')} placeholder="optional" /></label>
         </div>

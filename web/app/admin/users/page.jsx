@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_DANGER } from '../../../lib/tokens';
+import Dropdown from '../../../components/Dropdown';
 
 const ROLES = ['PUBLIC', 'RIDER', 'COACH', 'OWNER', 'BREEDER', 'ADMIN'];
 
@@ -58,9 +59,9 @@ export default function AdminUsers() {
                 <td className={TD}><b>{u.name}</b></td>
                 <td className={`${TD} text-muted`}>{u.email}</td>
                 <td className={TD}>
-                  <select className={INP} value={u.role} onChange={(e) => setRole(u, e.target.value)}>
-                    {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                  </select>
+                  <Dropdown ariaLabel="Role" value={u.role} size="sm"
+                    options={ROLES.map((r) => ({ value: r, label: r }))}
+                    onSelect={(o) => setRole(u, o.value)} />
                 </td>
                 <td className={`${TD} ${NUM} ${u.active_sessions ? 'text-moss font-bold' : 'text-faint'}`}>{u.active_sessions}</td>
                 <td className={`${TD} text-muted`}>{(u.created_at || '').slice(0, 10)}</td>

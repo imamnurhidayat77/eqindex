@@ -5,6 +5,7 @@ import { eqScore } from '../../lib/eq';
 import { matchupEdge } from '../../lib/forecast';
 import { statusBadge } from '../../lib/tokens';
 import { ScoreRing } from '../../components/charts';
+import Dropdown from '../../components/Dropdown';
 
 const MODES = [['horse', 'Horse vs Horse'], ['rider', 'Rider vs Rider'], ['combination', 'Combination']];
 
@@ -48,14 +49,15 @@ export default function Comparison() {
         <div className="text-[11px] uppercase tracking-wide text-muted mb-2">
           Entity {side} ({type === 'horse' ? 'Stallion / Mare' : type === 'rider' ? 'Athlete' : 'Pair'})
         </div>
-        <select value={id} onChange={(e) => setId(e.target.value)}
-          className="w-full bg-ink border border-line text-body rounded px-3 py-2.5 text-sm mb-3">
-          {list.map((x) => (
-            <option key={idOf(type, x)} value={idOf(type, x)}>
-              {nameOf(type, x)} — EQ {eqScore(x.clear_pct, x.avg_faults, startsOf(type, x))}
-            </option>
-          ))}
-        </select>
+        <div className="mb-3">
+          <Dropdown ariaLabel={`Entity ${side}`} value={id} searchable placeholder="Pick an entity…"
+            buttonClassName="w-full" menuClassName="w-full"
+            options={list.map((x) => ({
+              value: idOf(type, x),
+              label: `${nameOf(type, x)} — EQ ${eqScore(x.clear_pct, x.avg_faults, startsOf(type, x))}`,
+            }))}
+            onSelect={(o) => setId(o.value)} />
+        </div>
         {cur && (
           <div className="bg-card2 border border-line rounded px-4 py-3 flex justify-between items-center">
             <b>{nameOf(type, cur)}</b>

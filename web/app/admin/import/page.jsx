@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
+import Dropdown from '../../../components/Dropdown';
 
 const SPEC = 'class_name, class_type, class_date, rider_name, horse_name, placing, faults, time, time_faults, height_cm, status, notes, series_key';
 
@@ -112,10 +113,10 @@ export default function AdminImport() {
         </div>
         <div className="flex flex-wrap gap-2.5 items-end mb-3">
           <label className="text-xs text-muted flex flex-col gap-1">Target event
-            <select className={INP} value={eventId} onChange={(e) => setEventId(e.target.value)}>
-              <option value="">— select —</option>
-              {events.map((e) => <option key={e.id} value={e.id}>{e.name} · {(e.date_start || '').slice(0, 10)}</option>)}
-            </select></label>
+            <Dropdown ariaLabel="Target event" value={eventId} searchable placeholder="— select —"
+              options={[{ value: '', label: '— select —' },
+                ...events.map((e) => ({ value: e.id, label: `${e.name} · ${(e.date_start || '').slice(0, 10)}` }))]}
+              onSelect={(o) => setEventId(o.value)} /></label>
           <label className="text-xs text-muted flex flex-col gap-1">…or {mode.toUpperCase()} file
             <input type="file" accept={mode === 'csv' ? '.csv,text/csv' : '.json,application/json'} onChange={onFile} className="text-[13px] text-muted" /></label>
           <span className="flex gap-2 ml-auto">

@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { API } from '../../lib/api';
 import { CARD, H1, SUB, INP, BTN_PRIMARY, MUT } from '../../lib/tokens';
+import Dropdown from '../../components/Dropdown';
 
 const TYPES = ['', 'horse', 'rider', 'event', 'class', 'result', 'other'];
 
@@ -46,9 +47,9 @@ export default function Contact() {
           <label className="text-xs text-muted flex flex-col gap-1">Subject
             <input className={INP} value={f.subject} onChange={set('subject')} /></label>
           <label className="text-xs text-muted flex flex-col gap-1">Relates to
-            <select className={INP} value={f.entity_type} onChange={set('entity_type')}>
-              {TYPES.map((t) => <option key={t} value={t}>{t || '—'}</option>)}
-            </select></label>
+            <Dropdown ariaLabel="Relates to" value={f.entity_type}
+              options={TYPES.map((t) => ({ value: t, label: t || '—' }))}
+              onSelect={(o) => setF({ ...f, entity_type: o.value })} /></label>
           <label className="text-xs text-muted flex flex-col gap-1 md:col-span-2">Message
             <textarea className={INP} required rows={4} value={f.message} onChange={set('message')}
               placeholder="Which result is wrong and what should it be?" /></label>

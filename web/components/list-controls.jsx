@@ -1,15 +1,15 @@
 'use client';
 
 import { HEIGHT_BANDS, heightParams } from '../lib/heights';
+import Dropdown from './Dropdown';
 
 export { HEIGHT_BANDS, heightParams };
-
-const selCls = 'bg-ink border border-line text-body rounded px-2.5 py-2 text-[13px] max-w-[160px]';
 
 export const SERIES_CATS = ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Open'];
 
 export function FilterBar({ f, set, seasons, regions, arenas, showHeight = true, showMinStarts = true, showCategory = false }) {
   const upd = (k) => (e) => set({ ...f, [k]: e.target.value });
+  const pick = (k) => (o) => set({ ...f, [k]: o.value });
   const clear = () => set({ q: '', season: '', region: '', arena: '', height: '', minStarts: '1', category: '' });
   const active = [f.q, f.season, f.region, f.arena, f.height, f.category].some(Boolean) || f.minStarts !== '1';
   return (
@@ -21,48 +21,45 @@ export function FilterBar({ f, set, seasons, regions, arenas, showHeight = true,
       </label>
       <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
         Season
-        <select value={f.season} onChange={upd('season')} className={selCls}>
-          <option value="">All seasons</option>
-          {seasons.map((s) => <option key={s} value={s}>{s.replace('-', '/')}</option>)}
-        </select>
+        <Dropdown ariaLabel="Season" value={f.season} placeholder="All seasons"
+          options={[{ value: '', label: 'All seasons' },
+            ...seasons.map((s) => ({ value: s, label: s.replace('-', '/') }))]}
+          onSelect={pick('season')} />
       </label>
       <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
         Region
-        <select value={f.region} onChange={upd('region')} className={selCls}>
-          <option value="">All regions</option>
-          {regions.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
+        <Dropdown ariaLabel="Region" value={f.region} placeholder="All regions"
+          options={[{ value: '', label: 'All regions' }, ...regions.map((r) => ({ value: r, label: r }))]}
+          onSelect={pick('region')} />
       </label>
       <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
         Arena
-        <select value={f.arena} onChange={upd('arena')} className={selCls}>
-          <option value="">All arenas</option>
-          {arenas.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
+        <Dropdown ariaLabel="Arena" value={f.arena} placeholder="All arenas"
+          options={[{ value: '', label: 'All arenas' }, ...arenas.map((a) => ({ value: a, label: a }))]}
+          onSelect={pick('arena')} />
       </label>
       {showHeight && (
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
           Height
-          <select value={f.height} onChange={upd('height')} className={selCls}>
-            {HEIGHT_BANDS.map((h) => <option key={h.v} value={h.v}>{h.label}</option>)}
-          </select>
+          <Dropdown ariaLabel="Height" value={f.height}
+            options={HEIGHT_BANDS.map((h) => ({ value: h.v, label: h.label }))}
+            onSelect={pick('height')} />
         </label>
       )}
       {showCategory && (
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
           Category
-          <select value={f.category || ''} onChange={upd('category')} className={selCls}>
-            <option value="">All categories</option>
-            {SERIES_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <Dropdown ariaLabel="Category" value={f.category || ''} placeholder="All categories"
+            options={[{ value: '', label: 'All categories' }, ...SERIES_CATS.map((c) => ({ value: c, label: c }))]}
+            onSelect={pick('category')} />
         </label>
       )}
       {showMinStarts && (
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
           Min starts
-          <select value={f.minStarts} onChange={upd('minStarts')} className={selCls}>
-            {['1', '3', '5', '10'].map((n) => <option key={n} value={n}>{n}+</option>)}
-          </select>
+          <Dropdown ariaLabel="Min starts" value={f.minStarts}
+            options={['1', '3', '5', '10'].map((n) => ({ value: n, label: `${n}+` }))}
+            onSelect={pick('minStarts')} />
         </label>
       )}
       {active && (
@@ -90,10 +87,9 @@ export function Pagination({ page, pages, setPage, perPage, setPerPage, total })
         {total} result{total === 1 ? '' : 's'} · Page {page} of {pages}
       </div>
       <div className="flex items-center gap-1.5">
-        <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
-          className="mr-1 rounded border border-line bg-ink px-2 py-1.5 text-[13px] text-body">
-          {[10, 25, 50].map((n) => <option key={n} value={n}>{n} / page</option>)}
-        </select>
+        <Dropdown ariaLabel="Rows per page" value={String(perPage)}
+          options={[10, 25, 50].map((n) => ({ value: String(n), label: `${n} / page` }))}
+          onSelect={(o) => { setPerPage(Number(o.value)); setPage(1); }} />
         <button disabled={page <= 1} onClick={() => setPage(page - 1)} className={btn(false) + ' disabled:opacity-40'}>‹</button>
         {nums.map((n) => (
           <button key={n} onClick={() => setPage(n)} className={btn(n === page)}>{n}</button>

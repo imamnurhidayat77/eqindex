@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
 import { useAuth } from '../../components/auth';
 import { eqScore } from '../../lib/eq';
+import { recommendHeight } from '../../lib/forecast';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, EMPTY, INP, BTN_PRIMARY, BTN_DANGER, LINK, LIVE, badge, BADGE } from '../../lib/tokens';
 
 async function authed(path, opts = {}) {
@@ -24,6 +25,52 @@ function trendOf(clearPct, history) {
   return ['Stable', 'text-muted', '→'];
 }
 
+function AthleteDetail({ a }) {
+  return (
+    <tr>
+      <td colSpan={11} className="px-2 py-3 border-b border-rowline bg-ink/40">
+<div className="grid gap-3 md:grid-cols-3">
+                      <div className="rounded border border-line bg-card2 p-3">
+                        <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1.5">Workload</div>
+                        <div className="text-[13px] text-muted space-y-1">
+                          <div>Shows tracked: <b className="text-white">{a.workload.shows}</b></div>
+                          <div>Rounds / 30 days: <b className={a.workload.last30 > 6 ? 'text-blood' : 'text-white'}>{a.workload.last30}</b></div>
+                          <div>Tightest turnaround: <b className="text-white">{a.workload.minGap !== null ? `${a.workload.minGap} days` : '—'}</b></div>
+                          <div>Latest outing: <b className="text-white">{a.workload.latest || '—'}</b></div>
+                          {a.workload.overloaded && <div className="text-blood font-bold">⚠ Rest recommended — schedule recovery before next entry.</div>}
+                        </div>
+                      </div>
+                      <div className="rounded border border-line bg-card2 p-3">
+                        <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1.5">Height readiness</div>
+                        {a.bandArr.length ? (
+                          <div className="space-y-1.5">
+                            {a.bandArr.map((b) => (
+                              <div key={b.label} className="flex items-center gap-2 text-[12.5px]">
+                                <span className="w-[52px] text-muted">{b.label}</span>
+                                <span className="flex-1 h-1.5 rounded bg-line overflow-hidden"><span className="block h-full bg-gold" style={{ width: `${Math.min(100, b.clear)}%` }} /></span>
+                                <span className="w-[64px] text-right text-muted">{b.clear.toFixed(0)}% · {b.rounds}r</span>
+                              </div>
+                            ))}
+                            {a.heightRec && <div className="text-[12.5px] pt-1">Step-up call: <b className="text-gold">{a.heightRec.optimal.label} solid{a.heightRec.stretch ? ` → ready for ${a.heightRec.stretch.label}` : ''}</b></div>}
+                          </div>
+                        ) : <div className="text-[13px] text-faint">No height data.</div>}
+                      </div>
+                      <div className="rounded border border-line bg-card2 p-3">
+                        <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1.5">Partnership matrix</div>
+                        {a.matrix ? (
+                          <div className="text-[13px] text-muted space-y-1">
+                            <div>✓ Best: <b className="text-moss">{a.matrix.best.horse}</b> ({Number(a.matrix.best.clear_pct).toFixed(0)}% · {a.matrix.best.rounds_together}r)</div>
+                            <div>✗ Weakest: <b className="text-blood">{a.matrix.worst.horse}</b> ({Number(a.matrix.worst.clear_pct).toFixed(0)}% · {a.matrix.worst.rounds_together}r)</div>
+                            <div className="text-faint text-[12px]">Last 5: {(a.hist || []).slice(0, 5).map((x) => x.clear_round ? '○' : '●').join(' ') || '—'} (● = faults)</div>
+                          </div>
+                        ) : <div className="text-[13px] text-faint">Fewer than 2 shared rounds per pairing.</div>}
+                      </div>
+</div>
+      </td>
+    </tr>
+  );
+}
+
 export default function MyStable() {
   const { user, loading: authLoading } = useAuth();
   const [roster, setRoster] = useState([]);
@@ -31,6 +78,8 @@ export default function MyStable() {
   const [candidates, setCandidates] = useState([]);
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState({});
+  const toggle = (id) => setExpanded((e) => ({ ...e, [id]: !e[id] }));
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -75,10 +124,42 @@ export default function MyStable() {
     const [trend, tCls, arrow] = trendOf(clear, hist);
     const best = (d.partnerships || [])[0] || null;
     const last = hist[0] || null;
+    // workload: distinct show dates, last-30d volume, tightest turnaround
+    const days = [...new Set(hist.map((x) => (x.class_date || '').slice(0, 10)).filter(Boolean))].sort().reverse();
+    const latest = days[0] ? new Date(days[0]) : null;
+    const last30 = latest ? days.filter((x) => (latest - new Date(x)) / 864e5 <= 30).length : 0;
+    let minGap = null;
+    for (let i = 1; i < days.length; i++) {
+      const gap = Math.round((new Date(days[i - 1]) - new Date(days[i])) / 864e5);
+      if (minGap === null || gap < minGap) minGap = gap;
+    }
+    const overloaded = last30 > 6 || (days.length >= 2 && minGap !== null && minGap < 7);
+    // height readiness per band
+    const bands = {};
+    for (const x of hist) {
+      const cm = num(x.height_cm, 0);
+      if (!cm) continue;
+      const b = cm < 120 ? '<1.20m' : cm < 130 ? '1.20m' : cm < 140 ? '1.30m' : '1.40m+';
+      const cmRef = { '<1.20m': 110, '1.20m': 120, '1.30m': 130, '1.40m+': 140 }[b];
+      (bands[b] ||= { label: b, cm: cmRef, rounds: 0, clears: 0 });
+      bands[b].rounds += 1;
+      if (x.clear_round) bands[b].clears += 1;
+    }
+    const bandArr = Object.values(bands).map((b) => ({ ...b, clear: b.rounds ? 100 * b.clears / b.rounds : 0 }))
+      .sort((a, b2) => b2.rounds - a.rounds);
+    const heightRec = recommendHeight(bandArr.map((b) => ({ label: b.label, cm: b.cm, rounds: b.rounds, clear: b.clear })));
+    // partnership matrix: best + worst with >=2 rounds
+    const pairs = (d.partnerships || []).filter((x) => num(x.rounds_together) >= 2);
+    const matrix = pairs.length ? {
+      best: pairs.reduce((a, b) => num(b.clear_pct) > num(a.clear_pct) ? b : a),
+      worst: pairs.reduce((a, b) => num(b.clear_pct) < num(a.clear_pct) ? b : a),
+    } : null;
     return {
       ...r, eq: eqScore(clear, avg, starts), clear, avg, starts,
       wins: num(st.wins), trend, tCls, arrow, best, last,
       horses: num(st.horses_ridden ?? new Set(hist.map((x) => x.horse_id)).size),
+      workload: { shows: days.length, last30, minGap, overloaded, latest: days[0] || null },
+      bandArr, heightRec, matrix, hist,
     };
   }).sort((a, b) => b.eq - a.eq), [roster, detail]);
 
@@ -163,27 +244,37 @@ export default function MyStable() {
             <th className={TH}>Athlete</th><th className={`${TH} ${NUM}`}>EQ</th>
             <th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th>
             <th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Wins</th>
-            <th className={TH}>Trend</th><th className={TH}>Best Horse</th><th className={TH}>Last Round</th><th className={TH}></th>
+            <th className={TH}>Trend</th><th className={TH}>Workload</th><th className={TH}>Best Horse</th><th className={TH}>Last Round</th><th className={TH}></th>
           </tr></thead>
           <tbody>
             {athletes.map((a) => (
+              <>
               <tr key={a.id}>
-                <td className={TD}><a href={`/riders/${a.id}`} className="text-white font-semibold no-underline hover:text-gold">{a.name || a.rider}</a></td>
+                <td className={TD}>
+                  <button onClick={() => toggle(a.id)} className="text-faint text-[11px] mr-1.5 bg-none border-0 cursor-pointer" title="Expand analysis">{expanded[a.id] ? '▾' : '▸'}</button>
+                  <a href={`/riders/${a.id}`} className="text-white font-semibold no-underline hover:text-gold">{a.name || a.rider}</a>
+                  {a.workload.overloaded && <span className="ml-1.5 text-[10px] font-bold text-blood" title=">6 rounds/30d or shows <7d apart">⚠ LOAD</span>}
+                </td>
                 <td className={`${TD} ${NUM}`}><b className="text-gold">{a.eq}</b></td>
                 <td className={`${TD} ${NUM} text-muted`}>{a.clear.toFixed(0)}%</td>
                 <td className={`${TD} ${NUM} text-muted`}>{a.avg.toFixed(2)}</td>
                 <td className={`${TD} ${NUM} text-muted`}>{a.starts}</td>
                 <td className={`${TD} ${NUM} text-muted`}>{a.wins}</td>
                 <td className={`${TD} font-semibold text-[13px] ${a.tCls}`}>{a.arrow} {a.trend}</td>
+                <td className={`${TD} text-[13px] ${a.workload.overloaded ? 'text-blood font-bold' : 'text-muted'}`}>
+                  {a.workload.last30}r/30d{a.workload.minGap !== null ? ` · gap ${a.workload.minGap}d` : ''}
+                </td>
                 <td className={TD}>{a.best ? <span className="text-muted text-[13px]">{a.best.horse} ({Number(a.best.clear_pct).toFixed(0)}%)</span> : <span className="text-faint">—</span>}</td>
                 <td className={TD}>
                   {a.last ? <span className="text-muted text-[13px]">{a.last.event_name} · {a.last.finish_place ? `#${a.last.finish_place}` : `${Number(a.last.total_faults).toFixed(0)} flt`}</span> : <span className="text-faint">—</span>}
                 </td>
                 <td className={TD}><button className={BTN_DANGER} disabled={busy} onClick={() => remove(a.id)}>Remove</button></td>
               </tr>
+              {expanded[a.id] && <AthleteDetail key={'d'+a.id} a={a} />}
+              </>
             ))}
-            {!athletes.length && !loading && <tr><td colSpan={10} className={EMPTY}>Roster empty — add your first athlete above.</td></tr>}
-            {loading && <tr><td colSpan={10} className={EMPTY}>Loading roster…</td></tr>}
+            {!athletes.length && !loading && <tr><td colSpan={11} className={EMPTY}>Roster empty — add your first athlete above.</td></tr>}
+            {loading && <tr><td colSpan={11} className={EMPTY}>Loading roster…</td></tr>}
           </tbody>
         </table>
         </div>

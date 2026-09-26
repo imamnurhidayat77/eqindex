@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, LINK } from '../lib/tokens';
+import Dropdown from './Dropdown';
 
 // Generic admin CRUD table. Config: { title, sub, base ('horses'|'riders'|'events'),
 // profile: (row) => href|null, columns: [{k,label,num?}], fields: [{k,label,type?,options?}] }
@@ -56,10 +57,9 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
   const inputFor = (fld) => {
     if (fld.options) {
       return (
-        <select className={INP} value={form[fld.k] ?? ''} onChange={(e) => setForm({ ...form, [fld.k]: e.target.value })}>
-          <option value="">—</option>
-          {fld.options.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
+        <Dropdown ariaLabel={fld.label} value={form[fld.k] ?? ''} placeholder="—"
+          options={[{ value: '', label: '—' }, ...fld.options.map((o) => ({ value: o, label: o }))]}
+          onSelect={(o) => setForm({ ...form, [fld.k]: o.value })} />
       );
     }
     return (

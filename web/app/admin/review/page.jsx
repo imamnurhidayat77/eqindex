@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { BTN_SECONDARY, BTN_DANGER, BTN_PRIMARY, CARD, EMPTY, H1, H2, INP, MUT, SUB } from '../../../lib/tokens';
+import Dropdown from '../../../components/Dropdown';
 
 export default function ReviewQueue() {
   const [items, setItems] = useState([]);
@@ -62,10 +63,10 @@ export default function ReviewQueue() {
           )}
           <div className="flex gap-3 items-end flex-wrap">
             <button className={BTN_PRIMARY} onClick={() => act(q.id, 'approve_new')}>Approve new</button>
-            <label className="text-xs text-muted flex flex-col gap-1">Merge into <select className={INP} value={match[q.id] || ''} onChange={(e) => setMatch({ ...match, [q.id]: e.target.value })}>
-              <option value="">—</option>
-              {(cands[q.kind] || []).map((c) => <option key={c[key(q.kind)]} value={c[key(q.kind)]}>{c[nm(q.kind)]}</option>)}
-            </select></label>
+            <label className="text-xs text-muted flex flex-col gap-1">Merge into <Dropdown ariaLabel="Merge into" value={match[q.id] || ''} searchable placeholder="—"
+              options={[{ value: '', label: '—' },
+                ...(cands[q.kind] || []).map((c) => ({ value: c[key(q.kind)], label: c[nm(q.kind)] }))]}
+              onSelect={(o) => setMatch({ ...match, [q.id]: o.value })} /></label>
             <button className={BTN_SECONDARY} onClick={() => act(q.id, 'merge', match[q.id])} disabled={!match[q.id]}>Merge</button>
             <button className={BTN_DANGER} onClick={() => act(q.id, 'reject')}>Reject</button>
           </div>
