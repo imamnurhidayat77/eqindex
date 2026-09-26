@@ -40,26 +40,6 @@ export default async function About() {
       </section>
 
       <section className={CARD}>
-        <h2 className={H2}>Where data comes from</h2>
-        <p className="text-muted text-sm mb-3">Four channels, one pipeline. Nothing is scraped against a source's terms.</p>
-        <div className={TABLEWRAP}>
-        <table className={TABLE}>
-          <thead><tr><th className={TH}>Channel</th><th className={TH}>What flows in</th><th className={TH}>Trust level</th></tr></thead>
-          <tbody>
-            {[
-              ['Organiser CSV / JSON import', 'Full class results via the admin import pipeline — validated, previewed, duplicate-checked.', 'Highest — primary source'],
-              ['ESNZ series publications', 'Official points tables for national series.', 'Official where labelled'],
-              ['Timing & entry systems', 'Exports from Equipe, EvoEvents, Main-Events via organiser partnership or licensed API.', 'High — organiser-supplied'],
-              ['Stable & user records', 'Training logs, health records, profiles claimed by riders/coaches, correction reports.', 'Verified on review'],
-            ].map(([c, w, t]) => (
-              <tr key={c}><td className={TD}><b>{c}</b></td><td className={`${TD} text-muted`}>{w}</td><td className={TD}><span className={badge(BADGE.green)}>{t}</span></td></tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      </section>
-
-      <section className={CARD}>
         <h2 className={H2}>Pipeline: file to intelligence</h2>
         <div className="grid gap-2.5 md:grid-cols-5 mt-2">
           {[['1 · Ingest', 'CSV/JSON parsed, staged as raw results.'], ['2 · Identity', 'Names normalised; ambiguous names queue for human review.'], ['3 · Score', 'Points auto-calculated by the database trigger.'], ['4 · Aggregate', 'Rankings, trends, partnerships, series recomputed.'], ['5 · Publish', 'Labelled Provisional or Official with audit trail.']].map(([t, d]) => (
