@@ -38,6 +38,8 @@ const GROUPS = [
   ['Series', [
     ['GET', '/series', 'Series list with entry counts.'],
     ['GET', '/series/:key/standings', 'Points standings ?limit (rank, rider, horse, points, shows).'],
+    ['GET', '/series/:key/detail', 'Engine view: per-event matrix, completed/remaining, drops, source, last calculated.'],
+    ['POST', '/admin/series/:key/recalc', 'Stamp calculated_at (ADMIN).'],
   ]],
   ['Watchlist & alerts — identity via ?user_id= or X-User-Id header', [
     ['GET', '/watchlist', 'Watched entities with resolved names.'],

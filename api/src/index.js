@@ -996,7 +996,7 @@ const STATUS_MAP = { E: 'eliminated', R: 'retired', W: 'withdrawn', DQ: 'disqual
 
 // Canonical import record (JSON mode uses these exact keys; CSV headers map to them).
 const IMPORT_FIELDS = ['class_name', 'class_type', 'class_date', 'rider_name', 'horse_name',
-  'placing', 'faults', 'time', 'time_faults', 'height_cm', 'status', 'notes'];
+  'placing', 'faults', 'time', 'time_faults', 'height_cm', 'status', 'notes', 'series_key'];
 
 app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
   const { event_id, event, csv, records, filename, source, dry_run } = req.body || {};
@@ -1028,6 +1028,7 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
     time: col('time', 'time_seconds'), tfaults: col('time_faults'), height: col('height_cm', 'height'),
     status: col('status'), notes: col('notes'),
   };
+  ci.series = col('series_key', 'series');
   for (const k of ['cls', 'rider', 'horse']) {
     if (ci[k] < 0) return res.status(400).json({ error: `missing required column for ${k} (class_name, rider_name, horse_name)` });
   }
@@ -1105,12 +1106,16 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       const newHorse = !hRow, newRider = !rRow;
       if (!hRow) hRow = (await client.query('INSERT INTO horses (name, normalized_name) VALUES ($1,$2) RETURNING id', [horse, hn])).rows[0];
       if (!rRow) rRow = (await client.query('INSERT INTO riders (name, normalized_name) VALUES ($1,$2) RETURNING id', [rider, rn])).rows[0];
-      let cRow = (await client.query('SELECT id FROM classes WHERE event_id = $1 AND name = $2 AND COALESCE(class_date::TEXT,\'\') = COALESCE($3,\'\')', [evId, cls, cdate])).rows[0];
+      const seriesKey = g(ci.series) || null;
+      let cRow = (await client.query('SELECT id, series_key FROM classes WHERE event_id = $1 AND name = $2 AND COALESCE(class_date::TEXT,\'\') = COALESCE($3,\'\')', [evId, cls, cdate])).rows[0];
       const newClass = !cRow;
       if (!cRow) {
         cRow = (await client.query(
-          'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, source) VALUES ($1,$2,$3,$4,$5,\'MANUAL\') RETURNING id',
-          [evId, cls, cdate || null, hcm, ctype])).rows[0];
+          'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, series_key, source) VALUES ($1,$2,$3,$4,$5,$6,\'MANUAL\') RETURNING id',
+          [evId, cls, cdate || null, hcm, ctype, seriesKey])).rows[0];
+      } else if (seriesKey && !cRow.series_key) {
+        await client.query('UPDATE classes SET series_key = $2 WHERE id = $1', [cRow.id, seriesKey]);
+        cRow.series_key = seriesKey;
       }
       const dup = await client.query(
         'SELECT id FROM round_results WHERE class_id = $1 AND horse_id = $2 AND rider_id = $3',
@@ -1463,6 +1468,7 @@ app.get('/admin/series', needRole('ADMIN'), asyncH(async (req, res) => {
     `SELECT s.series_key, MIN(s.series_name) AS series_name, MIN(s.event_name) AS event_name,
        MIN(s.season) AS season, COUNT(*)::INT AS entries,
        MIN(i.display_name) AS display_name, MIN(i.qual_rules) AS qual_rules,
+       MAX(i.best_of) AS best_of, BOOL_OR(COALESCE(i.auto_calc, FALSE)) AS auto_calc,
        BOOL_OR(COALESCE(i.is_official, FALSE)) AS is_official,
        MIN(i.official_source) AS official_source, MIN(i.description) AS description
      FROM series_standings s LEFT JOIN series_info i ON i.series_key = s.series_key
@@ -1471,16 +1477,19 @@ app.get('/admin/series', needRole('ADMIN'), asyncH(async (req, res) => {
 }));
 
 app.patch('/admin/series/:key', needRole('ADMIN'), asyncH(async (req, res) => {
-  const { display_name, description, qual_rules, is_official, official_source } = req.body || {};
+  const { display_name, description, qual_rules, is_official, official_source, best_of, auto_calc } = req.body || {};
+  const bo = best_of === '' || best_of === null || best_of === undefined ? null : parseInt(best_of, 10);
+  if (bo !== null && !(bo > 0)) return res.status(400).json({ error: 'best_of must be positive' });
   const { rows } = await pool.query(
-    `INSERT INTO series_info (series_key, display_name, description, qual_rules, is_official, official_source, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,NOW())
+    `INSERT INTO series_info (series_key, display_name, description, qual_rules, is_official, official_source, best_of, auto_calc, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
      ON CONFLICT (series_key) DO UPDATE SET display_name = EXCLUDED.display_name,
        description = EXCLUDED.description, qual_rules = EXCLUDED.qual_rules,
        is_official = EXCLUDED.is_official, official_source = EXCLUDED.official_source,
+       best_of = EXCLUDED.best_of, auto_calc = EXCLUDED.auto_calc,
        updated_at = NOW() RETURNING *`,
     [req.params.key, display_name || null, description || null, qual_rules || null,
-     !!is_official, official_source || null]);
+     !!is_official, official_source || null, bo, !!auto_calc]);
   audit(req, 'series.edit', 'series', req.params.key, { is_official: !!is_official });
   res.json({ data: rows[0] });
 }));
@@ -1548,6 +1557,76 @@ app.get('/venues', asyncH(async (req, res) => {
      FROM venues v ${req.query.q ? 'WHERE v.name ILIKE $1' : ''} ORDER BY v.name LIMIT 100`,
     req.query.q ? [q] : []);
   res.json({ data: rows });
+}));
+
+// ---- Series engine (spec v2 S5): matrix, completed/remaining, drops, recalc ----
+app.get('/series/:key/detail', asyncH(async (req, res) => {
+  const key = req.params.key;
+  const info = (await pool.query('SELECT * FROM series_info WHERE series_key = $1', [key])).rows[0] || null;
+  let standings, events, source;
+  if (info && info.auto_calc) {
+    const { rows } = await pool.query(
+      `SELECT r.name AS rider, h.name AS horse, e.name AS event, e.id AS event_id,
+         MIN(c.class_date) AS event_date, SUM(rr.points)::INT AS pts, COUNT(*)::INT AS rounds
+       FROM round_results rr
+       JOIN classes c ON c.id = rr.class_id
+       JOIN events e ON e.id = rr.event_id
+       JOIN riders r ON r.id = rr.rider_id
+       JOIN horses h ON h.id = rr.horse_id
+       WHERE c.series_key = $1
+       GROUP BY r.name, h.name, e.name, e.id`, [key]);
+    const byCombo = {};
+    for (const row of rows) {
+      const k = `${row.rider}||${row.horse}`;
+      (byCombo[k] ||= { rider: row.rider, horse: row.horse, events: {}, rounds: 0 });
+      byCombo[k].events[row.event] = (byCombo[k].events[row.event] || 0) + row.pts;
+      byCombo[k].rounds += row.rounds;
+    }
+    const n = info.best_of || null;
+    standings = Object.values(byCombo).map((c) => {
+      const scores = Object.values(c.events).sort((a, b) => b - a);
+      const counted = n ? scores.slice(0, n) : scores;
+      return { ...c, total: counted.reduce((s, v) => s + v, 0),
+        dropped: scores.length - counted.length,
+        dropped_pts: scores.slice(counted.length).reduce((s, v) => s + v, 0) };
+    }).sort((a, b) => b.total - a.total)
+      .map((c, i) => ({ ...c, rank: i + 1 }));
+    const evMap = {};
+    for (const row of rows) {
+      (evMap[row.event] ||= { event: row.event, event_id: row.event_id, date: row.event_date, combos: 0 });
+      evMap[row.event].combos += 1;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    events = Object.values(evMap)
+      .map((e) => ({ ...e, completed: (e.date || '') < today }))
+      .sort((a, b) => (a.date || '') < (b.date || '') ? -1 : 1);
+    source = 'independent';
+  } else {
+    const { rows } = await pool.query(
+      `SELECT rider_name, horse_name, total_points, points,
+         (SELECT COUNT(*) FROM jsonb_each_text(points) WHERE NULLIF(value, '') IS NOT NULL)::INT AS shows,
+         RANK() OVER (ORDER BY total_points DESC)::INT AS rank
+       FROM series_standings WHERE series_key = $1 ORDER BY total_points DESC`, [key]);
+    standings = rows.map((r) => ({
+      rider: r.rider_name, horse: r.horse_name, events: r.points || {},
+      total: Number(r.total_points), rank: Number(r.rank), shows: Number(r.shows),
+    }));
+    const labels = [...new Set(standings.flatMap((c) => Object.keys(c.events || {})))];
+    events = labels.map((event) => ({ event, event_id: null, date: null, combos: null, completed: null }));
+    source = info && info.is_official ? 'official' : 'independent';
+  }
+  const lastCalc = info?.calculated_at
+    || (await pool.query('SELECT MAX(imported_at) AS m FROM series_standings WHERE series_key = $1', [key])).rows[0]?.m
+    || null;
+  res.json({ data: { key, info, standings, events, source, last_calculated: lastCalc } });
+}));
+
+app.post('/admin/series/:key/recalc', needRole('ADMIN'), asyncH(async (req, res) => {
+  const { rows } = await pool.query(
+    `INSERT INTO series_info (series_key, calculated_at) VALUES ($1, NOW())
+     ON CONFLICT (series_key) DO UPDATE SET calculated_at = NOW() RETURNING *`, [req.params.key]);
+  audit(req, 'series.recalc', 'series', req.params.key, {});
+  res.json({ data: rows[0] });
 }));
 
 // eslint-disable-next-line no-unused-vars

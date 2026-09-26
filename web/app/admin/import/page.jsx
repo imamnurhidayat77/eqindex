@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
 
-const SPEC = 'class_name, class_type, class_date, rider_name, horse_name, placing, faults, time, time_faults, height_cm, status, notes';
+const SPEC = 'class_name, class_type, class_date, rider_name, horse_name, placing, faults, time, time_faults, height_cm, status, notes, series_key';
 
 const FIELD_DOCS = [
   ['class_name*', 'Class as listed, e.g. 1.30m Championship'],
@@ -15,6 +15,8 @@ const FIELD_DOCS = [
   ['height_cm', 'e.g. 130'],
   ['status', 'finished (default) | E | R | W | DQ'],
   ['notes', 'Free text, e.g. Withdrawn'],
+  ['series_key', 'Links the class into a series engine race, e.g. demo-premier-2526'],
+  ['series_key', 'Links the class into a series engine race, e.g. demo-premier-2526'],
 ];
 
 const SAMPLE_CSV = `class_name,class_type,class_date,rider_name,horse_name,placing,faults,time,time_faults,height_cm,status

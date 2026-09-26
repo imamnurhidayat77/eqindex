@@ -24,7 +24,7 @@ export default function AdminSeries() {
   }
   useEffect(() => { load(); }, []);
   function startEdit(r) {
-    setForm({ display_name: r.display_name || '', description: r.description || '', qual_rules: r.qual_rules || '', is_official: !!r.is_official, official_source: r.official_source || '' });
+    setForm({ display_name: r.display_name || '', description: r.description || '', qual_rules: r.qual_rules || '', is_official: !!r.is_official, official_source: r.official_source || '', best_of: r.best_of ?? '', auto_calc: !!r.auto_calc });
     setEditing(r); setErr('');
   }
   async function save() {
@@ -85,6 +85,14 @@ export default function AdminSeries() {
             <label className="text-xs text-muted flex items-center gap-2">
               <input type="checkbox" checked={!!form.is_official} onChange={(e) => setForm({ ...form, is_official: e.target.checked })} className="w-4 h-4 accent-gold" />
               Official (organiser-published) — unchecked means EQIndex-calculated independent
+            </label>
+          </div>
+          <div className="grid md:grid-cols-2 gap-3 mt-1">
+            <label className="text-xs text-muted flex flex-col gap-1">Best-of (dropped scores; empty = all count)
+              <input className={INP} inputMode="numeric" value={form.best_of} onChange={(e) => setForm({ ...form, best_of: e.target.value })} placeholder="e.g. 8" /></label>
+            <label className="text-xs text-muted flex items-center gap-2 pt-5">
+              <input type="checkbox" checked={!!form.auto_calc} onChange={(e) => setForm({ ...form, auto_calc: e.target.checked })} className="w-4 h-4 accent-gold" />
+              Auto-calculate from linked classes (ignores imported rows)
             </label>
           </div>
           <div className="flex gap-2 mt-3">

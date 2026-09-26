@@ -204,6 +204,17 @@ test('venues + surface splits', async () => {
   assert.ok(Array.isArray(rsp.data));
 });
 
+test('series engine detail', async () => {
+  const d = await get('/series/demo-premier-2526/detail');
+  assert.ok(Array.isArray(d.data.standings) && d.data.standings.length > 0);
+  assert.ok(Array.isArray(d.data.events));
+  assert.ok(['official', 'independent'].includes(d.data.source));
+  const first = d.data.standings[0];
+  assert.ok(first.total !== undefined && first.events && typeof first.events === 'object');
+  const recalc = await fetch(`${BASE}/admin/series/demo-premier-2526/recalc`, { method: 'POST' });
+  assert.equal(recalc.status, 401);
+});
+
 test('404s are honest JSON', async () => {
   const bad = await get('/horses/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(bad.error);
