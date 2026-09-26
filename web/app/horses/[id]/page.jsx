@@ -5,6 +5,7 @@ import { statusBadge } from '../../../lib/tokens';
 import WatchButton from '../../../components/WatchButton';
 import TrainingPanel from '../../../components/TrainingPanel';
 import SurfaceSplits from '../../../components/SurfaceSplits';
+import ExportCsv from '../../../components/ExportCsv';
 import HealthPanel from '../../../components/HealthPanel';
 import { Spark, EQMonthlyChart, MiniTrend } from '../../../components/horse-profile-charts';
 
@@ -172,7 +173,10 @@ export default async function HorseProfile({ params }) {
       </div>
 
       {/* competition */}
-      <h2 className="text-[15px] font-bold">Competition Performance</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[15px] font-bold">Competition Performance</h2>
+        <ExportCsv rows={history} filename={`${h.name}-record.csv`} />
+      </div>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Historical performance records from the NZ Showjumping Circuit.</p>
       <section className="mb-6 overflow-x-auto rounded border border-line bg-card">
         <table className="w-full min-w-[900px] border-collapse text-[13px]">

@@ -6,6 +6,7 @@ import WatchButton from '../../../components/WatchButton';
 import { Spark } from '../../../components/horse-profile-charts';
 import { RiderSeasonChart, RiderMiniTrend } from '../../../components/rider-profile-charts';
 import SurfaceSplits from '../../../components/SurfaceSplits';
+import ExportCsv from '../../../components/ExportCsv';
 
 export const dynamic = 'force-dynamic';
 
@@ -271,7 +272,10 @@ export default async function RiderProfile({ params }) {
       </div>
 
       {/* competition history */}
-      <h2 className="text-[15px] font-bold">Competition History</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[15px] font-bold">Competition History</h2>
+        <ExportCsv rows={history} filename={`${r.name}-record.csv`} />
+      </div>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rider performance logs from official New Zealand showjumping rounds.</p>
       <section className="mb-6 overflow-x-auto rounded border border-line bg-card">
         <table className="w-full min-w-[960px] border-collapse text-[13px]">

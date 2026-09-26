@@ -13,7 +13,7 @@ export default function Events() {
   useEffect(() => { setF((prev) => ({ ...prev, season: gSeason })); }, [gSeason]);
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(25);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

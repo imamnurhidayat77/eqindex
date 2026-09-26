@@ -16,6 +16,13 @@ function trendPill(label) {
   return ['→ Stable', BADGE.gray];
 }
 
+function moveBadge(delta) {
+  if (delta === null || delta === undefined) return null;
+  if (delta > 0) return <span className="text-moss text-[11px] font-bold ml-1.5">▲{delta}</span>;
+  if (delta < 0) return <span className="text-blood text-[11px] font-bold ml-1.5">▼{-delta}</span>;
+  return <span className="text-faint text-[11px] ml-1.5">—</span>;
+}
+
 function Bar({ pct, color }) {
   return (
     <div className="h-[5px] rounded-full bg-barbg/60 overflow-hidden mt-1">
@@ -58,10 +65,26 @@ export default async function Rankings({ searchParams }) {
   const region = q('region') || '';
   const heightQ = q('height') || '';
   const minRounds = q('min_rounds') || '5';
+  const rCat = q('series') || '';
   const search = (q('q') || '').toLowerCase();
   const by = q('by') === 'points' ? 'points' : 'eq';
   const window = q('window') === '12m' ? '12m' : q('window') === '3m' ? '3m' : 'all';
   const ptsCol = window === '12m' ? 'points_12m' : window === '3m' ? 'points_3m' : 'total_points';
+  const sortH = q('sortH') || '', sortR = q('sortR') || '';
+  const dirH = q('dirH') === 'asc' ? 1 : -1, dirR = q('dirR') === 'asc' ? 1 : -1;
+  const scoreOf = (x) => (by === 'points' ? Number(x[ptsCol]) : x.eq);
+  const applySort = (arr, key, dir, score) => {
+    const val = (x) => key === 'score' ? score(x) : key === 'winrate' ? Number(x.win_rate ?? -1)
+      : key === 'podiums' ? Number(x.podiums ?? -1) : Number(x[key] ?? -1);
+    return [...arr].sort((a, b) => (val(a) - val(b)) * dir || score(b) - score(a));
+  };
+  const thSort = (label, key, cur, dir, other) => {
+    const active = cur === key;
+    const next = active && dir === -1 ? 'asc' : 'desc';
+    const arrow = active ? (dir === -1 ? ' ▼' : ' ▲') : '';
+    const qs = baseQ({ [other === 'H' ? 'sortH' : 'sortR']: active && dir === 1 ? '' : key, [other === 'H' ? 'dirH' : 'dirR']: next === 'desc' ? '' : next });
+    return { label: label + arrow, href: qs, active };
+  };
   const winLabel = window === 'all' ? 'All Time' : window === '12m' ? '12 Months' : '3 Months';
 
   // seasons first — default to latest (2026/27 mock season) when ?season absent
@@ -85,13 +108,15 @@ export default async function Rankings({ searchParams }) {
   const qs = new URLSearchParams(Object.entries(api).filter(([, v]) => v !== '' && v != null)).toString();
   const Q = qs ? `?${qs}` : '';
 
-  let horses = { data: [] }, riders = { data: [] }, classes = { data: [] }, heights = { data: [] };
+  let horses = { data: [] }, riders = { data: [] }, classes = { data: [] }, heights = { data: [] }, movH = { data: {} }, movR = { data: {} };
   try {
-    [horses, riders, classes, heights] = await Promise.all([
+    [horses, riders, classes, heights, movH, movR] = await Promise.all([
       getJSON(`/rankings/horses?limit=100${Q ? '&' + qs : ''}${by === 'points' ? `&metric=points&window=${window}` : ''}`),
-      getJSON(`/rankings/riders?limit=100${Q ? '&' + qs : ''}${by === 'points' ? `&metric=points&window=${window}` : ''}`),
+      getJSON(`/rankings/riders?limit=100${Q ? '&' + qs : ''}${by === 'points' ? `&metric=points&window=${window}` : ''}${rCat ? `&series=${encodeURIComponent(rCat)}` : ''}`),
       getJSON('/classes?limit=100'),
       getJSON('/height-stats?limit=200'),
+      getJSON('/rankings/movement?type=horse').catch(() => ({ data: {} })),
+      getJSON('/rankings/movement?type=rider').catch(() => ({ data: {} })),
     ]);
   } catch {
     // API down — render empty shells
@@ -103,12 +128,14 @@ export default async function Rankings({ searchParams }) {
       ? Number(b[ptsCol]) - Number(a[ptsCol]) || Number(b.wins) - Number(a.wins)
       : b.eq - a.eq || Number(b.clear_pct) - Number(a.clear_pct))
     .slice(0, 8);
+  const dispH = sortH ? applySort(rankedH, sortH, dirH, (x) => by === 'points' ? Number(x[ptsCol]) : x.eq) : rankedH;
   const rankedR = riders.data
     .map((r) => ({ ...r, eq: eqScore(r.clear_pct, r.avg_faults, r.starts) }))
     .sort((a, b) => by === 'points'
       ? Number(b[ptsCol]) - Number(a[ptsCol]) || Number(b.wins) - Number(a.wins)
       : b.eq - a.eq)
     .slice(0, 6);
+  const dispR = sortR ? applySort(rankedR, sortR, dirR, (x) => by === 'points' ? Number(x[ptsCol]) : x.eq) : rankedR;
 
   // per-horse detail for trend + partnerships (top 8 only)
   const details = {};
@@ -193,8 +220,13 @@ export default async function Rankings({ searchParams }) {
     if (region) p.set('region', region);
     if (heightQ) p.set('height', heightQ);
     if (minRounds) p.set('min_rounds', minRounds);
+    if (rCat) p.set('series', rCat);
     if (by !== 'eq') p.set('by', by);
     if (window !== 'all') p.set('window', window);
+    if (sortH) p.set('sortH', sortH);
+    if (dirH === 1) p.set('dirH', 'asc');
+    if (sortR) p.set('sortR', sortR);
+    if (dirR === 1) p.set('dirR', 'asc');
     for (const [k, v] of Object.entries(patch)) {
       if (!v) p.delete(k); else p.set(k, v);
     }
@@ -236,6 +268,10 @@ export default async function Rankings({ searchParams }) {
         ))}
         <Chip label="Region" value={region || 'All Regions'} clearHref={baseQ({ region: '' })} href={baseQ({})} />
         <Chip label="Min Rounds" value={`${minRounds}+ Rounds`} clearHref={baseQ({ min_rounds: '' })} href={baseQ({})} />
+        <Chip label="Rider Category" value={rCat || 'All Categories'} clearHref={baseQ({ series: '' })} href={baseQ({})} />
+        {['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Open'].map((c) => (
+          <a key={c} href={baseQ({ series: c })} className={`text-xs rounded-full px-3 py-[6px] border no-underline ${rCat === c ? 'bg-goldbg border-gold text-gold' : 'bg-card2 border-line text-muted'}`}>{c}</a>
+        ))}
         <span className="inline-flex items-center bg-card2 border border-line rounded-full px-3 py-[5px] text-xs text-muted">Level: <b className="text-body ml-1">National</b></span>
         <a href="#elite" className="inline-flex items-center bg-card2 border border-line rounded-full px-3 py-[5px] text-xs text-muted no-underline">Level: <b className="text-body ml-1">Elite</b></a>
         <a href="/rankings" className={LINK}>Reset Filters</a>
@@ -263,17 +299,13 @@ export default async function Rankings({ searchParams }) {
           <thead><tr>
             <th className={TH}>Rank</th><th className={TH}>Horse</th>
             {by === 'points' ? (
-              <><th className={`${TH} ${NUM}`}>Points</th><th className={`${TH} ${NUM}`}>Podiums</th>
-              <th className={`${TH} ${NUM}`}>Win Rate</th><th className={`${TH} ${NUM}`}>Rounds</th>
-              <th className={`${TH} ${NUM}`}>Wins</th><th className={TH}>Trend</th></>
+              <><th className={`${TH} ${NUM}`}><a href={thSort('Points', 'score', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Points', 'score', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Points', 'score', sortH, dirH, 'H').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Podiums', 'podiums', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Podiums', 'podiums', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Podiums', 'podiums', sortH, dirH, 'H').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Win Rate', 'winrate', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Win Rate', 'winrate', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Win Rate', 'winrate', sortH, dirH, 'H').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Rounds', 'starts', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Rounds', 'starts', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Rounds', 'starts', sortH, dirH, 'H').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Wins', 'wins', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Wins', 'wins', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Wins', 'wins', sortH, dirH, 'H').label}</a></th><th className={TH}>Trend</th></>
             ) : (
-              <><th className={`${TH} ${NUM}`}>EQ Score</th><th className={`${TH} ${NUM}`}>Clear %</th>
-              <th className={`${TH} ${NUM}`}>Avg Faults</th><th className={`${TH} ${NUM}`}>Rounds</th>
-              <th className={`${TH} ${NUM}`}>Wins</th><th className={TH}>Trend</th></>
+              <><th className={`${TH} ${NUM}`}><a href={thSort('EQ Score', 'score', sortH, dirH, 'H').href} className={`${LINK} ${thSort('EQ Score', 'score', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('EQ Score', 'score', sortH, dirH, 'H').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Clear %', 'clear_pct', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Clear %', 'clear_pct', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Clear %', 'clear_pct', sortH, dirH, 'H').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Avg Faults', 'avg_faults', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Avg Faults', 'avg_faults', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Avg Faults', 'avg_faults', sortH, dirH, 'H').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Rounds', 'starts', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Rounds', 'starts', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Rounds', 'starts', sortH, dirH, 'H').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Wins', 'wins', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Wins', 'wins', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Wins', 'wins', sortH, dirH, 'H').label}</a></th><th className={TH}>Trend</th></>
             )}
           </tr></thead>
           <tbody>
-            {rankedH.map((h, i) => {
+            {dispH.map((h, i) => {
               const [lbl] = trendBadge(h.clear_pct, (details[h.horse_id]?.history || []).slice(0, 5));
               const [txt, cls] = trendPill(lbl);
               return (
@@ -293,7 +325,7 @@ export default async function Rankings({ searchParams }) {
                     <td className={`${TD} ${NUM} text-muted`}>{h.starts}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.wins}</td></>
                   )}
-                  <td className={TD}><span className={badge(cls)}>{txt}</span></td>
+                  <td className={TD}><span className={badge(cls)}>{txt}</span>{moveBadge((movH.data || {})[h.horse_id])}</td>
                 </tr>
               );
             })}
@@ -312,19 +344,16 @@ export default async function Rankings({ searchParams }) {
           <thead><tr>
             <th className={TH}>Rank</th><th className={TH}>Rider</th>
             {by === 'points' ? (
-              <><th className={`${TH} ${NUM}`}>Points</th><th className={`${TH} ${NUM}`}>Podiums</th>
-              <th className={`${TH} ${NUM}`}>Win Rate</th><th className={`${TH} ${NUM}`}>Rounds</th>
-              <th className={`${TH} ${NUM}`}>Wins</th><th className={TH}>Top Partnership</th></>
+              <><th className={`${TH} ${NUM}`}><a href={thSort('Points', 'score', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Points', 'score', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Points', 'score', sortR, dirR, 'R').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Podiums', 'podiums', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Podiums', 'podiums', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Podiums', 'podiums', sortR, dirR, 'R').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Win Rate', 'winrate', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Win Rate', 'winrate', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Win Rate', 'winrate', sortR, dirR, 'R').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Rounds', 'starts', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Rounds', 'starts', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Rounds', 'starts', sortR, dirR, 'R').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Wins', 'wins', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Wins', 'wins', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Wins', 'wins', sortR, dirR, 'R').label}</a></th><th className={TH}>Top Partnership</th></>
             ) : (
-              <><th className={`${TH} ${NUM}`}>EQ Score</th><th className={`${TH} ${NUM}`}>Clear %</th>
-              <th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Wins</th>
+              <><th className={`${TH} ${NUM}`}><a href={thSort('EQ Score', 'score', sortR, dirR, 'R').href} className={`${LINK} ${thSort('EQ Score', 'score', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('EQ Score', 'score', sortR, dirR, 'R').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Clear %', 'clear_pct', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Clear %', 'clear_pct', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Clear %', 'clear_pct', sortR, dirR, 'R').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Rounds', 'starts', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Rounds', 'starts', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Rounds', 'starts', sortR, dirR, 'R').label}</a></th><th className={`${TH} ${NUM}`}><a href={thSort('Wins', 'wins', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Wins', 'wins', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Wins', 'wins', sortR, dirR, 'R').label}</a></th>
               <th className={TH}>Top Partnership</th><th className={TH}>Trend</th></>
             )}
           </tr></thead>
           <tbody>
-            {rankedR.map((r, i) => {
+            {dispR.map((r, i) => {
               const best = (rDetails[r.rider_id]?.partnerships || [])[0];
-              const up = Number(r.clear_pct) >= 40;
+              const mv = (movR.data || {})[r.rider_id];
               return (
                 <tr key={r.rider_id}>
                   <td className={`px-2 py-[11px] border-b border-rowline ${i === 0 ? 'text-gold font-bold' : 'text-muted'}`}>#{i + 1}</td>
@@ -342,7 +371,7 @@ export default async function Rankings({ searchParams }) {
                     <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.wins}</td>
                     <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_id}`}>{best.horse}</a> : <span className="text-faint">—</span>}</td>
-                    <td className={`px-2 py-[11px] border-b border-rowline ${up ? 'text-moss' : 'text-muted'}`}>{up ? '↑' : '→'}</td></>
+                    <td className="px-2 py-[11px] border-b border-rowline">{mv === null || mv === undefined ? <span className="text-faint">→</span> : mv > 0 ? <span className="text-moss font-bold">▲{mv}</span> : mv < 0 ? <span className="text-blood font-bold">▼{-mv}</span> : <span className="text-faint">—</span>}</td></>
                   )}
                 </tr>
               );

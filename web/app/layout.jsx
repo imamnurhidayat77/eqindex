@@ -49,6 +49,7 @@ export default function RootLayout({ children }) {
                 <a className="text-muted no-underline" href="/api-docs">API</a>
                 <a className="text-muted no-underline" href="/privacy">Privacy</a>
                 <a className="text-muted no-underline" href="/terms">Terms</a>
+                <a className="text-muted no-underline" href="/glossary">Glossary</a>
                 <a className="text-muted no-underline" href="/contact">Contact</a>
               </nav>
               <div className="mt-2">Bloomberg Terminal x Showjumping New Zealand Circuit</div>

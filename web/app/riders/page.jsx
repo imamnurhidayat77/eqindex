@@ -7,7 +7,7 @@ import { FilterBar, Pagination } from '../../components/list-controls';
 import { heightParams } from '../../lib/heights';
 import { useSeason } from '../../components/global';
 
-const DEF = { q: '', season: '', region: '', arena: '', height: '', minStarts: '1' };
+const DEF = { q: '', season: '', region: '', arena: '', height: '', minStarts: '1', category: '' };
 
 export default function Riders() {
   const [f, setF] = useState(DEF);
@@ -16,7 +16,7 @@ export default function Riders() {
   const [rows, setRows] = useState([]);
   const [opts, setOpts] = useState({ seasons: [], regions: [], arenas: [] });
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(25);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,6 +33,7 @@ export default function Riders() {
     if (f.season) p.set('season', f.season);
     if (f.region) p.set('region', f.region);
     if (f.arena) p.set('arena', f.arena);
+    if (f.category) p.set('series', f.category);
     fetch(`${API}/rankings/riders?${p}`)
       .then((r) => r.json())
       .then((j) => {
@@ -42,7 +43,7 @@ export default function Riders() {
       })
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-  }, [f.season, f.region, f.arena, f.height, f.minStarts]);
+  }, [f.season, f.region, f.arena, f.height, f.minStarts, f.category]);
 
   const filtered = useMemo(() => {
     const q = f.q.trim().toLowerCase();
@@ -60,7 +61,7 @@ export default function Riders() {
     <>
       <h1 className={H1}>Riders</h1>
       <p className={SUB}>Every ranked rider on the NZ circuit.</p>
-      <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} />
+      <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} showCategory />
       <section className={CARD}>
         <div className="overflow-x-auto">
         <table className={TABLE}>

@@ -16,7 +16,7 @@ export default function Horses() {
   const [rows, setRows] = useState([]);
   const [opts, setOpts] = useState({ seasons: [], regions: [], arenas: [] });
   const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(20);
+  const [perPage, setPerPage] = useState(25);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

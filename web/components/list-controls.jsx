@@ -6,10 +6,12 @@ export { HEIGHT_BANDS, heightParams };
 
 const selCls = 'bg-ink border border-line text-body rounded px-2.5 py-2 text-[13px] max-w-[160px]';
 
-export function FilterBar({ f, set, seasons, regions, arenas, showHeight = true, showMinStarts = true }) {
+export const SERIES_CATS = ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Open'];
+
+export function FilterBar({ f, set, seasons, regions, arenas, showHeight = true, showMinStarts = true, showCategory = false }) {
   const upd = (k) => (e) => set({ ...f, [k]: e.target.value });
-  const clear = () => set({ q: '', season: '', region: '', arena: '', height: '', minStarts: '1' });
-  const active = [f.q, f.season, f.region, f.arena, f.height].some(Boolean) || f.minStarts !== '1';
+  const clear = () => set({ q: '', season: '', region: '', arena: '', height: '', minStarts: '1', category: '' });
+  const active = [f.q, f.season, f.region, f.arena, f.height, f.category].some(Boolean) || f.minStarts !== '1';
   return (
     <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
       <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
@@ -43,6 +45,15 @@ export function FilterBar({ f, set, seasons, regions, arenas, showHeight = true,
           Height
           <select value={f.height} onChange={upd('height')} className={selCls}>
             {HEIGHT_BANDS.map((h) => <option key={h.v} value={h.v}>{h.label}</option>)}
+          </select>
+        </label>
+      )}
+      {showCategory && (
+        <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
+          Category
+          <select value={f.category || ''} onChange={upd('category')} className={selCls}>
+            <option value="">All categories</option>
+            {SERIES_CATS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
       )}
@@ -81,7 +92,7 @@ export function Pagination({ page, pages, setPage, perPage, setPerPage, total })
       <div className="flex items-center gap-1.5">
         <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
           className="mr-1 rounded border border-line bg-ink px-2 py-1.5 text-[13px] text-body">
-          {[10, 20, 50].map((n) => <option key={n} value={n}>{n} / page</option>)}
+          {[10, 25, 50].map((n) => <option key={n} value={n}>{n} / page</option>)}
         </select>
         <button disabled={page <= 1} onClick={() => setPage(page - 1)} className={btn(false) + ' disabled:opacity-40'}>‹</button>
         {nums.map((n) => (

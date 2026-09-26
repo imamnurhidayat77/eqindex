@@ -131,6 +131,7 @@ app.get('/rankings/horses', asyncH(async (req, res) => {
 
 app.get('/rankings/riders', asyncH(async (req, res) => {
   const { limit, minStarts } = paging(req);
+  const cat = req.query.series || '';
   if (req.query.metric === 'points') {
     const col = req.query.window === '12m' ? 'points_12m' : req.query.window === '3m' ? 'points_3m' : 'total_points';
     const { rows } = await pool.query(
@@ -145,8 +146,10 @@ app.get('/rankings/riders', asyncH(async (req, res) => {
     return res.json({ data: rows, metric: 'points', window: req.query.window || 'all' });
   }
   const f = roundFilters(req.query);
+  const catClause = cat ? ` AND r.series_category = $${f.params.length + 1}` : '';
+  const catParams = cat ? [...f.params, cat] : f.params;
   const { rows } = await pool.query(
-    `SELECT r.id AS rider_id, r.name AS rider, COUNT(*) AS starts,
+    `SELECT r.id AS rider_id, r.name AS rider, r.series_category, COUNT(*) AS starts,
        SUM(rr.clear_round::INT) AS clears,
        ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
        ROUND(AVG(rr.total_faults), 2) AS avg_faults,
@@ -156,10 +159,10 @@ app.get('/rankings/riders', asyncH(async (req, res) => {
      JOIN round_results rr ON rr.rider_id = r.id
      JOIN classes c ON c.id = rr.class_id
      JOIN events e ON e.id = rr.event_id
-     ${f.clause}
-     GROUP BY r.id, r.name HAVING COUNT(*) >= ${minStarts}
-     ORDER BY clear_pct DESC, avg_faults ASC, starts DESC LIMIT $${f.params.length + 1}`,
-    [...f.params, limit]
+     ${f.clause}${f.clause ? ' AND' : 'WHERE'} 1=1${catClause}
+     GROUP BY r.id, r.name, r.series_category HAVING COUNT(*) >= ${minStarts}
+     ORDER BY clear_pct DESC, avg_faults ASC, starts DESC LIMIT $${catParams.length + 1}`,
+    [...catParams, limit]
   );
   res.json({ data: rows });
 }));
@@ -184,6 +187,8 @@ app.get('/events', asyncH(async (req, res) => {
 }));
 
 app.get('/events/:id', asyncH(async (req, res) => {
+  req.params.id = await resolveId('events', req.params.id, res);
+  if (!req.params.id) return;
   const { rows } = await pool.query('SELECT * FROM events WHERE id = $1', [req.params.id]);
   if (!rows.length) return res.status(404).json({ error: 'event not found' });
   const classes = await pool.query(
@@ -195,6 +200,8 @@ app.get('/events/:id', asyncH(async (req, res) => {
 
 // ---- Profiles ----
 app.get('/horses/:id', asyncH(async (req, res) => {
+  req.params.id = await resolveId('horses', req.params.id, res);
+  if (!req.params.id) return;
   const horse = await pool.query('SELECT * FROM horses WHERE id = $1', [req.params.id]);
   if (!horse.rows.length) return res.status(404).json({ error: 'horse not found' });
   const stats = await pool.query('SELECT * FROM horse_stats WHERE horse_id = $1', [req.params.id]);
@@ -215,6 +222,8 @@ app.get('/horses/:id', asyncH(async (req, res) => {
 }));
 
 app.get('/riders/:id', asyncH(async (req, res) => {
+  req.params.id = await resolveId('riders', req.params.id, res);
+  if (!req.params.id) return;
   const rider = await pool.query('SELECT * FROM riders WHERE id = $1', [req.params.id]);
   if (!rider.rows.length) return res.status(404).json({ error: 'rider not found' });
   const stats = await pool.query('SELECT * FROM rider_stats WHERE rider_id = $1', [req.params.id]);
@@ -236,6 +245,8 @@ app.get('/riders/:id', asyncH(async (req, res) => {
 
 // ---- Stable-lite: training & health per horse ----
 app.get('/horses/:id/training', asyncH(async (req, res) => {
+  req.params.id = await resolveId('horses', req.params.id, res);
+  if (!req.params.id) return;
   const { rows } = await pool.query(
     `SELECT t.*, r.name AS rider FROM training_records t
      LEFT JOIN riders r ON r.id = t.rider_id
@@ -244,6 +255,8 @@ app.get('/horses/:id/training', asyncH(async (req, res) => {
 }));
 
 app.post('/horses/:id/training', asyncH(async (req, res) => {
+  req.params.id = await resolveId('horses', req.params.id, res);
+  if (!req.params.id) return;
   const { rider_id, date, type, intensity, notes } = req.body || {};
   if (!date || !type) return res.status(400).json({ error: 'need {date, type}' });
   if (intensity && !['Low', 'Medium', 'High'].includes(intensity)) {
@@ -268,12 +281,16 @@ app.delete('/training/:id', asyncH(async (req, res) => {
 }));
 
 app.get('/horses/:id/health', asyncH(async (req, res) => {
+  req.params.id = await resolveId('horses', req.params.id, res);
+  if (!req.params.id) return;
   const { rows } = await pool.query(
     'SELECT * FROM health_records WHERE horse_id = $1 ORDER BY date DESC LIMIT 50', [req.params.id]);
   res.json({ data: rows });
 }));
 
 app.post('/horses/:id/health', asyncH(async (req, res) => {
+  req.params.id = await resolveId('horses', req.params.id, res);
+  if (!req.params.id) return;
   const { date, category, description, provider } = req.body || {};
   if (!date || !category || !description) {
     return res.status(400).json({ error: 'need {date, category, description}' });
@@ -301,6 +318,8 @@ app.delete('/health/:id', asyncH(async (req, res) => {
 
 // ---- Horse timeline: training + health + competition in one feed ----
 app.get('/horses/:id/timeline', asyncH(async (req, res) => {
+  req.params.id = await resolveId('horses', req.params.id, res);
+  if (!req.params.id) return;
   const { rows } = await pool.query(
     `SELECT date, kind, summary FROM (
        SELECT t.date, 'training' AS kind,
@@ -458,6 +477,8 @@ app.get('/trends/circuit', asyncH(async (req, res) => {
 }));
 
 app.get('/horses/:id/trend', asyncH(async (req, res) => {
+  req.params.id = await resolveId('horses', req.params.id, res);
+  if (!req.params.id) return;
   const { rows } = await pool.query(
     `SELECT to_char(date_trunc('month', c.class_date), 'Mon') AS month,
        date_trunc('month', c.class_date) AS m,
@@ -499,6 +520,8 @@ app.get('/height-stats', asyncH(async (req, res) => {
 
 // ---- Event analytics bundle (one call for the event intelligence page) ----
 app.get('/events/:id/analytics', asyncH(async (req, res) => {
+  req.params.id = await resolveId('events', req.params.id, res);
+  if (!req.params.id) return;
   const ev = await pool.query('SELECT * FROM events WHERE id = $1', [req.params.id]);
   if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
   const e = ev.rows[0];
@@ -823,6 +846,62 @@ app.delete('/comparisons/:id', asyncH(async (req, res) => {
 }));
 
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Dual-route: UUIDs keep working; slugs resolve to ids (briefing FR-05).
+async function resolveId(table, param, res) {
+  if (UUID_RE.test(String(param))) return param;
+  const { rows } = await pool.query(`SELECT id FROM ${table} WHERE slug = $1`, [String(param).toLowerCase()]);
+  if (!rows.length) { res.status(404).json({ error: 'not found' }); return null; }
+  return rows[0].id;
+}
+
+app.get('/rankings/movement', asyncH(async (req, res) => {
+  const type = req.query.type === 'rider' ? 'rider' : 'horse';
+  const periods = (await pool.query(
+    'SELECT DISTINCT period FROM ranking_snapshots WHERE entity_type = $1 ORDER BY period DESC LIMIT 2', [type])).rows;
+  if (periods.length < 2) return res.json({ data: {}, periods: periods.map((p) => p.period) });
+  const [cur, prev] = periods.map((p) => p.period);
+  const { rows } = await pool.query(
+    `SELECT c.entity_id AS id, c.rank AS rank, p.rank AS prev
+     FROM ranking_snapshots c LEFT JOIN ranking_snapshots p
+       ON p.entity_type = c.entity_type AND p.entity_id = c.entity_id AND p.period = $3
+     WHERE c.entity_type = $1 AND c.period = $2`, [type, cur, prev]);
+  const data = {};
+  for (const r of rows) data[r.id] = r.prev === null ? null : r.prev - r.rank;
+  res.json({ data, periods: [cur, prev] });
+}));
+
+app.post('/admin/snapshots', needRole('ADMIN'), asyncH(async (req, res) => {
+  await captureSnapshots();
+  audit(req, 'admin.snapshot', 'system', null, {});
+  res.json({ ok: true });
+}));
+
+// eslint-disable-next-line no-unused-vars
+// ---- Rank snapshots: capture today's points ranks (idempotent per day) ----
+async function captureSnapshots() {
+  try {
+    const h = await pool.query(
+      'SELECT horse_id AS id, ROW_NUMBER() OVER (ORDER BY total_points DESC) AS rank, total_points AS points FROM horse_point_stats WHERE total_starts > 0');
+    for (const r of h.rows) {
+      await pool.query(
+        `INSERT INTO ranking_snapshots (entity_type, entity_id, period, rank, points)
+         VALUES ('horse', $1, CURRENT_DATE, $2, $3)
+         ON CONFLICT (entity_type, entity_id, period) DO UPDATE SET rank = EXCLUDED.rank, points = EXCLUDED.points`,
+        [r.id, r.rank, r.points]);
+    }
+    const rd = await pool.query(
+      'SELECT rider_id AS id, ROW_NUMBER() OVER (ORDER BY total_points DESC) AS rank, total_points AS points FROM rider_point_stats WHERE total_starts > 0');
+    for (const r of rd.rows) {
+      await pool.query(
+        `INSERT INTO ranking_snapshots (entity_type, entity_id, period, rank, points)
+         VALUES ('rider', $1, CURRENT_DATE, $2, $3)
+         ON CONFLICT (entity_type, entity_id, period) DO UPDATE SET rank = EXCLUDED.rank, points = EXCLUDED.points`,
+        [r.id, r.rank, r.points]);
+    }
+  } catch { /* best effort */ }
+}
+
 // ---- Auth: register / login / logout / me ----
 app.post('/auth/register', asyncH(async (req, res) => {
   if (req.authUser) return res.status(409).json({ error: 'already logged in — log out first' });
@@ -875,6 +954,8 @@ app.get('/auth/me', asyncH(async (req, res) => {
 
 // ---- Rider claims (RIDER verifies ownership of a riders row) ----
 app.post('/riders/:id/claim', asyncH(async (req, res) => {
+  req.params.id = await resolveId('riders', req.params.id, res);
+  if (!req.params.id) return;
   if (!req.authUser) return res.status(401).json({ error: 'login required' });
   const rider = await pool.query('SELECT id FROM riders WHERE id = $1', [req.params.id]);
   if (!rider.rows.length) return res.status(404).json({ error: 'rider not found' });
@@ -1144,6 +1225,7 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       [(req.authUser && req.authUser.name) || 'admin', src, filename || null, evId, summary.total, summary.ok, summary.failed]);
     await client.query('COMMIT');
     audit(req, 'import.commit', 'event', evId, { ...summary, filename });
+    captureSnapshots();
     res.status(201).json({ data: { dry_run: false, rows: out, summary } });
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch { /* noop */ }
@@ -1535,6 +1617,8 @@ app.post('/admin/wipe', needRole('ADMIN'), asyncH(async (req, res) => {
 
 // ---- Surface splits (arena × surface per horse/rider) ----
 app.get('/horses/:id/splits', asyncH(async (req, res) => {
+  req.params.id = await resolveId('horses', req.params.id, res);
+  if (!req.params.id) return;
   const { rows } = await pool.query(
     'SELECT arena_type, surface, starts, clears, clear_pct, avg_faults FROM horse_surface_stats WHERE horse_id = $1 ORDER BY starts DESC',
     [req.params.id]);
@@ -1542,6 +1626,8 @@ app.get('/horses/:id/splits', asyncH(async (req, res) => {
 }));
 
 app.get('/riders/:id/splits', asyncH(async (req, res) => {
+  req.params.id = await resolveId('riders', req.params.id, res);
+  if (!req.params.id) return;
   const { rows } = await pool.query(
     'SELECT arena_type, surface, starts, clears, clear_pct, avg_faults FROM rider_surface_stats WHERE rider_id = $1 ORDER BY starts DESC',
     [req.params.id]);
