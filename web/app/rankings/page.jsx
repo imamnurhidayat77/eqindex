@@ -45,6 +45,26 @@ function Chip({ href, label, value, clearHref }) {
   );
 }
 
+function Pager({ page, pages, total, mkHref }) {
+  if (pages <= 1) return null;
+  const nums = [];
+  const lo = Math.max(1, Math.min(page - 2, pages - 4));
+  for (let n = lo; n <= Math.min(pages, lo + 4); n++) nums.push(n);
+  const btn = 'min-w-[32px] rounded border px-2 py-1 text-[12px] no-underline';
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+      <span className="text-[12px] text-muted">{total} ranked · Page {page} of {pages}</span>
+      <span className="flex gap-1.5">
+        {page > 1 && <a href={mkHref(page - 1)} className={`${btn} border-line bg-card2 text-muted`}>‹ Prev</a>}
+        {nums.map((n) => (
+          <a key={n} href={mkHref(n)} className={`${btn} ${n === page ? 'border-gold bg-goldbg text-gold font-bold' : 'border-line bg-card2 text-muted'}`}>{n}</a>
+        ))}
+        {page < pages && <a href={mkHref(page + 1)} className={`${btn} border-line bg-card2 text-muted`}>Next ›</a>}
+      </span>
+    </div>
+  );
+}
+
 function Tab({ href, active, children }) {
   return (
     <a
@@ -71,6 +91,9 @@ export default async function Rankings({ searchParams }) {
   const window = q('window') === '12m' ? '12m' : q('window') === '3m' ? '3m' : 'all';
   const ptsCol = window === '12m' ? 'points_12m' : window === '3m' ? 'points_3m' : 'total_points';
   const sortH = q('sortH') || '', sortR = q('sortR') || '';
+  const PER = 25;
+  const pgH = Math.max(1, parseInt(q('pgH') || '1', 10) || 1);
+  const pgR = Math.max(1, parseInt(q('pgR') || '1', 10) || 1);
   const dirH = q('dirH') === 'asc' ? 1 : -1, dirR = q('dirR') === 'asc' ? 1 : -1;
   const scoreOf = (x) => (by === 'points' ? Number(x[ptsCol]) : x.eq);
   const applySort = (arr, key, dir, score) => {
@@ -126,35 +149,40 @@ export default async function Rankings({ searchParams }) {
     .map((h) => ({ ...h, eq: eqScore(h.clear_pct, h.avg_faults, h.starts) }))
     .sort((a, b) => by === 'points'
       ? Number(b[ptsCol]) - Number(a[ptsCol]) || Number(b.wins) - Number(a.wins)
-      : b.eq - a.eq || Number(b.clear_pct) - Number(a.clear_pct))
-    .slice(0, 8);
+      : b.eq - a.eq || Number(b.clear_pct) - Number(a.clear_pct));
   const dispH = sortH ? applySort(rankedH, sortH, dirH, (x) => by === 'points' ? Number(x[ptsCol]) : x.eq) : rankedH;
   const rankedR = riders.data
     .map((r) => ({ ...r, eq: eqScore(r.clear_pct, r.avg_faults, r.starts) }))
     .sort((a, b) => by === 'points'
       ? Number(b[ptsCol]) - Number(a[ptsCol]) || Number(b.wins) - Number(a.wins)
-      : b.eq - a.eq)
-    .slice(0, 6);
+      : b.eq - a.eq);
   const dispR = sortR ? applySort(rankedR, sortR, dirR, (x) => by === 'points' ? Number(x[ptsCol]) : x.eq) : rankedR;
+  const pagesH = Math.max(1, Math.ceil(dispH.length / PER));
+  const pagesR = Math.max(1, Math.ceil(dispR.length / PER));
+  const pgHc = Math.min(pgH, pagesH), pgRc = Math.min(pgR, pagesR);
+  const pageH = dispH.slice((pgHc - 1) * PER, pgHc * PER);
+  const pageR = dispR.slice((pgRc - 1) * PER, pgRc * PER);
+  const topHorses = rankedH.slice(0, 8);
 
-  // per-horse detail for trend + partnerships (top 8 only)
+  // per-horse detail for trend + partnerships (page rows + score-top for combos)
+  const detailHorses = [...new Map([...pageH, ...topHorses].map((h) => [h.horse_id, h])).values()];
   const details = {};
   await Promise.all(
-    rankedH.map(async (h) => {
+    detailHorses.map(async (h) => {
       try { details[h.horse_id] = await getJSON(`/horses/${h.horse_id}`); }
       catch { details[h.horse_id] = { history: [], partnerships: [], data: {} }; }
     })
   );
   const rDetails = {};
   await Promise.all(
-    rankedR.map(async (r) => {
+    pageR.map(async (r) => {
       try { rDetails[r.rider_id] = await getJSON(`/riders/${r.rider_id}`); }
       catch { rDetails[r.rider_id] = { partnerships: [] }; }
     })
   );
 
   // combinations: best partnership per top horse
-  const combos = rankedH
+  const combos = topHorses
     .map((h) => {
       const parts = details[h.horse_id]?.partnerships || [];
       const p = parts[0];
@@ -174,7 +202,7 @@ export default async function Rankings({ searchParams }) {
 
   // best height per horse for combo table
   const bestHeight = {};
-  for (const h of rankedH) {
+  for (const h of topHorses) {
     const hh = heights.data.filter((x) => x.horse_id === h.horse_id);
     const b = [...hh].sort((a, b2) =>
       Number(b2.clear_pct) - Number(a.clear_pct) || Number(b2.height_cm) - Number(a.height_cm))[0];
@@ -197,7 +225,7 @@ export default async function Rankings({ searchParams }) {
 
   // movement buckets
   const buckets = { Rising: [], Stable: [], Declining: [] };
-  for (const h of rankedH) {
+  for (const h of pageH) {
     const [lbl] = trendBadge(h.clear_pct, (details[h.horse_id]?.history || []).slice(0, 5));
     const key = lbl === 'Improving' ? 'Rising' : lbl === 'Rising' ? 'Rising' : lbl === 'Declining' ? 'Declining' : 'Stable';
     buckets[key].push(h.horse);
@@ -227,6 +255,8 @@ export default async function Rankings({ searchParams }) {
     if (dirH === 1) p.set('dirH', 'asc');
     if (sortR) p.set('sortR', sortR);
     if (dirR === 1) p.set('dirR', 'asc');
+    if (pgH > 1) p.set('pgH', String(pgH));
+    if (pgR > 1) p.set('pgR', String(pgR));
     for (const [k, v] of Object.entries(patch)) {
       if (!v) p.delete(k); else p.set(k, v);
     }
@@ -305,22 +335,23 @@ export default async function Rankings({ searchParams }) {
             )}
           </tr></thead>
           <tbody>
-            {dispH.map((h, i) => {
+            {pageH.map((h, i) => {
+              const rankH = (pgHc - 1) * PER + i + 1;
               const [lbl] = trendBadge(h.clear_pct, (details[h.horse_id]?.history || []).slice(0, 5));
               const [txt, cls] = trendPill(lbl);
               return (
                 <tr key={h.horse_id}>
-                  <td className={`px-2 py-[11px] border-b border-rowline ${i === 0 ? 'text-gold font-bold' : 'text-muted'}`}>#{i + 1}</td>
+                  <td className={`px-2 py-[11px] border-b border-rowline ${rankH === 1 ? 'text-gold font-bold' : 'text-muted'}`}>#{rankH}</td>
                   <td className={TD}><a href={`/horses/${h.horse_id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{h.horse}</a></td>
                   {by === 'points' ? (
-                    <><td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{Number(h[ptsCol])}</b></td>
+                    <><td className={`${TD} ${NUM}`}><b className={rankH === 1 ? 'text-gold' : ''}>{Number(h[ptsCol])}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.podiums ?? '–'}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.win_rate === null || h.win_rate === undefined ? '–' : `${Number(h.win_rate).toFixed(1)}%`}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.starts}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.wins}</td></>
                   ) : (
-                    <><td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{h.eq}</b></td>
-                    <td className={`${TD} ${NUM} ${i === 0 ? 'text-moss font-bold' : 'text-muted'}`}>{pct1(h.clear_pct)}</td>
+                    <><td className={`${TD} ${NUM}`}><b className={rankH === 1 ? 'text-gold' : ''}>{h.eq}</b></td>
+                    <td className={`${TD} ${NUM} ${rankH === 1 ? 'text-moss font-bold' : 'text-muted'}`}>{pct1(h.clear_pct)}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{Number(h.avg_faults).toFixed(2)}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.starts}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.wins}</td></>
@@ -329,10 +360,11 @@ export default async function Rankings({ searchParams }) {
                 </tr>
               );
             })}
-            {!rankedH.length && <tr><td className={EMPTY} colSpan={8}>No horses match these filters.</td></tr>}
+            {!dispH.length && <tr><td className={EMPTY} colSpan={8}>No horses match these filters.</td></tr>}
           </tbody>
         </table>
         </div>
+        <Pager page={pgHc} pages={pagesH} total={dispH.length} mkHref={(n) => baseQ({ pgH: n === 1 ? '' : String(n) })} />
       </section>
 
       {/* Rider Rankings */}
@@ -351,15 +383,16 @@ export default async function Rankings({ searchParams }) {
             )}
           </tr></thead>
           <tbody>
-            {dispR.map((r, i) => {
+            {pageR.map((r, i) => {
+              const rankR = (pgRc - 1) * PER + i + 1;
               const best = (rDetails[r.rider_id]?.partnerships || [])[0];
               const mv = (movR.data || {})[r.rider_id];
               return (
                 <tr key={r.rider_id}>
-                  <td className={`px-2 py-[11px] border-b border-rowline ${i === 0 ? 'text-gold font-bold' : 'text-muted'}`}>#{i + 1}</td>
+                  <td className={`px-2 py-[11px] border-b border-rowline ${rankR === 1 ? 'text-gold font-bold' : 'text-muted'}`}>#{rankR}</td>
                   <td className={TD}><a href={`/riders/${r.rider_id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{r.rider}</a></td>
                   {by === 'points' ? (
-                    <><td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{Number(r[ptsCol])}</b></td>
+                    <><td className={`${TD} ${NUM}`}><b className={rankR === 1 ? 'text-gold' : ''}>{Number(r[ptsCol])}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.podiums ?? '–'}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.win_rate === null || r.win_rate === undefined ? '–' : `${Number(r.win_rate).toFixed(1)}%`}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
@@ -367,7 +400,7 @@ export default async function Rankings({ searchParams }) {
                     <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_id}`}>{best.horse}</a> : <span className="text-faint">—</span>}</td></>
                   ) : (
                     <><td className={`${TD} ${NUM}`}><b>{r.eq}</b></td>
-                    <td className={`${TD} ${NUM} ${i === 0 ? 'text-moss' : 'text-muted'}`}>{pct1(r.clear_pct)}</td>
+                    <td className={`${TD} ${NUM} ${rankR === 1 ? 'text-moss' : 'text-muted'}`}>{pct1(r.clear_pct)}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.wins}</td>
                     <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_id}`}>{best.horse}</a> : <span className="text-faint">—</span>}</td>
@@ -376,10 +409,11 @@ export default async function Rankings({ searchParams }) {
                 </tr>
               );
             })}
-            {!rankedR.length && <tr><td className={EMPTY} colSpan={8}>No riders match these filters.</td></tr>}
+            {!dispR.length && <tr><td className={EMPTY} colSpan={8}>No riders match these filters.</td></tr>}
           </tbody>
         </table>
         </div>
+        <Pager page={pgRc} pages={pagesR} total={dispR.length} mkHref={(n) => baseQ({ pgR: n === 1 ? '' : String(n) })} />
       </section>
 
       {/* Combinations */}
