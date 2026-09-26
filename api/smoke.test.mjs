@@ -215,6 +215,17 @@ test('series engine detail', async () => {
   assert.equal(recalc.status, 401);
 });
 
+test('slugs + movement + series filter', async () => {
+  const h = await get('/horses/kiwi-spirit');
+  assert.equal(h.data.name, 'Kiwi Spirit');
+  const m = await get('/rankings/movement?type=horse');
+  assert.ok(m.periods && typeof m.data === 'object');
+  const f = await get('/rankings/riders?limit=2&series=Open');
+  assert.ok(Array.isArray(f.data));
+  const all = await get('/rankings/riders?limit=1');
+  assert.ok('series_category' in all.data[0]);
+});
+
 test('404s are honest JSON', async () => {
   const bad = await get('/horses/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(bad.error);
