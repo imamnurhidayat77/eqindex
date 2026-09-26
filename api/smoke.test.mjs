@@ -226,6 +226,20 @@ test('slugs + movement + series filter', async () => {
   assert.ok('series_category' in all.data[0]);
 });
 
+test('explorer: classes filters, venues, yoy, peers', async () => {
+  const c = await get('/classes?limit=3&height_min=130&height_max=140');
+  assert.ok(c.data.every((x) => x.height_cm >= 130 && x.height_cm <= 140));
+  const v = await get('/venues');
+  assert.ok(v.data.length > 0 && v.data[0].name);
+  const vd = await get(`/venues/${v.data[0].id}`);
+  assert.ok(Array.isArray(vd.data.events));
+  const ev = (await get('/events?limit=1')).data[0];
+  const yoy = await get(`/events/compare?name=${encodeURIComponent(ev.name)}`);
+  assert.ok(yoy.data.length >= 1);
+  const pr = await get('/peers?horse_id=kiwi-spirit');
+  assert.ok(pr.subject || pr.data === null || pr.error);
+});
+
 test('404s are honest JSON', async () => {
   const bad = await get('/horses/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(bad.error);
