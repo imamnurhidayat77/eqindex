@@ -139,13 +139,16 @@ export default async function Rankings({ searchParams }) {
     .sort((a, b) => by === 'points'
       ? Number(b[ptsCol]) - Number(a[ptsCol]) || Number(b.wins) - Number(a.wins)
       : b.eq - a.eq || Number(b.clear_pct) - Number(a.clear_pct));
-  const dispH = sortH ? applySort(rankedH, sortH, dirH, (x) => by === 'points' ? Number(x[ptsCol]) : x.eq) : rankedH;
   const rankedR = riders.data
     .map((r) => ({ ...r, eq: eqScore(r.clear_pct, r.avg_faults, r.starts) }))
     .sort((a, b) => by === 'points'
       ? Number(b[ptsCol]) - Number(a[ptsCol]) || Number(b.wins) - Number(a.wins)
       : b.eq - a.eq);
-  const dispR = sortR ? applySort(rankedR, sortR, dirR, (x) => by === 'points' ? Number(x[ptsCol]) : x.eq) : rankedR;
+  // ?q= text filter narrows both leaderboards (spotlight panel stays above)
+  const filtH = search ? rankedH.filter((h) => (h.horse || '').toLowerCase().includes(search)) : rankedH;
+  const filtR = search ? rankedR.filter((r) => (r.rider || '').toLowerCase().includes(search)) : rankedR;
+  const dispH = sortH ? applySort(filtH, sortH, dirH, (x) => by === 'points' ? Number(x[ptsCol]) : x.eq) : filtH;
+  const dispR = sortR ? applySort(filtR, sortR, dirR, (x) => by === 'points' ? Number(x[ptsCol]) : x.eq) : filtR;
   const pagesH = Math.max(1, Math.ceil(dispH.length / PER));
   const pagesR = Math.max(1, Math.ceil(dispR.length / PER));
   const pgHc = Math.min(pgH, pagesH), pgRc = Math.min(pgR, pagesR);
@@ -233,6 +236,7 @@ export default async function Rankings({ searchParams }) {
     if (region) p.set('region', region);
     if (heightQ) p.set('height', heightQ);
     if (minRounds) p.set('min_rounds', minRounds);
+    if (search) p.set('q', search);
     if (rCat) p.set('series', rCat);
     if (by !== 'eq') p.set('by', by);
     if (window !== 'all') p.set('window', window);
@@ -580,9 +584,14 @@ export default async function Rankings({ searchParams }) {
         <section className={CARD}>
           <h2 className="text-[15px] font-bold mb-2.5">Search Rankings</h2>
           <form action="/rankings" method="get" className="flex gap-2">
+            {season && <input type="hidden" name="season" value={season} />}
+            {region && <input type="hidden" name="region" value={region} />}
+            {heightQ && <input type="hidden" name="height" value={heightQ} />}
+            {minRounds && <input type="hidden" name="min_rounds" value={minRounds} />}
             <input name="q" defaultValue={q('q') || ''} placeholder="⚲  Kiwi Spirit"
               className={`${INP} flex-1`} />
             <button className={BTN}>Search</button>
+            {search && <a href={baseQ({ q: '' })} className={`${BTN} no-underline`}>Clear</a>}
           </form>
           <div className="text-[11px] uppercase tracking-wide text-faint font-bold mt-3 mb-1.5">Active Results</div>
           {spotlight ? (

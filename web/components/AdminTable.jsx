@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, LINK } from '../lib/tokens';
 import Dropdown from './Dropdown';
+import { Pagination } from './list-controls';
 
 // Generic admin CRUD table. Config: { title, sub, base ('horses'|'riders'|'events'),
 // profile: (row) => href|null, columns: [{k,label,num?}], fields: [{k,label,type?,options?}] }
@@ -14,6 +15,8 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(15);
 
   async function call(path, opts = {}) {
     const res = await fetch(`${API}${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
@@ -28,9 +31,13 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
     setLoading(false);
   }
   useEffect(() => {
-    const t = setTimeout(() => load(q.trim()), q ? 300 : 0);
+    const t = setTimeout(() => { setPage(1); load(q.trim()); }, q ? 300 : 0);
     return () => clearTimeout(t);
   }, [q]);
+
+  const pages = Math.max(1, Math.ceil(rows.length / perPage));
+  const safePage = Math.min(page, pages);
+  const view = rows.slice((safePage - 1) * perPage, safePage * perPage);
 
   function startEdit(row) {
     const f = {};
@@ -84,7 +91,7 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
             <th className={TH}></th>
           </tr></thead>
           <tbody>
-            {rows.map((r) => (
+            {view.map((r) => (
               <tr key={r.id}>
                 {columns.map((c) => (
                   <td key={c.k} className={`${TD} ${c.num ? `${NUM} text-muted` : ''}`}>
@@ -104,6 +111,7 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
           </tbody>
         </table>
         </div>
+        <Pagination page={safePage} pages={pages} setPage={setPage} perPage={perPage} setPerPage={setPerPage} total={rows.length} />
       </section>
       {editing && (
         <section className={CARD}>

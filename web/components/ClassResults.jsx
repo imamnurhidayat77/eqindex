@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { CARD, LINK, NUM, TABLE, TABLEWRAP, TD, TH, badge, BADGE } from '../lib/tokens';
 import { ordinal } from '../lib/eq';
+import { Pagination } from './list-controls';
 
 const fmt1 = (v) => (v === null || v === undefined ? '–' : Number(v).toFixed(1));
 
@@ -22,6 +23,10 @@ function resultBadge(s) {
 
 export default function ClassResults({ groups }) {
   const [open, setOpen] = useState(groups.length ? groups[0].class_id : null);
+  const [cq, setCq] = useState('');
+  const [cpage, setCpage] = useState(1);
+  const [perPage, setPerPage] = useState(15);
+  const selectClass = (id) => { setOpen(id); setCq(''); setCpage(1); };
   if (!groups.length) {
     return <section className={CARD}><p className="text-muted text-sm">No class results recorded for this event.</p></section>;
   }
@@ -34,7 +39,7 @@ export default function ClassResults({ groups }) {
         const prize = g.rounds.some((r) => r.prize_money !== null && r.prize_money !== undefined);
         return (
           <section key={g.class_id} className={CARD} style={{ marginBottom: 0 }}>
-            <button onClick={() => setOpen(isOpen ? null : g.class_id)}
+            <button onClick={() => selectClass(isOpen ? null : g.class_id)}
               className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 text-left bg-none border-0 p-0 cursor-pointer">
               <span className="text-muted text-xs w-4">{isOpen ? '▾' : '▸'}</span>
               {g.class_number && <span className="text-[11px] text-faint font-bold">#{g.class_number}</span>}
@@ -52,8 +57,22 @@ export default function ClassResults({ groups }) {
               {resultBadge(g.result_status)}
               <span className="text-[12px] text-muted">{g.rounds.length} rounds · {g.clears} clear</span>
             </button>
-            {isOpen && (
+            {isOpen && (() => {
+              const s = cq.trim().toLowerCase();
+              const filtered = s
+                ? g.rounds.filter((r) => `${r.rider || ''} ${r.horse || ''}`.toLowerCase().includes(s))
+                : g.rounds;
+              const pages = Math.max(1, Math.ceil(filtered.length / perPage));
+              const safe = Math.min(cpage, pages);
+              const view = filtered.slice((safe - 1) * perPage, safe * perPage);
+              return (
               <div className={`${TABLEWRAP} mt-3`}>
+              <div className="mb-2">
+                <input
+                  value={cq} onChange={(e) => { setCq(e.target.value); setCpage(1); }} placeholder="Filter by rider or horse…"
+                  className="w-full max-w-[280px] rounded border border-line bg-ink px-2.5 py-1.5 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none"
+                />
+              </div>
               <table className={TABLE}>
                 <thead><tr>
                   <th className={TH}>Place</th><th className={TH}>Rider</th><th className={TH}>Horse</th>
@@ -64,7 +83,7 @@ export default function ClassResults({ groups }) {
                   {prize && <th className={`${TH} ${NUM}`}>Prize</th>}
                 </tr></thead>
                 <tbody>
-                  {g.rounds.map((r) => {
+                  {view.map((r) => {
                     const dead = r.status !== 'finished';
                     return (
                       <tr key={r.id} className={dead ? 'opacity-50' : ''} title={r.notes || undefined}>
@@ -85,10 +104,13 @@ export default function ClassResults({ groups }) {
                       </tr>
                     );
                   })}
+                  {!view.length && <tr><td colSpan={99} className="px-2 py-6 text-center text-muted">No rounds match this filter.</td></tr>}
                 </tbody>
               </table>
+              <Pagination page={safe} pages={pages} setPage={setCpage} perPage={perPage} setPerPage={setPerPage} total={filtered.length} />
               </div>
-            )}
+              );
+            })()}
           </section>
         );
       })}

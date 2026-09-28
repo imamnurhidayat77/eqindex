@@ -7,19 +7,13 @@ import { Spark } from '../../../components/horse-profile-charts';
 import { RiderSeasonChart, RiderMiniTrend } from '../../../components/rider-profile-charts';
 import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
+import HistoryTable from '../../../components/HistoryTable';
 
 export const revalidate = 30;
 
 const fmtDate = (d) => (d || '').slice(0, 10);
 const num = (v, d = 0) => (v === null || v === undefined || v === '' ? d : Number(v));
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function placingBadge(place) {
-  const p = Number(place);
-  if (!p) return <span className="text-faint">—</span>;
-  const lbl = p === 1 ? '1st Place' : p === 2 ? '2nd Place' : p === 3 ? '3rd Place' : `${p}th Place`;
-  return <span className={`whitespace-nowrap ${statusBadge(lbl)}`}>{lbl}</span>;
-}
 
 function trendStatus(clearPct) {
   const c = num(clearPct);
@@ -281,32 +275,8 @@ export default async function RiderProfile({ params }) {
         <ExportCsv rows={history} filename={`${r.name}-record.csv`} />
       </div>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rider performance logs from official New Zealand showjumping rounds.</p>
-      <section className="mb-6 overflow-x-auto rounded border border-line bg-card">
-        <table className="w-full min-w-[960px] border-collapse text-[13px]">
-          <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
-              {['Date', 'Event Name', 'Class', 'Height', 'Horse', 'Jump Faults', 'Time Faults', 'Total', 'Placing'].map((c, i) => (
-                <th key={c} className={`border-b border-line px-3 py-2.5 font-semibold ${i >= 5 ? 'text-right' : ''}`}>{c}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((x) => (
-              <tr key={x.id} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
-                <td className="whitespace-nowrap px-3 py-2.5 text-muted">{fmtDate(x.class_date)}</td>
-                <td className="px-3 py-2.5 font-semibold">{x.event_name}</td>
-                <td className="px-3 py-2.5 text-slate-200">{x.class_name}</td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-muted">{x.height_cm ? `${(num(x.height_cm) / 100).toFixed(2)}m` : '—'}</td>
-                <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-gold"><a href={`/horses/${x.horse_slug || x.horse_id}`} className="text-gold hover:underline">{x.horse}</a></td>
-                <td className={`px-3 py-2.5 text-right font-semibold ${num(x.jump_faults) === 0 ? 'text-mint' : 'text-danger'}`}>{x.jump_faults}</td>
-                <td className={`px-3 py-2.5 text-right ${num(x.time_faults) === 0 ? 'text-mint' : 'text-danger'}`}>{num(x.time_faults).toFixed(2)}</td>
-                <td className={`px-3 py-2.5 text-right font-bold ${num(x.total_faults) === 0 ? 'text-mint' : 'text-danger'}`}>{num(x.total_faults).toFixed(2)}</td>
-                <td className="px-3 py-2.5 text-right">{placingBadge(x.finish_place)}</td>
-              </tr>
-            ))}
-            {!history.length && <tr><td colSpan={9} className="px-3 py-6 text-center text-muted">No competition rounds recorded.</td></tr>}
-          </tbody>
-        </table>
+      <section className="mb-6 rounded border border-line bg-card p-4">
+        <HistoryTable rows={history} mode="rider" />
       </section>
 
       {/* season trend */}

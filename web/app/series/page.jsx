@@ -4,12 +4,14 @@ import { API } from '../../lib/api';
 import { CARD, EMPTY, H1, LINK, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
 import { useSeason } from '../../components/global';
 import Dropdown from '../../components/Dropdown';
+import { Pagination } from '../../components/list-controls';
 
 export default function SeriesIndex() {
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
   const [seasonF, setSeasonF] = useState('');
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(12);
   const [loading, setLoading] = useState(true);
   const { season: gSeason } = useSeason();
   useEffect(() => { setSeasonF(gSeason); }, [gSeason]);
@@ -36,9 +38,9 @@ export default function SeriesIndex() {
   }, [rows, q, seasonF]);
 
   useEffect(() => { setPage(1); }, [q, seasonF]);
-  const perPage = 12;
   const pages = Math.max(1, Math.ceil(filtered.length / perPage));
-  const view = filtered.slice((page - 1) * perPage, page * perPage);
+  const safePage = Math.min(page, pages);
+  const view = filtered.slice((safePage - 1) * perPage, safePage * perPage);
   const totalEntries = filtered.reduce((s, x) => s + Number(x.entries || 0), 0);
 
   return (
@@ -106,15 +108,7 @@ export default function SeriesIndex() {
           </tbody>
         </table>
         </div>
-        {pages > 1 && (
-          <div className="mt-4 flex items-center justify-between">
-            <div className="text-[12.5px] text-muted">Page {page} of {pages}</div>
-            <div className="flex gap-1.5">
-              <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded border border-line bg-card2 px-3 py-1.5 text-[13px] text-muted disabled:opacity-40">‹</button>
-              <button disabled={page >= pages} onClick={() => setPage(page + 1)} className="rounded border border-line bg-card2 px-3 py-1.5 text-[13px] text-muted disabled:opacity-40">›</button>
-            </div>
-          </div>
-        )}
+        <Pagination page={safePage} pages={pages} setPage={setPage} perPage={perPage} setPerPage={setPerPage} total={filtered.length} />
       </section>
     </>
   );

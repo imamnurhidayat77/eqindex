@@ -34,6 +34,16 @@ function Toggle({ on, onFlip, label }) {
 export default function WatchlistView({ horses, riders, combos, eventsTop, timeline, insights, recentCount, initialPrefs }) {
   const router = useRouter();
   const [tab, setTab] = useState('all');
+  const [wq, setWq] = useState('');
+  const matchQ = (s) => {
+    const t = wq.trim().toLowerCase();
+    if (!t) return true;
+    return (s || '').toLowerCase().includes(t);
+  };
+  const fHorses = horses.filter((h) => matchQ(`${h.name}`));
+  const fRiders = riders.filter((r) => matchQ(`${r.name}`));
+  const fCombos = combos.filter((c) => matchQ(`${c.horse} ${c.rider}`));
+  const fEvents = eventsTop.filter((e) => matchQ(`${e.event}`));
   const [sel, setSel] = useState([]); // [{watchId, kind, id, name}]
   const [busy, setBusy] = useState(false);
   const [prefs, setPrefs] = useState(() => ({
@@ -156,20 +166,26 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
       </div>
 
       {/* tabs */}
-      <div className="inline-flex gap-1 bg-card border border-line rounded p-1 mb-5">
-        {TABS.map(([k, lbl]) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`px-4 py-[7px] rounded-md text-[13px] ${tab === k ? 'bg-card2 text-gold font-semibold' : 'text-muted'}`}>
-            {lbl}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="inline-flex gap-1 bg-card border border-line rounded p-1">
+          {TABS.map(([k, lbl]) => (
+            <button key={k} onClick={() => setTab(k)}
+              className={`px-4 py-[7px] rounded-md text-[13px] ${tab === k ? 'bg-card2 text-gold font-semibold' : 'text-muted'}`}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+        <input
+          value={wq} onChange={(e) => setWq(e.target.value)} placeholder="Filter watched…"
+          className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-5 items-start">
         <div className="min-w-0">
-          {show('horses') && !!horses.length && (
+          {show('horses') && !!fHorses.length && (
             <>
-              <h2 className={H2}>Watched Horses <span className="text-[11px] font-bold bg-greenbg text-moss rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{horses.length} horses</span></h2>
+              <h2 className={H2}>Watched Horses <span className="text-[11px] font-bold bg-greenbg text-moss rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{fHorses.length} horses</span></h2>
               <section className={CARD}>
                 <div className="overflow-x-auto">
                 <table className={TABLE}>
@@ -180,7 +196,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                     <th className={TH}>Recent Trend</th><th className={TH}>Visibility</th><th className={TH}>Last Update</th>
                   </tr></thead>
                   <tbody>
-                    {horses.map((h) => (
+                    {fHorses.map((h) => (
                       <tr key={h.watchId}>
                         <td className={TD}><input type="checkbox" className={box} checked={isSel(h.watchId)} onChange={() => toggleSel({ watchId: h.watchId, kind: 'horse', id: h.id, name: h.name })} /></td>
                         <td className={TD}><a href={`/horses/${h.slug || h.id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{h.name}</a></td>
@@ -207,9 +223,9 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
             </>
           )}
 
-          {show('riders') && !!riders.length && (
+          {show('riders') && !!fRiders.length && (
             <>
-              <h2 className={H2}>Watched Riders <span className="text-[11px] font-bold bg-bluebg text-sky rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{riders.length} riders</span></h2>
+              <h2 className={H2}>Watched Riders <span className="text-[11px] font-bold bg-bluebg text-sky rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{fRiders.length} riders</span></h2>
               <section className={CARD}>
                 <div className="overflow-x-auto">
                 <table className={TABLE}>
@@ -220,7 +236,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                     <th className={TH}>Trend</th><th className={TH}>Visibility</th><th className={TH}>Last Update</th>
                   </tr></thead>
                   <tbody>
-                    {riders.map((r) => (
+                    {fRiders.map((r) => (
                       <tr key={r.watchId}>
                         <td className={TD}><input type="checkbox" className={box} checked={isSel(r.watchId)} onChange={() => toggleSel({ watchId: r.watchId, kind: 'rider', id: r.id, name: r.name })} /></td>
                         <td className={TD}><a href={`/riders/${r.slug || r.id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{r.name}</a></td>
@@ -247,9 +263,9 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
             </>
           )}
 
-          {show('combos') && !!combos.length && (
+          {show('combos') && !!fCombos.length && (
             <>
-              <h2 className={H2}>Watched Combinations <span className="text-[11px] font-bold bg-goldbg text-gold rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{combos.length} combinations</span></h2>
+              <h2 className={H2}>Watched Combinations <span className="text-[11px] font-bold bg-goldbg text-gold rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{fCombos.length} combinations</span></h2>
               <p className={SUB}>Top partnership of each watched horse.</p>
               <section className={CARD}>
                 <div className="overflow-x-auto">
@@ -260,7 +276,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                     <th className={`${TH} ${NUM}`}>Avg Faults</th><th className={TH}>Trend</th><th className={TH}></th>
                   </tr></thead>
                   <tbody>
-                    {combos.map((c) => (
+                    {fCombos.map((c) => (
                       <tr key={c.key}>
                         <td className={TD}>
                           <span className="text-white font-semibold">{c.horse} × {c.rider}</span>
@@ -288,7 +304,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
             </>
           )}
 
-          {show('events') && !!eventsTop.length && (
+          {show('events') && !!fEvents.length && (
             <>
               <h2 className={H2}>Tracked Events</h2>
               <p className={SUB}>Events featuring your watched horses and riders.</p>
@@ -299,7 +315,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                     <th className={`${TH} ${NUM}`}>Tracked Rounds</th><th className={`${TH} ${NUM}`}>Best Place</th><th className={TH}></th>
                   </tr></thead>
                   <tbody>
-                    {eventsTop.map((e, i) => (
+                    {fEvents.map((e, i) => (
                       <tr key={i}>
                         <td className={TD}>
                           <b>{e.event}</b>

@@ -4,6 +4,7 @@ import { API } from '../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, badge, BADGE } from '../../lib/tokens';
 import { heightParams } from '../../lib/heights';
 import { FilterBar, Pagination } from '../../components/list-controls';
+import Dropdown from '../../components/Dropdown';
 
 const TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
 
@@ -66,17 +67,13 @@ export default function Classes() {
       <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} showMinStarts={false} />
       <div className="mb-4 flex flex-wrap gap-2.5 items-end rounded border border-line bg-card p-4">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Class type
-          <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })}
-            className="bg-ink border border-line text-body rounded-lg px-2.5 py-2 text-[13px]">
-            <option value="">All types</option>
-            {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select></label>
+          <Dropdown ariaLabel="Class type" value={f.type} placeholder="All types"
+            options={[{ value: '', label: 'All types' }, ...TYPES.map((t) => ({ value: t, label: t }))]}
+            onSelect={(o) => setF({ ...f, type: o.value })} /></label>
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Format
-          <select value={f.format} onChange={(e) => setF({ ...f, format: e.target.value })}
-            className="bg-ink border border-line text-body rounded-lg px-2.5 py-2 text-[13px]">
-            <option value="">All formats</option>
-            {opts.formats.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select></label>
+          <Dropdown ariaLabel="Format" value={f.format} placeholder="All formats"
+            options={[{ value: '', label: 'All formats' }, ...opts.formats.map((t) => ({ value: t, label: t }))]}
+            onSelect={(o) => setF({ ...f, format: o.value })} /></label>
         {(f.type || f.format) && <button onClick={() => setF({ ...f, type: '', format: '' })} className="rounded-lg px-2 py-2 text-[13px] text-sky hover:underline">Reset</button>}
       </div>
       <section className={CARD}>
