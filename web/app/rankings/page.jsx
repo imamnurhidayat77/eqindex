@@ -73,7 +73,7 @@ export default async function Rankings({ searchParams }) {
   const seasonParam = q('season');
   const region = q('region') || '';
   const heightQ = q('height') || '';
-  const minRounds = q('min_rounds') || '5';
+  const minRounds = q('min_rounds') || '';
   const rCat = q('series') || '';
   const search = (q('q') || '').toLowerCase();
   const byRaw = q('by');
@@ -122,20 +122,17 @@ export default async function Rankings({ searchParams }) {
   if (height_max) api.height_max = height_max;
   const qs = new URLSearchParams(Object.entries(api).filter(([, v]) => v !== '' && v != null)).toString();
   const Q = qs ? `?${qs}` : '';
-  // EI rating is career-based: slice filters don't apply; min_starts defaults
-  // to 3 in the API unless the user explicitly set min_rounds (the page-level
-  // default of 5 would otherwise empty the board — max 4 starts/horse today).
-  const apiEi = { ...api };
-  if (!q('min_rounds')) delete apiEi.min_starts;
-  const qsEi = new URLSearchParams(Object.entries(apiEi).filter(([, v]) => v !== '' && v != null)).toString();
+  // No implicit minimum: min_starts is only sent when the user picks it.
+  // (The old default of 5 emptied the horse board — the circuit maxes out at
+  // ~4 starts/horse, while riders accumulate rounds across horses.)
+  // EI rating is career-based: slice filters don't apply; the API floors it at 3.
   const metricQs = by === 'eq' ? '' : by === 'points' ? `&metric=points&window=${window}` : '&metric=ei';
 
   let horses = { data: [] }, riders = { data: [] }, classes = { data: [] }, heights = { data: [] }, movH = { data: {} }, movR = { data: {} };
   try {
-    const RQs = by === 'eqindex' ? qsEi : qs;
     [horses, riders, classes, heights, movH, movR] = await Promise.all([
-      getJSON(`/rankings/horses?limit=100${RQs ? '&' + RQs : ''}${metricQs}`),
-      getJSON(`/rankings/riders?limit=100${RQs ? '&' + RQs : ''}${metricQs}${rCat ? `&series=${encodeURIComponent(rCat)}` : ''}`),
+      getJSON(`/rankings/horses?limit=100${Q ? '&' + qs : ''}${metricQs}`),
+      getJSON(`/rankings/riders?limit=100${Q ? '&' + qs : ''}${metricQs}${rCat ? `&series=${encodeURIComponent(rCat)}` : ''}`),
       getJSON('/classes?limit=100'),
       getJSON('/height-stats?limit=200'),
       getJSON('/rankings/movement?type=horse').catch(() => ({ data: {} })),
@@ -306,8 +303,9 @@ export default async function Rankings({ searchParams }) {
         <ChipSelect label="Region" value={region} active={!!region} clearHref={baseQ({ region: '' })}
           options={[{ value: '', label: 'All Regions', href: baseQ({ region: '' }) },
             ...regions.map((r) => ({ value: r, label: r, href: baseQ({ region: r }) }))]} />
-        <ChipSelect label="Min Rounds" value={minRounds} active={minRounds !== '5'} clearHref={baseQ({ min_rounds: '' })}
-          options={['0', '3', '5', '10'].map((n) => ({ value: n, label: `${n}+ Rounds`, href: baseQ({ min_rounds: n }) }))} />
+        <ChipSelect label="Min Rounds" value={minRounds} active={minRounds !== ''} clearHref={baseQ({ min_rounds: '' })}
+          options={[{ value: '', label: 'Any', href: baseQ({ min_rounds: '' }) },
+            ...['1', '3', '5', '10'].map((n) => ({ value: n, label: `${n}+ Rounds`, href: baseQ({ min_rounds: n }) }))]} />
         <ChipSelect label="Rider Category" value={rCat} active={!!rCat} clearHref={baseQ({ series: '' })}
           options={[{ value: '', label: 'All Categories', href: baseQ({ series: '' }) },
             ...RCATS.map((c) => ({ value: c, label: c, href: baseQ({ series: c }) }))]} />
