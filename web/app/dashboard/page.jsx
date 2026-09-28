@@ -2,12 +2,12 @@ import Link from 'next/link';
 import { getJSON } from '../../lib/api';
 import { BADGE, CARD, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../lib/tokens';
 import { eqScore, trendBadge, consistencyPts } from '../../lib/eq';
-import { ScoreRing } from '../../components/charts';
-import { MiniSpark, TrendPanel, BenchChart } from '../../components/Graphs';
+import { TrendPanel, BenchChart } from '../../components/Graphs';
 import Filters from '../../components/Filters';
 import EventCarousel from '../../components/EventCarousel';
 import { heightParams } from '../../lib/heights';
 import { EmptyState } from '../../components/EmptyState';
+import { StatCard, StatGrid } from '../../components/StatCard';
 
 export const revalidate = 30;
 
@@ -49,13 +49,17 @@ export default async function Dashboard({ searchParams }) {
   const qs = new URLSearchParams(Object.entries(api).filter(([, v]) => v !== '' && v != null)).toString();
   const Q = qs ? `?${qs}` : '';
 
-  const [horses, riders, events, circuit, classes, heights] = await Promise.all([
+  const [horses, riders, events, circuit, classes, heights, eiHorses, eiRiders] = await Promise.all([
     getJSON(`/rankings/horses?limit=100${Q ? '&' + qs : ''}`),
     getJSON(`/rankings/riders?limit=100${Q ? '&' + qs : ''}`),
     getJSON(`/events?limit=100${Q ? '&' + qs : ''}`),
     getJSON(`/trends/circuit${Q}`),
     getJSON(`/classes?limit=100${Q ? '&' + qs : ''}`),
     getJSON('/height-stats?limit=200'),
+    // EI leaders are career-based (all data) — the rating answers
+    // "who is genuinely strongest", not "who leads this slice".
+    getJSON('/rankings/horses?limit=5&metric=ei').catch(() => ({ data: [] })),
+    getJSON('/rankings/riders?limit=4&metric=ei').catch(() => ({ data: [] })),
   ]);
   const current = { season, region, arena, height, min_rounds: minRounds, range, entity };
   const seasons = [...new Set(events.data.map((e) => e.season).filter(Boolean))].sort().reverse();
@@ -70,8 +74,8 @@ export default async function Dashboard({ searchParams }) {
     .sort((a, b) => b.eq - a.eq);
   const showHorses = entity !== 'rider';
   const showRiders = entity !== 'horse';
-  const top5 = showHorses ? ranked.slice(0, 5) : [];
-  const top4R = showRiders ? rankedR.slice(0, 4) : [];
+  const top5 = showHorses ? (eiHorses.data || []) : [];
+  const top4R = showRiders ? (eiRiders.data || []) : [];
 
   const details = Object.fromEntries(await Promise.all(
     top5.map(async (h) => [h.horse_id, await getJSON(`/horses/${h.horse_slug || h.horse_id}`)])
@@ -175,27 +179,27 @@ export default async function Dashboard({ searchParams }) {
         <>
           <h2 className={H2}>Performance Overview</h2>
           <p className={SUB}>High-level circuit metrics and aggregated analytics</p>
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
+          <StatGrid cols={6}>
             {[
-              ['HORSES ANALYSED', diffBadge(dPct(last.horses, prev.horses)), false, ranked.length, spark('horses'), '#FFD700'],
-              ['RIDERS ANALYSED', diffBadge(dPct(last.riders, prev.riders)), false, rankedR.length, spark('riders'), '#FFD700'],
-              ['COMPETITION ROUNDS', diffBadge(dPct(last.starts, prev.starts)), false, totalRounds.toLocaleString(), spark('starts'), '#FFD700'],
-              ['EVENTS TRACKED', diffBadge(dPct(last.events, prev.events)), false, events.data.length, spark('events'), '#FFD700'],
-              ['CLEAR ROUND RATE', diffBadge(hasPrev ? clearDelta : null), true, pct(circuitClear), spark('clear_pct'), '#00C853'],
-              ['AVERAGE FAULTS', diffBadge(hasPrev ? avgDelta : null), true, circuitAvg.toFixed(2), spark('avg_faults'), '#00C853'],
+              ['Horses Analysed', diffBadge(dPct(last.horses, prev.horses)), false, ranked.length, spark('horses'), '#FFD700'],
+              ['Riders Analysed', diffBadge(dPct(last.riders, prev.riders)), false, rankedR.length, spark('riders'), '#FFD700'],
+              ['Competition Rounds', diffBadge(dPct(last.starts, prev.starts)), false, totalRounds.toLocaleString(), spark('starts'), '#FFD700'],
+              ['Events Tracked', diffBadge(dPct(last.events, prev.events)), false, events.data.length, spark('events'), '#FFD700'],
+              ['Clear Round Rate', diffBadge(hasPrev ? clearDelta : null), true, pct(circuitClear), spark('clear_pct'), '#00C853'],
+              ['Average Faults', diffBadge(hasPrev ? avgDelta : null), true, circuitAvg.toFixed(2), spark('avg_faults'), '#00C853'],
             ].map(([lbl, d, good, big, sp, col]) => (
-              <div className="bg-card border border-line rounded p-3.5 px-4 flex flex-col justify-between gap-2 min-h-[108px]" key={lbl}>
-                <div className="flex justify-between items-start gap-2">
-                  <span className="text-[11px] text-muted tracking-[0.4px] uppercase leading-snug">{lbl}</span>
-                  <span className={`text-[11px] font-bold whitespace-nowrap rounded-full px-2 py-0.5 ${d === '–' ? 'text-faint bg-line/60' : good ? 'text-moss bg-greenbg/40' : 'text-gold bg-goldbg/40'}`}>{d}</span>
-                </div>
-                <div className="flex items-end justify-between gap-2">
-                  <span className="text-[30px] font-extrabold leading-none tabular-nums">{big}</span>
-                  <MiniSpark data={sp} color={col} />
-                </div>
-              </div>
+              <StatCard
+                key={lbl}
+                label={lbl}
+                delta={d}
+                tone={d === '–' ? 'faint' : good ? 'mint' : 'gold'}
+                pill
+                value={big}
+                spark={sp}
+                sparkColor={col}
+              />
             ))}
-          </div>
+          </StatGrid>
 
           <h2 className={H2}>Latest Events</h2>
           <p className={SUB}>Newest competitions on the circuit — scroll sideways.</p>
@@ -206,7 +210,11 @@ export default async function Dashboard({ searchParams }) {
               <section className={CARD}>
                 <h2 className={H2}>🎖 Featured Horse Intelligence</h2>
                 <div className="flex gap-5 items-center my-3">
-                  <ScoreRing score={feat.eq} />
+                  <div className="text-center shrink-0">
+                    <div className="text-[34px] font-extrabold leading-none text-gold tabular-nums">{feat.rating}</div>
+                    <div className="mt-1 text-[10px] tracking-wide text-muted">EI RATING</div>
+                    {feat.provisional ? <div className="mt-1 text-[10px] font-bold text-faint border border-line rounded px-1.5 py-px" title="<15 rounds — shrunk toward mean">PROVISIONAL</div> : null}
+                  </div>
                   <div>
                     <div className="text-[22px] font-extrabold">{feat.horse}</div>
                     <div className="flex gap-6 mt-1.5">
@@ -247,7 +255,7 @@ export default async function Dashboard({ searchParams }) {
               <section className={CARD}>
                 <h2 className={H2}>Season Performance Trend</h2>
                 <p className={SUB}>Temporal metrics comparison for featured class</p>
-                <TrendPanel monthly={fMonths} horseName={feat.horse} eq={feat.eq} />
+                <TrendPanel monthly={fMonths} horseName={feat.horse} eq={eqScore(feat.clear_pct, feat.avg_faults, feat.starts)} />
               </section>
               <section className={CARD}>
                 <h2 className={H2}>Performance Benchmarking</h2>
@@ -264,11 +272,11 @@ export default async function Dashboard({ searchParams }) {
           {showHorses && (
             <>
               <h2 className={H2}>Top Horses</h2>
-              <p className={SUB}>Leading equine ranking across New Zealand heights class</p>
+              <p className={SUB}>Career EI rating (0–2000, ∅1000) — placing, difficulty, handicap &amp; form, not just clears</p>
               <section className={CARD}>
                 <div className={TABLEWRAP}>
                 <table className={TABLE}>
-                  <thead><tr><th className={TH}>Rank</th><th className={TH}>Horse Name</th><th className={`${TH} ${NUM}`}>EQ Score</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg Faults</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Trend</th></tr></thead>
+                  <thead><tr><th className={TH}>Rank</th><th className={TH}>Horse Name</th><th className={`${TH} ${NUM}`}>EI Rating</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg Faults</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Trend</th></tr></thead>
                   <tbody>
                     {top5.map((h, i) => {
                       const [lbl, cls] = trendBadge(h.clear_pct, (details[h.horse_id].history || []).slice(0, 5));
@@ -276,7 +284,7 @@ export default async function Dashboard({ searchParams }) {
                         <tr key={h.horse_id}>
                           <td className={i === 0 ? 'text-gold font-bold' : ''}>#{i + 1}</td>
                           <td className={TD}><Link href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold">{h.horse}</Link></td>
-                          <td className={`${TD} ${NUM}`}><b>{h.eq}</b></td>
+                          <td className={`${TD} ${NUM}`}><b>{h.rating}</b>{h.provisional ? <span className="ml-1.5 text-[10px] font-bold text-faint border border-line rounded px-1 py-px" title="<15 rounds">PROV</span> : null}</td>
                           <td className={`${TD} ${NUM} text-moss`}>{pct(h.clear_pct)}</td>
                           <td className={`${TD} ${NUM}`}>{Number(h.avg_faults).toFixed(2)}</td>
                           <td className={`${TD} ${NUM}`}>{h.starts}</td>
@@ -294,11 +302,11 @@ export default async function Dashboard({ searchParams }) {
           {showRiders && (
             <>
               <h2 className={H2}>Top Riders</h2>
-              <p className={SUB}>Leading national showjumping athletes calculated by circuit performance index</p>
+              <p className={SUB}>Career EI rating (0–2000, ∅1000) across all partnerships</p>
               <section className={CARD}>
                 <div className={TABLEWRAP}>
                 <table className={TABLE}>
-                  <thead><tr><th className={TH}>Rank</th><th className={TH}>Rider Name</th><th className={`${TH} ${NUM}`}>Performance Score</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Best Partnership</th></tr></thead>
+                  <thead><tr><th className={TH}>Rank</th><th className={TH}>Rider Name</th><th className={`${TH} ${NUM}`}>EI Rating</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Best Partnership</th></tr></thead>
                   <tbody>
                     {top4R.map((r, i) => {
                       const best = (rDetails[r.rider_id].partnerships || [])[0];
@@ -306,7 +314,7 @@ export default async function Dashboard({ searchParams }) {
                         <tr key={r.rider_id}>
                           <td className={i === 0 ? 'text-gold font-bold' : ''}>#{i + 1}</td>
                           <td className={TD}><Link href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white font-semibold">{r.rider}</Link></td>
-                          <td className={`${TD} ${NUM}`}><b>{r.eq}</b></td>
+                          <td className={`${TD} ${NUM}`}><b>{r.rating}</b>{r.provisional ? <span className="ml-1.5 text-[10px] font-bold text-faint border border-line rounded px-1 py-px" title="<15 rounds">PROV</span> : null}</td>
                           <td className={`${TD} ${NUM} text-moss`}>{pct(r.clear_pct)}</td>
                           <td className={`${TD} ${NUM}`}>{r.starts}</td>
                           <td className={TD}>{best ? <Link className={LINK} href={`/horses/${best.horse_slug || best.horse_id}`}>{best.horse}</Link> : '—'}</td>
@@ -327,11 +335,11 @@ export default async function Dashboard({ searchParams }) {
               <section className={CARD}>
                 <div className={TABLEWRAP}>
                 <table className={TABLE}>
-                  <thead><tr><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>EQ Score</th><th className={TH}>Recent Insight</th></tr></thead>
+                  <thead><tr><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>EI Rating</th><th className={TH}>Recent Insight</th></tr></thead>
                   <tbody>
                     {trending.map((t) => (
                       <tr key={t.h.horse_id}>
-                        <td className={TD}><b>{t.h.horse}</b></td><td className={`${TD} ${NUM} text-gold`}><b>{t.h.eq}</b></td>
+                        <td className={TD}><b>{t.h.horse}</b></td><td className={`${TD} ${NUM} text-gold`}><b>{t.h.rating}</b></td>
                         <td className={MUT}>{insight(t)}</td>
                       </tr>
                     ))}

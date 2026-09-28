@@ -14,17 +14,6 @@ function seasonOf(m) {
   return mo >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
 }
 
-export function Spark({ data, color = '#FFD700' }) {
-  const rows = data.map((v, i) => ({ i, v: Number(v) }));
-  return (
-    <ResponsiveContainer width={80} height={28}>
-      <LineChart data={rows} margin={{ top: 2, bottom: 2, left: 0, right: 0 }}>
-        <Line type="monotone" dataKey="v" stroke={color} strokeWidth={1.5} dot={false} isAnimationActive={false} />
-      </LineChart>
-    </ResponsiveContainer>
-  );
-}
-
 // Fixed-size SVG sparkline — no recharts container quirks, safe with <2 points.
 export function MiniSpark({ data, color = '#FFD700', w = 76, h = 30 }) {
   const vals = (data || []).map(Number).filter((v) => Number.isFinite(v));

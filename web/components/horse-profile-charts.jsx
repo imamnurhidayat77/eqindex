@@ -6,26 +6,6 @@ import {
 
 const tip = { backgroundColor: '#1C2330', border: '1px solid #2A2A2A', borderRadius: 8, fontSize: 12 };
 
-export function Spark({ data, color = '#FFD700' }) {
-  if (!data || data.length < 2) {
-    return (
-      <svg width="72" height="26" className="overflow-visible">
-        <line x1="0" y1="13" x2="72" y2="13" stroke={color} strokeWidth="1.5" opacity="0.7" />
-      </svg>
-    );
-  }
-  const min = Math.min(...data), max = Math.max(...data);
-  const span = max - min || 1;
-  const w = 72, h = 26;
-  const pts = data.map((v, i) =>
-    `${((i / (data.length - 1)) * w).toFixed(1)},${(h - 3 - ((v - min) / span) * (h - 6)).toFixed(1)}`).join(' ');
-  return (
-    <svg width={w} height={h} className="overflow-visible">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 export function EQMonthlyChart({ rows }) {
   const data = (rows || []).map((r) => ({
     label: r.month,

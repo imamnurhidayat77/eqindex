@@ -7,6 +7,7 @@ import MiniTrend from '../../../components/MiniTrend';
 import ClassResults from '../../../components/ClassResults';
 import { EventDifficultyTable, EventCombosTable } from '../../../components/EventTables';
 import { TableEmpty } from '../../../components/EmptyState';
+import { StatCard, StatGrid } from '../../../components/StatCard';
 
 export const revalidate = 30;
 
@@ -180,15 +181,6 @@ export default async function EventDetail({ params }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6 items-center">
-        <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Event: <b className="text-body font-semibold">{e.name}</b></span>
-        <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Height Category: <b className="text-body font-semibold">1.00m–1.50m+</b></span>
-        <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Region: <b className="text-body font-semibold">{e.region || '—'}</b></span>
-        <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Arena Type: <b className="text-body font-semibold">{e.arena_type || '—'}</b></span>
-        <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Season: <b className="text-body font-semibold">{(e.season || '').replace('-', '–')}</b></span>
-        <Link className={LINK} href="/events">Reset Filters</Link>
-      </div>
-
       <section className={CARD}>
         <div className="flex items-center gap-2 mb-3">
           <h2 className={H2}>🎖 Active Competition Summary</h2>
@@ -214,22 +206,19 @@ export default async function EventDetail({ params }) {
 
       <h2 className={H2}>Circuit Performance Overview</h2>
       <p className={SUB}>Consolidated statistics of {e.name} Event</p>
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
+      <StatGrid cols={7}>
         {[
-          ['TOTAL CLASSES', `${a.classes.length} classes`, a.classes.length, false],
-          ['TOTAL ROUNDS', `${n} rounds`, n, false],
-          ['HORSES ENTERED', `${horsesN} entered`, horsesN, false],
-          ['RIDERS ENTERED', `${ridersN} riders`, ridersN, false],
-          ['CLEAR RATE', `${(clearPct - circClear) >= 0 ? '+' : ''}${(clearPct - circClear).toFixed(1)}% vs avg`, `${clearPct.toFixed(0)}%`, true],
-          ['AVG FAULTS', `${(avgF - circAvg) >= 0 ? '+' : ''}${(avgF - circAvg).toFixed(1)} penalty`, avgF.toFixed(1), true],
-          ['FIELD STRENGTH', `${strength} field`, score, false],
-        ].map(([lbl, delta, big, _g]) => (
-          <div className="bg-card border border-line rounded p-3.5 px-4" key={lbl}>
-            <div className="text-[11px] text-muted tracking-[0.4px] uppercase">{lbl} <span className="text-gold font-bold">{delta}</span></div>
-            <div className="text-[30px] font-extrabold mt-1.5">{big}</div>
-          </div>
+          ['Total Classes', `${a.classes.length} classes`, a.classes.length],
+          ['Total Rounds', `${n} rounds`, n],
+          ['Horses Entered', `${horsesN} entered`, horsesN],
+          ['Riders Entered', `${ridersN} riders`, ridersN],
+          ['Clear Rate', `${(clearPct - circClear) >= 0 ? '+' : ''}${(clearPct - circClear).toFixed(1)}% vs avg`, `${clearPct.toFixed(0)}%`],
+          ['Avg Faults', `${(avgF - circAvg) >= 0 ? '+' : ''}${(avgF - circAvg).toFixed(1)} penalty`, avgF.toFixed(1)],
+          ['Field Strength', `${strength} field`, score],
+        ].map(([lbl, delta, big]) => (
+          <StatCard key={lbl} label={lbl} delta={delta} value={big} />
         ))}
-      </div>
+      </StatGrid>
 
       <h2 className={H2}>Class Difficulty Analysis</h2>
       <p className={SUB}>Lower clear round percentage and higher average faults indicate more challenging courses.</p>
@@ -368,23 +357,29 @@ export default async function EventDetail({ params }) {
 
       <h2 className={H2}>Event Benchmarking</h2>
       <p className={SUB}>{e.name} vs National, Regional, A-Grade Average.</p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-        <div className="bg-card border border-line rounded p-4">
-          <div className="text-[11px] text-muted uppercase">Clear Round Rate <span className="text-blood font-bold">{clearPct < circClear ? 'Harder Course' : 'Softer Course'}</span></div>
-          <div className="text-[30px] font-extrabold mt-1">{clearPct.toFixed(0)}%</div>
-          <div className="text-xs text-muted">{circClear.toFixed(0)}% Avg</div>
-        </div>
-        <div className="bg-card border border-line rounded p-4">
-          <div className="text-[11px] text-muted uppercase">Average Faults <span className="text-blood font-bold">{avgF > circAvg ? 'Higher Penalties' : 'Lower Penalties'}</span></div>
-          <div className="text-[30px] font-extrabold mt-1">{avgF.toFixed(1)}</div>
-          <div className="text-xs text-muted">{circAvg.toFixed(1)} Avg</div>
-        </div>
-        <div className="bg-card border border-line rounded p-4">
-          <div className="text-[11px] text-muted uppercase">Field Strength <span className="text-moss font-bold">{score >= circScore ? 'Elite Field' : 'Open Field'}</span></div>
-          <div className="text-[30px] font-extrabold mt-1">{strength}</div>
-          <div className="text-xs text-muted">{strengthLabel(circScore)}</div>
-        </div>
-      </div>
+      <StatGrid cols={3}>
+        <StatCard
+          label="Clear Round Rate"
+          delta={clearPct < circClear ? 'Harder Course' : 'Softer Course'}
+          tone="blood"
+          value={`${clearPct.toFixed(0)}%`}
+          sub={`${circClear.toFixed(0)}% Avg`}
+        />
+        <StatCard
+          label="Average Faults"
+          delta={avgF > circAvg ? 'Higher Penalties' : 'Lower Penalties'}
+          tone="blood"
+          value={avgF.toFixed(1)}
+          sub={`${circAvg.toFixed(1)} Avg`}
+        />
+        <StatCard
+          label="Field Strength"
+          delta={score >= circScore ? 'Elite Field' : 'Open Field'}
+          tone="mint"
+          value={strength}
+          sub={strengthLabel(circScore)}
+        />
+      </StatGrid>
 
       <h2 className={H2}>Historical Event Trends</h2>
       <p className={SUB}>Longitudinal metrics across showjumping seasons.</p>

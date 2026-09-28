@@ -8,6 +8,7 @@ import { recommendHeight } from '../../lib/forecast';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, LINK, LIVE, badge, BADGE } from '../../lib/tokens';
 import { TableRowsSk } from '../../components/Skeletons';
 import { EmptyState, TableEmpty } from '../../components/EmptyState';
+import { StatCard, StatGrid } from '../../components/StatCard';
 
 async function authed(path, opts = {}) {
   const res = await fetch(`${API}${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
@@ -219,19 +220,16 @@ export default function MyStable() {
       {err && <section className={CARD}><p className="text-blood text-sm">{err}</p></section>}
 
       {/* aggregates */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <StatGrid cols={4}>
         {[
-          ['Athletes', String(athletes.length)],
-          ['Avg EQ', String(avgEq)],
-          ['Combined Wins', String(totalWins)],
-          ['Needs Attention', String(attention.length)],
-        ].map(([l, v]) => (
-          <div key={l} className="bg-card border border-line rounded p-4">
-            <div className="text-[11px] text-muted tracking-[0.4px] uppercase">{l}</div>
-            <div className={`text-[26px] font-extrabold mt-1 ${l === 'Needs Attention' && attention.length ? 'text-blood' : ''}`}>{v}</div>
-          </div>
+          ['Athletes', String(athletes.length), false],
+          ['Avg EQ', String(avgEq), false],
+          ['Combined Wins', String(totalWins), false],
+          ['Needs Attention', String(attention.length), !!attention.length],
+        ].map(([l, v, alert]) => (
+          <StatCard key={l} label={l} value={v} valueTone={alert ? 'blood' : null} />
         ))}
-      </div>
+      </StatGrid>
 
       {/* add athlete */}
       <div className="mb-4 rounded border border-line bg-card p-4">

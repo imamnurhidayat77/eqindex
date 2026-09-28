@@ -4,12 +4,12 @@ import { eqScore, consistencyPts } from '../../../lib/eq';
 import { projectForm, recommendHeight, suggestPartners } from '../../../lib/forecast';
 import { statusBadge } from '../../../lib/tokens';
 import WatchButton from '../../../components/WatchButton';
-import { Spark } from '../../../components/horse-profile-charts';
 import { RiderSeasonChart, RiderMiniTrend } from '../../../components/rider-profile-charts';
 import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
 import HistoryTable from '../../../components/HistoryTable';
 import { EmptyState, TableEmpty } from '../../../components/EmptyState';
+import { StatCard, StatGrid } from '../../../components/StatCard';
 
 export const revalidate = 30;
 
@@ -49,6 +49,7 @@ export default async function RiderProfile({ params }) {
     getJSON('/rankings/horses?limit=100').catch(() => ({ data: [] })),
     getJSON('/height-stats?limit=200').catch(() => ({ data: [] })),
     getJSON(`/riders/${params.id}/splits`).catch(() => ({ data: [] })),
+    getJSON(`/riders/${params.id}/rating`).catch(() => null),
   ]);
   const { data: r, stats: s, history = [], partnerships = [] } = p;
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(params.id) && r.slug && r.slug !== params.id) {
@@ -256,20 +257,19 @@ export default async function RiderProfile({ params }) {
 
       {/* markers */}
       <h2 className="text-[15px] font-bold">Athlete Performance Markers</h2>
-      <div className="mb-6 mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <StatGrid cols={4} className="mt-3">
         {markers.map((m) => (
-          <div key={m.label} className="rounded border border-line bg-card p-3.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">{m.label}</span>
-              <span className={`text-[11px] font-bold ${m.good ? 'text-mint' : m.delta === 'Stable' ? 'text-muted' : 'text-gold'}`}>{m.delta}</span>
-            </div>
-            <div className="mt-2 flex items-end justify-between gap-2">
-              <span className="text-[26px] font-extrabold leading-none">{m.value}</span>
-              <Spark data={m.data} color={m.color} />
-            </div>
-          </div>
+          <StatCard
+            key={m.label}
+            label={m.label}
+            delta={m.delta}
+            tone={m.good ? 'mint' : m.delta === 'Stable' ? 'faint' : 'gold'}
+            value={m.value}
+            spark={m.data}
+            sparkColor={m.color}
+          />
         ))}
-      </div>
+      </StatGrid>
 
       {/* competition history */}
       <div className="flex items-center justify-between gap-2">
@@ -464,37 +464,29 @@ export default async function RiderProfile({ params }) {
 
       {/* where best */}
       <h2 className="mb-3 text-[15px] font-bold">Where {r.name.split(' ')[0]} Performs Best</h2>
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <StatGrid cols={4}>
         {[
-          ['Best Height Class', byHeight[0]?.key || '—', byHeight[0] ? `◦ ${byHeight[0].clear.toFixed(0)}% Clear Rate` : 'Awaiting rounds', 'text-mint'],
-          ['Best Arena Surface', byArena[0]?.key || '—', byArena[0] ? `◦ ${byArena[0].clear.toFixed(0)}% Consistency Index` : 'Awaiting rounds', 'text-mint'],
-          ['Best Competition Level', byLevel[0]?.key || '—', byLevel[0] ? `◦ ${byLevel[0].clear.toFixed(0)}% Clear Rate` : 'Awaiting rounds', 'text-mint'],
-          ['Best Circuit Venue', bestVenueWins?.key || '—', bestVenueWins ? `◦ ${bestVenueWins.wins} Wins (Current Season)` : 'Awaiting rounds', 'text-gold'],
-        ].map(([label, big, sub, subCls]) => (
-          <div key={label} className="rounded border border-line bg-card p-4">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-faint">{label}</div>
-            <div className="mt-1 truncate text-[19px] font-extrabold" title={big}>{big}</div>
-            <div className={`mt-1 text-[12px] ${subCls}`}>{sub}</div>
-          </div>
+          ['Best Height Class', byHeight[0]?.key || '—', byHeight[0] ? `◦ ${byHeight[0].clear.toFixed(0)}% Clear Rate` : 'Awaiting rounds', 'moss'],
+          ['Best Arena Surface', byArena[0]?.key || '—', byArena[0] ? `◦ ${byArena[0].clear.toFixed(0)}% Consistency Index` : 'Awaiting rounds', 'moss'],
+          ['Best Competition Level', byLevel[0]?.key || '—', byLevel[0] ? `◦ ${byLevel[0].clear.toFixed(0)}% Clear Rate` : 'Awaiting rounds', 'moss'],
+          ['Best Circuit Venue', bestVenueWins?.key || '—', bestVenueWins ? `◦ ${bestVenueWins.wins} Wins (Current Season)` : 'Awaiting rounds', 'gold'],
+        ].map(([label, big, sub, subTone]) => (
+          <StatCard key={label} label={label} value={big} sub={sub} subTone={subTone} title={big} />
         ))}
-      </div>
+      </StatGrid>
 
       {/* ranking overview */}
       <h2 className="mb-3 text-[15px] font-bold">Ranking Overview</h2>
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <StatGrid cols={4}>
         {[
           ['National Standings', natRank === '—' ? '—' : `#${natRank}`, 'Overall Showjumping Index', false],
           ['Season Leaderboard', natRank === '—' ? '—' : `#${natRank}`, 'Active Circuit Points', false],
-          ['Regional Standings', natRank === '—' ? '—' : `#${regionRank}`, `${r.region || 'NZ'} Grand Prix League`, true],
+          ['Regional Standings', natRank === '—' ? '—' : `#${natRank}`, `${r.region || 'NZ'} Grand Prix League`, true],
           ['National High Heights', hiHeights.length ? `${hiClear.toFixed(0)}%` : '—', '1.30m Standard League', false],
         ].map(([label, big, sub, hot]) => (
-          <div key={label} className={`rounded border bg-card p-4 ${hot ? 'border-gold/60' : 'border-line'}`}>
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-faint">{label}</div>
-            <div className={`mt-1 text-[30px] font-extrabold ${hot ? 'text-gold' : ''}`}>{big}</div>
-            <div className="mt-1 text-[12px] text-muted">{sub}</div>
-          </div>
+          <StatCard key={label} label={label} value={big} sub={sub} highlight={hot} title={big} />
         ))}
-      </div>
+      </StatGrid>
 
       <SurfaceSplits rows={splits.data} subject={r.name} />
 

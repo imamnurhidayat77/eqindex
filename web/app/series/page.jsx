@@ -7,6 +7,7 @@ import { useSeason } from '../../components/global';
 import Dropdown from '../../components/Dropdown';
 import { Pagination } from '../../components/list-controls';
 import { TableEmpty } from '../../components/EmptyState';
+import { StatCard, StatGrid } from '../../components/StatCard';
 
 export default function SeriesIndex() {
   const [rows, setRows] = useState([]);
@@ -62,19 +63,16 @@ export default function SeriesIndex() {
         ))}
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <StatGrid cols={4}>
         {[
           ['Series Tracked', String(filtered.length)],
           ['Total Entries', String(totalEntries)],
           ['Seasons', String(seasons.length)],
           ['Events', String(new Set(filtered.map((x) => x.event_name)).size)],
         ].map(([l, v]) => (
-          <div key={l} className="rounded border border-line bg-card p-4">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-faint">{l}</div>
-            <div className="mt-1 text-[26px] font-extrabold leading-none">{v}</div>
-          </div>
+          <StatCard key={l} label={l} value={v} />
         ))}
-      </div>
+      </StatGrid>
 
       <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">

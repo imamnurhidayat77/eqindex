@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getJSON } from '../../lib/api';
 import { CARD, H1, H2, H3, SUB, TABLE, TABLEWRAP, TD, TH, NUM, LINK, badge, BADGE } from '../../lib/tokens';
+import { StatCard, StatGrid } from '../../components/StatCard';
 
 export const revalidate = 30;
 
@@ -23,14 +24,11 @@ export default async function About() {
       <p className={SUB}>The evidence engine for New Zealand show jumping — every number traceable to a round.</p>
 
       {/* hero stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      <StatGrid cols={5}>
         {[['Horses', nH], ['Riders', nR], ['Events', nE], ['Classes', nC], ['Rounds', rounds]].map(([l, v]) => (
-          <div key={l} className="bg-card border border-line rounded p-4">
-            <div className="text-[11px] text-muted tracking-[0.4px] uppercase">{l}</div>
-            <div className="text-[26px] font-extrabold mt-1">{Number(v).toLocaleString()}</div>
-          </div>
+          <StatCard key={l} label={l} value={Number(v).toLocaleString()} />
         ))}
-      </div>
+      </StatGrid>
 
       <section className={CARD}>
         <h2 className={H2}>Mission</h2>
