@@ -4,6 +4,7 @@ import { BADGE, CARD, EMPTY, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP
 import { ScoreRing } from '../../../components/charts';
 import MiniTrend from '../../../components/MiniTrend';
 import ClassResults from '../../../components/ClassResults';
+import { EventDifficultyTable, EventCombosTable } from '../../../components/EventTables';
 
 export const revalidate = 30;
 
@@ -231,27 +232,7 @@ export default async function EventDetail({ params }) {
       <h2 className={H2}>Class Difficulty Analysis</h2>
       <p className={SUB}>Lower clear round percentage and higher average faults indicate more challenging courses.</p>
       <section className={CARD}>
-        <div className={TABLEWRAP}>
-        <table className={TABLE}>
-          <thead><tr><th className={TH}>Class</th><th className={`${TH} ${NUM}`}>Height</th><th className={`${TH} ${NUM}`}>Starters</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg Faults</th><th>Difficulty Score</th></tr></thead>
-          <tbody>
-            {a.classes.map((c) => {
-              const av = Number(c.avg_faults);
-              const [lbl, cls] = av >= 7 ? ['Very High', BADGE.red] : av >= 5 ? ['High', BADGE.red] : av >= 3 ? ['Medium', BADGE.blue] : av >= 1.5 ? ['Moderate', BADGE.gray] : ['Low', BADGE.green];
-              return (
-                <tr key={c.class_id}>
-                  <td className={TD}><b>{c.class}</b></td>
-                  <td className={`${TD} ${NUM}`}>{c.height_cm ? `${(Number(c.height_cm) / 100).toFixed(2)}m` : '–'}</td>
-                  <td className={`${TD} ${NUM}`}>{c.starters}</td>
-                  <td className={`${TD} ${NUM} text-moss`}>{c.clear_pct === null ? '–' : pct1(c.clear_pct)}</td>
-                  <td className={`${TD} ${NUM}`}>{c.avg_faults === null ? '–' : Number(c.avg_faults).toFixed(1)}</td>
-                  <td className={TD}><span className={badge(cls)}>{lbl}</span></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        </div>
+        <EventDifficultyTable rows={a.classes} />
       </section>
 
       <h2 className={H2}>Class Results</h2>
@@ -329,22 +310,7 @@ export default async function EventDetail({ params }) {
       <h2 className={H2}>Best Horse-Rider Combinations</h2>
       <p className={SUB}>Consolidated team index evaluating the strongest competitive partnerships.</p>
       <section className={CARD}>
-        <div className={TABLEWRAP}>
-        <table className={TABLE}>
-          <thead><tr><th className={TH}>Combination</th><th className={TH}>Rounds</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg Faults</th><th>Best Result</th></tr></thead>
-          <tbody>
-            {allParts.map((p, i) => (
-              <tr key={`${p.horse}-${p.rider}`}>
-                <td className={TD}><b>{p.horse} + {p.rider}</b></td>
-                <td className={TD}>{p.rounds} Round{p.rounds === 1 ? '' : 's'}</td>
-                <td className={`${TD} ${NUM} text-moss`}>{pct1(p.clear_pct)}</td>
-                <td className={`${TD} ${NUM}`}>{Number(p.avg_faults).toFixed(2)}</td>
-                <td className={TD}>{i === 0 ? <span className={badge(BADGE.goldfill)}>{ordinal(p.best_place)} Place</span> : `${ordinal(p.best_place)} Place`}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+        <EventCombosTable rows={allParts} />
       </section>
 
       <h2 className={H2}>Arena Intelligence</h2>
