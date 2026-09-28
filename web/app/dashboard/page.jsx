@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { getJSON } from '../../lib/api';
 import { BADGE, CARD, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../lib/tokens';
-import { eqScore, trendBadge, consistencyPts } from '../../lib/eq';
+import { eqScore, trendBadge, consistencyPts, shrunkClear, wilson, confidenceBadge } from '../../lib/eq';
 import { TrendPanel, BenchChart } from '../../components/Graphs';
 import Filters from '../../components/Filters';
 import EventCarousel from '../../components/EventCarousel';
 import { heightParams } from '../../lib/heights';
-import { EmptyState } from '../../components/EmptyState';
+import { EmptyState, TableEmpty } from '../../components/EmptyState';
 import { StatCard, StatGrid } from '../../components/StatCard';
 
 export const revalidate = 30;
@@ -145,6 +145,26 @@ export default async function Dashboard({ searchParams }) {
       avg: v.af.length ? v.af.reduce((a, b) => a + b, 0) / v.af.length : 0,
     }))
     .sort((a, b) => b.clear - a.clear).slice(0, 3);
+
+  // leaderboards: shrinkage + Wilson intervals so thin samples can't top a board
+  const MINB = 3;
+  const prior = totalRounds ? circuitClear / 100 : 0.5;
+  const withConf = (rows) => rows
+    .filter((x) => Number(x.starts) >= MINB)
+    .map((x) => {
+      const [lo, hi] = wilson(x.clears, x.starts);
+      const [conf, bk] = confidenceBadge(x.starts);
+      return { ...x, shrunk: shrunkClear(x.clears, x.starts, prior), lo, hi, conf, bk };
+    });
+  const boardClearH = withConf(ranked)
+    .sort((a, b) => b.shrunk - a.shrunk || Number(b.starts) - Number(a.starts)).slice(0, 10);
+  const boardFaultH = withConf(ranked)
+    .sort((a, b) => Number(a.avg_faults) - Number(b.avg_faults) || Number(b.starts) - Number(a.starts)).slice(0, 10);
+  const boardConsH = withConf(ranked)
+    .map((x) => ({ ...x, score: consistencyPts(x.faults_stddev) ?? 0 }))
+    .sort((a, b) => b.score - a.score || Number(b.starts) - Number(a.starts)).slice(0, 10);
+  const boardClearR = withConf(rankedR)
+    .sort((a, b) => b.shrunk - a.shrunk || Number(b.starts) - Number(a.starts)).slice(0, 10);
 
   const badgeArrow = (lbl) => (lbl === 'Declining' ? '↓' : lbl === 'Stable' ? '→' : '↑');
   const spark = (k, n = 6) => m.slice(-n).map((x) => Number(x[k]));
@@ -335,6 +355,104 @@ export default async function Dashboard({ searchParams }) {
               </section>
             </>
           )}
+
+          <h2 className={H2}>Leaderboards</h2>
+          <p className={SUB}>Shrunk clear rates with 95% intervals — thin samples can&apos;t top the board.</p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <section className={CARD}>
+              <div className="flex items-baseline justify-between mb-1">
+                <h2 className="text-[15px] font-bold">Top Horses — Clear Round % (Shrunk)</h2>
+                <Link className={`${LINK} text-[12px]`} href="/horses">Full table →</Link>
+              </div>
+              <div className={TABLEWRAP}>
+              <table className={TABLE}>
+                <thead><tr><th className={TH}>#</th><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Conf</th></tr></thead>
+                <tbody>
+                  {boardClearH.map((h, i) => (
+                    <tr key={h.horse_id}>
+                      <td className={i === 0 ? 'text-gold font-bold' : 'text-muted'}>#{i + 1}</td>
+                      <td className={TD}><Link href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold">{h.horse}</Link></td>
+                      <td className={`${TD} ${NUM}`}><b>{h.shrunk.toFixed(0)}%</b> <span className="text-faint text-[11px]">({h.lo.toFixed(0)}%–{h.hi.toFixed(0)}%)</span></td>
+                      <td className={`${TD} ${NUM} text-muted`}>{h.starts}</td>
+                      <td className={TD}><span className={badge(BADGE[h.bk])}>{h.conf}</span></td>
+                    </tr>
+                  ))}
+                  {!boardClearH.length && <TableEmpty icon="🐎" title="Not enough rounds yet" hint="Boards unlock once horses log 3+ rounds in this slice." />}
+                </tbody>
+              </table>
+              </div>
+            </section>
+            <section className={CARD}>
+              <div className="flex items-baseline justify-between mb-1">
+                <h2 className="text-[15px] font-bold">Top Horses — Lowest Avg Faults</h2>
+                <Link className={`${LINK} text-[12px]`} href="/horses">Full table →</Link>
+              </div>
+              <div className={TABLEWRAP}>
+              <table className={TABLE}>
+                <thead><tr><th className={TH}>#</th><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Avg Faults</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Conf</th></tr></thead>
+                <tbody>
+                  {boardFaultH.map((h, i) => (
+                    <tr key={h.horse_id}>
+                      <td className={i === 0 ? 'text-gold font-bold' : 'text-muted'}>#{i + 1}</td>
+                      <td className={TD}><Link href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold">{h.horse}</Link></td>
+                      <td className={`${TD} ${NUM}`}><b>{Number(h.avg_faults).toFixed(2)}</b></td>
+                      <td className={`${TD} ${NUM} text-muted`}>{h.starts}</td>
+                      <td className={TD}><span className={badge(BADGE[h.bk])}>{h.conf}</span></td>
+                    </tr>
+                  ))}
+                  {!boardFaultH.length && <TableEmpty icon="🐎" title="Not enough rounds yet" hint="Boards unlock once horses log 3+ rounds in this slice." />}
+                </tbody>
+              </table>
+              </div>
+            </section>
+            <section className={CARD}>
+              <div className="flex items-baseline justify-between mb-1">
+                <h2 className="text-[15px] font-bold">Most Consistent Horses</h2>
+                <Link className={`${LINK} text-[12px]`} href="/horses">Full table →</Link>
+              </div>
+              <div className={TABLEWRAP}>
+              <table className={TABLE}>
+                <thead><tr><th className={TH}>#</th><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Score</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={TH}>Conf</th></tr></thead>
+                <tbody>
+                  {boardConsH.map((h, i) => (
+                    <tr key={h.horse_id}>
+                      <td className={i === 0 ? 'text-gold font-bold' : 'text-muted'}>#{i + 1}</td>
+                      <td className={TD}><Link href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold">{h.horse}</Link></td>
+                      <td className={`${TD} ${NUM}`}><b>{h.score}</b></td>
+                      <td className={`${TD} ${NUM} text-moss`}>{pct(h.clear_pct)} <span className="text-faint text-[11px]">({h.lo.toFixed(0)}%–{h.hi.toFixed(0)}%)</span></td>
+                      <td className={TD}><span className={badge(BADGE[h.bk])}>{h.conf}</span></td>
+                    </tr>
+                  ))}
+                  {!boardConsH.length && <TableEmpty icon="🐎" title="Not enough rounds yet" hint="Boards unlock once horses log 3+ rounds in this slice." />}
+                </tbody>
+              </table>
+              </div>
+            </section>
+            <section className={CARD}>
+              <div className="flex items-baseline justify-between mb-1">
+                <h2 className="text-[15px] font-bold">Top Riders — Clear Round % (Shrunk)</h2>
+                <Link className={`${LINK} text-[12px]`} href="/riders">Full table →</Link>
+              </div>
+              <div className={TABLEWRAP}>
+              <table className={TABLE}>
+                <thead><tr><th className={TH}>#</th><th className={TH}>Rider</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Conf</th></tr></thead>
+                <tbody>
+                  {boardClearR.map((r, i) => (
+                    <tr key={r.rider_id}>
+                      <td className={i === 0 ? 'text-gold font-bold' : 'text-muted'}>#{i + 1}</td>
+                      <td className={TD}><Link href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white font-semibold">{r.rider}</Link></td>
+                      <td className={`${TD} ${NUM}`}><b>{r.shrunk.toFixed(0)}%</b> <span className="text-faint text-[11px]">({r.lo.toFixed(0)}%–{r.hi.toFixed(0)}%)</span></td>
+                      <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
+                      <td className={TD}><span className={badge(BADGE[r.bk])}>{r.conf}</span></td>
+                    </tr>
+                  ))}
+                  {!boardClearR.length && <TableEmpty icon="🏇" title="Not enough rounds yet" hint="Boards unlock once riders log 3+ rounds in this slice." />}
+                </tbody>
+              </table>
+              </div>
+            </section>
+          </div>
+          <p className="text-[11px] text-faint mb-6">Shrunk toward {pct(circuitClear)} circuit prior (k=10) · Wilson 95% intervals · CONF from round volume.</p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>

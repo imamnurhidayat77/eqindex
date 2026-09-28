@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { eqScore, trendBadge, consistencyPts, fieldScore, strengthLabel, ordinal } from '../eq.js';
+import { eqScore, trendBadge, consistencyPts, fieldScore, strengthLabel, ordinal, shrunkClear, wilson, confidenceBadge } from '../eq.js';
 
 test('eqScore: rewards clears, penalises faults, caps 0–99', () => {
   assert.equal(eqScore(100, 0, 20), 99); // 45+50-0+6=101 → capped
@@ -36,4 +36,27 @@ test('ordinal handles 11–13 correctly', () => {
   assert.equal(ordinal(11), '11th');
   assert.equal(ordinal(22), '22nd');
   assert.equal(ordinal(null), '–');
+});
+
+test('shrunkClear: pulls thin samples toward the prior', () => {
+  // 4/4 with a 50% prior and k=10 → (4+5)/14 ≈ 64%
+  assert.ok(Math.abs(shrunkClear(4, 4) - 64.3) < 0.1);
+  // volume overwhelms the prior: (90+5)/110 ≈ 86.4%
+  assert.ok(Math.abs(shrunkClear(90, 100) - 86.4) < 0.1);
+  assert.ok(shrunkClear(4, 4) < shrunkClear(40, 40)); // same rate, more rounds wins
+});
+
+test('wilson: sane bounds, wider when thin', () => {
+  const [lo, hi] = wilson(9, 14);
+  assert.ok(lo < 64 && 64 < hi && lo >= 0 && hi <= 100);
+  const [lo1, hi1] = wilson(1, 1);
+  const [lo27, hi27] = wilson(20, 27);
+  assert.ok((hi1 - lo1) > (hi27 - lo27)); // thin sample → wider band
+  assert.deepEqual(wilson(0, 0), [0, 100]);
+});
+
+test('confidenceBadge: thin/medium/high volume bands', () => {
+  assert.deepEqual(confidenceBadge(3), ['Thin', 'red']);
+  assert.deepEqual(confidenceBadge(7), ['Medium', 'goldfill']);
+  assert.deepEqual(confidenceBadge(27), ['High', 'green']);
 });

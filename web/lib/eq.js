@@ -23,6 +23,40 @@ export function consistencyPts(stddev) {
   return Math.max(0, Math.round(100 - Math.min(70, Number(stddev) * 12)));
 }
 
+// Shrink a clear rate toward the circuit prior so thin samples can't top a
+// leaderboard: shrunk = (clears + k·prior) / (starts + k), in percent units.
+// prior is a 0–1 rate (default 0.5), k is pseudo-rounds of prior weight.
+export function shrunkClear(clears, starts, prior = 0.5, k = 10) {
+  const c = Number(clears) || 0, n = Number(starts) || 0;
+  const p = Math.max(0, Math.min(1, Number(prior) || 0));
+  return (100 * (c + k * p)) / (n + k);
+}
+
+// Wilson score interval (95%) for clears/starts, returned as [lo, hi] in
+// percent units. Honest uncertainty bars for leaderboard displays.
+export function wilson(clears, starts, z = 1.96) {
+  const n = Number(starts) || 0;
+  if (n <= 0) return [0, 100];
+  const c = Math.max(0, Math.min(n, Number(clears) || 0));
+  const phat = c / n, z2 = z * z;
+  const denom = 1 + z2 / n;
+  const mid = phat + z2 / (2 * n);
+  const half = z * Math.sqrt((phat * (1 - phat) + z2 / (4 * n)) / n);
+  return [
+    Math.max(0, 100 * (mid - half) / denom),
+    Math.min(100, 100 * (mid + half) / denom),
+  ];
+}
+
+// Sample-confidence badge from round volume: [label, badgeKey].
+// Mirrors the EI convention — under 5 rounds is Thin, over 15 is High.
+export function confidenceBadge(starts) {
+  const n = Number(starts) || 0;
+  if (n < 5) return ['Thin', 'red'];
+  if (n <= 15) return ['Medium', 'goldfill'];
+  return ['High', 'green'];
+}
+
 // Composite field/event strength 5–99 from clear% and average faults.
 export function fieldScore(clearPct, avgFaults) {
   const v = 70 + (Number(clearPct) - 35) * 0.5 - (Number(avgFaults) - 4) * 5;
