@@ -135,9 +135,9 @@ export default async function SeriesPage({ params }) {
               <tr key={`${r.rider}-${r.horse}`} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
                 <td className="px-3 py-2.5"><span className={statusBadge(r.rank === 1 ? '1st' : r.rank === 2 ? '2nd' : r.rank === 3 ? '3rd' : 'stable')}>#{r.rank}</span></td>
                 <td className="px-3 py-2.5 font-semibold">
-                  {r.rd ? <a href={`/riders/${r.rd.id}`} className="text-white hover:text-gold">{r.rider}</a> : r.rider}
+                  {r.rd ? <a href={`/riders/${r.rd.rider_slug || r.rd.id}`} className="text-white hover:text-gold">{r.rider}</a> : r.rider}
                   <span className="text-muted"> × </span>
-                  {r.h ? <a href={`/horses/${r.h.id}`} className="text-gold hover:underline">{r.horse}</a> : <span className="text-muted">{r.horse}</span>}
+                  {r.h ? <a href={`/horses/${r.h.horse_slug || r.h.id}`} className="text-gold hover:underline">{r.horse}</a> : <span className="text-muted">{r.horse}</span>}
                 </td>
                 {evLabels.map((e) => (
                   <td key={e} className="px-3 py-2.5 text-right tabular-nums text-muted">{r.events?.[e] ?? '–'}</td>

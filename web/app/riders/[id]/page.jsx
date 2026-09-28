@@ -297,7 +297,7 @@ export default async function RiderProfile({ params }) {
                 <td className="px-3 py-2.5 font-semibold">{x.event_name}</td>
                 <td className="px-3 py-2.5 text-slate-200">{x.class_name}</td>
                 <td className="whitespace-nowrap px-3 py-2.5 text-muted">{x.height_cm ? `${(num(x.height_cm) / 100).toFixed(2)}m` : '—'}</td>
-                <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-gold"><a href={`/horses/${x.horse_id}`} className="text-gold hover:underline">{x.horse}</a></td>
+                <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-gold"><a href={`/horses/${x.horse_slug || x.horse_id}`} className="text-gold hover:underline">{x.horse}</a></td>
                 <td className={`px-3 py-2.5 text-right font-semibold ${num(x.jump_faults) === 0 ? 'text-mint' : 'text-danger'}`}>{x.jump_faults}</td>
                 <td className={`px-3 py-2.5 text-right ${num(x.time_faults) === 0 ? 'text-mint' : 'text-danger'}`}>{num(x.time_faults).toFixed(2)}</td>
                 <td className={`px-3 py-2.5 text-right font-bold ${num(x.total_faults) === 0 ? 'text-mint' : 'text-danger'}`}>{num(x.total_faults).toFixed(2)}</td>
@@ -414,7 +414,7 @@ export default async function RiderProfile({ params }) {
                 const [lbl, cls] = trendStatus(x.clear_pct);
                 return (
                   <tr key={x.horse_id} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
-                    <td className="px-2 py-2.5 font-semibold"><a href={`/horses/${x.horse_id}`} className="text-white hover:text-gold">{x.horse}</a></td>
+                    <td className="px-2 py-2.5 font-semibold"><a href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white hover:text-gold">{x.horse}</a></td>
                     <td className="whitespace-nowrap px-2 py-2.5 text-muted">{x.rounds_together} Rounds</td>
                     <td className="px-2 py-2.5 font-semibold text-mint">{num(x.clear_pct).toFixed(0)}%</td>
                     <td className="px-2 py-2.5">{num(x.avg_faults).toFixed(2)}</td>
@@ -436,7 +436,7 @@ export default async function RiderProfile({ params }) {
         {suggestions.length ? (
           <div className="grid gap-3 md:grid-cols-3">
             {suggestions.map((sug) => (
-              <a key={sug.id} href={`/horses/${sug.id}`} className="group rounded bg-card2 p-4 transition hover:border-gold/50 border border-transparent">
+              <a key={sug.id} href={`/horses/${sug.horse_slug || sug.id}`} className="group rounded bg-card2 p-4 transition hover:border-gold/50 border border-transparent">
                 <div className="flex items-center justify-between">
                   <b>{sug.name}</b>
                   <span className="text-[16px] font-extrabold text-gold">{sug.fit}</span>

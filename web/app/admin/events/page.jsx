@@ -5,7 +5,7 @@ export default function ManageEvents() {
   return (
     <ManageTable
       title="Manage events" sub="Edit details or delete with full cascade (classes + rounds). Deletion is audited."
-      base="events" profile={(r) => `/events/${r.id}`}
+      base="events" profile={(r) => `/events/${r.slug || r.id}`}
       columns={[
         { k: 'name', label: 'Event' }, { k: 'venue', label: 'Venue' },
         { k: 'date_start', label: 'Starts' }, { k: 'status', label: 'Status' },

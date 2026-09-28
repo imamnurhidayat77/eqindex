@@ -158,14 +158,14 @@ export default async function Rankings({ searchParams }) {
   const details = {};
   await Promise.all(
     detailHorses.map(async (h) => {
-      try { details[h.horse_id] = await getJSON(`/horses/${h.horse_id}`); }
+      try { details[h.horse_id] = await getJSON(`/horses/${h.horse_slug || h.horse_id}`); }
       catch { details[h.horse_id] = { history: [], partnerships: [], data: {} }; }
     })
   );
   const rDetails = {};
   await Promise.all(
     pageR.map(async (r) => {
-      try { rDetails[r.rider_id] = await getJSON(`/riders/${r.rider_id}`); }
+      try { rDetails[r.rider_id] = await getJSON(`/riders/${r.rider_slug || r.rider_id}`); }
       catch { rDetails[r.rider_id] = { partnerships: [] }; }
     })
   );
@@ -335,7 +335,7 @@ export default async function Rankings({ searchParams }) {
               return (
                 <tr key={h.horse_id}>
                   <td className={`px-2 py-[11px] border-b border-rowline ${rankH === 1 ? 'text-gold font-bold' : 'text-muted'}`}>#{rankH}</td>
-                  <td className={TD}><a href={`/horses/${h.horse_id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{h.horse}</a></td>
+                  <td className={TD}><a href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{h.horse}</a></td>
                   {by === 'points' ? (
                     <><td className={`${TD} ${NUM}`}><b className={rankH === 1 ? 'text-gold' : ''}>{Number(h[ptsCol])}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.podiums ?? '–'}</td>
@@ -383,20 +383,20 @@ export default async function Rankings({ searchParams }) {
               return (
                 <tr key={r.rider_id}>
                   <td className={`px-2 py-[11px] border-b border-rowline ${rankR === 1 ? 'text-gold font-bold' : 'text-muted'}`}>#{rankR}</td>
-                  <td className={TD}><a href={`/riders/${r.rider_id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{r.rider}</a></td>
+                  <td className={TD}><a href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{r.rider}</a></td>
                   {by === 'points' ? (
                     <><td className={`${TD} ${NUM}`}><b className={rankR === 1 ? 'text-gold' : ''}>{Number(r[ptsCol])}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.podiums ?? '–'}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.win_rate === null || r.win_rate === undefined ? '–' : `${Number(r.win_rate).toFixed(1)}%`}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.wins}</td>
-                    <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_id}`}>{best.horse}</a> : <span className="text-faint">—</span>}</td></>
+                    <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_slug || best.horse_id}`}>{best.horse}</a> : <span className="text-faint">—</span>}</td></>
                   ) : (
                     <><td className={`${TD} ${NUM}`}><b>{r.eq}</b></td>
                     <td className={`${TD} ${NUM} ${rankR === 1 ? 'text-moss' : 'text-muted'}`}>{pct1(r.clear_pct)}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.wins}</td>
-                    <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_id}`}>{best.horse}</a> : <span className="text-faint">—</span>}</td>
+                    <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_slug || best.horse_id}`}>{best.horse}</a> : <span className="text-faint">—</span>}</td>
                     <td className="px-2 py-[11px] border-b border-rowline">{mv === null || mv === undefined ? <span className="text-faint">→</span> : mv > 0 ? <span className="text-moss font-bold">▲{mv}</span> : mv < 0 ? <span className="text-blood font-bold">▼{-mv}</span> : <span className="text-faint">—</span>}</td></>
                   )}
                 </tr>
@@ -592,9 +592,9 @@ export default async function Rankings({ searchParams }) {
                 <span className="text-gold text-[11px] font-bold">#1 Ranked</span>
               </div>
               <div className="flex gap-3 text-[12px] mt-1.5">
-                <a className={LINK} href={`/horses/${spotlight.horse_id}`}>Horse Profile</a>
-                <a className={LINK} href={`/horses/${spotlight.horse_id}`}>Rider Partnerships</a>
-                <a className={LINK} href={`/horses/${spotlight.horse_id}`}>Competition History</a>
+                <a className={LINK} href={`/horses/${spotlight.horse_slug || spotlight.horse_id}`}>Horse Profile</a>
+                <a className={LINK} href={`/horses/${spotlight.horse_slug || spotlight.horse_id}`}>Rider Partnerships</a>
+                <a className={LINK} href={`/horses/${spotlight.horse_slug || spotlight.horse_id}`}>Competition History</a>
               </div>
             </div>
           ) : (

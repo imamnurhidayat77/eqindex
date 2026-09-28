@@ -100,7 +100,7 @@ export default async function Watchlist() {
       const [trend] = trendBadge(clear, (d.history || []).slice(0, 5));
       const p = (d.partnerships || [])[0] || null;
       return {
-        kind: 'horse', watchId: w.id, id: w.entity_id, isPublic: !!w.is_public, name: d.data?.name || w.name,
+        kind: 'horse', watchId: w.id, id: w.entity_id, slug: w.slug || d.data?.slug, isPublic: !!w.is_public, name: d.data?.name || w.name,
         eq: eqScore(clear, avg, starts), clear, avg, starts, wins: st.wins ?? 0,
         rank: horseRank[w.entity_id] ?? null, trend,
         last: fmtRel(lastOf(d), now),
@@ -122,7 +122,7 @@ export default async function Watchlist() {
       const [trend] = trendBadge(clear, (d.history || []).slice(0, 5));
       const p = (d.partnerships || [])[0] || null;
       return {
-        kind: 'rider', watchId: w.id, id: w.entity_id, isPublic: !!w.is_public, name: d.data?.name || w.name,
+        kind: 'rider', watchId: w.id, id: w.entity_id, slug: w.slug || d.data?.slug, isPublic: !!w.is_public, name: d.data?.name || w.name,
         eq: eqScore(clear, avg, starts), clear, avg, starts, wins: st.wins ?? 0,
         rank: riderRank[w.entity_id] ?? null, trend,
         last: fmtRel(lastOf(d), now),

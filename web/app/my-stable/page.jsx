@@ -252,7 +252,7 @@ export default function MyStable() {
               <tr key={a.id}>
                 <td className={TD}>
                   <button onClick={() => toggle(a.id)} className="text-faint text-[11px] mr-1.5 bg-none border-0 cursor-pointer" title="Expand analysis">{expanded[a.id] ? '▾' : '▸'}</button>
-                  <a href={`/riders/${a.id}`} className="text-white font-semibold no-underline hover:text-gold">{a.name || a.rider}</a>
+                  <a href={`/riders/${a.slug || a.id}`} className="text-white font-semibold no-underline hover:text-gold">{a.name || a.rider}</a>
                   {a.workload.overloaded && <span className="ml-1.5 text-[10px] font-bold text-blood" title=">6 rounds/30d or shows <7d apart">⚠ LOAD</span>}
                 </td>
                 <td className={`${TD} ${NUM}`}><b className="text-gold">{a.eq}</b></td>
@@ -292,9 +292,9 @@ export default function MyStable() {
                   <b>{a.name || a.rider}</b>
                   <span className={badge(BADGE.red)}>↓ Declining</span>
                 </div>
-                <p className="text-muted text-[13px] mt-1.5">Recent form {a.arrow} — review last rounds with <a className={LINK} href={`/riders/${a.id}`}>full history →</a></p>
+                <p className="text-muted text-[13px] mt-1.5">Recent form {a.arrow} — review last rounds with <a className={LINK} href={`/riders/${a.slug || a.id}`}>full history →</a></p>
                 <div className="mt-2">
-                  <a className={`${BTN_PRIMARY} no-underline inline-block`} href={`/riders/${a.id}`}>Open athlete profile →</a>
+                  <a className={`${BTN_PRIMARY} no-underline inline-block`} href={`/riders/${a.slug || a.id}`}>Open athlete profile →</a>
                 </div>
               </div>
             ))}

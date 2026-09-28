@@ -60,7 +60,7 @@ export default async function SeriesCategory({ params }) {
             {rows.map((x, i) => (
               <tr key={x.rider_id}>
                 <td className={i === 0 ? 'text-gold font-bold' : 'text-muted'}>#{i + 1}</td>
-                <td className={TD}><a href={`/riders/${x.rider_id}`} className="text-white font-semibold no-underline hover:text-gold">{x.rider}</a></td>
+                <td className={TD}><a href={`/riders/${x.rider_slug || x.rider_id}`} className="text-white font-semibold no-underline hover:text-gold">{x.rider}</a></td>
                 <td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{x.total_points}</b></td>
                 <td className={`${TD} ${NUM} text-muted`}>{x.podiums ?? '–'}</td>
                 <td className={`${TD} ${NUM} text-muted`}>{x.win_rate == null ? '–' : `${Number(x.win_rate).toFixed(1)}%`}</td>

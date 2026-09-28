@@ -5,7 +5,7 @@ export default function ManageRiders() {
   return (
     <ManageTable
       title="Manage riders" sub="Edit regions, series categories and bios. Riders with rounds cannot be deleted."
-      base="riders" profile={(r) => `/riders/${r.id}`}
+      base="riders" profile={(r) => `/riders/${r.rider_slug || r.rider_id}`}
       columns={[
         { k: 'name', label: 'Rider' }, { k: 'region', label: 'Region' },
         { k: 'series_category', label: 'Series' }, { k: 'starts', label: 'Starts', num: true },

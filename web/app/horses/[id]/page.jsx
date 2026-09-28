@@ -311,7 +311,7 @@ export default async function HorseProfile({ params, searchParams }) {
               <span className="rounded-full bg-mint/15 px-2.5 py-0.5 text-[11px] font-bold text-mint">Elite Synergy</span>
             </div>
             <div className="flex items-center justify-between rounded bg-card2 px-4 py-3">
-              <div><div className="font-bold">{best.rider}</div><div className="text-[12px] text-muted">Primary Showjumping Rider</div></div>
+              <div><div className="font-bold"><a href={`/riders/${best.rider_slug || best.rider_id}`} className="text-white hover:text-gold">{best.rider}</a></div><div className="text-[12px] text-muted">Primary Showjumping Rider</div></div>
               <div className="text-[18px] font-extrabold text-gold">{partScore(best)}/100</div>
             </div>
             <dl className="mt-2 text-[13px]">
@@ -448,7 +448,7 @@ export default async function HorseProfile({ params, searchParams }) {
                       <td className="px-2 py-2 border-b border-rowline">
                         {x.horse_id === p.data.id
                           ? <b className="text-gold">{x.horse} (you)</b>
-                          : <a href={`/horses/${x.horse_id}`} className="text-white font-semibold no-underline hover:text-gold">{x.horse}</a>}
+                          : <a href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white font-semibold no-underline hover:text-gold">{x.horse}</a>}
                       </td>
                       <td className="px-2 py-2 border-b border-rowline text-right text-muted">{x.age}</td>
                       <td className="px-2 py-2 border-b border-rowline text-right text-moss">{x.clear_pct === null ? '–' : `${Number(x.clear_pct).toFixed(0)}%`}</td>

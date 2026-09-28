@@ -68,10 +68,10 @@ export default async function Dashboard({ searchParams }) {
   const top4R = showRiders ? rankedR.slice(0, 4) : [];
 
   const details = Object.fromEntries(await Promise.all(
-    top5.map(async (h) => [h.horse_id, await getJSON(`/horses/${h.horse_id}`)])
+    top5.map(async (h) => [h.horse_id, await getJSON(`/horses/${h.horse_slug || h.horse_id}`)])
   ));
   const rDetails = Object.fromEntries(await Promise.all(
-    top4R.map(async (r) => [r.rider_id, await getJSON(`/riders/${r.rider_id}`)])
+    top4R.map(async (r) => [r.rider_id, await getJSON(`/riders/${r.rider_slug || r.rider_id}`)])
   ));
 
   const feat = top5[0];
@@ -247,7 +247,7 @@ export default async function Dashboard({ searchParams }) {
                       return (
                         <tr key={h.horse_id}>
                           <td className={i === 0 ? 'text-gold font-bold' : ''}>#{i + 1}</td>
-                          <td className={TD}><a href={`/horses/${h.horse_id}`} className="text-white font-semibold">{h.horse}</a></td>
+                          <td className={TD}><a href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold">{h.horse}</a></td>
                           <td className={`${TD} ${NUM}`}><b>{h.eq}</b></td>
                           <td className={`${TD} ${NUM} text-moss`}>{pct(h.clear_pct)}</td>
                           <td className={`${TD} ${NUM}`}>{Number(h.avg_faults).toFixed(2)}</td>
@@ -277,11 +277,11 @@ export default async function Dashboard({ searchParams }) {
                       return (
                         <tr key={r.rider_id}>
                           <td className={i === 0 ? 'text-gold font-bold' : ''}>#{i + 1}</td>
-                          <td className={TD}><a href={`/riders/${r.rider_id}`} className="text-white font-semibold">{r.rider}</a></td>
+                          <td className={TD}><a href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white font-semibold">{r.rider}</a></td>
                           <td className={`${TD} ${NUM}`}><b>{r.eq}</b></td>
                           <td className={`${TD} ${NUM} text-moss`}>{pct(r.clear_pct)}</td>
                           <td className={`${TD} ${NUM}`}>{r.starts}</td>
-                          <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_id}`}>{best.horse}</a> : '—'}</td>
+                          <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_slug || best.horse_id}`}>{best.horse}</a> : '—'}</td>
                         </tr>
                       );
                     })}

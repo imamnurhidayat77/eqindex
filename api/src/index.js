@@ -105,7 +105,7 @@ app.get('/rankings/horses', asyncH(async (req, res) => {
   if (req.query.metric === 'points') {
     const col = req.query.window === '12m' ? 'points_12m' : req.query.window === '3m' ? 'points_3m' : 'total_points';
     const { rows } = await pool.query(
-      `SELECT p.horse_id, p.horse, p.total_starts AS starts, s.clears, s.clear_pct,
+      `SELECT p.horse_id, p.horse, p.horse_slug, p.total_starts AS starts, s.clears, s.clear_pct,
          s.avg_faults, s.faults_stddev, p.wins, p.podiums, p.win_rate,
          p.total_points, p.points_12m, p.points_3m, p.last_start
        FROM horse_point_stats p LEFT JOIN horse_stats s ON s.horse_id = p.horse_id
@@ -117,7 +117,7 @@ app.get('/rankings/horses', asyncH(async (req, res) => {
   }
   const f = roundFilters(req.query);
   const { rows } = await pool.query(
-    `SELECT h.id AS horse_id, h.name AS horse, COUNT(*) AS starts,
+    `SELECT h.id AS horse_id, h.name AS horse, h.slug AS horse_slug, COUNT(*) AS starts,
        SUM(rr.clear_round::INT) AS clears,
        ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
        ROUND(AVG(rr.total_faults), 2) AS avg_faults,
@@ -129,7 +129,7 @@ app.get('/rankings/horses', asyncH(async (req, res) => {
      JOIN classes c ON c.id = rr.class_id
      JOIN events e ON e.id = rr.event_id
      ${f.clause}
-     GROUP BY h.id, h.name HAVING COUNT(*) >= ${minStarts}
+     GROUP BY h.id, h.name, h.slug HAVING COUNT(*) >= ${minStarts}
      ORDER BY clear_pct DESC, avg_faults ASC, starts DESC LIMIT $${f.params.length + 1}`,
     [...f.params, limit]
   );
@@ -143,7 +143,7 @@ app.get('/rankings/riders', asyncH(async (req, res) => {
     const col = req.query.window === '12m' ? 'points_12m' : req.query.window === '3m' ? 'points_3m' : 'total_points';
     const catFilter = cat ? ` AND p.series_category = $3` : '';
     const { rows } = await pool.query(
-      `SELECT p.rider_id, p.rider, p.series_category, p.total_starts AS starts, s.clears, s.clear_pct,
+      `SELECT p.rider_id, p.rider, p.rider_slug, p.series_category, p.total_starts AS starts, s.clears, s.clear_pct,
          s.avg_faults, s.wins, s.horses_ridden, p.podiums, p.win_rate,
          p.total_points, p.points_12m, p.points_3m, p.last_start
        FROM rider_point_stats p LEFT JOIN rider_stats s ON s.rider_id = p.rider_id
@@ -157,7 +157,7 @@ app.get('/rankings/riders', asyncH(async (req, res) => {
   const catClause = cat ? ` AND r.series_category = $${f.params.length + 1}` : '';
   const catParams = cat ? [...f.params, cat] : f.params;
   const { rows } = await pool.query(
-    `SELECT r.id AS rider_id, r.name AS rider, r.series_category, COUNT(*) AS starts,
+    `SELECT r.id AS rider_id, r.name AS rider, r.slug AS rider_slug, r.series_category, COUNT(*) AS starts,
        SUM(rr.clear_round::INT) AS clears,
        ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
        ROUND(AVG(rr.total_faults), 2) AS avg_faults,
@@ -168,7 +168,7 @@ app.get('/rankings/riders', asyncH(async (req, res) => {
      JOIN classes c ON c.id = rr.class_id
      JOIN events e ON e.id = rr.event_id
      ${f.clause}${f.clause ? ' AND' : 'WHERE'} 1=1${catClause}
-     GROUP BY r.id, r.name, r.series_category HAVING COUNT(*) >= ${minStarts}
+     GROUP BY r.id, r.name, r.slug, r.series_category HAVING COUNT(*) >= ${minStarts}
      ORDER BY clear_pct DESC, avg_faults ASC, starts DESC LIMIT $${catParams.length + 1}`,
     [...catParams, limit]
   );
@@ -248,7 +248,7 @@ app.get('/horses/:id', asyncH(async (req, res) => {
   if (!horse.rows.length) return res.status(404).json({ error: 'horse not found' });
   const stats = await pool.query('SELECT * FROM horse_stats WHERE horse_id = $1', [req.params.id]);
   const history = await pool.query(
-    `SELECT rr.*, c.name AS class_name, e.name AS event_name, c.class_date, r.name AS rider
+    `SELECT rr.*, c.name AS class_name, e.name AS event_name, c.class_date, r.name AS rider, r.slug AS rider_slug
      FROM round_results rr
      JOIN classes c ON c.id = rr.class_id
      JOIN events e ON e.id = rr.event_id
@@ -270,7 +270,7 @@ app.get('/riders/:id', asyncH(async (req, res) => {
   if (!rider.rows.length) return res.status(404).json({ error: 'rider not found' });
   const stats = await pool.query('SELECT * FROM rider_stats WHERE rider_id = $1', [req.params.id]);
   const history = await pool.query(
-    `SELECT rr.*, c.name AS class_name, e.name AS event_name, c.class_date, h.name AS horse
+    `SELECT rr.*, c.name AS class_name, e.name AS event_name, c.class_date, h.name AS horse, h.slug AS horse_slug
      FROM round_results rr
      JOIN classes c ON c.id = rr.class_id
      JOIN events e ON e.id = rr.event_id
@@ -635,7 +635,7 @@ app.get('/events/:id/analytics', asyncH(async (req, res) => {
     [e.id]
   );
   const rounds = await pool.query(
-    `SELECT rr.*, h.name AS horse, r.name AS rider, c.name AS class_name,
+    `SELECT rr.*, h.name AS horse, h.slug AS horse_slug, r.name AS rider, r.slug AS rider_slug, c.name AS class_name,
        c.class_date, COALESCE(rr.height_cm, c.height_cm) AS height_cm
      FROM round_results rr
      JOIN horses h ON h.id = rr.horse_id
@@ -646,8 +646,8 @@ app.get('/events/:id/analytics', asyncH(async (req, res) => {
     [e.id]
   );
   const horses = await pool.query(
-    `SELECT DISTINCT ON (rr.horse_id) h.id AS horse_id, h.name AS horse,
-       r.name AS rider, r.id AS rider_id,
+    `SELECT DISTINCT ON (rr.horse_id) h.id AS horse_id, h.name AS horse, h.slug AS horse_slug,
+       r.name AS rider, r.id AS rider_id, r.slug AS rider_slug,
        COALESCE(rr.height_cm, c.height_cm) AS height_cm,
        rr.jump_faults, rr.time_seconds, rr.finish_place
      FROM round_results rr
@@ -660,7 +660,7 @@ app.get('/events/:id/analytics', asyncH(async (req, res) => {
     [e.id]
   );
   const riders = await pool.query(
-    `SELECT r.id AS rider_id, r.name AS rider, COUNT(*)::INT AS starts,
+    `SELECT r.id AS rider_id, r.name AS rider, r.slug AS rider_slug, COUNT(*)::INT AS starts,
        COUNT(DISTINCT rr.horse_id)::INT AS horses_ridden,
        ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
        ROUND(AVG(rr.total_faults), 2) AS avg_faults
@@ -753,6 +753,7 @@ app.get('/watchlist', asyncH(async (req, res) => {
   const uid = needUser(req, res); if (!uid) return;
   const { rows } = await pool.query(
     `SELECT w.*,
+       COALESCE(h.slug, r.slug, ch.slug) AS slug,
        COALESCE(h.name, r.name, ev.name,
          ch.name || ' × ' || cr.name) AS name
      FROM watchlist_items w
@@ -993,17 +994,17 @@ app.get('/venues/:id', asyncH(async (req, res) => {
   const rounds = events.rows.length
     ? (await pool.query('SELECT COUNT(*)::INT AS n FROM round_results rr JOIN events e ON e.id = rr.event_id WHERE e.venue_id = $1', [req.params.id])).rows[0].n : 0;
   const topH = await pool.query(
-    `SELECT h.id AS horse_id, h.name AS horse, COUNT(*)::INT AS starts,
+    `SELECT h.id AS horse_id, h.name AS horse, h.slug AS horse_slug, COUNT(*)::INT AS starts,
        ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct
      FROM round_results rr JOIN horses h ON h.id = rr.horse_id
      JOIN events e ON e.id = rr.event_id WHERE e.venue_id = $1
-     GROUP BY h.id, h.name HAVING COUNT(*) >= 2 ORDER BY clear_pct DESC LIMIT 5`, [req.params.id]);
+     GROUP BY h.id, h.name, h.slug HAVING COUNT(*) >= 2 ORDER BY clear_pct DESC LIMIT 5`, [req.params.id]);
   const topR = await pool.query(
-    `SELECT r.id AS rider_id, r.name AS rider, COUNT(*)::INT AS starts,
+    `SELECT r.id AS rider_id, r.name AS rider, r.slug AS rider_slug, COUNT(*)::INT AS starts,
        ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct
      FROM round_results rr JOIN riders r ON r.id = rr.rider_id
      JOIN events e ON e.id = rr.event_id WHERE e.venue_id = $1
-     GROUP BY r.id, r.name HAVING COUNT(*) >= 2 ORDER BY clear_pct DESC LIMIT 5`, [req.params.id]);
+     GROUP BY r.id, r.name, r.slug HAVING COUNT(*) >= 2 ORDER BY clear_pct DESC LIMIT 5`, [req.params.id]);
   res.json({ data: { ...v.rows[0], event_count: events.rows.length, rounds, events: events.rows, topHorses: topH.rows, topRiders: topR.rows } });
 }));
 

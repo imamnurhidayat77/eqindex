@@ -82,21 +82,21 @@ export default async function Landing({ searchParams }) {
             </div>
             {leader ? (
               <>
-                <a href={`/horses/${leader.horse_id}`} className="block mt-2 text-[24px] font-extrabold text-white no-underline hover:text-gold leading-tight">{leader.horse}</a>
+                <a href={`/horses/${leader.horse_slug || leader.horse_id}`} className="block mt-2 text-[24px] font-extrabold text-white no-underline hover:text-gold leading-tight">{leader.horse}</a>
                 <div className="mt-1 text-[13px] text-muted">
                   <b className="text-gold text-[26px] font-extrabold">{leader.total_points}</b> pts · {leader.wins} wins · {Number(leader.clear_pct).toFixed(0)}% clear
                 </div>
                 <div className="mt-3 pt-3 border-t border-line/60 text-[13px]">
                   <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1">Top rider</div>
                   {leadRider ? (
-                    <a href={`/riders/${leadRider.rider_id}`} className="text-white font-bold no-underline hover:text-gold">{leadRider.rider}</a>
+                    <a href={`/riders/${leadRider.rider_slug || leadRider.rider_id}`} className="text-white font-bold no-underline hover:text-gold">{leadRider.rider}</a>
                   ) : <span className="text-faint">—</span>}
                   {leadRider && <span className="text-muted"> · <b className="text-gold">{leadRider.total_points}</b> pts</span>}
                 </div>
                 <div className="mt-3 pt-3 border-t border-line/60 text-[13px]">
                   <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1">Latest event</div>
                   {lastEvent ? (
-                    <a href={`/events/${lastEvent.id}`} className="text-white font-semibold no-underline hover:text-gold">{lastEvent.name}</a>
+                    <a href={`/events/${lastEvent.slug || lastEvent.id}`} className="text-white font-semibold no-underline hover:text-gold">{lastEvent.name}</a>
                   ) : <span className="text-faint">—</span>}
                   {lastEvent && <div className="text-muted text-[12px] mt-0.5">{(lastEvent.date_start || '').slice(0, 10)} · {lastEvent.venue}</div>}
                 </div>
@@ -135,7 +135,7 @@ export default async function Landing({ searchParams }) {
                 {topH.map((h, i) => (
                   <tr key={h.horse_id}>
                     <td className={i === 0 ? 'text-gold font-bold' : 'text-muted'}>#{i + 1}</td>
-                    <td className={TD}><a href={`/horses/${h.horse_id}`} className="text-white font-semibold no-underline hover:text-gold">{h.horse}</a></td>
+                    <td className={TD}><a href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold no-underline hover:text-gold">{h.horse}</a></td>
                     <td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{h.total_points}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.wins}</td>
                     <td className={`${TD} ${NUM} text-moss`}>{Number(h.clear_pct).toFixed(0)}%</td>
@@ -160,7 +160,7 @@ export default async function Landing({ searchParams }) {
                 {topR.map((r, i) => (
                   <tr key={r.rider_id}>
                     <td className={i === 0 ? 'text-gold font-bold' : 'text-muted'}>#{i + 1}</td>
-                    <td className={TD}><a href={`/riders/${r.rider_id}`} className="text-white font-semibold no-underline hover:text-gold">{r.rider}</a></td>
+                    <td className={TD}><a href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white font-semibold no-underline hover:text-gold">{r.rider}</a></td>
                     <td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{r.total_points}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.wins}</td>
                     <td className={`${TD} ${NUM} text-moss`}>{Number(r.clear_pct).toFixed(0)}%</td>

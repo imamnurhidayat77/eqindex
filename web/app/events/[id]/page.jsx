@@ -440,7 +440,7 @@ export default async function EventDetail({ params }) {
             </tr>
             {pastEditions.map((x) => (
               <tr key={x.id}>
-                <td className={TD}><a className={LINK} href={`/events/${x.id}`}>{x.name}</a></td>
+                <td className={TD}><a className={LINK} href={`/events/${x.slug || x.id}`}>{x.name}</a></td>
                 <td className={`${TD} text-muted`}>{(x.date_start || '').slice(0, 10)}</td>
                 <td className={`${TD} ${NUM} text-muted`}>{x.class_count}</td>
                 <td className={`${TD} ${NUM} text-muted`}>{x.round_count}</td>

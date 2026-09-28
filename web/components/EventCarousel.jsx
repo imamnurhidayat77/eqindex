@@ -55,7 +55,7 @@ export default function EventCarousel({ events }) {
         className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory"
         style={{ scrollbarWidth: 'thin' }}>
         {events.map((e) => (
-          <a key={e.id} href={`/events/${e.id}`}
+          <a key={e.id} href={`/events/${e.slug || e.id}`}
             className="snap-start shrink-0 w-[240px] bg-card2 border border-line rounded p-4 no-underline hover:border-gold/60 transition-colors group">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] text-faint">{fmtDay(e.date_start)}{e.date_end && e.date_end !== e.date_start ? ` → ${fmtDay(e.date_end)}` : ''}</span>

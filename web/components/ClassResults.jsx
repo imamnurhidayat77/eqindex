@@ -69,8 +69,8 @@ export default function ClassResults({ groups }) {
                     return (
                       <tr key={r.id} className={dead ? 'opacity-50' : ''} title={r.notes || undefined}>
                         <td className={TD}>{placeCell(r)}</td>
-                        <td className={TD}><a className={LINK} href={`/riders/${r.rider_id}`}>{r.rider}</a></td>
-                        <td className={TD}><a className={LINK} href={`/horses/${r.horse_id}`}>{r.horse}</a></td>
+                        <td className={TD}><a className={LINK} href={`/riders/${r.rider_slug || r.rider_id}`}>{r.rider}</a></td>
+                        <td className={TD}><a className={LINK} href={`/horses/${r.horse_slug || r.horse_id}`}>{r.horse}</a></td>
                         <td className={`${TD} ${NUM} ${Number(r.total_faults) === 0 && !dead ? 'text-moss font-bold' : 'text-muted'}`}>
                           {dead ? '–' : fmt1(r.total_faults)}
                         </td>

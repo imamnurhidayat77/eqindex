@@ -27,7 +27,7 @@ export default async function VenueDetail({ params }) {
               <tbody>
                 {(d.events || []).map((e) => (
                   <tr key={e.id}>
-                    <td className={TD}><a className={LINK} href={`/events/${e.id}`}><b>{e.name}</b></a></td>
+                    <td className={TD}><a className={LINK} href={`/events/${e.slug || e.id}`}><b>{e.name}</b></a></td>
                     <td className={`${TD} text-muted`}>{(e.date_start || '').slice(0, 10)}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{e.round_count}</td>
                   </tr>
@@ -47,7 +47,7 @@ export default async function VenueDetail({ params }) {
               <tbody>
                 {(d.topHorses || []).map((h) => (
                   <tr key={h.horse_id}>
-                    <td className={TD}><a className={LINK} href={`/horses/${h.horse_id}`}>{h.horse}</a></td>
+                    <td className={TD}><a className={LINK} href={`/horses/${h.horse_slug || h.horse_id}`}>{h.horse}</a></td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.starts}</td>
                     <td className={`${TD} ${NUM} text-moss`}>{Number(h.clear_pct).toFixed(0)}%</td>
                   </tr>
@@ -65,7 +65,7 @@ export default async function VenueDetail({ params }) {
               <tbody>
                 {(d.topRiders || []).map((r) => (
                   <tr key={r.rider_id}>
-                    <td className={TD}><a className={LINK} href={`/riders/${r.rider_id}`}>{r.rider}</a></td>
+                    <td className={TD}><a className={LINK} href={`/riders/${r.rider_slug || r.rider_id}`}>{r.rider}</a></td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
                     <td className={`${TD} ${NUM} text-moss`}>{Number(r.clear_pct).toFixed(0)}%</td>
                   </tr>

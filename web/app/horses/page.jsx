@@ -71,7 +71,7 @@ export default function Horses() {
               return (
                 <tr key={x.horse_id}>
                   <td className={rank === 1 && safePage === 1 ? 'rank1' : ''}>#{rank}</td>
-                  <td className={TD}><a href={`/horses/${x.horse_id}`} className="text-white font-semibold">{x.horse}</a></td>
+                  <td className={TD}><a href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white font-semibold">{x.horse}</a></td>
                   <td className={`${TD} ${NUM}`}><b>{x.eq}</b></td>
                   <td className={`${TD} ${NUM} text-moss`}>{Number(x.clear_pct).toFixed(1)}%</td>
                   <td className={`${TD} ${NUM}`}>{Number(x.avg_faults).toFixed(2)}</td>
