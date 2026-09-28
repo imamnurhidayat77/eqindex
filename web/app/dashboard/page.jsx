@@ -3,7 +3,7 @@ import { getJSON } from '../../lib/api';
 import { BADGE, CARD, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../lib/tokens';
 import { eqScore, trendBadge, consistencyPts } from '../../lib/eq';
 import { ScoreRing } from '../../components/charts';
-import { Spark, TrendPanel, BenchChart } from '../../components/Graphs';
+import { MiniSpark, TrendPanel, BenchChart } from '../../components/Graphs';
 import Filters from '../../components/Filters';
 import EventCarousel from '../../components/EventCarousel';
 import { heightParams } from '../../lib/heights';
@@ -163,12 +163,22 @@ export default async function Dashboard({ searchParams }) {
               ['CLEAR ROUND RATE', diffBadge(Number(last.clear_pct) - Number(prev.clear_pct)), true, pct(circuitClear), spark('clear_pct'), '#00C853'],
               ['AVERAGE FAULTS', diffBadge(-dPct(last.avg_faults, prev.avg_faults)), true, circuitAvg.toFixed(2), spark('avg_faults'), '#00C853'],
             ].map(([lbl, d, good, big, sp, col]) => (
-              <div className="bg-card border border-line rounded p-3.5 px-4" key={lbl}>
-                <div className="flex justify-between items-baseline gap-2"><span className="text-[11px] text-muted tracking-[0.4px] uppercase">{lbl}</span><span className={`font-bold whitespace-nowrap ${good ? 'text-moss' : 'text-gold'}`}>{d}</span></div>
-                <div className="text-[30px] font-extrabold mt-1.5 flex items-end justify-between">{big}<Spark data={sp} color={col} /></div>
+              <div className="bg-card border border-line rounded p-3.5 px-4 flex flex-col justify-between gap-2 min-h-[108px]" key={lbl}>
+                <div className="flex justify-between items-start gap-2">
+                  <span className="text-[11px] text-muted tracking-[0.4px] uppercase leading-snug">{lbl}</span>
+                  <span className={`text-[11px] font-bold whitespace-nowrap rounded-full px-2 py-0.5 ${good ? 'text-moss bg-greenbg/40' : 'text-gold bg-goldbg/40'}`}>{d}</span>
+                </div>
+                <div className="flex items-end justify-between gap-2">
+                  <span className="text-[30px] font-extrabold leading-none tabular-nums">{big}</span>
+                  <MiniSpark data={sp} color={col} />
+                </div>
               </div>
             ))}
           </div>
+
+          <h2 className={H2}>Latest Events</h2>
+          <p className={SUB}>Newest competitions on the circuit — scroll sideways.</p>
+          <EventCarousel events={latestEvents} />
 
           {feat && (
             <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6">
@@ -229,10 +239,6 @@ export default async function Dashboard({ searchParams }) {
               </section>
             </div>
           )}
-
-          <h2 className={H2}>Latest Events</h2>
-          <p className={SUB}>Newest competitions on the circuit — scroll sideways.</p>
-          <EventCarousel events={latestEvents} />
 
           {showHorses && (
             <>

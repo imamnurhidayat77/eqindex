@@ -25,6 +25,32 @@ export function Spark({ data, color = '#FFD700' }) {
   );
 }
 
+// Fixed-size SVG sparkline — no recharts container quirks, safe with <2 points.
+export function MiniSpark({ data, color = '#FFD700', w = 76, h = 30 }) {
+  const vals = (data || []).map(Number).filter((v) => Number.isFinite(v));
+  if (vals.length < 2) {
+    return (
+      <svg width={w} height={h} className="shrink-0 opacity-50" aria-hidden="true">
+        <line x1="2" y1={h / 2} x2={w - 2} y2={h / 2} stroke={color} strokeWidth="1.5" strokeDasharray="3 3" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = max - min || 1;
+  const pts = vals.map((v, i) => {
+    const x = (i / (vals.length - 1)) * (w - 4) + 2;
+    const y = h - 3 - ((v - min) / span) * (h - 6);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const lastY = h - 3 - ((vals[vals.length - 1] - min) / span) * (h - 6);
+  return (
+    <svg width={w} height={h} className="shrink-0" aria-hidden="true">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={w - 2} cy={lastY.toFixed(1)} r={2.5} fill={color} />
+    </svg>
+  );
+}
+
 export function TrendPanel({ monthly, horseName, eq }) {
   const [mode, setMode] = useState('monthly');
   const [hidden, setHidden] = useState({});
