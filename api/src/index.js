@@ -23,12 +23,19 @@ function getCookie(req, name) {
   }
   return null;
 }
-function setSessionCookie(req, res, token) {
+function cookieOpts(req) {
+  // Cross-site web (Vercel) -> API (Cloud Run): browsers only send
+  // SameSite=None+Secure cookies on fetch/XHR. Local dev stays Lax.
   const secure = process.env.COOKIE_SECURE === '1' || req.secure;
+  return { httpOnly: true, sameSite: secure ? 'none' : 'lax', secure, path: '/' };
+}
+function setSessionCookie(req, res, token) {
   res.cookie(SESSION_COOKIE, token, {
-    httpOnly: true, sameSite: 'lax', secure, path: '/',
-    maxAge: SESSION_DAYS * 24 * 3600 * 1000,
+    ...cookieOpts(req), maxAge: SESSION_DAYS * 24 * 3600 * 1000,
   });
+}
+function clearSessionCookie(req, res) {
+  res.clearCookie(SESSION_COOKIE, cookieOpts(req));
 }
 async function sessionUser(req) {
   const token = getCookie(req, SESSION_COOKIE);
@@ -1066,7 +1073,7 @@ app.post('/auth/logout', asyncH(async (req, res) => {
     const hash = crypto.createHash('sha256').update(token).digest('hex');
     await pool.query('DELETE FROM sessions WHERE token_hash = $1', [hash]);
   }
-  res.clearCookie(SESSION_COOKIE, { path: '/' });
+  clearSessionCookie(req, res);
   res.json({ ok: true });
 }));
 
@@ -1519,7 +1526,7 @@ app.post('/auth/password', asyncH(async (req, res) => {
   await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2',
     [await bcrypt.hash(String(next), 12), req.authUser.id]);
   await pool.query('DELETE FROM sessions WHERE user_id = $1', [req.authUser.id]);
-  res.clearCookie(SESSION_COOKIE, { path: '/' });
+  clearSessionCookie(req, res);
   audit(req, 'auth.password_change', 'user', req.authUser.id, {});
   res.json({ ok: true, relogin: true });
 }));
