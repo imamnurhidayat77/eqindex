@@ -27,6 +27,12 @@ function LoginForm() {
   // Warm the destination RSC payload while the user types, so the
   // post-login push commits faster.
   useEffect(() => { router.prefetch(next); }, [router, next]);
+  // Already authenticated (landed here via back button / stale link):
+  // forward instead of stranding on a dead-end card.
+  // NOTE: all hooks must stay above every early return (React #300).
+  useEffect(() => {
+    if (!done && !loading && user) router.replace(next);
+  }, [done, loading, user, next, router]);
   async function submit(e) {
     e.preventDefault();
     setErr(''); setBusy(true);
@@ -44,11 +50,7 @@ function LoginForm() {
       </div>
     );
   }
-  // Already authenticated (landed here via back button / stale link):
-  // forward instead of stranding on a dead-end card.
-  useEffect(() => {
-    if (!loading && user) router.replace(next);
-  }, [loading, user, next, router]);
+  // Already forwarded by the effect above (back-button / stale-link visits).
   if (!loading && user) {
     return (
       <div className="mx-auto w-full max-w-[520px] rounded border border-line bg-card p-6 sm:p-8 text-center">
