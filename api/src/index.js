@@ -56,7 +56,7 @@ app.use(async (req, _res, next) => {
 // Never caches admin/auth/user-scoped routes; logged-in traffic always bypasses.
 const CACHE_TTL = 60 * 1000;
 const cacheStore = new Map();
-const CACHEABLE = [/^\/rankings\//, /^\/classes$/, /^\/trends\//, /^\/arenas$/, /^\/events(\/|$)/, /^\/venues/, /^\/series/, /^\/peers/, /^\/(horses|riders)\/[^/]+$/];
+const CACHEABLE = [/^\/rankings\//, /^\/classes$/, /^\/trends\//, /^\/stats\//, /^\/arenas$/, /^\/events(\/|$)/, /^\/venues/, /^\/series/, /^\/peers/, /^\/(horses|riders)\/[^/]+$/];
 app.use((req, res, next) => {
   if (req.method !== 'GET' || !CACHEABLE.some((rx) => rx.test(req.path))) return next();
   if ((req.headers.cookie || '').includes('eq_session')) return next();
@@ -96,7 +96,7 @@ function throttled(ip) {
   return rec.n > 10;
 }
 
-function paging(req, def = 20, max = 100) {
+function paging(req, def = 20, max = 500) {
   const limit = Math.min(parseInt(req.query.limit || def, 10) || def, max);
   const minStarts = Math.max(parseInt(req.query.min_starts || 0, 10) || 0, 0);
   return { limit, minStarts };
@@ -669,10 +669,32 @@ app.get('/trends/circuit', asyncH(async (req, res) => {
      FROM round_results rr JOIN classes c ON c.id = rr.class_id
      JOIN events e ON e.id = rr.event_id
      ${f.clause ? f.clause + ' AND' : 'WHERE'} c.class_date IS NOT NULL
-     GROUP BY 1, 2 ORDER BY 2`,
+      GROUP BY 1, 2 ORDER BY 2`,
     f.params
   );
   res.json({ data: rows });
+}));
+
+// ---- Circuit totals (exact counts for dashboard/about headers).
+// Same ?season=&region=&arena=&height_min=&height_max=&since= filters as
+// /trends/circuit, but aggregated over the whole slice — never capped by paging.
+app.get('/stats/circuit', asyncH(async (req, res) => {
+  const f = roundFilters(req.query);
+  const { rows } = await pool.query(
+    `SELECT COUNT(*)::INT AS rounds,
+        COALESCE(SUM(rr.clear_round::INT), 0)::INT AS clears,
+        ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
+        ROUND(AVG(rr.total_faults), 2) AS avg_faults,
+        COUNT(DISTINCT rr.horse_id)::INT AS horses,
+        COUNT(DISTINCT rr.rider_id)::INT AS riders,
+        COUNT(DISTINCT rr.event_id)::INT AS events,
+        COUNT(DISTINCT c.id)::INT AS classes
+      FROM round_results rr JOIN classes c ON c.id = rr.class_id
+      JOIN events e ON e.id = rr.event_id
+      ${f.clause}`,
+    f.params
+  );
+  res.json({ data: rows[0] });
 }));
 
 app.get('/horses/:id/trend', asyncH(async (req, res) => {

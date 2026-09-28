@@ -69,30 +69,30 @@ export function StatCard({
   highlight = false,
   title = null,
 }) {
+  const hasDelta = delta !== null && delta !== undefined && delta !== '';
+  const hasSub = sub !== null && sub !== undefined && sub !== '';
   const subCls = subTone === 'muted' ? 'text-muted' : subTone === 'gold' ? 'text-gold' : subTone === 'moss' ? 'text-moss' : 'text-faint';
   const valueCls = valueTone === 'blood' ? 'text-blood' : highlight ? 'text-gold' : '';
+  const labelText = typeof label === 'string' ? label : undefined;
   return (
     <div
-      title={title || (typeof label === 'string' ? label : undefined)}
+      title={title || labelText}
       className={`rounded border bg-card p-4 flex flex-col min-h-[118px] ${highlight ? 'border-gold/60' : 'border-line'}`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-[10px] font-semibold uppercase tracking-[0.4px] text-muted">{label}</span>
-        {delta !== null && delta !== undefined && delta !== '' && (
-          pill ? (
-            <span className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${PILL_TONE[tone] || PILL_TONE.gold}`}>{delta}</span>
-          ) : (
-            <span className={`shrink-0 whitespace-nowrap text-[11px] font-bold tabular-nums ${TONE[tone] || TONE.gold}`}>{delta}</span>
-          )
-        )}
-      </div>
+      <div className="truncate text-[10px] font-semibold uppercase tracking-[0.4px] text-muted">{label}</div>
       <div className="mt-2 flex flex-1 items-end justify-between gap-2">
         <span className={`text-[26px] font-extrabold leading-none tabular-nums ${valueCls}`}>{value}</span>
         {spark && <StatSpark data={spark} color={sparkColor} />}
       </div>
-      {sub !== null && sub !== undefined && sub !== '' && (
-        <div className={`mt-1.5 truncate text-[12px] tabular-nums ${subCls}`}>{sub}</div>
-      )}
+      <div className="mt-1.5 min-h-[18px] truncate text-[12px] tabular-nums">
+        {hasDelta && (pill ? (
+          <span className={`inline-block whitespace-nowrap rounded-full px-2 py-px text-[11px] font-bold ${PILL_TONE[tone] || PILL_TONE.gold}`}>{delta}</span>
+        ) : (
+          <span className={`font-semibold ${TONE[tone] || TONE.gold}`}>{delta}</span>
+        ))}
+        {hasDelta && hasSub && <span className="text-faint"> · </span>}
+        {hasSub && <span className={subCls}>{sub}</span>}
+      </div>
     </div>
   );
 }

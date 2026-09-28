@@ -44,6 +44,11 @@ test('events + classes + trends shape', async () => {
   assert.ok(hh.data[0].horse_id && hh.data[0].height_cm !== undefined);
   const tr = await get('/trends/circuit');
   assert.ok(tr.data[0].month && tr.data[0].clear_pct !== undefined);
+  const st = await get('/stats/circuit');
+  assert.ok(Number.isInteger(st.data.rounds) && Number.isInteger(st.data.horses) && Number.isInteger(st.data.riders));
+  assert.ok(Number.isInteger(st.data.events) && Number.isInteger(st.data.classes));
+  const stF = await get('/stats/circuit?season=2026-2027');
+  assert.ok(Number.isInteger(stF.data.rounds));
 });
 
 test('profiles + comparison', async () => {

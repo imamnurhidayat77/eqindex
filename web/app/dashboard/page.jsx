@@ -49,7 +49,7 @@ export default async function Dashboard({ searchParams }) {
   const qs = new URLSearchParams(Object.entries(api).filter(([, v]) => v !== '' && v != null)).toString();
   const Q = qs ? `?${qs}` : '';
 
-  const [horses, riders, events, circuit, classes, heights, eiHorses, eiRiders] = await Promise.all([
+  const [horses, riders, events, circuit, classes, heights, eiHorses, eiRiders, stats] = await Promise.all([
     getJSON(`/rankings/horses?limit=100${Q ? '&' + qs : ''}`),
     getJSON(`/rankings/riders?limit=100${Q ? '&' + qs : ''}`),
     getJSON(`/events?limit=100${Q ? '&' + qs : ''}`),
@@ -60,6 +60,8 @@ export default async function Dashboard({ searchParams }) {
     // "who is genuinely strongest", not "who leads this slice".
     getJSON('/rankings/horses?limit=5&metric=ei').catch(() => ({ data: [] })),
     getJSON('/rankings/riders?limit=4&metric=ei').catch(() => ({ data: [] })),
+    // Exact slice totals (rankings/events lists are paging-capped — never count from them).
+    getJSON(`/stats/circuit${Q}`).catch(() => null),
   ]);
   const current = { season, region, arena, height, min_rounds: minRounds, range, entity };
   const seasons = [...new Set(events.data.map((e) => e.season).filter(Boolean))].sort().reverse();
@@ -107,11 +109,17 @@ export default async function Dashboard({ searchParams }) {
     ? null : Number(last.clear_pct) - Number(prev.clear_pct);
   const avgBase = dPct(last.avg_faults, prev.avg_faults);
   const avgDelta = avgBase === null ? null : -avgBase;
-  const totalRounds = ranked.reduce((st, h) => st + Number(h.starts), 0);
+  // Exact slice totals (null when the API predates /stats/circuit — fall back to the capped slice).
+  const totals = stats?.data || null;
+  const numOr = (v, fb) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? fb : Number(v));
+  const totalRounds = numOr(totals?.rounds, ranked.reduce((st, h) => st + Number(h.starts), 0));
   const totalClears = ranked.reduce((st, h) => st + Number(h.clears), 0);
-  const circuitClear = totalRounds ? (100 * totalClears / totalRounds) : 0;
-  const circuitAvg = totalRounds
-    ? ranked.reduce((st, h) => st + Number(h.avg_faults) * Number(h.starts), 0) / totalRounds : 0;
+  const circuitClear = numOr(totals?.clear_pct, totalRounds ? (100 * totalClears / totalRounds) : 0);
+  const circuitAvg = numOr(totals?.avg_faults, totalRounds
+    ? ranked.reduce((st, h) => st + Number(h.avg_faults) * Number(h.starts), 0) / totalRounds : 0);
+  const horsesN = numOr(totals?.horses, ranked.length);
+  const ridersN = numOr(totals?.riders, rankedR.length);
+  const eventsN = numOr(totals?.events, events.data.length);
   const avgs = ranked.map((h) => Number(h.avg_faults));
   const circuitStd = Math.sqrt(avgs.reduce((st, v) => st + (v - circuitAvg) ** 2, 0) / Math.max(avgs.length, 1));
 
@@ -181,10 +189,10 @@ export default async function Dashboard({ searchParams }) {
           <p className={SUB}>High-level circuit metrics and aggregated analytics</p>
           <StatGrid cols={6}>
             {[
-              ['Horses Analysed', diffBadge(dPct(last.horses, prev.horses)), false, ranked.length, spark('horses'), '#FFD700'],
-              ['Riders Analysed', diffBadge(dPct(last.riders, prev.riders)), false, rankedR.length, spark('riders'), '#FFD700'],
+              ['Horses Analysed', diffBadge(dPct(last.horses, prev.horses)), false, horsesN.toLocaleString(), spark('horses'), '#FFD700'],
+              ['Riders Analysed', diffBadge(dPct(last.riders, prev.riders)), false, ridersN.toLocaleString(), spark('riders'), '#FFD700'],
               ['Competition Rounds', diffBadge(dPct(last.starts, prev.starts)), false, totalRounds.toLocaleString(), spark('starts'), '#FFD700'],
-              ['Events Tracked', diffBadge(dPct(last.events, prev.events)), false, events.data.length, spark('events'), '#FFD700'],
+              ['Events Tracked', diffBadge(dPct(last.events, prev.events)), false, eventsN.toLocaleString(), spark('events'), '#FFD700'],
               ['Clear Round Rate', diffBadge(hasPrev ? clearDelta : null), true, pct(circuitClear), spark('clear_pct'), '#00C853'],
               ['Average Faults', diffBadge(hasPrev ? avgDelta : null), true, circuitAvg.toFixed(2), spark('avg_faults'), '#00C853'],
             ].map(([lbl, d, good, big, sp, col]) => (

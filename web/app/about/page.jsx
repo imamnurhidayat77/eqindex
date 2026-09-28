@@ -6,15 +6,18 @@ import { StatCard, StatGrid } from '../../components/StatCard';
 export const revalidate = 30;
 
 export default async function About() {
-  const [horses, riders, events, classes] = await Promise.all([
+  const [horses, riders, events, classes, stats] = await Promise.all([
     getJSON('/rankings/horses?limit=500').catch(() => ({ data: [] })),
     getJSON('/rankings/riders?limit=500').catch(() => ({ data: [] })),
     getJSON('/events?limit=100').catch(() => ({ data: [] })),
     getJSON('/classes?limit=500').catch(() => ({ data: [] })),
+    // Exact totals (leaderboard lists are paging-capped — never count from them).
+    getJSON('/stats/circuit').catch(() => null),
   ]);
-  const nH = (horses.data || []).length, nR = (riders.data || []).length;
-  const nE = (events.data || []).length, nC = (classes.data || []).length;
-  const rounds = (horses.data || []).reduce((s, h) => s + Number(h.starts || 0), 0);
+  const t = stats?.data || null;
+  const nH = t?.horses ?? (horses.data || []).length, nR = t?.riders ?? (riders.data || []).length;
+  const nE = t?.events ?? (events.data || []).length, nC = t?.classes ?? (classes.data || []).length;
+  const rounds = t?.rounds ?? (horses.data || []).reduce((s, h) => s + Number(h.starts || 0), 0);
   const seasons = [...new Set((events.data || []).map((e) => e.season).filter(Boolean))].sort();
 
   return (

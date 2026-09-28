@@ -208,10 +208,10 @@ export default async function EventDetail({ params }) {
       <p className={SUB}>Consolidated statistics of {e.name} Event</p>
       <StatGrid cols={7}>
         {[
-          ['Total Classes', `${a.classes.length} classes`, a.classes.length],
-          ['Total Rounds', `${n} rounds`, n],
-          ['Horses Entered', `${horsesN} entered`, horsesN],
-          ['Riders Entered', `${ridersN} riders`, ridersN],
+          ['Total Classes', null, a.classes.length],
+          ['Total Rounds', null, n],
+          ['Horses Entered', null, horsesN],
+          ['Riders Entered', null, ridersN],
           ['Clear Rate', `${(clearPct - circClear) >= 0 ? '+' : ''}${(clearPct - circClear).toFixed(1)}% vs avg`, `${clearPct.toFixed(0)}%`],
           ['Avg Faults', `${(avgF - circAvg) >= 0 ? '+' : ''}${(avgF - circAvg).toFixed(1)} penalty`, avgF.toFixed(1)],
           ['Field Strength', `${strength} field`, score],
