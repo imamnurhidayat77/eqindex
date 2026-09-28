@@ -46,7 +46,6 @@ export default function RootLayout({ children }) {
             <div className="text-right">
               <nav className="flex gap-5 justify-end mb-2.5">
                 <a className="text-muted no-underline" href="/about">About</a>
-                <a className="text-muted no-underline" href="/api-docs">API</a>
                 <a className="text-muted no-underline" href="/privacy">Privacy</a>
                 <a className="text-muted no-underline" href="/terms">Terms</a>
                 <a className="text-muted no-underline" href="/glossary">Glossary</a>

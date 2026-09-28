@@ -93,7 +93,7 @@ export default async function HorseProfile({ params, searchParams }) {
     ['Sire', h.sire || '—'],
     ['Dam', h.dam || '—'],
     ['Breeder', h.breeder || '—'],
-    ['Owner', h.owner_id || 'Private'],
+    ['Owner', h.owner_name || 'Private'],
     ['Region', h.region || 'NZ Circuit'],
   ];
 

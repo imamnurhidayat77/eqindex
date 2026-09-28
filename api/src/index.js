@@ -180,7 +180,8 @@ app.get('/events', asyncH(async (req, res) => {
   const { rows } = await pool.query(
     `SELECT e.*,
        (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id) AS class_count,
-       (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.event_id = e.id) AS round_count
+       (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.event_id = e.id) AS round_count,
+       (SELECT COUNT(*)::INT FROM (SELECT DISTINCT rr.horse_id, rr.rider_id FROM round_results rr WHERE rr.event_id = e.id) t) AS combo_count
      FROM events e ${where} ORDER BY e.date_start DESC LIMIT $${params.length + 1}`,
     [...params, limit]
   );
@@ -234,7 +235,9 @@ app.get('/events/:id', asyncH(async (req, res) => {
 app.get('/horses/:id', asyncH(async (req, res) => {
   req.params.id = await resolveId('horses', req.params.id, res);
   if (!req.params.id) return;
-  const horse = await pool.query('SELECT * FROM horses WHERE id = $1', [req.params.id]);
+  const horse = await pool.query(
+    `SELECT h.*, u.name AS owner_name FROM horses h
+     LEFT JOIN users u ON u.id = h.owner_id WHERE h.id = $1`, [req.params.id]);
   if (!horse.rows.length) return res.status(404).json({ error: 'horse not found' });
   const stats = await pool.query('SELECT * FROM horse_stats WHERE horse_id = $1', [req.params.id]);
   const history = await pool.query(
@@ -1165,9 +1168,13 @@ app.get('/weather', asyncH(async (req, res) => {
 // ---- Admin CSV import (spec §8A): paste/upload → validate → preview → commit.
 // Body: { event_id?, event?: {name,date_start,date_end,venue,region,arena_type},
 //         csv, filename?, source?, dry_run? }
+// One file may span MULTIPLE events: rows carrying event_name + date_start
+// (+date_end) are routed to their own event (auto-created); rows without fall
+// back to the request target. Target required only when some row lacks it.
 // Header vocab (case-insensitive): class_name|class, class_type, class_date,
 // rider_name|rider, horse_name|horse, placing|finish_place, faults|jump_faults,
 // time|time_seconds, time_faults, height_cm, format (Two-phase|Jump-off|Speed|Power & Speed),
+// event_name|event, date_start|event_date, date_end,
 // status (finished|E|R|W|DQ...), notes.
 // dry_run runs the SAME writes inside a rolled-back transaction: preview points
 // come from the real trigger, never a duplicated formula.
@@ -1199,7 +1206,24 @@ const STATUS_MAP = { E: 'eliminated', R: 'retired', W: 'withdrawn', DQ: 'disqual
 
 // Canonical import record (JSON mode uses these exact keys; CSV headers map to them).
 const IMPORT_FIELDS = ['class_name', 'class_type', 'class_date', 'rider_name', 'horse_name',
-  'placing', 'faults', 'time', 'time_faults', 'height_cm', 'format', 'status', 'notes', 'series_key'];
+  'placing', 'faults', 'time', 'time_faults', 'height_cm', 'format', 'status', 'notes', 'series_key',
+  'breed', 'age', 'gender', 'sire', 'dam', 'breeder', 'country',
+  'region', 'rider_region', 'series_category', 'rider_series', 'nationality', 'rider_nationality',
+  'venue', 'venue_country', 'arena_type', 'event_name', 'date_start', 'date_end'];
+// Optional enrichment columns (fill-if-null only — never overwrites curated data).
+const GENDERS = ['Mare', 'Gelding', 'Stallion', 'Filly', 'Colt', 'Mare/Other', 'Unknown'];
+const RIDER_CATS = ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Open'];
+const canon = (v, list) => {
+  const t = String(v || '').trim().toLowerCase();
+  if (!t) return null;
+  return list.find((x) => x.toLowerCase() === t) || null;
+};
+const cleanAge = (v) => {
+  const t = String(v ?? '').trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isInteger(n) && n >= 0 && n <= 40 ? n : null;
+};
 
 app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
   const { event_id, event, csv, records, filename, source, dry_run } = req.body || {};
@@ -1230,6 +1254,12 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
     place: col('placing', 'finish_place', 'place'), faults: col('faults', 'jump_faults'),
     time: col('time', 'time_seconds'), tfaults: col('time_faults'), height: col('height_cm', 'height'),
     format: col('format'), status: col('status'), notes: col('notes'),
+    breed: col('breed'), age: col('age'), gender: col('gender'), sire: col('sire'), dam: col('dam'),
+    breeder: col('breeder'), country: col('country'),
+    region: col('region'), rider_region: col('rider_region'),
+    series_category: col('series_category', 'rider_series'), nationality: col('nationality', 'rider_nationality'),
+    venue: col('venue'), venue_country: col('venue_country'), arena_type: col('arena_type'),
+    event_name: col('event_name', 'event'), date_start: col('date_start', 'event_date'), date_end: col('date_end'),
   };
   ci.series = col('series_key', 'series');
   for (const k of ['cls', 'rider', 'horse']) {
@@ -1264,16 +1294,50 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
         evId = ins.rows[0].id;
       }
     }
-    if (!evId) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'need event_id or event{name,date_start}' }); }
-    const evRow = (await client.query('SELECT season, venue, region, venue_id FROM events WHERE id = $1', [evId])).rows[0];
-    if (!evRow) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'event not found' }); }
-    if (!evRow.venue_id) {
-      const vid = await ensureVenue(evRow.venue, evRow.region);
-      if (vid) await client.query('UPDATE events SET venue_id = $2 WHERE id = $1', [evId, vid]);
+    // multi-event: rows may carry their own event_name + date_start
+    const rowsHaveEvents = grid.slice(1).some((r) => String(r[ci.event_name] ?? '').trim());
+    if (!evId && !rowsHaveEvents) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'need event_id, event{name,date_start}, or per-row event_name+date_start' });
+    }
+    const evNames = {}, perEvent = {};
+    const bump = (id, name, k) => {
+      evNames[id] = name;
+      (perEvent[id] ||= { ok: 0, failed: 0, name });
+      perEvent[id][k]++;
+    };
+    const seasonOf = (ds) => {
+      const y = Number(String(ds).slice(0, 4)), m = Number(String(ds).slice(5, 7));
+      return m >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+    };
+    const resolveRowEvent = async (rname, ds, de, hint) => {
+      if (!rname) {
+        if (!evId) return { error: 'no target event; add event_name + date_start to this row' };
+        return { id: evId, name: evNames[evId] || 'event' };
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(ds || '')) return { error: 'row event needs date_start YYYY-MM-DD' };
+      const ex = await client.query('SELECT id, name FROM events WHERE name = $1 AND date_start = $2', [rname, ds]);
+      if (ex.rows.length) return { id: ex.rows[0].id, name: ex.rows[0].name };
+      const ins = await client.query(
+        `INSERT INTO events (name, date_start, date_end, venue, region, arena_type, season, source)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'MANUAL') RETURNING id, name`,
+        [rname, ds, de || ds, (hint && hint.venue) || 'Unknown',
+         (hint && hint.region) || null, (hint && hint.arena) || null, seasonOf(ds)]);
+      return { id: ins.rows[0].id, name: ins.rows[0].name };
+    };
+    if (evId) {
+      const evRow = (await client.query('SELECT name, season, venue, region, venue_id FROM events WHERE id = $1', [evId])).rows[0];
+      if (!evRow) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'event not found' }); }
+      evNames[evId] = evRow.name;
+      if (!evRow.venue_id) {
+        const vid = await ensureVenue(evRow.venue, evRow.region);
+        if (vid) await client.query('UPDATE events SET venue_id = $2 WHERE id = $1', [evId, vid]);
+      }
     }
 
     const out = [];
-    let okCount = 0;
+    let okCount = 0, enriched = 0;
+    const evFills = {};
     for (let li = 1; li < grid.length; li++) {
       const r = grid[li];
       const g = (i) => (i < 0 ? '' : String(r[i] ?? '').trim());
@@ -1305,20 +1369,70 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       if (cdate && !/^\d{4}-\d{2}-\d{2}$/.test(cdate)) errs.push('class_date must be YYYY-MM-DD');
       if (errs.length) { out.push({ line: li + 1, ok: false, errors: errs }); continue; }
 
+      // per-row event (multi-event files) or the request target
+      const rowEv = await resolveRowEvent(g(ci.event_name), g(ci.date_start), g(ci.date_end), {
+        venue: g(ci.venue) || null, region: g(ci.region) || null, arena: g(ci.arena_type) || null,
+      });
+      if (rowEv.error) { out.push({ line: li + 1, ok: false, errors: [rowEv.error] }); continue; }
+      const rEvId = rowEv.id;
+
       // identity (mirrors ingest/normalize.py)
       const rn = normName(rider), hn = normName(horse);
+      // optional enrichment (fill-if-null only — curated values always win)
+      const hEn = {
+        breed: g(ci.breed) || null, age: cleanAge(g(ci.age)),
+        gender: canon(g(ci.gender), GENDERS), sire: g(ci.sire) || null,
+        dam: g(ci.dam) || null, breeder: g(ci.breeder) || null,
+        country: g(ci.country) || null,
+      };
+      const rEn = {
+        region: g(ci.rider_region) || null,
+        series_category: canon(g(ci.series_category), RIDER_CATS),
+        nationality: g(ci.nationality) || null,
+      };
+      for (const k of ['venue', 'venue_country', 'region', 'arena_type']) {
+        const v = g(ci[k]);
+        const ef = (evFills[rEvId] ||= {});
+        if (v && ef[k] === undefined) ef[k] = v;
+      }
+      const fillNull = async (table, id, obj) => {
+        const sets = Object.entries(obj).filter(([, v]) => v !== null && v !== undefined);
+        if (!sets.length) return 0;
+        const setSql = sets.map(([k], i) => `${k} = COALESCE(${k}, $${i + 2})`).join(', ');
+        const guard = sets.map(([k]) => `${k} IS NULL`).join(' OR ');
+        const res = await client.query(
+          `UPDATE ${table} SET ${setSql} WHERE id = $1 AND (${guard})`,
+          [id, ...sets.map(([, v]) => v)]);
+        return res.rowCount;
+      };
       let hRow = (await client.query('SELECT id FROM horses WHERE normalized_name = $1', [hn])).rows[0];
       let rRow = (await client.query('SELECT id FROM riders WHERE normalized_name = $1', [rn])).rows[0];
       const newHorse = !hRow, newRider = !rRow;
-      if (!hRow) hRow = (await client.query('INSERT INTO horses (name, normalized_name) VALUES ($1,$2) RETURNING id', [horse, hn])).rows[0];
-      if (!rRow) rRow = (await client.query('INSERT INTO riders (name, normalized_name) VALUES ($1,$2) RETURNING id', [rider, rn])).rows[0];
+      if (!hRow) {
+        const hk = Object.keys(hEn).filter((k) => hEn[k] !== null);
+        hRow = (await client.query(
+          `INSERT INTO horses (name, normalized_name${hk.length ? ', ' + hk.join(', ') : ''})
+           VALUES ($1,$2${hk.map((_, i) => `,$${i + 3}`).join('')}) RETURNING id`,
+          [horse, hn, ...hk.map((k) => hEn[k])])).rows[0];
+      } else {
+        enriched += await fillNull('horses', hRow.id, hEn);
+      }
+      if (!rRow) {
+        const rk = Object.keys(rEn).filter((k) => rEn[k] !== null);
+        rRow = (await client.query(
+          `INSERT INTO riders (name, normalized_name${rk.length ? ', ' + rk.join(', ') : ''})
+           VALUES ($1,$2${rk.map((_, i) => `,$${i + 3}`).join('')}) RETURNING id`,
+          [rider, rn, ...rk.map((k) => rEn[k])])).rows[0];
+      } else {
+        enriched += await fillNull('riders', rRow.id, rEn);
+      }
       const seriesKey = g(ci.series) || null;
-      let cRow = (await client.query('SELECT id, series_key FROM classes WHERE event_id = $1 AND name = $2 AND COALESCE(class_date::TEXT,\'\') = COALESCE($3,\'\')', [evId, cls, cdate])).rows[0];
+      let cRow = (await client.query('SELECT id, series_key FROM classes WHERE event_id = $1 AND name = $2 AND COALESCE(class_date::TEXT,\'\') = COALESCE($3,\'\')', [rEvId, cls, cdate])).rows[0];
       const newClass = !cRow;
       if (!cRow) {
         cRow = (await client.query(
           'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, format, series_key, source) VALUES ($1,$2,$3,$4,$5,$6,$7,\'MANUAL\') RETURNING id',
-          [evId, cls, cdate || null, hcm, ctype, fmt, seriesKey])).rows[0];
+          [rEvId, cls, cdate || null, hcm, ctype, fmt, seriesKey])).rows[0];
       } else if (seriesKey && !cRow.series_key) {
         await client.query('UPDATE classes SET series_key = $2 WHERE id = $1', [cRow.id, seriesKey]);
         cRow.series_key = seriesKey;
@@ -1326,30 +1440,61 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       const dup = await client.query(
         'SELECT id FROM round_results WHERE class_id = $1 AND horse_id = $2 AND rider_id = $3',
         [cRow.id, hRow.id, rRow.id]);
-      if (dup.rows.length) { out.push({ line: li + 1, ok: false, errors: ['duplicate of an existing round'] }); continue; }
+      if (dup.rows.length) {
+        out.push({ line: li + 1, ok: false, errors: ['duplicate of an existing round'] });
+        bump(rEvId, rowEv.name, 'failed');
+        continue;
+      }
       const tot = (faults ?? 0) + (tf ?? 0);
       const ins = await client.query(
         `INSERT INTO round_results (event_id, class_id, horse_id, rider_id, jump_faults, time_faults,
           total_faults, time_seconds, finish_place, clear_round, height_cm, status, notes, source, points)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'MANUAL',0) RETURNING id, points`,
-        [evId, cRow.id, hRow.id, rRow.id, faults ?? 0, tf ?? 0, tot, tsec, place,
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'MANUAL',0) RETURNING id, points`,
+        [rEvId, cRow.id, hRow.id, rRow.id, faults ?? 0, tf ?? 0, tot, tsec, place,
          status === 'finished' && tot === 0, hcm, status, g(ci.notes) || null]);
       okCount++;
+      bump(rEvId, rowEv.name, 'ok');
       out.push({ line: li + 1, ok: true, errors: [], preview: {
-        rider, horse, class: cls, place, points: ins.rows[0].points,
+        event: rowEv.name, rider, horse, class: cls, place, points: ins.rows[0].points,
         new_horse: newHorse, new_rider: newRider, new_class: newClass,
       }});
     }
-    const summary = { total: grid.length - 1, ok: okCount, failed: out.filter((x) => !x.ok).length };
+    // event-level enrichment from row columns (fill-if-null, first non-empty wins;
+    // 'Unknown' venue counts as blank — it is the auto-created placeholder)
+    for (const [eid, fill] of Object.entries(evFills)) {
+      const evSets = Object.entries(fill);
+      if (!evSets.length) continue;
+      const setSql = evSets.map(([k], i) => k === 'venue'
+        ? `venue = COALESCE(NULLIF(venue, 'Unknown'), $${i + 1})`
+        : `${k} = COALESCE(${k}, $${i + 1})`).join(', ');
+      const guard = evSets.map(([k]) => k === 'venue'
+        ? `(venue IS NULL OR venue = 'Unknown')` : `${k} IS NULL`).join(' OR ');
+      const evRes = await client.query(`UPDATE events SET ${setSql} WHERE id = $${evSets.length + 1} AND (${guard})`,
+        [...evSets.map(([, v]) => v), eid]);
+      enriched += evRes.rowCount;
+      const evNow = (await client.query('SELECT venue, venue_id, region FROM events WHERE id = $1', [eid])).rows[0];
+      if (evNow && !evNow.venue_id && evNow.venue) {
+        const vid = await ensureVenue(evNow.venue, evNow.region);
+        if (vid) await client.query('UPDATE events SET venue_id = $2 WHERE id = $1', [eid, vid]);
+      }
+    }
+    const evList = Object.entries(perEvent).map(([id, v]) => ({ id, ...v }));
+    const summary = {
+      total: grid.length - 1, ok: okCount, failed: out.filter((x) => !x.ok).length,
+      enriched, events: evList,
+    };
     if (dry_run) {
       await client.query('ROLLBACK');
       return res.json({ data: { dry_run: true, rows: out, summary } });
     }
-    await client.query(
-      'INSERT INTO import_logs (actor, source, filename, event_id, rows_total, rows_ok, rows_failed) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [(req.authUser && req.authUser.name) || 'admin', src, filename || null, evId, summary.total, summary.ok, summary.failed]);
+    for (const ev of evList) {
+      await client.query(
+        'INSERT INTO import_logs (actor, source, filename, event_id, rows_total, rows_ok, rows_failed) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [(req.authUser && req.authUser.name) || 'admin', src, filename || null, ev.id, ev.ok + ev.failed, ev.ok, ev.failed]);
+      audit(req, 'import.commit', 'event', ev.id, { ...summary, filename, event: ev.name });
+    }
     await client.query('COMMIT');
-    audit(req, 'import.commit', 'event', evId, { ...summary, filename });
+    captureSnapshots();
     captureSnapshots();
     res.status(201).json({ data: { dry_run: false, rows: out, summary } });
   } catch (e) {

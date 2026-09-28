@@ -4,18 +4,33 @@ import EventCarousel from '../components/EventCarousel';
 
 export const dynamic = 'force-dynamic';
 
-export default async function Landing() {
-  const [horses, riders, events, series, circuit] = await Promise.all([
+export default async function Landing({ searchParams }) {
+  const sp = searchParams || {};
+  const showN = (Array.isArray(sp?.n) ? sp.n[0] : sp?.n) === '12' ? 12 : 10;
+  const [horses, riders, events, series, circuit, classes] = await Promise.all([
     getJSON('/rankings/horses?limit=200&metric=points').catch(() => ({ data: [] })),
     getJSON('/rankings/riders?limit=200&metric=points').catch(() => ({ data: [] })),
     getJSON('/events?limit=100').catch(() => ({ data: [] })),
     getJSON('/series').catch(() => ({ data: [] })),
     getJSON('/trends/circuit').catch(() => ({ data: [] })),
+    getJSON('/classes?limit=200').catch(() => ({ data: [] })),
   ]);
   const topH = (horses.data || []).slice(0, 5);
   const topR = (riders.data || []).slice(0, 5);
   const evs = events.data || [];
-  const latest = [...evs].sort((a, b) => new Date(b.date_start || 0) - new Date(a.date_start || 0)).slice(0, 8);
+  // per-event result status from its classes: all official → Official,
+  // any provisional → Provisional, else Complete.
+  const byEvent = {};
+  for (const c of classes.data || []) {
+    const st = c.result_status || 'provisional';
+    const cur = byEvent[c.event];
+    byEvent[c.event] = cur === 'provisional' || st === 'provisional' ? 'provisional'
+      : cur === undefined ? st : cur === 'official' && st === 'official' ? 'official' : 'complete';
+  }
+  const latest = [...evs]
+    .sort((a, b) => new Date(b.date_start || 0) - new Date(a.date_start || 0))
+    .slice(0, showN)
+    .map((e) => ({ ...e, status: byEvent[e.name] || null }));
   const totalRounds = (horses.data || []).reduce((s, h) => s + Number(h.starts || 0), 0);
   const leader = topH[0] || null;
   const leadRider = topR[0] || null;
@@ -162,7 +177,14 @@ export default async function Landing() {
       {/* ============ LATEST EVENTS ============ */}
       <div className="flex items-baseline justify-between">
         <h2 className={H2}>Latest Events</h2>
-        <a href="/events" className={`${LINK} text-[12px]`}>All events →</a>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-faint">Show:</span>
+          {[10, 12].map((n) => (
+            <a key={n} href={n === 10 ? '/' : '/?n=12'}
+              className={`text-[12px] no-underline px-2 py-0.5 rounded ${showN === n ? 'bg-goldbg text-gold font-bold' : 'text-muted'}`}>{n}</a>
+          ))}
+          <a href="/events" className={`${LINK} text-[12px] ml-1`}>All events →</a>
+        </div>
       </div>
       <p className={SUB}>Newest competitions on the circuit.</p>
       <EventCarousel events={latest} />
@@ -195,7 +217,7 @@ export default async function Landing() {
           ['Forecast', 'Form projections and next-class recommendations.', '/horses'],
           ['Watchlist', 'Track horses, riders and combinations live.', '/watchlist'],
           ['Series', 'Season points races with podium tracking.', '/series'],
-          ['API', 'Documented endpoints for builders.', '/api-docs'],
+          ['Events', 'Follow every show on the circuit.', '/events'],
         ].map(([t, d, href]) => (
           <a key={t} href={href} className="bg-card border border-line rounded p-4 no-underline hover:border-gold/60 group">
             <div className="font-bold text-white group-hover:text-gold">{t} →</div>

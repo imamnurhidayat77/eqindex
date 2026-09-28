@@ -2,22 +2,29 @@
   "name": "eqindex-api",
   "version": "0.1.0",
   "private": true,
-  "description": "EQIndex public API (Express) — reads rankings/views from Postgres",
+  "description": "EQIndex public API (Express) \u2014 reads rankings/views from Postgres",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test": "node --test smoke.test.mjs",
-    "test:smoke": "node --test smoke.test.mjs"
+    "test:smoke": "node --test smoke.test.mjs",
+    "prisma:generate": "prisma generate",
+    "prisma:studio": "prisma studio",
+    "db:pull": "prisma db pull"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.3"
   }
 }

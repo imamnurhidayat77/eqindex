@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 // Public pages — everything else requires a valid session (else → /login).
 const PUBLIC = new Set([
   '/', '/login', '/register',
-  '/about', '/contact', '/privacy', '/terms', '/glossary', '/api-docs',
+  '/about', '/contact', '/privacy', '/terms', '/glossary',
 ]);
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';

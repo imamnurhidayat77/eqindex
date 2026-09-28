@@ -1,0 +1,471 @@
+// Prisma schema for EQIndex — mirrors db/migrations/*.sql (source of truth).
+// Raw SQL in api/src/index.js keeps working; adopt Prisma models gradually.
+// Views/triggers/functions stay in SQL (Prisma can't own them cleanly).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  email            String    @unique @db.Citext
+  role             String    @default("PUBLIC")
+  password_hash    String?
+  email_verified_at DateTime? @db.Timestamptz
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  updated_at       DateTime  @default(now()) @db.Timestamptz
+  sessions         Session[]
+  watchlist        WatchlistItem[]
+  comparisons      SavedComparison[]
+  alertPrefs       AlertPrefs?
+  claims           RiderClaim[]
+  coachRoster      CoachAthlete[] @relation("coach")
+  @@map("users")
+}
+
+model Session {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token_hash String   @unique
+  user_agent String?
+  ip         String?
+  expires_at DateTime @db.Timestamptz
+  created_at DateTime @default(now()) @db.Timestamptz
+  @@map("sessions")
+}
+
+model Horse {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  normalized_name String
+  slug            String?   @unique
+  age             Int?
+  breed           String?
+  gender          String?
+  sire            String?
+  dam             String?
+  damsire         String?
+  breeder         String?
+  owner_id        String?   @db.Uuid
+  fei_id          String?   @unique
+  year_of_birth   Int?
+  color           String?
+  height          String?
+  country         String?
+  image_url       String?
+  created_at      DateTime  @default(now()) @db.Timestamptz
+  updated_at      DateTime  @default(now()) @db.Timestamptz
+  aliases         HorseAlias[]
+  rounds          RoundResult[]
+  @@map("horses")
+}
+
+model HorseAlias {
+  id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  horse_id         String @db.Uuid
+  horse            Horse  @relation(fields: [horse_id], references: [id], onDelete: Cascade)
+  alias            String
+  normalized_alias String
+  source           String @default("MANUAL")
+  created_at       DateTime @default(now()) @db.Timestamptz
+  @@unique([normalized_alias, source])
+  @@map("horse_aliases")
+}
+
+model BreederAlias {
+  id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  canonical_name   String
+  alias            String
+  normalized_alias String @unique
+  created_at       DateTime @default(now()) @db.Timestamptz
+  @@map("breeder_aliases")
+}
+
+model Rider {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  normalized_name String
+  slug            String?   @unique
+  region          String?
+  fei_id          String?   @unique
+  series_category String?
+  first_name      String?
+  last_name       String?
+  full_name       String?
+  nationality     String?
+  image_url       String?
+  bio             String?
+  user_id         String?   @db.Uuid
+  claim_status    String    @default("unclaimed")
+  created_at      DateTime  @default(now()) @db.Timestamptz
+  updated_at      DateTime  @default(now()) @db.Timestamptz
+  aliases         RiderAlias[]
+  rounds          RoundResult[]
+  claims          RiderClaim[]
+  coachedBy       CoachAthlete[]
+  @@map("riders")
+}
+
+model RiderAlias {
+  id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rider_id         String @db.Uuid
+  rider            Rider  @relation(fields: [rider_id], references: [id], onDelete: Cascade)
+  alias            String
+  normalized_alias String
+  source           String @default("MANUAL")
+  created_at       DateTime @default(now()) @db.Timestamptz
+  @@unique([normalized_alias, source])
+  @@map("rider_aliases")
+}
+
+model RiderClaim {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rider_id   String   @db.Uuid
+  rider      Rider    @relation(fields: [rider_id], references: [id], onDelete: Cascade)
+  user_id    String   @db.Uuid
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  status     String   @default("pending")
+  note       String?
+  created_at DateTime @default(now()) @db.Timestamptz
+  @@unique([rider_id, user_id])
+  @@map("rider_claims")
+}
+
+model CoachAthlete {
+  coach_user_id String   @db.Uuid
+  coach         User     @relation("coach", fields: [coach_user_id], references: [id], onDelete: Cascade)
+  rider_id      String   @db.Uuid
+  rider         Rider    @relation(fields: [rider_id], references: [id], onDelete: Cascade)
+  created_at    DateTime @default(now()) @db.Timestamptz
+  @@id([coach_user_id, rider_id])
+  @@map("coach_athletes")
+}
+
+model Venue {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String
+  normalized_name    String   @unique
+  region             String?
+  country            String?
+  lat                Decimal? @db.Decimal
+  lon                Decimal? @db.Decimal
+  default_arena_type String?
+  notes              String?
+  created_at         DateTime @default(now()) @db.Timestamptz
+  updated_at         DateTime @default(now()) @db.Timestamptz
+  aliases            VenueAlias[]
+  events             Event[]
+  @@map("venues")
+}
+
+model VenueAlias {
+  id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  venue_id         String @db.Uuid
+  venue            Venue  @relation(fields: [venue_id], references: [id], onDelete: Cascade)
+  alias            String
+  normalized_alias String @unique
+  created_at       DateTime @default(now()) @db.Timestamptz
+  @@map("venue_aliases")
+}
+
+model Event {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  slug              String?   @unique
+  date_start        DateTime  @db.Date
+  date_end          DateTime  @db.Date
+  venue             String
+  venue_id          String?   @db.Uuid
+  venue_ref         Venue?    @relation(fields: [venue_id], references: [id], onDelete: SetNull)
+  venue_country     String?
+  region            String?
+  arena_type        String?
+  season            String
+  event_type        String?
+  status            String    @default("Completed")
+  description       String?
+  image_url         String?
+  source            String    @default("MANUAL")
+  external_show_id  String?
+  external_event_id String?
+  created_at        DateTime  @default(now()) @db.Timestamptz
+  updated_at        DateTime  @default(now()) @db.Timestamptz
+  classes           Class[]
+  rounds            RoundResult[]
+  @@map("events")
+}
+
+model Class {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_id         String    @db.Uuid
+  event            Event     @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  name             String
+  class_date       DateTime? @db.Date
+  height_cm        Int?
+  level            String?
+  class_type       String    @default("Standard")
+  class_number     Int?
+  format           String?
+  sponsor          String?
+  series_key       String?
+  result_status    String    @default("provisional")
+  course_designer  String?
+  start_time       Unsupported("time")?
+  field_size       Int       @default(0)
+  arena_type       String?
+  surface          String?
+  arena_dimensions String?
+  warmup_surface   String?
+  surface_condition String?
+  slope            String?
+  day_night        String?
+  lighting         String?
+  source           String    @default("MANUAL")
+  external_class_id String?
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  updated_at       DateTime  @default(now()) @db.Timestamptz
+  rounds           RoundResult[]
+  @@map("classes")
+}
+
+model RoundResult {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_id            String    @db.Uuid
+  event               Event     @relation(fields: [event_id], references: [id], onDelete: Cascade)
+  class_id            String    @db.Uuid
+  class               Class     @relation(fields: [class_id], references: [id], onDelete: Cascade)
+  horse_id            String    @db.Uuid
+  horse               Horse     @relation(fields: [horse_id], references: [id], onDelete: Restrict)
+  rider_id            String    @db.Uuid
+  rider               Rider     @relation(fields: [rider_id], references: [id], onDelete: Restrict)
+  jump_faults         Decimal   @default(0) @db.Decimal
+  time_faults         Decimal   @default(0) @db.Decimal
+  total_faults        Decimal   @default(0) @db.Decimal
+  time_seconds        Decimal?  @db.Decimal
+  finish_place        Int?
+  clear_round         Boolean   @default(false)
+  height_cm           Int?
+  points              Int       @default(0)
+  status              String    @default("finished")
+  notes               String?
+  round2_faults       Decimal?  @db.Decimal
+  round2_time_seconds Decimal?  @db.Decimal
+  jumpoff_faults      Decimal?  @db.Decimal
+  jumpoff_time_seconds Decimal? @db.Decimal
+  prize_money         Decimal?  @db.Decimal
+  source              String    @default("MANUAL")
+  source_result_id    String?
+  raw_result_id       String?   @db.Uuid
+  created_at          DateTime  @default(now()) @db.Timestamptz
+  updated_at          DateTime  @default(now()) @db.Timestamptz
+  @@map("round_results")
+}
+
+model RawResult {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  source             String
+  external_show_id   String?
+  external_class_id  String?
+  source_result_id   String?
+  payload            Json
+  status             String   @default("pending")
+  error              String?
+  imported_at        DateTime @default(now()) @db.Timestamptz
+  @@map("raw_results")
+}
+
+model TrainingRecord {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  horse_id   String    @db.Uuid
+  rider_id   String?   @db.Uuid
+  date       DateTime  @db.Date
+  type       String
+  intensity  String?
+  notes      String?
+  created_by String?   @db.Uuid
+  created_at DateTime  @default(now()) @db.Timestamptz
+  @@map("training_records")
+}
+
+model HealthRecord {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  horse_id    String   @db.Uuid
+  date        DateTime @db.Date
+  category    String
+  description String
+  provider    String?
+  created_by  String?  @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz
+  @@map("health_records")
+}
+
+model ReviewQueue {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind                 String
+  raw_name             String
+  normalized_name      String
+  suggested_match_id   String?  @db.Uuid
+  suggested_match_name String?
+  source               String   @default("CSV")
+  status               String   @default("pending")
+  resolved_id          String?  @db.Uuid
+  created_at           DateTime @default(now()) @db.Timestamptz
+  @@map("review_queue")
+}
+
+model SeriesStanding {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  series_key        String
+  series_name       String
+  event_name        String
+  season            String?
+  rider_name        String
+  horse_name        String
+  normalized_rider  String
+  normalized_horse  String
+  total_points      Decimal  @default(0) @db.Decimal
+  points            Json     @default("{}")
+  source            String   @default("ESNZ")
+  source_result_id  String?
+  imported_at       DateTime @default(now()) @db.Timestamptz
+  @@map("series_standings")
+}
+
+model SeriesInfo {
+  series_key      String    @id
+  display_name    String?
+  description     String?
+  qual_rules      String?
+  is_official     Boolean   @default(false)
+  official_source String?
+  best_of         Int?
+  auto_calc       Boolean   @default(false)
+  calculated_at   DateTime? @db.Timestamptz
+  updated_at      DateTime  @default(now()) @db.Timestamptz
+  @@map("series_info")
+}
+
+model WatchlistItem {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String    @db.Uuid
+  user        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  entity_type String
+  entity_id   String?   @db.Uuid
+  horse_id    String?   @db.Uuid
+  rider_id    String?   @db.Uuid
+  note        String?
+  is_public   Boolean   @default(false)
+  created_at  DateTime  @default(now()) @db.Timestamptz
+  @@map("watchlist_items")
+}
+
+model SavedComparison {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  type       String
+  a_id       String
+  b_id       String
+  label      String?
+  created_at DateTime @default(now()) @db.Timestamptz
+  @@map("saved_comparisons")
+}
+
+model AlertPrefs {
+  user_id            String   @id @db.Uuid
+  user               User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  score_changes      Boolean  @default(true)
+  ranking_movements  Boolean  @default(true)
+  new_results        Boolean  @default(true)
+  benchmark_changes  Boolean  @default(false)
+  updated_at         DateTime @default(now()) @db.Timestamptz
+  @@map("alert_prefs")
+}
+
+model CorrectionReport {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  email       String
+  subject     String   @default("Correction")
+  entity_type String?
+  entity_id   String?
+  message     String
+  status      String   @default("open")
+  resolved_note String?
+  created_at  DateTime @default(now()) @db.Timestamptz
+  @@map("correction_reports")
+}
+
+model ImportLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor       String   @default("admin")
+  source      String   @default("CSV")
+  filename    String?
+  event_id    String?  @db.Uuid
+  rows_total  Int      @default(0)
+  rows_ok     Int      @default(0)
+  rows_failed Int      @default(0)
+  created_at  DateTime @default(now()) @db.Timestamptz
+  @@map("import_logs")
+}
+
+model EntityAudit {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor       String   @default("anonymous")
+  action      String
+  entity_type String
+  entity_id   String?
+  detail      Json     @default("{}")
+  created_at  DateTime @default(now()) @db.Timestamptz
+  @@map("entity_audit")
+}
+
+model AdminSetting {
+  key        String   @id
+  value      String   @default("")
+  updated_at DateTime @default(now()) @db.Timestamptz
+  @@map("admin_settings")
+}
+
+model AdminActivity {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor      String   @default("admin")
+  action     String
+  detail     String?
+  created_at DateTime @default(now()) @db.Timestamptz
+  @@map("admin_activity")
+}
+
+model RankingSnapshot {
+  entity_type String
+  entity_id   String   @db.Uuid
+  period      DateTime @db.Date
+  rank        Int
+  points      Int      @default(0)
+  @@id([entity_type, entity_id, period])
+  @@map("ranking_snapshots")
+}
+
+model WeatherCache {
+  venue_norm     String
+  date           DateTime @db.Date
+  temp_c         Decimal? @db.Decimal
+  rainfall_mm    Decimal? @db.Decimal
+  wind_kph       Decimal? @db.Decimal
+  wind_dir_deg   Int?
+  humidity_pct   Int?
+  classification String?
+  source         String   @default("open-meteo")
+  lat            Decimal? @db.Decimal
+  lon            Decimal? @db.Decimal
+  is_estimate    Boolean  @default(true)
+  fetched_at     DateTime @default(now()) @db.Timestamptz
+  @@id([venue_norm, date])
+  @@map("weather_cache")
+}

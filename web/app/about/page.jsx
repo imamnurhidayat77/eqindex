@@ -95,7 +95,7 @@ export default async function About() {
 
       <section className={CARD}>
         <h2 className={H2}>Limits & fair use</h2>
-        <p className="text-muted text-sm">Small samples mislead — projections hide below 3 scoring months, and surface splits flag unknown surfaces instead of guessing. Rankings reflect recorded results only; unrecorded schooling rounds don't exist here. Bulk reuse of the database requires written permission (see <a className={LINK} href="/terms">Terms →</a>). Programmatic access: <a className={LINK} href="/api-docs">API docs →</a></p>
+        <p className="text-muted text-sm">Small samples mislead — projections hide below 3 scoring months, and surface splits flag unknown surfaces instead of guessing. Rankings reflect recorded results only; unrecorded schooling rounds don't exist here. Bulk reuse of the database requires written permission (see <a className={LINK} href="/terms">Terms →</a>). Programmatic access: <a className={LINK} href="/contact">Contact →</a></p>
       </section>
 
       <section className={CARD}>
