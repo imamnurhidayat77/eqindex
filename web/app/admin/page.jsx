@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { API } from '../../lib/api';
 import { CARD, EMPTY, H1, SUB, LINK, badge, BADGE } from '../../lib/tokens';
@@ -50,7 +51,7 @@ export default async function AdminOverview() {
           <div key={l} className="bg-card border border-line rounded p-4">
             <div className="text-[11px] text-muted tracking-[0.4px] uppercase">{l}</div>
             <div className={`text-[28px] font-extrabold mt-1 ${cls || ''}`}>{v}</div>
-            {href && <a href={href} className={LINK} style={{ fontSize: 12 }}>Open →</a>}
+            {href && <Link href={href} className={LINK} style={{ fontSize: 12 }}>Open →</Link>}
           </div>
         ))}
       </div>
@@ -67,11 +68,11 @@ export default async function AdminOverview() {
           <h2 className="text-[15px] font-bold mb-2">Quick actions</h2>
           <div className="flex flex-col gap-2">
             {actions.map(([t, s, href, hot]) => (
-              <a key={href} href={href}
+              <Link key={href} href={href}
                 className={`rounded border p-3 no-underline transition-colors ${hot ? 'border-gold/60 hover:bg-goldbg/40' : 'border-line hover:border-faint'}`}>
                 <div className={`text-[13.5px] font-bold ${hot ? 'text-gold' : 'text-white'}`}>{t} →</div>
                 <div className="text-[12px] text-muted mt-0.5">{s}</div>
-              </a>
+              </Link>
             ))}
           </div>
         </section>
@@ -83,7 +84,7 @@ export default async function AdminOverview() {
               <span><b>{r.action}</b> <span className="text-muted">by {r.actor} · {r.entity_type}</span></span>
             </div>
           )) : <p className={EMPTY}>No activity recorded yet.</p>}
-          <a href="/admin/activity" className={LINK} style={{ fontSize: 12 }}>Full audit log →</a>
+          <Link href="/admin/activity" className={LINK} style={{ fontSize: 12 }}>Full audit log →</Link>
         </section>
       </div>
     </>

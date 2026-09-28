@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { API, DEMO_USER } from '../lib/api';
@@ -199,7 +200,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                     {fHorses.map((h) => (
                       <tr key={h.watchId}>
                         <td className={TD}><input type="checkbox" className={box} checked={isSel(h.watchId)} onChange={() => toggleSel({ watchId: h.watchId, kind: 'horse', id: h.id, name: h.name })} /></td>
-                        <td className={TD}><a href={`/horses/${h.slug || h.id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{h.name}</a></td>
+                        <td className={TD}><Link href={`/horses/${h.slug || h.id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{h.name}</Link></td>
                         <td className={`${TD} ${NUM}`}><b className={eqCls(h.eq, h.rank)}>{h.eq}</b></td>
                         <td className={`${TD} ${NUM} ${h.rank === 1 ? 'text-gold font-bold' : 'text-muted'}`}>{h.rank ? `#${h.rank}` : '–'}</td>
                         <td className={`${TD} ${NUM} text-muted`}>{Number(h.clear).toFixed(1)}%</td>
@@ -209,7 +210,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                         <td className={TD}>
                           <div className="text-muted text-[13px]">{h.last}</div>
                           <div className="text-[11px] mt-0.5">
-                            <a className={LINK} href={`/horses/${h.slug || h.id}`}>View</a>
+                            <Link className={LINK} href={`/horses/${h.slug || h.id}`}>View</Link>
                             <span className="text-faint"> | </span>
                             <button className="text-sky bg-none border-0 p-0 text-[11px] cursor-pointer" onClick={() => removeIds([h.watchId])}>Remove</button>
                           </div>
@@ -239,7 +240,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                     {fRiders.map((r) => (
                       <tr key={r.watchId}>
                         <td className={TD}><input type="checkbox" className={box} checked={isSel(r.watchId)} onChange={() => toggleSel({ watchId: r.watchId, kind: 'rider', id: r.id, name: r.name })} /></td>
-                        <td className={TD}><a href={`/riders/${r.slug || r.id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{r.name}</a></td>
+                        <td className={TD}><Link href={`/riders/${r.slug || r.id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{r.name}</Link></td>
                         <td className={`${TD} ${NUM}`}><b className={eqCls(r.eq, r.rank)}>{r.eq}</b></td>
                         <td className={`${TD} ${NUM} ${r.rank === 1 ? 'text-gold font-bold' : 'text-muted'}`}>{r.rank ? `#${r.rank}` : '–'}</td>
                         <td className={`${TD} ${NUM} text-muted`}>{Number(r.clear).toFixed(0)}%</td>
@@ -249,7 +250,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                         <td className={TD}>
                           <div className="text-muted text-[13px]">{r.last}</div>
                           <div className="text-[11px] mt-0.5">
-                            <a className={LINK} href={`/riders/${r.slug || r.id}`}>View</a>
+                            <Link className={LINK} href={`/riders/${r.slug || r.id}`}>View</Link>
                             <span className="text-faint"> | </span>
                             <button className="text-sky bg-none border-0 p-0 text-[11px] cursor-pointer" onClick={() => removeIds([r.watchId])}>Remove</button>
                           </div>
@@ -343,11 +344,11 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
           {/* action bar */}
           <div className="flex flex-wrap gap-2.5 mt-1 mb-2">
             {compareHref ? (
-              <a href={compareHref} className="bg-sky text-ink font-semibold rounded px-4 py-2 text-sm no-underline">Compare Selected</a>
+              <Link href={compareHref} className="bg-sky text-ink font-semibold rounded px-4 py-2 text-sm no-underline">Compare Selected</Link>
             ) : (
               <button disabled title="Select 2 horses or 2 riders to compare" className="bg-sky/40 text-ink/60 font-semibold rounded px-4 py-2 text-sm cursor-not-allowed">Compare Selected</button>
             )}
-            <a href="/analytics" className="border border-moss text-moss font-semibold rounded px-4 py-2 text-sm no-underline">View Analytics</a>
+            <Link href="/analytics" className="border border-moss text-moss font-semibold rounded px-4 py-2 text-sm no-underline">View Analytics</Link>
             <button onClick={exportCsv} className="bg-card2 border border-line text-body rounded px-4 py-2 text-sm">Export Report</button>
             <button onClick={() => removeIds(sel.map((s) => s.watchId))} disabled={!sel.length || busy}
               className="border border-blood text-blood rounded px-4 py-2 text-sm disabled:opacity-40">

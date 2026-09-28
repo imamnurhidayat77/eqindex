@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { DEMO_USER, getJSON } from '../../lib/api';
 import { CARD, H1, LINK, LIVE, SUB } from '../../lib/tokens';
 import { eqScore, trendBadge } from '../../lib/eq';
@@ -259,8 +260,8 @@ export default async function Watchlist() {
         <section className={CARD}>
           <p className={SUB}>Your watchlist is empty — watch horses and riders to track them here.</p>
           <div className="flex gap-4">
-            <a href="/horses" className="text-sky no-underline hover:underline text-sm">Browse horses →</a>
-            <a href="/riders" className="text-sky no-underline hover:underline text-sm">Browse riders →</a>
+            <Link href="/horses" className="text-sky no-underline hover:underline text-sm">Browse horses →</Link>
+            <Link href="/riders" className="text-sky no-underline hover:underline text-sm">Browse riders →</Link>
           </div>
         </section>
       ) : (

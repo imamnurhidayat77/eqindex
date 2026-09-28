@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
 import { CARD, H1, SUB, TABLE, TD, TH } from '../../lib/tokens';
@@ -63,7 +64,7 @@ export default function Events() {
           <tbody>
             {view.map((x) => (
               <tr key={x.id}>
-                <td className={TD}><a className="text-sky no-underline" href={`/events/${x.slug || x.id}`}>{x.name}</a></td>
+                <td className={TD}><Link className="text-sky no-underline" href={`/events/${x.slug || x.id}`}>{x.name}</Link></td>
                 <td className={TD}>{x.venue}</td>
                 <td className={TD}>{(x.date_start || '').slice(0, 10)} – {(x.date_end || '').slice(0, 10)}</td>
                 <td className={TD}>{x.season}</td><td className={TD}>{x.class_count}</td><td className={TD}>{x.round_count}</td>

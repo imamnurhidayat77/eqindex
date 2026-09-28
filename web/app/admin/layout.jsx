@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { API } from '../../lib/api';
 import { CARD, LINK } from '../../lib/tokens';
@@ -26,7 +27,7 @@ export default async function AdminLayout({ children }) {
         <p className="text-muted text-sm mt-2">
           The admin console requires an <b className="text-body">ADMIN</b> account.
           {user ? ` You are signed in as ${user.name} (${user.role}).` : ' You are not signed in.'}{' '}
-          <a className={LINK} href="/login?next=/admin">Log in →</a>
+          <Link className={LINK} href="/login?next=/admin">Log in →</Link>
         </p>
       </section>
     );

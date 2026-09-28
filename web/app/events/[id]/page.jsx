@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getJSON } from '../../../lib/api';
 import { eqScore, fieldScore, strengthLabel, ordinal } from '../../../lib/eq';
 import { BADGE, CARD, EMPTY, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
@@ -184,7 +185,7 @@ export default async function EventDetail({ params }) {
         <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Region: <b className="text-body font-semibold">{e.region || '—'}</b></span>
         <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Arena Type: <b className="text-body font-semibold">{e.arena_type || '—'}</b></span>
         <span className="bg-card2 border border-line rounded pl-3 pr-1.5 py-[5px] text-xs text-muted">Season: <b className="text-body font-semibold">{(e.season || '').replace('-', '–')}</b></span>
-        <a className={LINK} href="/events">Reset Filters</a>
+        <Link className={LINK} href="/events">Reset Filters</Link>
       </div>
 
       <section className={CARD}>
@@ -440,7 +441,7 @@ export default async function EventDetail({ params }) {
             </tr>
             {pastEditions.map((x) => (
               <tr key={x.id}>
-                <td className={TD}><a className={LINK} href={`/events/${x.slug || x.id}`}>{x.name}</a></td>
+                <td className={TD}><Link className={LINK} href={`/events/${x.slug || x.id}`}>{x.name}</Link></td>
                 <td className={`${TD} text-muted`}>{(x.date_start || '').slice(0, 10)}</td>
                 <td className={`${TD} ${NUM} text-muted`}>{x.class_count}</td>
                 <td className={`${TD} ${NUM} text-muted`}>{x.round_count}</td>
@@ -461,10 +462,10 @@ export default async function EventDetail({ params }) {
           ['View Riders Entered', 'Evaluate athlete index ratings', '/riders'],
           ['Explore Class Rankings', 'Detailed class difficulty index', '/analytics'],
         ].map(([t, d, href]) => (
-          <a key={t} href={href} className="bg-card border border-line rounded p-4 no-underline hover:border-gold">
+          <Link key={t} href={href} className="bg-card border border-line rounded p-4 no-underline hover:border-gold">
             <div className="text-[13px] font-bold text-body">{t}</div>
             <div className="text-xs text-muted mt-1">{d}</div>
-          </a>
+          </Link>
         ))}
       </div>
     </>

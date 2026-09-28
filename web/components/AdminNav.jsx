@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { API } from '../lib/api';
@@ -62,7 +63,7 @@ export default function AdminNav({ user }) {
               const on = active(href);
               const n = badgeKey ? counts[badgeKey] : null;
               return (
-                <a key={href} href={href}
+                <Link key={href} href={href}
                   className={`flex items-center gap-2.5 rounded px-2.5 py-2 text-[13px] no-underline whitespace-nowrap transition-colors border-l-2 ${
                     on ? 'bg-goldbg/50 border-gold text-gold font-bold' : 'border-transparent text-muted hover:bg-white/5 hover:text-white'
                   }`}>
@@ -71,14 +72,14 @@ export default function AdminNav({ user }) {
                   {!!n && (
                     <span className="ml-auto bg-redbg text-blood text-[10px] font-bold rounded-full min-w-[18px] h-[18px] inline-flex items-center justify-center px-1">{n}</span>
                   )}
-                </a>
+                </Link>
               );
             })}
           </div>
         ))}
       </nav>
       <div className="p-2 border-t border-rowline">
-        <a href="/" className="flex items-center gap-2.5 rounded px-2.5 py-2 text-[13px] text-faint no-underline hover:text-white">← Back to site</a>
+        <Link href="/" className="flex items-center gap-2.5 rounded px-2.5 py-2 text-[13px] text-faint no-underline hover:text-white">← Back to site</Link>
       </div>
     </aside>
   );

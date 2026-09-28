@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getJSON } from '../../../lib/api';
 import { eqScore } from '../../../lib/eq';
 import { SeriesMatrixTable } from '../../../components/SeriesTables';
@@ -18,7 +19,7 @@ export default async function SeriesPage({ params }) {
     return (
       <div className="text-[14px] text-slate-100">
         <div className="mb-1 text-[12px] text-faint">
-          <a href="/series" className="text-muted hover:text-white">Series</a>
+          <Link href="/series" className="text-muted hover:text-white">Series</Link>
           <span className="mx-1.5">/</span><span className="text-gold">Not found</span>
         </div>
         <h1 className="text-[26px] font-extrabold tracking-tight">Series not found</h1>
@@ -62,7 +63,7 @@ export default async function SeriesPage({ params }) {
   return (
     <div className="text-[14px] text-slate-100">
       <div className="mb-1 text-[12px] text-faint">
-        <a href="/series" className="text-muted hover:text-white">Series</a>
+        <Link href="/series" className="text-muted hover:text-white">Series</Link>
         <span className="mx-1.5">/</span>
         <span className="text-gold">{name}</span>
       </div>
@@ -161,10 +162,10 @@ export default async function SeriesPage({ params }) {
           ['Rankings', 'National points leaderboard', '/rankings?by=points'],
           ['Compare Leaders', 'Head-to-head the top two', leader && table[1] && leader.h && table[1].h ? `/comparison?type=horse&a=${leader.h.id}&b=${table[1].h.id}` : '/comparison'],
         ].map(([t, d, href]) => (
-          <a key={t} href={href} className="group flex items-center justify-between rounded border border-line bg-card p-4 transition hover:border-gold/50">
+          <Link key={t} href={href} className="group flex items-center justify-between rounded border border-line bg-card p-4 transition hover:border-gold/50">
             <div><div className="text-[13.5px] font-bold text-white">{t}</div><div className="mt-0.5 text-[12px] text-muted">{d}</div></div>
             <span className="text-gold transition group-hover:translate-x-0.5">→</span>
-          </a>
+          </Link>
         ))}
       </div>
     </div>

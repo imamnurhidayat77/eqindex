@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import './globals.css';
 import Navbar, { NavSearch, NavSeason } from '../components/Navbar';
 import { SeasonProvider } from '../components/global';
@@ -22,10 +23,10 @@ export default function RootLayout({ children }) {
         <AuthProvider>
         <header className="flex justify-center bg-navbg border-b border-line sticky top-0 z-10">
           <div className="w-full max-w-shell mx-auto px-4 md:px-7 flex items-center gap-3 md:gap-5 h-[60px]">
-            <a href="/" className="font-extrabold text-lg text-white no-underline flex items-center gap-2 whitespace-nowrap">
+            <Link href="/" className="font-extrabold text-lg text-white no-underline flex items-center gap-2 whitespace-nowrap">
               <span className="text-gold border-[1.5px] border-gold rounded-full w-[22px] h-[22px] inline-flex items-center justify-center text-xs">✕</span>
               <span className="font-extrabold"><b className="text-white font-extrabold">EQ</b><span className="text-gold font-extrabold">Index</span></span>
-            </a>
+            </Link>
             <Navbar />
             <div className="flex-1" />
             <NavSearch />
@@ -45,11 +46,11 @@ export default function RootLayout({ children }) {
             </div>
             <div className="text-right">
               <nav className="flex gap-5 justify-end mb-2.5">
-                <a className="text-muted no-underline" href="/about">About</a>
-                <a className="text-muted no-underline" href="/privacy">Privacy</a>
-                <a className="text-muted no-underline" href="/terms">Terms</a>
-                <a className="text-muted no-underline" href="/glossary">Glossary</a>
-                <a className="text-muted no-underline" href="/contact">Contact</a>
+                <Link className="text-muted no-underline" href="/about">About</Link>
+                <Link className="text-muted no-underline" href="/privacy">Privacy</Link>
+                <Link className="text-muted no-underline" href="/terms">Terms</Link>
+                <Link className="text-muted no-underline" href="/glossary">Glossary</Link>
+                <Link className="text-muted no-underline" href="/contact">Contact</Link>
               </nav>
               <div className="mt-2">Bloomberg Terminal x Showjumping New Zealand Circuit</div>
             </div>

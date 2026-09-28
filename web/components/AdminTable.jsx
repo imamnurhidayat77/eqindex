@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, LINK } from '../lib/tokens';
@@ -96,7 +97,7 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
                 {columns.map((c) => (
                   <td key={c.k} className={`${TD} ${c.num ? `${NUM} text-muted` : ''}`}>
                     {c.k === 'name' && profile && profile(r)
-                      ? <a className={LINK} href={profile(r)}><b>{r.name}</b></a>
+                      ? <Link className={LINK} href={profile(r)}><b>{r.name}</b></Link>
                       : c.k === 'name' ? <b>{r.name}</b> : String(r[c.k] ?? '–')}
                   </td>
                 ))}

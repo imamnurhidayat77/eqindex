@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getJSON } from '../../../lib/api';
 import { eqScore, consistencyPts } from '../../../lib/eq';
 import { projectForm, recommendHeight } from '../../../lib/forecast';
@@ -101,7 +102,7 @@ export default async function HorseProfile({ params, searchParams }) {
     <div className="text-[14px] text-slate-100">
       {/* breadcrumb + title */}
       <div className="mb-1 text-[12px] text-faint">
-        <a href="/horses" className="text-muted hover:text-white">Horses</a>
+        <Link href="/horses" className="text-muted hover:text-white">Horses</Link>
         <span className="mx-1.5">/</span>
         <span className="text-gold">{h.name} Profile</span>
       </div>
@@ -179,7 +180,7 @@ export default async function HorseProfile({ params, searchParams }) {
           <ExportCsv rows={history} filename={`${h.name}-record.csv`} />
           {[['', 'All'], ['110-120', '1.10–1.20'], ['120-130', '1.20–1.30'], ['130-140', '1.30–1.40'], ['140-', '1.40m+']].map(([v, l]) => {
             const href = `/horses/${params.id}${v ? `?h=${v}` : ''}`;
-            return <a key={v || 'all'} href={href} className={`text-[11px] rounded-full px-2 py-0.5 border no-underline ${hBand === v ? 'bg-goldbg border-gold text-gold font-bold' : 'border-line text-muted'}`}>{l}</a>;
+            return <Link key={v || 'all'} href={href} className={`text-[11px] rounded-full px-2 py-0.5 border no-underline ${hBand === v ? 'bg-goldbg border-gold text-gold font-bold' : 'border-line text-muted'}`}>{l}</Link>;
           })}
         </span>
       </div>
@@ -281,7 +282,7 @@ export default async function HorseProfile({ params, searchParams }) {
               <span className="rounded-full bg-mint/15 px-2.5 py-0.5 text-[11px] font-bold text-mint">Elite Synergy</span>
             </div>
             <div className="flex items-center justify-between rounded bg-card2 px-4 py-3">
-              <div><div className="font-bold"><a href={`/riders/${best.rider_slug || best.rider_id}`} className="text-white hover:text-gold">{best.rider}</a></div><div className="text-[12px] text-muted">Primary Showjumping Rider</div></div>
+              <div><div className="font-bold"><Link href={`/riders/${best.rider_slug || best.rider_id}`} className="text-white hover:text-gold">{best.rider}</Link></div><div className="text-[12px] text-muted">Primary Showjumping Rider</div></div>
               <div className="text-[18px] font-extrabold text-gold">{partScore(best)}/100</div>
             </div>
             <dl className="mt-2 text-[13px]">
@@ -418,7 +419,7 @@ export default async function HorseProfile({ params, searchParams }) {
                       <td className="px-2 py-2 border-b border-rowline">
                         {x.horse_id === p.data.id
                           ? <b className="text-gold">{x.horse} (you)</b>
-                          : <a href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white font-semibold no-underline hover:text-gold">{x.horse}</a>}
+                          : <Link href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white font-semibold no-underline hover:text-gold">{x.horse}</Link>}
                       </td>
                       <td className="px-2 py-2 border-b border-rowline text-right text-muted">{x.age}</td>
                       <td className="px-2 py-2 border-b border-rowline text-right text-moss">{x.clear_pct === null ? '–' : `${Number(x.clear_pct).toFixed(0)}%`}</td>
@@ -440,10 +441,10 @@ export default async function HorseProfile({ params, searchParams }) {
           ['Compare Rider Partnerships', 'Isolate synergy metrics', '/comparison'],
           ['View Category Benchmark', 'Compare to national class', '/analytics'],
         ].map(([t, d, href]) => (
-          <a key={t} href={href} className="group flex items-center justify-between rounded border border-line bg-card p-4 transition hover:border-gold/50">
+          <Link key={t} href={href} className="group flex items-center justify-between rounded border border-line bg-card p-4 transition hover:border-gold/50">
             <div><div className="text-[13.5px] font-bold text-white">{t}</div><div className="mt-0.5 text-[12px] text-muted">{d}</div></div>
             <span className="text-gold transition group-hover:translate-x-0.5">→</span>
-          </a>
+          </Link>
         ))}
       </div>
     </div>

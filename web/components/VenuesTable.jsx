@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { LINK, NUM, TD, TH } from '../lib/tokens';
 import DataTable from './DataTable';
 
@@ -17,7 +18,7 @@ export default function VenuesTable({ rows }) {
           <td className={`${TD} text-muted`}>{x.region || '—'}</td>
           <td className={`${TD} ${NUM} text-muted`}>{x.events}</td>
           <td className={`${TD} ${NUM} text-muted`}>{x.rounds}</td>
-          <td className={`${TD} ${NUM}`}><a className={LINK} href={`/venues/${x.id}`}>Open →</a></td>
+          <td className={`${TD} ${NUM}`}><Link className={LINK} href={`/venues/${x.id}`}>Open →</Link></td>
         </tr>
       )}
     />

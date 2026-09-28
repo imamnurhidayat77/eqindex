@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useState } from 'react';
 import { useAuth } from './auth';
 
@@ -11,8 +12,8 @@ export default function UserMenu() {
   if (!user) {
     return (
       <span className="flex items-center gap-2">
-        <a href="/login" className="text-muted text-[13px] no-underline hover:text-white hidden sm:inline">Log in</a>
-        <a href="/register" className="bg-gold text-black font-bold rounded px-3 py-1.5 text-[13px] no-underline">Join</a>
+        <Link href="/login" className="text-muted text-[13px] no-underline hover:text-white hidden sm:inline">Log in</Link>
+        <Link href="/register" className="bg-gold text-black font-bold rounded px-3 py-1.5 text-[13px] no-underline">Join</Link>
       </span>
     );
   }
@@ -27,9 +28,9 @@ export default function UserMenu() {
         <span className="absolute right-0 top-10 z-30 w-[210px] block rounded border border-line bg-card2 p-2 shadow-xl">
           <span className="block px-2 py-1.5 text-[13px] font-bold text-white truncate">{user.name}</span>
           <span className="block px-2 pb-1.5 text-[11px] text-muted">{user.email} · {user.role}</span>
-          <a href="/watchlist" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">My Watchlist</a>
+          <Link href="/watchlist" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">My Watchlist</Link>
           {user.role === 'ADMIN' && (
-            <a href="/admin/review" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">Review Queue</a>
+            <Link href="/admin/review" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">Review Queue</Link>
           )}
           <button onClick={() => { logout(); setOpen(false); }}
             className="block w-full text-left px-2 py-1.5 text-[13px] text-blood bg-none border-0 cursor-pointer">Log out</button>

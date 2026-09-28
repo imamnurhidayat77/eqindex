@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API, DEMO_USER } from '../../../lib/api';
 import { BTN, BTN_DANGER, CARD, EMPTY, H1, H2, LINK, MUT, SUB, TABLE, TABLEWRAP, TD, TH } from '../../../lib/tokens';
@@ -47,12 +48,12 @@ export default function SavedComparisons() {
             </div>
           ) : <p className={MUT}>A side was deleted.</p>}
           <div className="mt-3 flex justify-end gap-2">
-            <a className={BTN} href={`/comparison?type=${sc.type}&a=${sc.a_id}&b=${sc.b_id}`}>Open in Compare →</a>
+            <Link className={BTN} href={`/comparison?type=${sc.type}&a=${sc.a_id}&b=${sc.b_id}`}>Open in Compare →</Link>
             <button className={BTN_DANGER} onClick={() => remove(sc.id)}>Remove</button>
           </div>
         </section>
       ))}
-      {!loading && !items.length && <section className={CARD}><p className={EMPTY}>Empty — save one from the <a className={LINK} href="/comparison">Comparison</a> page.</p></section>}
+      {!loading && !items.length && <section className={CARD}><p className={EMPTY}>Empty — save one from the <Link className={LINK} href="/comparison">Comparison</Link> page.</p></section>}
     </>
   );
 }

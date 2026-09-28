@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../components/auth';
@@ -71,7 +72,7 @@ function LoginForm() {
           {err && <p className="rounded border border-blood/40 bg-redbg/40 px-3 py-2 text-blood text-[13px]">{err}</p>}
           <button className={`${BTN_PRIMARY} py-2.5 mt-1`} disabled={busy}>{busy ? 'Logging in…' : 'Log in →'}</button>
         </form>
-        <p className="text-muted text-sm mt-4 text-center">New to EQIndex? <a className={LINK} href="/register">Create an account →</a></p>
+        <p className="text-muted text-sm mt-4 text-center">New to EQIndex? <Link className={LINK} href="/register">Create an account →</Link></p>
       </div>
     </div>
   );

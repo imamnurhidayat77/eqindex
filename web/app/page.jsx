@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getJSON } from '../lib/api';
 import { CARD, H2, LINK, LIVE, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge, BADGE } from '../lib/tokens';
 import EventCarousel from '../components/EventCarousel';
@@ -63,9 +64,9 @@ export default async function Landing({ searchParams }) {
               rounds to Grand Prix.
             </p>
             <div className="flex flex-wrap gap-2.5 mt-5">
-              <a href="/rankings?by=points" className="bg-gold text-black font-bold rounded px-6 py-3 text-sm no-underline hover:brightness-110">VIEW RANKINGS →</a>
-              <a href="/comparison" className="border border-line text-body rounded px-6 py-3 text-sm no-underline hover:border-gold/60">COMPARE HORSES →</a>
-              <a href="/about" className="text-muted text-sm no-underline hover:text-white self-center ml-1">How scoring works</a>
+              <Link href="/rankings?by=points" className="bg-gold text-black font-bold rounded px-6 py-3 text-sm no-underline hover:brightness-110">VIEW RANKINGS →</Link>
+              <Link href="/comparison" className="border border-line text-body rounded px-6 py-3 text-sm no-underline hover:border-gold/60">COMPARE HORSES →</Link>
+              <Link href="/about" className="text-muted text-sm no-underline hover:text-white self-center ml-1">How scoring works</Link>
             </div>
             <div className="flex flex-wrap gap-x-6 gap-y-1.5 mt-6 text-[12.5px] text-muted">
               <span><b className="text-gold">{(horses.data || []).length}</b> horses ranked</span>
@@ -82,21 +83,21 @@ export default async function Landing({ searchParams }) {
             </div>
             {leader ? (
               <>
-                <a href={`/horses/${leader.horse_slug || leader.horse_id}`} className="block mt-2 text-[24px] font-extrabold text-white no-underline hover:text-gold leading-tight">{leader.horse}</a>
+                <Link href={`/horses/${leader.horse_slug || leader.horse_id}`} className="block mt-2 text-[24px] font-extrabold text-white no-underline hover:text-gold leading-tight">{leader.horse}</Link>
                 <div className="mt-1 text-[13px] text-muted">
                   <b className="text-gold text-[26px] font-extrabold">{leader.total_points}</b> pts · {leader.wins} wins · {Number(leader.clear_pct).toFixed(0)}% clear
                 </div>
                 <div className="mt-3 pt-3 border-t border-line/60 text-[13px]">
                   <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1">Top rider</div>
                   {leadRider ? (
-                    <a href={`/riders/${leadRider.rider_slug || leadRider.rider_id}`} className="text-white font-bold no-underline hover:text-gold">{leadRider.rider}</a>
+                    <Link href={`/riders/${leadRider.rider_slug || leadRider.rider_id}`} className="text-white font-bold no-underline hover:text-gold">{leadRider.rider}</Link>
                   ) : <span className="text-faint">—</span>}
                   {leadRider && <span className="text-muted"> · <b className="text-gold">{leadRider.total_points}</b> pts</span>}
                 </div>
                 <div className="mt-3 pt-3 border-t border-line/60 text-[13px]">
                   <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1">Latest event</div>
                   {lastEvent ? (
-                    <a href={`/events/${lastEvent.slug || lastEvent.id}`} className="text-white font-semibold no-underline hover:text-gold">{lastEvent.name}</a>
+                    <Link href={`/events/${lastEvent.slug || lastEvent.id}`} className="text-white font-semibold no-underline hover:text-gold">{lastEvent.name}</Link>
                   ) : <span className="text-faint">—</span>}
                   {lastEvent && <div className="text-muted text-[12px] mt-0.5">{(lastEvent.date_start || '').slice(0, 10)} · {lastEvent.venue}</div>}
                 </div>
@@ -125,7 +126,7 @@ export default async function Landing({ searchParams }) {
         <div>
           <div className="flex items-baseline justify-between">
             <h2 className={H2}>Top Horses</h2>
-            <a href="/horses" className={`${LINK} text-[12px]`}>Full table →</a>
+            <Link href="/horses" className={`${LINK} text-[12px]`}>Full table →</Link>
           </div>
           <section className={CARD}>
             <div className={TABLEWRAP}>
@@ -135,7 +136,7 @@ export default async function Landing({ searchParams }) {
                 {topH.map((h, i) => (
                   <tr key={h.horse_id}>
                     <td className={i === 0 ? 'text-gold font-bold' : 'text-muted'}>#{i + 1}</td>
-                    <td className={TD}><a href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold no-underline hover:text-gold">{h.horse}</a></td>
+                    <td className={TD}><Link href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold no-underline hover:text-gold">{h.horse}</Link></td>
                     <td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{h.total_points}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.wins}</td>
                     <td className={`${TD} ${NUM} text-moss`}>{Number(h.clear_pct).toFixed(0)}%</td>
@@ -150,7 +151,7 @@ export default async function Landing({ searchParams }) {
         <div>
           <div className="flex items-baseline justify-between">
             <h2 className={H2}>Top Riders</h2>
-            <a href="/riders" className={`${LINK} text-[12px]`}>Full table →</a>
+            <Link href="/riders" className={`${LINK} text-[12px]`}>Full table →</Link>
           </div>
           <section className={CARD}>
             <div className={TABLEWRAP}>
@@ -160,7 +161,7 @@ export default async function Landing({ searchParams }) {
                 {topR.map((r, i) => (
                   <tr key={r.rider_id}>
                     <td className={i === 0 ? 'text-gold font-bold' : 'text-muted'}>#{i + 1}</td>
-                    <td className={TD}><a href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white font-semibold no-underline hover:text-gold">{r.rider}</a></td>
+                    <td className={TD}><Link href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white font-semibold no-underline hover:text-gold">{r.rider}</Link></td>
                     <td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{r.total_points}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.wins}</td>
                     <td className={`${TD} ${NUM} text-moss`}>{Number(r.clear_pct).toFixed(0)}%</td>
@@ -180,10 +181,10 @@ export default async function Landing({ searchParams }) {
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-faint">Show:</span>
           {[10, 12].map((n) => (
-            <a key={n} href={n === 10 ? '/' : '/?n=12'}
-              className={`text-[12px] no-underline px-2 py-0.5 rounded ${showN === n ? 'bg-goldbg text-gold font-bold' : 'text-muted'}`}>{n}</a>
+            <Link key={n} href={n === 10 ? '/' : '/?n=12'}
+              className={`text-[12px] no-underline px-2 py-0.5 rounded ${showN === n ? 'bg-goldbg text-gold font-bold' : 'text-muted'}`}>{n}</Link>
           ))}
-          <a href="/events" className={`${LINK} text-[12px] ml-1`}>All events →</a>
+          <Link href="/events" className={`${LINK} text-[12px] ml-1`}>All events →</Link>
         </div>
       </div>
       <p className={SUB}>Newest competitions on the circuit.</p>
@@ -197,14 +198,14 @@ export default async function Landing({ searchParams }) {
           <div className="flex flex-wrap gap-x-5 gap-y-1 mt-3 text-[12.5px] text-muted">
             <span>✓ Published formula</span><span>✓ Human-reviewed names</span><span>✓ Provisional vs Official labels</span>
           </div>
-          <div className="mt-3"><a href="/about" className={LINK}>Read full methodology →</a></div>
+          <div className="mt-3"><Link href="/about" className={LINK}>Read full methodology →</Link></div>
         </section>
         <section className="rounded border border-gold/50 bg-card p-5 mb-6">
           <h2 className="font-display text-[20px] font-bold uppercase tracking-tight">Follow the circuit <span className="text-gold">live</span></h2>
           <p className="text-muted text-sm mt-1 mb-4">Watchlists, saved comparisons and ranking alerts — free for supporters.</p>
           <div className="flex flex-wrap gap-2.5">
-            <a href="/register" className="bg-gold text-black font-bold rounded px-5 py-2.5 text-sm no-underline hover:brightness-110">CREATE FREE ACCOUNT →</a>
-            <a href="/watchlist" className="border border-line text-body rounded px-5 py-2.5 text-sm no-underline hover:border-gold/60">EXPLORE WATCHLIST →</a>
+            <Link href="/register" className="bg-gold text-black font-bold rounded px-5 py-2.5 text-sm no-underline hover:brightness-110">CREATE FREE ACCOUNT →</Link>
+            <Link href="/watchlist" className="border border-line text-body rounded px-5 py-2.5 text-sm no-underline hover:border-gold/60">EXPLORE WATCHLIST →</Link>
           </div>
         </section>
       </div>
@@ -219,10 +220,10 @@ export default async function Landing({ searchParams }) {
           ['Series', 'Season points races with podium tracking.', '/series'],
           ['Events', 'Follow every show on the circuit.', '/events'],
         ].map(([t, d, href]) => (
-          <a key={t} href={href} className="bg-card border border-line rounded p-4 no-underline hover:border-gold/60 group">
+          <Link key={t} href={href} className="bg-card border border-line rounded p-4 no-underline hover:border-gold/60 group">
             <div className="font-bold text-white group-hover:text-gold">{t} →</div>
             <div className="text-[13px] text-muted mt-1">{d}</div>
-          </a>
+          </Link>
         ))}
       </div>
       {months.length > 0 && (

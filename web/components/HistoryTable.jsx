@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { statusBadge } from '../lib/tokens';
 import DataTable from './DataTable';
 
@@ -40,8 +41,8 @@ export default function HistoryTable({ rows, mode }) {
           <td className="whitespace-nowrap px-3 py-2.5 text-muted">{r.height_cm ? `${(num(r.height_cm) / 100).toFixed(2)}m` : '—'}</td>
           <td className="whitespace-nowrap px-3 py-2.5">
             {mode === 'horse'
-              ? <a href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white hover:text-gold">{r[partnerKey]}</a>
-              : <a href={`/horses/${r.horse_slug || r.horse_id}`} className="text-gold hover:underline">{r[partnerKey]}</a>}
+              ? <Link href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white hover:text-gold">{r[partnerKey]}</Link>
+              : <Link href={`/horses/${r.horse_slug || r.horse_id}`} className="text-gold hover:underline">{r[partnerKey]}</Link>}
           </td>
           <td className={`px-3 py-2.5 text-right font-semibold ${num(r.jump_faults) === 0 ? 'text-mint' : 'text-danger'}`}>{r.jump_faults}</td>
           <td className={`px-3 py-2.5 text-right ${num(r.time_faults) === 0 ? 'text-mint' : 'text-danger'}`}>{num(r.time_faults).toFixed(2)}</td>

@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getJSON } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, H2, TABLE, TABLEWRAP, TD, TH, NUM, LINK } from '../../../lib/tokens';
 
@@ -6,13 +7,13 @@ export const revalidate = 30;
 export default async function VenueDetail({ params }) {
   const v = await getJSON(`/venues/${params.id}`).catch(() => null);
   if (!v?.data) {
-    return (<><h1 className={H1}>Venue not found</h1><p className={SUB}><a className={LINK} href="/venues">← All venues</a></p></>);
+    return (<><h1 className={H1}>Venue not found</h1><p className={SUB}><Link className={LINK} href="/venues">← All venues</Link></p></>);
   }
   const d = v.data;
   return (
     <>
       <div className="mb-1 text-[12px] text-faint">
-        <a href="/venues" className="text-muted hover:text-white">Venues</a>
+        <Link href="/venues" className="text-muted hover:text-white">Venues</Link>
         <span className="mx-1.5">/</span><span className="text-gold">{d.name}</span>
       </div>
       <h1 className={H1}>{d.name}</h1>
@@ -27,7 +28,7 @@ export default async function VenueDetail({ params }) {
               <tbody>
                 {(d.events || []).map((e) => (
                   <tr key={e.id}>
-                    <td className={TD}><a className={LINK} href={`/events/${e.slug || e.id}`}><b>{e.name}</b></a></td>
+                    <td className={TD}><Link className={LINK} href={`/events/${e.slug || e.id}`}><b>{e.name}</b></Link></td>
                     <td className={`${TD} text-muted`}>{(e.date_start || '').slice(0, 10)}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{e.round_count}</td>
                   </tr>
@@ -47,7 +48,7 @@ export default async function VenueDetail({ params }) {
               <tbody>
                 {(d.topHorses || []).map((h) => (
                   <tr key={h.horse_id}>
-                    <td className={TD}><a className={LINK} href={`/horses/${h.horse_slug || h.horse_id}`}>{h.horse}</a></td>
+                    <td className={TD}><Link className={LINK} href={`/horses/${h.horse_slug || h.horse_id}`}>{h.horse}</Link></td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.starts}</td>
                     <td className={`${TD} ${NUM} text-moss`}>{Number(h.clear_pct).toFixed(0)}%</td>
                   </tr>
@@ -65,7 +66,7 @@ export default async function VenueDetail({ params }) {
               <tbody>
                 {(d.topRiders || []).map((r) => (
                   <tr key={r.rider_id}>
-                    <td className={TD}><a className={LINK} href={`/riders/${r.rider_slug || r.rider_id}`}>{r.rider}</a></td>
+                    <td className={TD}><Link className={LINK} href={`/riders/${r.rider_slug || r.rider_id}`}>{r.rider}</Link></td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
                     <td className={`${TD} ${NUM} text-moss`}>{Number(r.clear_pct).toFixed(0)}%</td>
                   </tr>

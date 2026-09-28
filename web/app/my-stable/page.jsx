@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
 import { useAuth } from '../../components/auth';
@@ -176,14 +177,14 @@ export default function MyStable() {
     return (<>
       <h1 className={H1}>My Stable</h1>
       <p className={SUB}>Coach workspace for monitoring athlete performance.</p>
-      <section className={CARD}><p className={EMPTY}>Log in as a coach to manage your roster. <a className={LINK} href="/login?next=/my-stable">Log in →</a></p></section>
+      <section className={CARD}><p className={EMPTY}>Log in as a coach to manage your roster. <Link className={LINK} href="/login?next=/my-stable">Log in →</Link></p></section>
     </>);
   }
   if (user.role !== 'COACH' && user.role !== 'ADMIN') {
     return (<>
       <h1 className={H1}>My Stable</h1>
       <p className={SUB}>Coach workspace for monitoring athlete performance.</p>
-      <section className={CARD}><p className={EMPTY}>My Stable is a coach workspace — your account is registered as {user.role}. <a className={LINK} href="/watchlist">Track athletes via Watchlist →</a></p></section>
+      <section className={CARD}><p className={EMPTY}>My Stable is a coach workspace — your account is registered as {user.role}. <Link className={LINK} href="/watchlist">Track athletes via Watchlist →</Link></p></section>
     </>);
   }
 
@@ -253,7 +254,7 @@ export default function MyStable() {
               <tr key={a.id}>
                 <td className={TD}>
                   <button onClick={() => toggle(a.id)} className="text-faint text-[11px] mr-1.5 bg-none border-0 cursor-pointer" title="Expand analysis">{expanded[a.id] ? '▾' : '▸'}</button>
-                  <a href={`/riders/${a.slug || a.id}`} className="text-white font-semibold no-underline hover:text-gold">{a.name || a.rider}</a>
+                  <Link href={`/riders/${a.slug || a.id}`} className="text-white font-semibold no-underline hover:text-gold">{a.name || a.rider}</Link>
                   {a.workload.overloaded && <span className="ml-1.5 text-[10px] font-bold text-blood" title=">6 rounds/30d or shows <7d apart">⚠ LOAD</span>}
                 </td>
                 <td className={`${TD} ${NUM}`}><b className="text-gold">{a.eq}</b></td>
@@ -293,9 +294,9 @@ export default function MyStable() {
                   <b>{a.name || a.rider}</b>
                   <span className={badge(BADGE.red)}>↓ Declining</span>
                 </div>
-                <p className="text-muted text-[13px] mt-1.5">Recent form {a.arrow} — review last rounds with <a className={LINK} href={`/riders/${a.slug || a.id}`}>full history →</a></p>
+                <p className="text-muted text-[13px] mt-1.5">Recent form {a.arrow} — review last rounds with <Link className={LINK} href={`/riders/${a.slug || a.id}`}>full history →</Link></p>
                 <div className="mt-2">
-                  <a className={`${BTN_PRIMARY} no-underline inline-block`} href={`/riders/${a.slug || a.id}`}>Open athlete profile →</a>
+                  <Link className={`${BTN_PRIMARY} no-underline inline-block`} href={`/riders/${a.slug || a.id}`}>Open athlete profile →</Link>
                 </div>
               </div>
             ))}

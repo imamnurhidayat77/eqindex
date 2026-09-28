@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { NUM, TD, TH } from '../lib/tokens';
 import DataTable from './DataTable';
 
@@ -38,7 +39,7 @@ export function HeightProgressTable({ rows }) {
       thead={<tr><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Height</th><th className={`${TH} ${NUM}`}>Starts</th><th className={`${TH} ${NUM}`}>Clear %</th></tr>}
       renderRow={(x, i) => (
         <tr key={`${x.horse_id}-${x.height_cm}-${i}`}>
-          <td className={TD}><a href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white font-semibold hover:text-gold transition-colors">{x.horse}</a></td>
+          <td className={TD}><Link href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white font-semibold hover:text-gold transition-colors">{x.horse}</Link></td>
           <td className={`${TD} ${NUM}`}>{x.height_cm}cm</td>
           <td className={`${TD} ${NUM}`}>{x.starts}</td>
           <td className={`${TD} ${NUM} text-moss`}>{Number(x.clear_pct).toFixed(1)}%</td>

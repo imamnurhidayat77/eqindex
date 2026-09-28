@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getJSON } from '../../lib/api';
 import { CARD, H1, H2, H3, SUB, TABLE, TABLEWRAP, TD, TH, NUM, LINK, badge, BADGE } from '../../lib/tokens';
 
@@ -90,17 +91,17 @@ export default async function About() {
 
       <section className={CARD}>
         <h2 className={H2}>Naming & corrections</h2>
-        <p className="text-muted text-sm">“Kiwi-Spirit” vs “Kiwi Spirit” vs “KIWI SPIRIT” are one horse. Normalisation is deterministic; ambiguous names queue in the <b className="text-white">Naming Review</b> for a human approve/merge/reject decision, and every decision is written to the audit log. Spot an error? <a className={LINK} href="/contact">Report a correction →</a></p>
+        <p className="text-muted text-sm">“Kiwi-Spirit” vs “Kiwi Spirit” vs “KIWI SPIRIT” are one horse. Normalisation is deterministic; ambiguous names queue in the <b className="text-white">Naming Review</b> for a human approve/merge/reject decision, and every decision is written to the audit log. Spot an error? <Link className={LINK} href="/contact">Report a correction →</Link></p>
       </section>
 
       <section className={CARD}>
         <h2 className={H2}>Limits & fair use</h2>
-        <p className="text-muted text-sm">Small samples mislead — projections hide below 3 scoring months, and surface splits flag unknown surfaces instead of guessing. Rankings reflect recorded results only; unrecorded schooling rounds don't exist here. Bulk reuse of the database requires written permission (see <a className={LINK} href="/terms">Terms →</a>). Programmatic access: <a className={LINK} href="/contact">Contact →</a></p>
+        <p className="text-muted text-sm">Small samples mislead — projections hide below 3 scoring months, and surface splits flag unknown surfaces instead of guessing. Rankings reflect recorded results only; unrecorded schooling rounds don't exist here. Bulk reuse of the database requires written permission (see <Link className={LINK} href="/terms">Terms →</Link>). Programmatic access: <Link className={LINK} href="/contact">Contact →</Link></p>
       </section>
 
       <section className={CARD}>
         <h2 className={H2}>Glossary & formula history</h2>
-        <p className="text-muted text-sm">Terms, height bands and class definitions: <a className={LINK} href="/glossary">Glossary →</a> · Points formula v1 (placing × multiplier) effective September 2026. Changes are versioned and announced before they affect published tables.</p>
+        <p className="text-muted text-sm">Terms, height bands and class definitions: <Link className={LINK} href="/glossary">Glossary →</Link> · Points formula v1 (placing × multiplier) effective September 2026. Changes are versioned and announced before they affect published tables.</p>
       </section>
     </>
   );

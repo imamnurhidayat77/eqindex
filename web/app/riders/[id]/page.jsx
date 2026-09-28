@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getJSON } from '../../../lib/api';
 import { eqScore, consistencyPts } from '../../../lib/eq';
 import { projectForm, recommendHeight, suggestPartners } from '../../../lib/forecast';
@@ -195,7 +196,7 @@ export default async function RiderProfile({ params }) {
     <div className="text-[14px] text-slate-100">
       {/* breadcrumb + title */}
       <div className="mb-1 text-[12px] text-faint">
-        <a href="/riders" className="text-muted hover:text-white">Riders</a>
+        <Link href="/riders" className="text-muted hover:text-white">Riders</Link>
         <span className="mx-1.5">/</span>
         <span className="text-gold">{r.name} Profile</span>
       </div>
@@ -384,7 +385,7 @@ export default async function RiderProfile({ params }) {
                 const [lbl, cls] = trendStatus(x.clear_pct);
                 return (
                   <tr key={x.horse_id} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
-                    <td className="px-2 py-2.5 font-semibold"><a href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white hover:text-gold">{x.horse}</a></td>
+                    <td className="px-2 py-2.5 font-semibold"><Link href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white hover:text-gold">{x.horse}</Link></td>
                     <td className="whitespace-nowrap px-2 py-2.5 text-muted">{x.rounds_together} Rounds</td>
                     <td className="px-2 py-2.5 font-semibold text-mint">{num(x.clear_pct).toFixed(0)}%</td>
                     <td className="px-2 py-2.5">{num(x.avg_faults).toFixed(2)}</td>
@@ -406,14 +407,14 @@ export default async function RiderProfile({ params }) {
         {suggestions.length ? (
           <div className="grid gap-3 md:grid-cols-3">
             {suggestions.map((sug) => (
-              <a key={sug.id} href={`/horses/${sug.horse_slug || sug.id}`} className="group rounded bg-card2 p-4 transition hover:border-gold/50 border border-transparent">
+              <Link key={sug.id} href={`/horses/${sug.horse_slug || sug.id}`} className="group rounded bg-card2 p-4 transition hover:border-gold/50 border border-transparent">
                 <div className="flex items-center justify-between">
                   <b>{sug.name}</b>
                   <span className="text-[16px] font-extrabold text-gold">{sug.fit}</span>
                 </div>
                 <div className="mt-1 text-[12px] text-muted">EQ {sug.eq} · {sug.starts} rounds{sug.bestCm ? ` · best ${(sug.bestCm / 100).toFixed(2)}m` : ''}</div>
                 <div className="mt-0.5 text-[12px] text-faint">{sug.heightGap === 0 || !sug.bestCm ? 'Height profile unknown' : `Height gap ${sug.heightGap}cm`} · fit score</div>
-              </a>
+              </Link>
             ))}
           </div>
         ) : (
@@ -518,10 +519,10 @@ export default async function RiderProfile({ params }) {
           ['Compare Horse Partnerships', 'Isolate rider synergy metrics per stallion', '/comparison'],
           ['View National Benchmark', 'Assess stats relative to national elite class averages', '/analytics'],
         ].map(([t, d, href]) => (
-          <a key={t} href={href} className="group flex items-center justify-between rounded border border-line bg-card p-4 transition hover:border-gold/50">
+          <Link key={t} href={href} className="group flex items-center justify-between rounded border border-line bg-card p-4 transition hover:border-gold/50">
             <div><div className="text-[13.5px] font-bold text-white">{t}</div><div className="mt-0.5 text-[12px] text-muted">{d}</div></div>
             <span className="text-gold transition group-hover:translate-x-0.5">→</span>
-          </a>
+          </Link>
         ))}
       </div>
     </div>

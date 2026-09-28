@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
 import { CARD, EMPTY, H1, LINK, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
@@ -56,7 +57,7 @@ export default function SeriesIndex() {
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <span className="text-[11px] uppercase tracking-wide text-faint font-bold">Rider categories:</span>
         {[['junior', 'Junior'], ['young-rider', 'Young Rider'], ['under-25', 'Under 25'], ['amateur', 'Amateur'], ['pony', 'Pony']].map(([k, l]) => (
-          <a key={k} href={`/series/category/${k}`} className="text-xs rounded-full px-3 py-[6px] border border-line bg-card2 text-muted no-underline hover:text-gold hover:border-gold/50">{l}</a>
+          <Link key={k} href={`/series/category/${k}`} className="text-xs rounded-full px-3 py-[6px] border border-line bg-card2 text-muted no-underline hover:text-gold hover:border-gold/50">{l}</Link>
         ))}
       </div>
 
@@ -97,11 +98,11 @@ export default function SeriesIndex() {
           <tbody>
             {view.map((x) => (
               <tr key={x.series_key}>
-                <td className={TD}><a className={LINK} href={`/series/${x.series_key}`}><b>{x.series_name}</b></a></td>
+                <td className={TD}><Link className={LINK} href={`/series/${x.series_key}`}><b>{x.series_name}</b></Link></td>
                 <td className={TD}>{x.event_name}</td>
                 <td className={TD}>{(x.season || '').replace('-', '/')}</td>
                 <td className={`${TD} ${NUM}`}>{x.entries}</td>
-                <td className={`${TD} ${NUM}`}><a className={LINK} href={`/series/${x.series_key}`}>Standings →</a></td>
+                <td className={`${TD} ${NUM}`}><Link className={LINK} href={`/series/${x.series_key}`}>Standings →</Link></td>
               </tr>
             ))}
             {!view.length && <tr><td colSpan={5} className={EMPTY}>{loading ? (<span className="flex flex-col gap-2 py-1" aria-hidden="true">{[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}</span>) : ('No series match these filters.')}</td></tr>}

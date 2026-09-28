@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../components/auth';
@@ -103,7 +104,7 @@ export default function Register() {
             {err && <p className="rounded border border-blood/40 bg-redbg/40 px-3 py-2 text-blood text-[13px]">{err}</p>}
             <button className={`${BTN_PRIMARY} py-2.5 mt-1`} disabled={busy}>{busy ? 'Creating…' : 'Create account →'}</button>
           </form>
-          <p className="text-muted text-sm mt-4 text-center">Have an account? <a className={LINK} href="/login">Log in →</a></p>
+          <p className="text-muted text-sm mt-4 text-center">Have an account? <Link className={LINK} href="/login">Log in →</Link></p>
         </div>
       </div>
       )}

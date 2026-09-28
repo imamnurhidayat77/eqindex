@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Dropdown from './Dropdown';
 
@@ -15,7 +16,7 @@ export default function ChipSelect({ label, value, options, clearHref, active })
         menuClassName="min-w-[170px]"
       />
       {clearHref && (
-        <a href={clearHref} className="ml-0.5 w-[18px] h-[18px] rounded-full bg-line text-muted hover:text-white text-[11px] leading-none inline-flex items-center justify-center no-underline">×</a>
+        <Link href={clearHref} className="ml-0.5 w-[18px] h-[18px] rounded-full bg-line text-muted hover:text-white text-[11px] leading-none inline-flex items-center justify-center no-underline">×</Link>
       )}
     </span>
   );

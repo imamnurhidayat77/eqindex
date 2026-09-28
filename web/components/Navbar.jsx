@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { API } from '../lib/api';
@@ -51,9 +52,9 @@ export default function Navbar() {
     <>
       <nav className="hidden md:flex gap-[18px]">
         {NAV.map((item) => (
-          <a key={item.href} href={item.href} className={linkCls(item.match(pathname))}>
+          <Link key={item.href} href={item.href} className={linkCls(item.match(pathname))}>
             {item.label}
-          </a>
+          </Link>
         ))}
         {NAV_GROUPS.map((g) => {
           const active = g.items.some((i) => i.match(pathname));
@@ -68,10 +69,10 @@ export default function Navbar() {
                 <span className="absolute left-0 top-full pt-1 z-30 block">
                   <span className="block min-w-[160px] rounded border border-line bg-card2 py-1 shadow-xl">
                     {g.items.map((item) => (
-                      <a key={item.href} href={item.href} onClick={() => setDrop(null)}
+                      <Link key={item.href} href={item.href} onClick={() => setDrop(null)}
                         className={`block px-3.5 py-2 text-[13px] no-underline hover:bg-white/5 ${item.match(pathname) ? 'text-gold font-bold' : 'text-muted hover:text-white'}`}>
                         {item.label}
-                      </a>
+                      </Link>
                     ))}
                   </span>
                 </span>
@@ -92,7 +93,7 @@ export default function Navbar() {
           {NAV.map((item) => {
             const active = item.match(pathname);
             return (
-              <a
+              <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
@@ -101,7 +102,7 @@ export default function Navbar() {
                 }`}
               >
                 {item.label}
-              </a>
+              </Link>
             );
           })}
           {NAV_GROUPS.map((g) => (
@@ -110,7 +111,7 @@ export default function Navbar() {
               {g.items.map((item) => {
                 const active = item.match(pathname);
                 return (
-                  <a
+                  <Link
                     key={item.href}
                     href={item.href}
                     onClick={() => setOpen(false)}
@@ -119,7 +120,7 @@ export default function Navbar() {
                     }`}
                   >
                     {item.label}
-                  </a>
+                  </Link>
                 );
               })}
             </span>

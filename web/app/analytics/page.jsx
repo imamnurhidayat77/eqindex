@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getJSON } from '../../lib/api';
 import { CARD, H1, H2, SUB } from '../../lib/tokens';
 import ChipSelect from '../../components/ChipSelect';
@@ -39,7 +40,7 @@ export default async function Analytics({ searchParams }) {
         <ChipSelect label="Format" value={format} active={!!format} clearHref={href({ format: '' })}
           options={[{ value: '', label: 'All Formats', href: href({ format: '' }) },
             ...FORMATS.map((t) => ({ value: t, label: t, href: href({ format: t }) }))]} />
-        {(type || format) && <a href="/analytics" className="text-sky text-xs no-underline ml-1">Reset</a>}
+        {(type || format) && <Link href="/analytics" className="text-sky text-xs no-underline ml-1">Reset</Link>}
       </div>
       <section className={CARD}>
         <ClassDifficultyTable rows={cls.data} />

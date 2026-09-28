@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
 import { CARD, H1, NUM, SUB, TABLE, TD, TH } from '../../lib/tokens';
@@ -72,7 +73,7 @@ export default function Riders() {
               return (
                 <tr key={x.rider_id}>
                   <td className={rank === 1 && safePage === 1 ? 'rank1' : ''}>#{rank}</td>
-                  <td className={TD}><a href={`/riders/${x.rider_slug || x.rider_id}`} className="text-white font-semibold">{x.rider}</a></td>
+                  <td className={TD}><Link href={`/riders/${x.rider_slug || x.rider_id}`} className="text-white font-semibold">{x.rider}</Link></td>
                   <td className={`${TD} ${NUM}`}><b>{x.eq}</b></td>
                   <td className={`${TD} ${NUM} text-moss`}>{Number(x.clear_pct).toFixed(1)}%</td>
                   <td className={`${TD} ${NUM}`}>{Number(x.avg_faults).toFixed(2)}</td>

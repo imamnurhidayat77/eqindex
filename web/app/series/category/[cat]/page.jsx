@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getJSON } from '../../../../lib/api';
 import { CARD, EMPTY, H1, SUB, LINK } from '../../../../lib/tokens';
 import { CategoryTable } from '../../../../components/SeriesTables';
@@ -37,7 +38,7 @@ export default async function SeriesCategory({ params }) {
   return (
     <>
       <div className="mb-1 text-[12px] text-faint">
-        <a href="/series" className="text-muted hover:text-white">Series</a>
+        <Link href="/series" className="text-muted hover:text-white">Series</Link>
         <span className="mx-1.5">/</span>
         <span className="text-gold">{label}</span>
       </div>
@@ -45,15 +46,15 @@ export default async function SeriesCategory({ params }) {
       <p className={SUB}>{DESCRIPTIONS[cat]} Ranked by briefing points.</p>
       <div className="mb-4 flex flex-wrap gap-2">
         {Object.entries(CATS).map(([k, l]) => (
-          <a key={k} href={`/series/category/${k}`}
-            className={`text-xs rounded-full px-3 py-[6px] border no-underline ${k === cat ? 'bg-goldbg border-gold text-gold font-bold' : 'bg-card2 border-line text-muted'}`}>{l}</a>
+          <Link key={k} href={`/series/category/${k}`}
+            className={`text-xs rounded-full px-3 py-[6px] border no-underline ${k === cat ? 'bg-goldbg border-gold text-gold font-bold' : 'bg-card2 border-line text-muted'}`}>{l}</Link>
         ))}
       </div>
       <section className={CARD}>
         <CategoryTable rows={rows} />
         {!rows.length && <p className={EMPTY}>No ranked riders in this category yet — assign categories in Admin → Riders.</p>}
       </section>
-      <p className="text-[12px] text-faint">Riders without a category compete as Open. <a className={LINK} href="/rankings">National leaderboard →</a></p>
+      <p className="text-[12px] text-faint">Riders without a category compete as Open. <Link className={LINK} href="/rankings">National leaderboard →</Link></p>
     </>
   );
 }

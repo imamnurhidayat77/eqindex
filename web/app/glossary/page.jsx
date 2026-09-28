@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { CARD, H1, H2, SUB, TABLE, TABLEWRAP, TD, TH, LINK } from '../../lib/tokens';
 
 const TERMS = [
@@ -28,7 +29,7 @@ export default function Glossary() {
   return (
     <>
       <h1 className={H1}>Glossary</h1>
-      <p className={SUB}>Class types, formats, faults rules and metric definitions. Full formula: <a className={LINK} href="/about">About →</a></p>
+      <p className={SUB}>Class types, formats, faults rules and metric definitions. Full formula: <Link className={LINK} href="/about">About →</Link></p>
       <section className={CARD}>
         <h2 className={H2}>Terms</h2>
         <div className={TABLEWRAP}>

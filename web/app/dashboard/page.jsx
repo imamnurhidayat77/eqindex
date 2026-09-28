@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getJSON } from '../../lib/api';
 import { BADGE, CARD, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../lib/tokens';
 import { eqScore, trendBadge, consistencyPts } from '../../lib/eq';
@@ -148,7 +149,7 @@ export default async function Dashboard({ searchParams }) {
       <Filters current={current} seasons={seasons} regions={regions} arenas={arenas} />
 
       {!ranked.length && !rankedR.length ? (
-        <section className={CARD}><p className={MUT}>No rounds match these filters. <a href="/dashboard">Reset Filters</a></p></section>
+        <section className={CARD}><p className={MUT}>No rounds match these filters. <Link href="/dashboard">Reset Filters</Link></p></section>
       ) : (
         <>
           <h2 className={H2}>Performance Overview</h2>
@@ -247,7 +248,7 @@ export default async function Dashboard({ searchParams }) {
                       return (
                         <tr key={h.horse_id}>
                           <td className={i === 0 ? 'text-gold font-bold' : ''}>#{i + 1}</td>
-                          <td className={TD}><a href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold">{h.horse}</a></td>
+                          <td className={TD}><Link href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold">{h.horse}</Link></td>
                           <td className={`${TD} ${NUM}`}><b>{h.eq}</b></td>
                           <td className={`${TD} ${NUM} text-moss`}>{pct(h.clear_pct)}</td>
                           <td className={`${TD} ${NUM}`}>{Number(h.avg_faults).toFixed(2)}</td>
@@ -277,11 +278,11 @@ export default async function Dashboard({ searchParams }) {
                       return (
                         <tr key={r.rider_id}>
                           <td className={i === 0 ? 'text-gold font-bold' : ''}>#{i + 1}</td>
-                          <td className={TD}><a href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white font-semibold">{r.rider}</a></td>
+                          <td className={TD}><Link href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white font-semibold">{r.rider}</Link></td>
                           <td className={`${TD} ${NUM}`}><b>{r.eq}</b></td>
                           <td className={`${TD} ${NUM} text-moss`}>{pct(r.clear_pct)}</td>
                           <td className={`${TD} ${NUM}`}>{r.starts}</td>
-                          <td className={TD}>{best ? <a className={LINK} href={`/horses/${best.horse_slug || best.horse_id}`}>{best.horse}</a> : '—'}</td>
+                          <td className={TD}>{best ? <Link className={LINK} href={`/horses/${best.horse_slug || best.horse_id}`}>{best.horse}</Link> : '—'}</td>
                         </tr>
                       );
                     })}
