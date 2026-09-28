@@ -1,8 +1,9 @@
 import { getJSON } from '../../lib/api';
-import { CARD, EMPTY, H1, H2, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
+import { CARD, H1, H2, SUB } from '../../lib/tokens';
 import ChipSelect from '../../components/ChipSelect';
+import { ClassDifficultyTable, HeightProgressTable } from '../../components/AnalyticsTables';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 const TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
 const FORMATS = ['Two-phase', 'Jump-off', 'Speed', 'Power & Speed'];
@@ -41,44 +42,11 @@ export default async function Analytics({ searchParams }) {
         {(type || format) && <a href="/analytics" className="text-sky text-xs no-underline ml-1">Reset</a>}
       </div>
       <section className={CARD}>
-        <div className={TABLEWRAP}>
-        <table className={TABLE}>
-          <thead><tr><th className={TH}>Event</th><th className={TH}>Class</th><th className={TH}>Type</th><th className={TH}>Format</th><th className={`${TH} ${NUM}`}>Height</th><th className={`${TH} ${NUM}`}>Starters</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg faults</th></tr></thead>
-          <tbody>
-            {cls.data.map((c) => (
-              <tr key={c.class_id}>
-                <td className={TD}>{c.event}</td><td className={TD}>{c.class}</td>
-                <td className={TD}>{c.class_type || '–'}</td>
-                <td className={TD}>{c.format || '–'}</td>
-                <td className={`${TD} ${NUM}`}>{c.height_cm ? `${c.height_cm}cm` : '–'}</td>
-                <td className={`${TD} ${NUM}`}>{c.starters}</td>
-                <td className={`${TD} ${NUM} text-moss`}>{c.clear_pct === null ? '–' : `${Number(c.clear_pct).toFixed(1)}%`}</td>
-                <td className={`${TD} ${NUM}`}>{c.avg_faults === null ? '–' : Number(c.avg_faults).toFixed(2)}</td>
-              </tr>
-            ))}
-            {!cls.data.length && <tr><td colSpan={8} className={EMPTY}>No class data available.</td></tr>}
-          </tbody>
-        </table>
-        </div>
+        <ClassDifficultyTable rows={cls.data} />
       </section>
       <h2 className={H2}>Height progression</h2>
       <section className={CARD}>
-        <div className={TABLEWRAP}>
-        <table className={TABLE}>
-          <thead><tr><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Height</th><th className={`${TH} ${NUM}`}>Starts</th><th className={`${TH} ${NUM}`}>Clear %</th></tr></thead>
-          <tbody>
-            {hh.data.map((x, i) => (
-              <tr key={i}>
-                <td className={TD}><a href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white font-semibold hover:text-gold transition-colors">{x.horse}</a></td>
-                <td className={`${TD} ${NUM}`}>{x.height_cm}cm</td>
-                <td className={`${TD} ${NUM}`}>{x.starts}</td>
-                <td className={`${TD} ${NUM} text-moss`}>{Number(x.clear_pct).toFixed(1)}%</td>
-              </tr>
-            ))}
-            {!cls.data.length && <tr><td colSpan={6} className={EMPTY}>No class data available.</td></tr>}
-          </tbody>
-        </table>
-        </div>
+        <HeightProgressTable rows={hh.data} />
       </section>
     </>
   );

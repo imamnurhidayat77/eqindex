@@ -1,7 +1,7 @@
 import { getJSON } from '../../lib/api';
 import { CARD, H1, H2, H3, SUB, TABLE, TABLEWRAP, TD, TH, NUM, LINK, badge, BADGE } from '../../lib/tokens';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 export default async function About() {
   const [horses, riders, events, classes] = await Promise.all([

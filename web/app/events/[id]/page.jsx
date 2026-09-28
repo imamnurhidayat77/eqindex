@@ -5,34 +5,35 @@ import { ScoreRing } from '../../../components/charts';
 import MiniTrend from '../../../components/MiniTrend';
 import ClassResults from '../../../components/ClassResults';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 const pct1 = (v) => `${Number(v).toFixed(1)}%`;
 const d = (o) => new Date(o).toLocaleDateString('en-NZ', { month: 'short', year: '2-digit' });
 
 export default async function EventDetail({ params }) {
-  const [a, arenas, rankAll, allClasses, trends] = await Promise.all([
-    getJSON(`/events/${params.id}/analytics`),
-    getJSON('/arenas'),
-    getJSON('/rankings/horses?limit=1000'),
-    getJSON('/classes?limit=500'),
-    getJSON('/trends/circuit'),
-  ]);
+  const a = await getJSON(`/events/${params.id}/analytics`);
   const e = a.event;
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(params.id) && e.slug && e.slug !== params.id) {
     const { redirect } = await import('next/navigation');
     redirect(`/events/${e.slug}`);
   }
-  const editions = await getJSON(`/events/compare?name=${encodeURIComponent(e.name)}`).catch(() => ({ data: [] }));
-  const pastEditions = (editions.data || []).filter((x) => x.id !== e.id);
   const rounds = a.rounds;
+  const maxH = Math.max(0, ...rounds.map((r) => Number(r.height_cm) || 0));
+  // Lighter follow-up batch: career map needs only the leaderboard head, and
+  // similar-class lookup is pre-filtered by height at the API.
+  const [arenas, rankAll, simClasses, trends] = await Promise.all([
+    getJSON('/arenas'),
+    getJSON('/rankings/horses?limit=200'),
+    getJSON(maxH > 0 ? `/classes?limit=60&height_min=${maxH - 5}&height_max=${maxH + 5}` : '/classes?limit=60'),
+    getJSON('/trends/circuit'),
+  ]);
+  const allClasses = simClasses;
   const n = rounds.length;
   const clears = rounds.filter((r) => r.clear_round).length;
   const clearPct = n ? 100 * clears / n : 0;
   const avgF = n ? rounds.reduce((s, r) => s + Number(r.total_faults), 0) / n : 0;
   const score = fieldScore(clearPct, avgF);
   const strength = strengthLabel(score);
-  const maxH = Math.max(0, ...rounds.map((r) => Number(r.height_cm) || 0));
   const grade = maxH >= 140 ? 'A-Grade Event' : maxH >= 130 ? 'B-Grade Event' : 'Club Event';
   const statuses = (a.classes || []).map((c) => c.result_status).filter(Boolean);
   const eventStatus = !statuses.length ? null
@@ -90,7 +91,38 @@ export default async function EventDetail({ params }) {
   const evRiders = Object.entries(byRider).map(([rider, v]) => ({
     rider, ...v, eq: eqScore(100 * v.clears / v.starts, v.faults / v.starts, v.starts),
   })).sort((x, y) => y.eq - x.eq).slice(0, 5);
-  const evParts = [...a.partnerships].sort((x, y) => Number(y.clear_pct) - Number(x.clear_pct)).slice(0, 3)
+  // Top lists derived from rounds (saves 3 aggregate queries in the API).
+  const grades = (r) => [(r.finish_place ?? 9999), Number(r.total_faults), (r.time_seconds ?? 9999)];
+  const cmpR = (x, y) => grades(x)[0] - grades(y)[0] || grades(x)[1] - grades(y)[1] || grades(x)[2] - grades(y)[2];
+  const seenHorse = new Set();
+  const topHorses = [...rounds].sort(cmpR).filter((r) => {
+    if (seenHorse.has(r.horse_id)) return false;
+    seenHorse.add(r.horse_id);
+    return true;
+  }).slice(0, 5);
+  const rAgg = {};
+  for (const r of rounds) {
+    const g = (rAgg[r.rider_id] ||= { rider_id: r.rider_id, rider: r.rider, starts: 0, clears: 0, faults: 0, horses: new Set() });
+    g.starts++; g.faults += Number(r.total_faults);
+    if (r.clear_round) g.clears++;
+    g.horses.add(r.horse_id);
+  }
+  const topRiders = Object.values(rAgg).map((g) => ({
+    ...g, horses_ridden: g.horses.size,
+    clear_pct: 100 * g.clears / g.starts, avg_faults: g.faults / g.starts,
+  })).sort((x, y) => y.clear_pct - x.clear_pct || x.avg_faults - y.avg_faults).slice(0, 5);
+  const pAgg = {};
+  for (const r of rounds) {
+    const k = `${r.horse_id}||${r.rider_id}`;
+    const g = (pAgg[k] ||= { horse: r.horse, rider: r.rider, rounds: 0, clears: 0, faults: 0, best: null });
+    g.rounds++; g.faults += Number(r.total_faults);
+    if (r.clear_round) g.clears++;
+    if (r.finish_place != null) g.best = g.best === null ? r.finish_place : Math.min(g.best, r.finish_place);
+  }
+  const allParts = Object.values(pAgg).map((p) => ({
+    ...p, clear_pct: 100 * p.clears / p.rounds, avg_faults: p.faults / p.rounds, best_place: p.best,
+  })).sort((x, y) => y.clear_pct - x.clear_pct || x.avg_faults - y.avg_faults);
+  const evParts = allParts.slice(0, 3)
     .map((p) => ({ ...p, match: eqScore(p.clear_pct, p.avg_faults, p.rounds) }));
 
   // per-class result groups (accordion), sorted by placing, nulls last
@@ -254,7 +286,7 @@ export default async function EventDetail({ params }) {
         <table className={TABLE}>
           <thead><tr><th className={TH}>Rank</th><th className={TH}>Horse Name</th><th className={TH}>Rider Name</th><th className={TH}>Height Class</th><th className={`${TH} ${NUM}`}>Jump Faults</th><th className={TH}>Time</th><th>Placing</th></tr></thead>
           <tbody>
-            {a.horses.map((h, i) => (
+            {topHorses.map((h, i) => (
               <tr key={h.horse_id}>
                 <td className={i === 0 ? 'text-gold font-bold' : ''}>#{i + 1}</td>
                 <td className={TD}><b>{h.horse}</b></td>
@@ -277,7 +309,7 @@ export default async function EventDetail({ params }) {
         <table className={TABLE}>
           <thead><tr><th className={TH}>Rank</th><th className={TH}>Rider Name</th><th className={TH}>Horses Ridden</th><th className={TH}>Rounds</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg Faults</th></tr></thead>
           <tbody>
-            {a.riders.map((r, i) => (
+            {topRiders.map((r, i) => (
               <tr key={r.rider_id}>
                 <td className={i === 0 ? 'text-gold font-bold' : ''}>#{i + 1}</td>
                 <td className={TD}><b>{r.rider}</b></td>
@@ -299,7 +331,7 @@ export default async function EventDetail({ params }) {
         <table className={TABLE}>
           <thead><tr><th className={TH}>Combination</th><th className={TH}>Rounds</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg Faults</th><th>Best Result</th></tr></thead>
           <tbody>
-            {a.partnerships.map((p, i) => (
+            {allParts.map((p, i) => (
               <tr key={`${p.horse}-${p.rider}`}>
                 <td className={TD}><b>{p.horse} + {p.rider}</b></td>
                 <td className={TD}>{p.rounds} Round{p.rounds === 1 ? '' : 's'}</td>

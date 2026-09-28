@@ -7,7 +7,7 @@ import Filters from '../../components/Filters';
 import EventCarousel from '../../components/EventCarousel';
 import { heightParams } from '../../lib/heights';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 const pct = (v) => `${Number(v).toFixed(1)}%`;
 const diffBadge = (d) => `${d > 0 ? '+' : ''}${d.toFixed(1)}%`;

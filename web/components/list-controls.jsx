@@ -71,7 +71,7 @@ export function FilterBar({ f, set, seasons, regions, arenas, showHeight = true,
   );
 }
 
-export function Pagination({ page, pages, setPage, perPage, setPerPage, total }) {
+export function Pagination({ page, pages, setPage, perPage, setPerPage, total, perPageOptions = [10, 25, 50] }) {
   if (!total) return null;
   const nums = [];
   const lo = Math.max(1, Math.min(page - 2, pages - 4));
@@ -88,7 +88,7 @@ export function Pagination({ page, pages, setPage, perPage, setPerPage, total })
       </div>
       <div className="flex items-center gap-1.5">
         <Dropdown ariaLabel="Rows per page" value={String(perPage)}
-          options={[10, 25, 50].map((n) => ({ value: String(n), label: `${n} / page` }))}
+          options={perPageOptions.map((n) => ({ value: String(n), label: `${n} / page` }))}
           onSelect={(o) => { setPerPage(Number(o.value)); setPage(1); }} />
         <button disabled={page <= 1} onClick={() => setPage(page - 1)} className={btn(false) + ' disabled:opacity-40'}>‹</button>
         {nums.map((n) => (

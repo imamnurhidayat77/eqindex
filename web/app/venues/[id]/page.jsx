@@ -1,7 +1,7 @@
 import { getJSON } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, H2, TABLE, TABLEWRAP, TD, TH, NUM, LINK } from '../../../lib/tokens';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 export default async function VenueDetail({ params }) {
   const v = await getJSON(`/venues/${params.id}`).catch(() => null);

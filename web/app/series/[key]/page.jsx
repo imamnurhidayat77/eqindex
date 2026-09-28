@@ -1,8 +1,8 @@
 import { getJSON } from '../../../lib/api';
 import { eqScore } from '../../../lib/eq';
-import { statusBadge } from '../../../lib/tokens';
+import { SeriesMatrixTable } from '../../../components/SeriesTables';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 const norm = (s) => (s || '').trim().toLowerCase();
 const num = (v, d = 0) => (v === null || v === undefined || v === '' ? d : Number(v));
@@ -119,36 +119,9 @@ export default async function SeriesPage({ params }) {
 
       <h2 className="text-[15px] font-bold">Points Matrix</h2>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Points from each qualifying event per combination.</p>
-      <section className="mb-6 overflow-x-auto rounded border border-line bg-card">
-        <table className="w-full min-w-[720px] border-collapse text-[13px]">
-          <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
-              <th className="border-b border-line px-3 py-2.5 font-semibold">#</th>
-              <th className="border-b border-line px-3 py-2.5 font-semibold">Combination</th>
-              {evLabels.map((e) => <th key={e} className="border-b border-line px-3 py-2.5 text-right font-semibold">{e}</th>)}
-              <th className="border-b border-line px-3 py-2.5 text-right font-semibold">Total</th>
-              {(table.some((r) => r.dropped) ) && <th className="border-b border-line px-3 py-2.5 text-right font-semibold">Dropped</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {table.map((r) => (
-              <tr key={`${r.rider}-${r.horse}`} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
-                <td className="px-3 py-2.5"><span className={statusBadge(r.rank === 1 ? '1st' : r.rank === 2 ? '2nd' : r.rank === 3 ? '3rd' : 'stable')}>#{r.rank}</span></td>
-                <td className="px-3 py-2.5 font-semibold">
-                  {r.rd ? <a href={`/riders/${r.rd.rider_slug || r.rd.id}`} className="text-white hover:text-gold">{r.rider}</a> : r.rider}
-                  <span className="text-muted"> × </span>
-                  {r.h ? <a href={`/horses/${r.h.horse_slug || r.h.id}`} className="text-gold hover:underline">{r.horse}</a> : <span className="text-muted">{r.horse}</span>}
-                </td>
-                {evLabels.map((e) => (
-                  <td key={e} className="px-3 py-2.5 text-right tabular-nums text-muted">{r.events?.[e] ?? '–'}</td>
-                ))}
-                <td className="px-3 py-2.5 text-right font-extrabold">{r.total}</td>
-                {table.some((x) => x.dropped) && <td className="px-3 py-2.5 text-right text-faint">{r.dropped ? `−${r.dropped_pts}` : '–'}</td>}
-              </tr>
-            ))}
-            {!table.length && <tr><td colSpan={99} className="px-3 py-6 text-center text-muted">No standings for this series yet.</td></tr>}
-          </tbody>
-        </table>
+      <section className="mb-6 rounded border border-line bg-card p-4">
+        <SeriesMatrixTable table={table} evLabels={evLabels} hasDropped={table.some((r) => r.dropped)} />
+        {!table.length && <p className="px-1 py-4 text-center text-muted">No standings for this series yet.</p>}
       </section>
 
       <h2 className="mb-3 text-[15px] font-bold">Points Race</h2>

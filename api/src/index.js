@@ -52,6 +52,31 @@ app.use(async (req, _res, next) => {
   try { req.authUser = await sessionUser(req); } catch { req.authUser = null; }
   next();
 });
+// ---- Public GET cache (60s, anonymous only): repeat page loads skip Postgres.
+// Never caches admin/auth/user-scoped routes; logged-in traffic always bypasses.
+const CACHE_TTL = 60 * 1000;
+const cacheStore = new Map();
+const CACHEABLE = [/^\/rankings\//, /^\/classes$/, /^\/trends\//, /^\/arenas$/, /^\/events(\/|$)/, /^\/venues/, /^\/series/, /^\/peers/, /^\/(horses|riders)\/[^/]+$/];
+app.use((req, res, next) => {
+  if (req.method !== 'GET' || !CACHEABLE.some((rx) => rx.test(req.path))) return next();
+  if ((req.headers.cookie || '').includes('eq_session')) return next();
+  const key = req.originalUrl;
+  const hit = cacheStore.get(key);
+  if (hit && Date.now() - hit.t < CACHE_TTL) {
+    res.set('X-Cache', 'HIT');
+    return res.json(hit.body);
+  }
+  const orig = res.json.bind(res);
+  res.json = (body) => {
+    if (res.statusCode === 200) {
+      cacheStore.set(key, { t: Date.now(), body });
+      if (cacheStore.size > 500) cacheStore.delete(cacheStore.keys().next().value);
+    }
+    res.set('X-Cache', 'MISS');
+    return orig(body);
+  };
+  next();
+});
 async function newSession(res, req, userId) {
   const token = crypto.randomBytes(32).toString('hex');
   const hash = crypto.createHash('sha256').update(token).digest('hex');
@@ -630,57 +655,26 @@ app.get('/events/:id/analytics', asyncH(async (req, res) => {
   const ev = await pool.query('SELECT * FROM events WHERE id = $1', [req.params.id]);
   if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
   const e = ev.rows[0];
-  // Independent queries — run concurrently, not sequentially.
-  const [classes, rounds, horses, riders, partnerships, weather] = await Promise.all([
+  // Independent queries — run concurrently. Horse/rider/partnership top lists
+  // are derived from `rounds` client-side, so no extra aggregate queries here.
+  const [classes, rounds, weather] = await Promise.all([
     pool.query(
       'SELECT * FROM class_stats WHERE class_id IN (SELECT id FROM classes WHERE event_id = $1)',
       [e.id]
     ),
     pool.query(
-      `SELECT rr.*, h.name AS horse, h.slug AS horse_slug, r.name AS rider, r.slug AS rider_slug, c.name AS class_name,
-       c.class_date, COALESCE(rr.height_cm, c.height_cm) AS height_cm
+      `SELECT rr.id, rr.class_id, rr.horse_id, rr.rider_id,
+       h.name AS horse, h.slug AS horse_slug, r.name AS rider, r.slug AS rider_slug,
+       c.name AS class_name, c.class_date, COALESCE(rr.height_cm, c.height_cm) AS height_cm,
+       rr.jump_faults, rr.total_faults, rr.time_seconds, rr.finish_place, rr.clear_round,
+       rr.status, rr.notes, rr.points,
+       rr.round2_faults, rr.jumpoff_faults, rr.jumpoff_time_seconds, rr.prize_money
      FROM round_results rr
      JOIN horses h ON h.id = rr.horse_id
      JOIN riders r ON r.id = rr.rider_id
      JOIN classes c ON c.id = rr.class_id
      WHERE rr.event_id = $1
      ORDER BY c.class_date, c.name, rr.finish_place NULLS LAST`,
-      [e.id]
-    ),
-    pool.query(
-      `SELECT DISTINCT ON (rr.horse_id) h.id AS horse_id, h.name AS horse, h.slug AS horse_slug,
-       r.name AS rider, r.id AS rider_id, r.slug AS rider_slug,
-       COALESCE(rr.height_cm, c.height_cm) AS height_cm,
-       rr.jump_faults, rr.time_seconds, rr.finish_place
-     FROM round_results rr
-     JOIN horses h ON h.id = rr.horse_id
-     JOIN riders r ON r.id = rr.rider_id
-     JOIN classes c ON c.id = rr.class_id
-     WHERE rr.event_id = $1
-     ORDER BY rr.horse_id, rr.finish_place NULLS LAST, rr.total_faults, rr.time_seconds NULLS LAST
-     LIMIT 5`,
-      [e.id]
-    ),
-    pool.query(
-      `SELECT r.id AS rider_id, r.name AS rider, r.slug AS rider_slug, COUNT(*)::INT AS starts,
-       COUNT(DISTINCT rr.horse_id)::INT AS horses_ridden,
-       ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
-       ROUND(AVG(rr.total_faults), 2) AS avg_faults
-     FROM round_results rr JOIN riders r ON r.id = rr.rider_id
-     WHERE rr.event_id = $1
-     GROUP BY r.id, r.name ORDER BY clear_pct DESC NULLS LAST, avg_faults ASC LIMIT 5`,
-      [e.id]
-    ),
-    pool.query(
-      `SELECT h.name AS horse, r.name AS rider, COUNT(*)::INT AS rounds,
-       ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
-       ROUND(AVG(rr.total_faults), 2) AS avg_faults,
-       MIN(rr.finish_place) AS best_place
-     FROM round_results rr
-     JOIN horses h ON h.id = rr.horse_id
-     JOIN riders r ON r.id = rr.rider_id
-     WHERE rr.event_id = $1
-     GROUP BY h.name, r.name ORDER BY clear_pct DESC, avg_faults ASC LIMIT 5`,
       [e.id]
     ),
     pool.query(
@@ -691,7 +685,6 @@ app.get('/events/:id/analytics', asyncH(async (req, res) => {
   ]);
   res.json({
     event: e, classes: classes.rows, rounds: rounds.rows,
-    horses: horses.rows, riders: riders.rows, partnerships: partnerships.rows,
     weather: weather.rows,
   });
 }));

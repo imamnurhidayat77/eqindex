@@ -7,19 +7,13 @@ import TrainingPanel from '../../../components/TrainingPanel';
 import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
 import HealthPanel from '../../../components/HealthPanel';
+import HistoryTable from '../../../components/HistoryTable';
 import { Spark, EQMonthlyChart, MiniTrend } from '../../../components/horse-profile-charts';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 const fmtDate = (d) => (d || '').slice(0, 10);
 const num = (v, d = 0) => (v === null || v === undefined || v === '' ? d : Number(v));
-
-function placingBadge(place) {
-  const p = Number(place);
-  if (!p) return <span className="text-faint">—</span>;
-  const lbl = p === 1 ? '1st' : p === 2 ? '2nd' : p === 3 ? '3rd' : `${p}th`;
-  return <span className={statusBadge(lbl)}>{lbl}</span>;
-}
 
 export default async function HorseProfile({ params, searchParams }) {
   const hBand = (searchParams && searchParams.h) || '';
@@ -190,38 +184,14 @@ export default async function HorseProfile({ params, searchParams }) {
         </span>
       </div>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Historical performance records from the NZ Showjumping Circuit.</p>
-      <section className="mb-6 overflow-x-auto rounded border border-line bg-card">
-        <table className="w-full min-w-[900px] border-collapse text-[13px]">
-          <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
-              {['Date', 'Event Name', 'Class', 'Height', 'Rider', 'Jump Faults', 'Time Faults', 'Total Faults', 'Placing'].map((c, i) => (
-                <th key={c} className={`border-b border-line px-3 py-2.5 font-semibold ${i >= 5 ? 'text-right' : ''}`}>{c}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {history.filter((r) => {
-              if (!hBand) return true;
-              const cm = num(r.height_cm, 0);
-              if (!cm) return false;
-              const [lo, hi] = hBand.split('-');
-              return cm >= Number(lo) && (!hi || cm <= Number(hi));
-            }).map((r) => (
-              <tr key={r.id} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
-                <td className="whitespace-nowrap px-3 py-2.5 text-muted">{fmtDate(r.class_date)}</td>
-                <td className="px-3 py-2.5 font-semibold">{r.event_name}</td>
-                <td className="px-3 py-2.5 text-slate-200">{r.class_name}</td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-muted">{r.height_cm ? `${(num(r.height_cm) / 100).toFixed(2)}m` : '—'}</td>
-                <td className="whitespace-nowrap px-3 py-2.5">{r.rider}</td>
-                <td className={`px-3 py-2.5 text-right font-semibold ${num(r.jump_faults) === 0 ? 'text-mint' : 'text-danger'}`}>{r.jump_faults}</td>
-                <td className={`px-3 py-2.5 text-right ${num(r.time_faults) === 0 ? 'text-mint' : 'text-danger'}`}>{num(r.time_faults).toFixed(2)}</td>
-                <td className={`px-3 py-2.5 text-right font-bold ${num(r.total_faults) === 0 ? 'text-mint' : 'text-danger'}`}>{num(r.total_faults).toFixed(2)}</td>
-                <td className="px-3 py-2.5 text-right">{placingBadge(r.finish_place)}</td>
-              </tr>
-            ))}
-            {!history.length && <tr><td colSpan={9} className="px-3 py-6 text-center text-muted">No competition rounds recorded.</td></tr>}
-          </tbody>
-        </table>
+      <section className="mb-6 rounded border border-line bg-card p-4">
+        <HistoryTable rows={history.filter((r) => {
+          if (!hBand) return true;
+          const cm = num(r.height_cm, 0);
+          if (!cm) return false;
+          const [lo, hi] = hBand.split('-');
+          return cm >= Number(lo) && (!hi || cm <= Number(hi));
+        })} mode="horse" />
       </section>
 
       {/* trends */}

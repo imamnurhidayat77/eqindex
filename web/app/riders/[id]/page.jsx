@@ -8,7 +8,7 @@ import { RiderSeasonChart, RiderMiniTrend } from '../../../components/rider-prof
 import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 const fmtDate = (d) => (d || '').slice(0, 10);
 const num = (v, d = 0) => (v === null || v === undefined || v === '' ? d : Number(v));

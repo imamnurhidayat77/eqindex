@@ -1,7 +1,8 @@
 import { getJSON } from '../../../../lib/api';
-import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, LINK } from '../../../../lib/tokens';
+import { CARD, EMPTY, H1, SUB, LINK } from '../../../../lib/tokens';
+import { CategoryTable } from '../../../../components/SeriesTables';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 const CATS = {
   junior: 'Junior Rider',
@@ -32,7 +33,7 @@ export default async function SeriesCategory({ params }) {
     );
   }
   const r = await getJSON(`/rankings/riders?limit=100&metric=points&series=${encodeURIComponent(TO_DB[cat])}`).catch(() => ({ data: [] }));
-  const rows = r.data || [];
+  const rows = (r.data || []).map((x, i) => ({ ...x, _rank: i + 1 }));
   return (
     <>
       <div className="mb-1 text-[12px] text-faint">
@@ -49,29 +50,8 @@ export default async function SeriesCategory({ params }) {
         ))}
       </div>
       <section className={CARD}>
-        <div className={TABLEWRAP}>
-        <table className={TABLE}>
-          <thead><tr>
-            <th className={TH}>Rank</th><th className={TH}>Rider</th>
-            <th className={`${TH} ${NUM}`}>Points</th><th className={`${TH} ${NUM}`}>Podiums</th>
-            <th className={`${TH} ${NUM}`}>Win Rate</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Wins</th>
-          </tr></thead>
-          <tbody>
-            {rows.map((x, i) => (
-              <tr key={x.rider_id}>
-                <td className={i === 0 ? 'text-gold font-bold' : 'text-muted'}>#{i + 1}</td>
-                <td className={TD}><a href={`/riders/${x.rider_slug || x.rider_id}`} className="text-white font-semibold no-underline hover:text-gold">{x.rider}</a></td>
-                <td className={`${TD} ${NUM}`}><b className={i === 0 ? 'text-gold' : ''}>{x.total_points}</b></td>
-                <td className={`${TD} ${NUM} text-muted`}>{x.podiums ?? '–'}</td>
-                <td className={`${TD} ${NUM} text-muted`}>{x.win_rate == null ? '–' : `${Number(x.win_rate).toFixed(1)}%`}</td>
-                <td className={`${TD} ${NUM} text-muted`}>{x.starts}</td>
-                <td className={`${TD} ${NUM} text-muted`}>{x.wins}</td>
-              </tr>
-            ))}
-            {!rows.length && <tr><td colSpan={7} className={EMPTY}>No ranked riders in this category yet — assign categories in Admin → Riders.</td></tr>}
-          </tbody>
-        </table>
-        </div>
+        <CategoryTable rows={rows} />
+        {!rows.length && <p className={EMPTY}>No ranked riders in this category yet — assign categories in Admin → Riders.</p>}
       </section>
       <p className="text-[12px] text-faint">Riders without a category compete as Open. <a className={LINK} href="/rankings">National leaderboard →</a></p>
     </>

@@ -2,7 +2,7 @@ import { getJSON } from '../lib/api';
 import { CARD, H2, LINK, LIVE, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge, BADGE } from '../lib/tokens';
 import EventCarousel from '../components/EventCarousel';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 export default async function Landing({ searchParams }) {
   const sp = searchParams || {};

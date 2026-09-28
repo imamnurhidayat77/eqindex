@@ -5,7 +5,7 @@ import ChipSelect from '../../components/ChipSelect';
 import { eqScore, trendBadge, consistencyPts } from '../../lib/eq';
 import WatchButton from '../../components/WatchButton';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 const pct1 = (v) => (v === null || v === undefined ? '–' : `${Number(v).toFixed(0)}%`);
 const pctFull = (v) => (v === null || v === undefined ? '–' : `${Number(v).toFixed(1)}%`);
