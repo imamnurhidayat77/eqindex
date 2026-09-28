@@ -697,18 +697,20 @@ app.get('/events/:id/analytics', asyncH(async (req, res) => {
 app.get('/arenas', asyncH(async (req, res) => {
   const { rows } = await pool.query(
     `WITH a AS (
-       SELECT e.arena_type AS arena, COUNT(*)::INT AS rounds,
+       SELECT COALESCE(c.arena_type, e.arena_type) AS arena, COUNT(*)::INT AS rounds,
          ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
          ROUND(AVG(rr.total_faults), 2) AS avg_faults
        FROM round_results rr JOIN events e ON e.id = rr.event_id
-       WHERE e.arena_type IS NOT NULL GROUP BY 1
+       JOIN classes c ON c.id = rr.class_id
+       WHERE COALESCE(c.arena_type, e.arena_type) IS NOT NULL GROUP BY 1
      ),
      top AS (
-       SELECT DISTINCT ON (e.arena_type) e.arena_type AS arena, h.name AS horse
+       SELECT DISTINCT ON (COALESCE(c.arena_type, e.arena_type)) COALESCE(c.arena_type, e.arena_type) AS arena, h.name AS horse
        FROM round_results rr
        JOIN events e ON e.id = rr.event_id
+       JOIN classes c ON c.id = rr.class_id
        JOIN horses h ON h.id = rr.horse_id
-       WHERE e.arena_type IS NOT NULL
+       WHERE COALESCE(c.arena_type, e.arena_type) IS NOT NULL
        GROUP BY e.arena_type, h.id, h.name HAVING COUNT(*) >= 3
        ORDER BY e.arena_type, AVG(rr.clear_round::INT) DESC
      )

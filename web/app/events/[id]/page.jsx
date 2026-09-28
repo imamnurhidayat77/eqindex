@@ -65,7 +65,7 @@ export default async function EventDetail({ params }) {
 
   // arena section
   const arena = arenas.data.find((x) => x.arena === e.arena_type) || { clear_pct: clearPct, avg_faults: avgF, rounds: n };
-  const bestArena = [...arenas.data].sort((x, y) => Number(y.clear_pct) - Number(x.clear_pct))[0];
+  const bestArena = [...arenas.data].sort((x, y) => Number(y.clear_pct) - Number(x.clear_pct))[0] || null;
   const arenaColors = {};
   [...arenas.data].sort((x, y) => Number(y.clear_pct) - Number(x.clear_pct))
     .forEach((x, i, arr) => { arenaColors[x.arena] = i === 0 ? '#00C853' : i === arr.length - 1 ? '#FF1744' : '#4C9AFF'; });
@@ -322,7 +322,7 @@ export default async function EventDetail({ params }) {
             <span className={badge(BADGE.gold)}>Highly Technical</span>
           </div>
           <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Average Faults<br /><span className="text-xs">Regional penalty index</span></span><span className="font-semibold">{Number(arena.avg_faults).toFixed(2)}</span></div>
-          <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Clear Round Rate<br /><span className="text-xs">vs {bestArena.arena} surfaces</span></span><span className="font-semibold text-moss">{pct1(arena.clear_pct)}</span></div>
+          <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Clear Round Rate<br /><span className="text-xs">vs {bestArena ? bestArena.arena : 'circuit'} surfaces</span></span><span className="font-semibold text-moss">{pct1(arena.clear_pct)}</span></div>
           <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Total Rounds<br /><span className="text-xs">{arena.rounds >= 200 ? 'Above 200-round threshold' : 'Growing sample'}</span></span><span className="font-semibold">{arena.rounds} Rounds</span></div>
           <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Top Horse Surface Match<br /><span className="text-xs">Trajectory compatibility</span></span><span className="font-semibold">{arena.top_horse || '—'}</span></div>
         </section>
