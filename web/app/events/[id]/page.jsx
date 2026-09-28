@@ -21,12 +21,14 @@ export default async function EventDetail({ params }) {
   const maxH = Math.max(0, ...rounds.map((r) => Number(r.height_cm) || 0));
   // Lighter follow-up batch: career map needs only the leaderboard head, and
   // similar-class lookup is pre-filtered by height at the API.
-  const [arenas, rankAll, simClasses, trends] = await Promise.all([
+  const [arenas, rankAll, simClasses, trends, editions] = await Promise.all([
     getJSON('/arenas'),
     getJSON('/rankings/horses?limit=200'),
     getJSON(maxH > 0 ? `/classes?limit=60&height_min=${maxH - 5}&height_max=${maxH + 5}` : '/classes?limit=60'),
     getJSON('/trends/circuit'),
+    getJSON(`/events/compare?name=${encodeURIComponent(e.name)}`).catch(() => ({ data: [] })),
   ]);
+  const pastEditions = (editions.data || []).filter((x) => x.id !== e.id);
   const allClasses = simClasses;
   const n = rounds.length;
   const clears = rounds.filter((r) => r.clear_round).length;
