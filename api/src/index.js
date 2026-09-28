@@ -1210,7 +1210,7 @@ function parseCsv(text) {
 }
 const CLASS_TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
 const FORMATS = ['Two-phase', 'Jump-off', 'Speed', 'Power & Speed'];
-const STATUS_MAP = { E: 'eliminated', R: 'retired', W: 'withdrawn', DQ: 'disqualified', ELIM: 'eliminated', RET: 'retired', WD: 'withdrawn', NS: 'withdrawn' };
+const STATUS_MAP = { E: 'eliminated', R: 'retired', W: 'withdrawn', DQ: 'disqualified', ELIM: 'eliminated', RET: 'retired', WD: 'withdrawn', NS: 'withdrawn', FINISHED: 'finished', ELIMINATED: 'eliminated', RETIRED: 'retired', WITHDRAWN: 'withdrawn', DISQUALIFIED: 'disqualified' };
 
 // Canonical import record (JSON mode uses these exact keys; CSV headers map to them).
 const IMPORT_FIELDS = ['class_name', 'class_type', 'class_date', 'rider_name', 'horse_name',
