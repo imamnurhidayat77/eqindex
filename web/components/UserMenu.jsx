@@ -1,11 +1,14 @@
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from './auth';
 
 export default function UserMenu() {
   const { user, loading, logout } = useAuth();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   if (loading) {
     return <span className="w-8 h-8 rounded-full border-[1.5px] border-line inline-flex items-center justify-center text-[15px]">🐎</span>;
   }
@@ -18,6 +21,15 @@ export default function UserMenu() {
     );
   }
   const initial = (user.name || user.email || '?').trim().charAt(0).toUpperCase();
+  async function handleLogout() {
+    if (busy) return;
+    setBusy(true);
+    try { await logout(); } finally { /* lanjut redirect walau API gagal */ }
+    setOpen(false);
+    setBusy(false);
+    router.push('/login');
+    router.refresh();
+  }
   return (
     <span className="relative">
       <button onClick={() => setOpen((o) => !o)} title={`${user.name} (${user.role})`}
@@ -32,8 +44,10 @@ export default function UserMenu() {
           {user.role === 'ADMIN' && (
             <Link href="/admin/review" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">Review Queue</Link>
           )}
-          <button onClick={() => { logout(); setOpen(false); }}
-            className="block w-full text-left px-2 py-1.5 text-[13px] text-blood bg-none border-0 cursor-pointer">Log out</button>
+          <button onClick={handleLogout} disabled={busy}
+            className="flex w-full items-center gap-2 text-left px-2 py-1.5 text-[13px] text-blood bg-none border-0 cursor-pointer disabled:opacity-60 disabled:cursor-wait">
+            {busy && <span className="spinner" aria-hidden="true" />}
+            {busy ? 'Logging out…' : 'Log out'}</button>
         </span>
       )}
     </span>

@@ -8,8 +8,29 @@ const PUBLIC = new Set([
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+function safeNext(v) {
+  return v && v.startsWith('/') && !v.startsWith('//') && v !== '/login' && v !== '/register'
+    ? v : '/watchlist';
+}
+
 export async function middleware(req) {
   const { pathname, search } = req.nextUrl;
+  // Logged-in visitors have no business on login/register — bounce them forward.
+  if (pathname === '/login' || pathname === '/register') {
+    const token = req.cookies.get('eq_session')?.value;
+    if (!token) return NextResponse.next();
+    try {
+      const r = await fetch(`${API}/auth/me`, {
+        headers: { cookie: `eq_session=${token}` },
+      });
+      if (r.ok) return NextResponse.redirect(new URL(safeNext(req.nextUrl.searchParams.get('next')), req.url));
+      const res = NextResponse.next();
+      res.cookies.set('eq_session', '', { path: '/', maxAge: 0 });
+      return res;
+    } catch {
+      return NextResponse.next();
+    }
+  }
   if (PUBLIC.has(pathname)) return NextResponse.next();
 
   const loginUrl = new URL('/login', req.url);

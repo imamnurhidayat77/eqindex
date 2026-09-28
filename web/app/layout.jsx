@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import './globals.css';
 import Navbar, { NavSearch, NavSeason } from '../components/Navbar';
+import RouteProgress from '../components/RouteProgress';
 import { SeasonProvider } from '../components/global';
 import { AuthProvider } from '../components/auth';
 import UserMenu from '../components/UserMenu';
@@ -19,6 +20,7 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body className="bg-ink text-body text-sm min-h-screen flex flex-col">
+        <RouteProgress />
         <SeasonProvider>
         <AuthProvider>
         <header className="flex justify-center bg-navbg border-b border-line sticky top-0 z-10">

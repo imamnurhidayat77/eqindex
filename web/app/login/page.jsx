@@ -1,19 +1,25 @@
 'use client';
 import Link from 'next/link';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../components/auth';
 import { INP, BTN_PRIMARY, LINK } from '../../lib/tokens';
 
+function safeNext(v) {
+  return v && v.startsWith('/') && !v.startsWith('//') && v !== '/login' && v !== '/register'
+    ? v : '/watchlist';
+}
+
 function LoginForm() {
   const { user, loading, login, logout } = useAuth();
   const router = useRouter();
-  const next = useSearchParams().get('next') || '/watchlist';
+  const next = safeNext(useSearchParams().get('next'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [busyOut, setBusyOut] = useState(false);
   async function submit(e) {
     e.preventDefault();
     setErr(''); setBusy(true);
@@ -21,19 +27,27 @@ function LoginForm() {
     catch (ex) { setErr(ex.message); }
     setBusy(false);
   }
+  // Already authenticated (landed here via back button / stale link):
+  // forward instead of stranding on a dead-end card.
+  useEffect(() => {
+    if (!loading && user) router.replace(next);
+  }, [loading, user, next, router]);
   if (!loading && user) {
     return (
       <div className="mx-auto w-full max-w-[520px] rounded border border-line bg-card p-6 sm:p-8 text-center">
         <h1 className="font-display text-[24px] font-bold uppercase tracking-tight">Already logged in</h1>
         <p className="text-muted text-sm mt-2 mb-5">
           You are logged in as <b className="text-body">{user.name}</b> ({user.email}).
-          Log out first to switch accounts.
+          Taking you to your workspace…
         </p>
+        <p className="mb-5"><Link className={LINK} href={next}>Continue →</Link></p>
         <button
-          onClick={async () => { await logout(); router.refresh(); }}
-          className="border border-blood/60 text-blood rounded px-5 py-2.5 text-sm font-bold hover:bg-redbg/40"
+          onClick={async () => { if (busyOut) return; setBusyOut(true); try { await logout(); } finally { setBusyOut(false); router.refresh(); } }}
+          disabled={busyOut}
+          className="inline-flex items-center gap-2 border border-blood/60 text-blood rounded px-5 py-2.5 text-sm font-bold hover:bg-redbg/40 disabled:opacity-60 disabled:cursor-wait"
         >
-          Log out {user.name.split(' ')[0]} →
+          {busyOut && <span className="spinner" aria-hidden="true" />}
+          {busyOut ? 'Logging out…' : `Switch accounts (log out ${user.name.split(' ')[0]})`}
         </button>
       </div>
     );

@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../components/auth';
 import { INP, BTN_PRIMARY, LINK } from '../../lib/tokens';
@@ -18,6 +18,11 @@ export default function Register() {
   const [show, setShow] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [busyOut, setBusyOut] = useState(false);
+  // Already authenticated: forward instead of stranding on a dead-end card.
+  useEffect(() => {
+    if (!loading && user) router.replace('/watchlist');
+  }, [loading, user, router]);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const pwScore = form.password.length >= 12 ? 3 : form.password.length >= 8 ? 2 : form.password.length > 0 ? 1 : 0;
   async function submit(e) {
@@ -39,13 +44,16 @@ export default function Register() {
           <h1 className="font-display text-[24px] font-bold uppercase tracking-tight">Already logged in</h1>
           <p className="text-muted text-sm mt-2 mb-5">
             You are logged in as <b className="text-body">{user.name}</b> ({user.email}).
-            Log out first to create another account.
+            Taking you to your workspace…
           </p>
+          <p className="mb-5"><Link className={LINK} href="/watchlist">Continue →</Link></p>
           <button
-            onClick={async () => { await logout(); router.refresh(); }}
-            className="border border-blood/60 text-blood rounded px-5 py-2.5 text-sm font-bold hover:bg-redbg/40"
+            onClick={async () => { if (busyOut) return; setBusyOut(true); try { await logout(); } finally { setBusyOut(false); router.refresh(); } }}
+            disabled={busyOut}
+            className="inline-flex items-center gap-2 border border-blood/60 text-blood rounded px-5 py-2.5 text-sm font-bold hover:bg-redbg/40 disabled:opacity-60 disabled:cursor-wait"
           >
-            Log out {user.name.split(' ')[0]} →
+            {busyOut && <span className="spinner" aria-hidden="true" />}
+            {busyOut ? 'Logging out…' : `Switch accounts (log out ${user.name.split(' ')[0]})`}
           </button>
         </div>
       ) : (

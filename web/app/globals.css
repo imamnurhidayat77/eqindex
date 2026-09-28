@@ -42,6 +42,39 @@ pre code { display: block; padding: 12px 14px; overflow-x: auto; }
 /* shared rank highlight (replaces dead .rank1) */
 .rank1 { color: #FFD700; font-weight: 800; }
 
+/* ---------- route transition feedback ---------- */
+.route-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 30%;
+  z-index: 60;
+  background: linear-gradient(90deg, transparent, #FFD700, transparent);
+  animation: route-slide 1s ease-in-out infinite;
+}
+@keyframes route-slide {
+  0% { transform: translateX(-100%); width: 30%; }
+  50% { width: 55%; }
+  100% { transform: translateX(350%); width: 30%; }
+}
+.spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 9999px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  display: inline-block;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+.spinner-gold { color: #FFD700; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .route-bar { animation: none; width: 100%; }
+  .spinner { animation: none; border-top-color: currentColor; opacity: 0.7; }
+}
+
 /* ---------- skeleton shimmer (loading states) ---------- */
 .sk {
   position: relative;
