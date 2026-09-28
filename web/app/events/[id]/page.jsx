@@ -199,7 +199,15 @@ export default async function EventDetail({ params }) {
               Region: <b className="text-body">{e.region}, NZ</b>&nbsp;&nbsp;
               Arena: <b className="text-body">{e.arena_type}</b>&nbsp;&nbsp;
               Date: <b className="text-body">{fmtDate}</b>
+              {e.tier && <>&nbsp;&nbsp;Tier: <b className="text-gold">{e.tier}</b></>}
             </div>
+            {(e.series_flags || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {e.series_flags.map((f) => (
+                  <span key={f} className="text-[11px] font-bold border border-line text-muted rounded-full px-2 py-[2px]">{f}</span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </section>

@@ -110,7 +110,7 @@ export default async function Rankings({ searchParams }) {
   const seasons = [...new Set(events.data.map((e) => e.season).filter(Boolean))].sort().reverse();
   const season = seasonParam === undefined ? (seasons[0] || '') : seasonParam;
   const regions = [...new Set(events.data.map((e) => e.region).filter(Boolean))].sort();
-  const RCATS = ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Open'];
+  const RCATS = ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Tertiary', 'Open'];
 
   // map height chip -> cm range (shared HEIGHT_BANDS vocabulary)
   const { height_min, height_max } = heightParams(heightQ);

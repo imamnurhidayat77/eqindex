@@ -74,9 +74,14 @@ app.use((req, res, next) => {
     }
     res.set('X-Cache', 'MISS');
     return orig(body);
-  };
+  }
   next();
 });
+function bustCache(prefix) {
+  for (const k of [...cacheStore.keys()]) {
+    if (k === prefix || k.startsWith(prefix + '?') || k.startsWith(prefix + '/')) cacheStore.delete(k);
+  }
+}
 async function newSession(res, req, userId) {
   const token = crypto.randomBytes(32).toString('hex');
   const hash = crypto.createHash('sha256').update(token).digest('hex');
@@ -240,6 +245,9 @@ app.get('/events', asyncH(async (req, res) => {
   if (req.query.season) push('e.season = ?', req.query.season);
   if (req.query.region) push('e.region = ?', req.query.region);
   if (req.query.arena) push('e.arena_type = ?', req.query.arena);
+  // Inactive shows are hidden by default (backend on/off switch); admin
+  // callers pass ?include_inactive=1.
+  if (!req.query.include_inactive) conds.push('e.is_active IS NOT FALSE');
   const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
   const { rows } = await pool.query(
     `SELECT e.*,
@@ -287,7 +295,7 @@ app.get('/events/:id', asyncH(async (req, res) => {
   req.params.id = await resolveId('events', req.params.id, res);
   if (!req.params.id) return;
   const { rows } = await pool.query('SELECT * FROM events WHERE id = $1', [req.params.id]);
-  if (!rows.length) return res.status(404).json({ error: 'event not found' });
+  if (!rows.length || rows[0].is_active === false) return res.status(404).json({ error: 'event not found' });
   const classes = await pool.query(
     'SELECT * FROM class_stats WHERE class_id IN (SELECT id FROM classes WHERE event_id = $1)',
     [req.params.id]
@@ -1319,7 +1327,7 @@ const IMPORT_FIELDS = ['class_name', 'class_type', 'class_date', 'rider_name', '
   'venue', 'venue_country', 'arena_type', 'event_name', 'date_start', 'date_end'];
 // Optional enrichment columns (fill-if-null only — never overwrites curated data).
 const GENDERS = ['Mare', 'Gelding', 'Stallion', 'Filly', 'Colt', 'Mare/Other', 'Unknown'];
-const RIDER_CATS = ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Open'];
+const RIDER_CATS = ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Tertiary', 'Open'];
 const canon = (v, list) => {
   const t = String(v || '').trim().toLowerCase();
   if (!t) return null;
@@ -1450,8 +1458,11 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
         return { id: evId, name: evNames[evId] || 'event' };
       }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(ds || '')) return { error: 'row event needs date_start YYYY-MM-DD' };
-      const ex = await client.query('SELECT id, name FROM events WHERE name = $1 AND date_start = $2', [rname, ds]);
-      if (ex.rows.length) return { id: ex.rows[0].id, name: ex.rows[0].name };
+      const ex = await client.query('SELECT id, name, is_active FROM events WHERE name = $1 AND date_start = $2', [rname, ds]);
+      if (ex.rows.length) {
+        if (ex.rows[0].is_active === false) return { error: `event "${rname}" is switched off — enable it in Admin → Events` };
+        return { id: ex.rows[0].id, name: ex.rows[0].name };
+      }
       const ins = await client.query(
         `INSERT INTO events (name, date_start, date_end, venue, region, arena_type, season, source)
          VALUES ($1,$2,$3,$4,$5,$6,$7,'MANUAL') RETURNING id, name`,
@@ -1460,8 +1471,9 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       return { id: ins.rows[0].id, name: ins.rows[0].name };
     };
     if (evId) {
-      const evRow = (await client.query('SELECT name, season, venue, region, venue_id FROM events WHERE id = $1', [evId])).rows[0];
+      const evRow = (await client.query('SELECT name, season, venue, region, venue_id, is_active FROM events WHERE id = $1', [evId])).rows[0];
       if (!evRow) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'event not found' }); }
+      if (evRow.is_active === false) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'event is switched off — enable it in Admin → Events' }); }
       evNames[evId] = evRow.name;
       if (!evRow.venue_id) {
         const vid = await ensureVenue(evRow.venue, evRow.region);
@@ -1656,6 +1668,7 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
     await client.query('COMMIT');
     captureSnapshots();
     captureSnapshots();
+    bustCache('/events');
     res.status(201).json({ data: { dry_run: false, rows: out, summary } });
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch { /* noop */ }
@@ -1763,8 +1776,9 @@ app.post('/admin/results', needRole('ADMIN'), asyncH(async (req, res) => {
   try {
     let cid = class_id || null;
     if (!cid) {
-      const ev = await pool.query('SELECT id FROM events WHERE id = $1', [event_id]);
+      const ev = await pool.query('SELECT id, is_active FROM events WHERE id = $1', [event_id]);
       if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
+      if (ev.rows[0].is_active === false) return res.status(400).json({ error: 'event is switched off — enable it in Admin → Events' });
       cid = (await pool.query(
         'INSERT INTO classes (event_id, name, class_date, source) VALUES ($1,$2,$3,\'MANUAL\') RETURNING id',
         [event_id, String(new_class).trim(), null])).rows[0].id;
@@ -1775,7 +1789,10 @@ app.post('/admin/results', needRole('ADMIN'), asyncH(async (req, res) => {
       'SELECT id FROM round_results WHERE class_id = $1 AND horse_id = $2 AND rider_id = $3', [cid, hid, rid]);
     if (dup.rows.length) return res.status(409).json({ error: 'duplicate of an existing round' });
     const tot = (jf ?? 0) + (tf ?? 0);
-    const ev = (await pool.query('SELECT event_id FROM classes WHERE id = $1', [cid])).rows[0];
+    const ev = (await pool.query(
+      'SELECT c.event_id, e.is_active FROM classes c JOIN events e ON e.id = c.event_id WHERE c.id = $1',
+      [cid])).rows[0];
+    if (ev.is_active === false) return res.status(400).json({ error: 'event is switched off — enable it in Admin → Events' });
     const { rows } = await pool.query(
       `INSERT INTO round_results (event_id, class_id, horse_id, rider_id, jump_faults, time_faults,
         total_faults, time_seconds, finish_place, clear_round, status, notes, source, points)
@@ -1783,6 +1800,7 @@ app.post('/admin/results', needRole('ADMIN'), asyncH(async (req, res) => {
       [ev.event_id, cid, hid, rid, jf ?? 0, tf ?? 0, tot, ts, place,
        st === 'finished' && tot === 0, st, notes || null]);
     audit(req, 'result.create', 'result', rows[0].id, { class_id: cid, place });
+    bustCache('/events');
     res.status(201).json({ data: rows[0] });
   } catch (e) {
     return res.status(e.status || 500).json({ error: e.status ? e.message : 'internal error' });
@@ -1833,7 +1851,7 @@ const normFn = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/
   .toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 const HORSE_FIELDS = ['name', 'breed', 'gender', 'sire', 'dam', 'damsire', 'breeder', 'year_of_birth', 'color', 'height', 'country', 'image_url'];
 const RIDER_FIELDS = ['name', 'region', 'series_category', 'nationality', 'bio', 'image_url', 'first_name', 'last_name'];
-const EVENT_FIELDS = ['name', 'venue', 'region', 'date_start', 'date_end', 'arena_type', 'event_type', 'status', 'description', 'image_url'];
+const EVENT_FIELDS = ['name', 'venue', 'region', 'date_start', 'date_end', 'arena_type', 'event_type', 'status', 'description', 'image_url', 'is_active', 'tier'];
 
 function patcher(table, fields, label) {
   return asyncH(async (req, res) => {
@@ -1859,6 +1877,7 @@ function patcher(table, fields, label) {
       `UPDATE ${table} SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
     if (!rows.length) return res.status(404).json({ error: `${label} not found` });
     audit(req, `${label}.edit`, table, req.params.id, { fields: Object.keys(body) });
+    if (table === 'events') bustCache('/events');
     res.json({ data: rows[0] });
   });
 }

@@ -12,8 +12,9 @@ const CATS = {
   'under-25': 'Under 25',
   amateur: 'Amateur Rider',
   pony: 'Pony Rider',
+  tertiary: 'Tertiary Rider',
 };
-const TO_DB = { junior: 'Junior', 'young-rider': 'Young Rider', 'under-25': 'Under 25', amateur: 'Amateur', pony: 'Pony' };
+const TO_DB = { junior: 'Junior', 'young-rider': 'Young Rider', 'under-25': 'Under 25', amateur: 'Amateur', pony: 'Pony', tertiary: 'Tertiary' };
 
 const DESCRIPTIONS = {
   junior: 'Riders competing in junior divisions.',
@@ -21,6 +22,7 @@ const DESCRIPTIONS = {
   'under-25': 'Riders aged under 25.',
   amateur: 'Non-professional riders.',
   pony: 'Pony-mounted riders across heights.',
+  tertiary: 'Tertiary student riders.',
 };
 
 export default async function SeriesCategory({ params }) {

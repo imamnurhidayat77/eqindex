@@ -12,7 +12,7 @@ export default function ManageRiders() {
       ]}
       fields={[
         { k: 'name', label: 'Name' }, { k: 'region', label: 'Region' },
-        { k: 'series_category', label: 'Series category', options: ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Open'] },
+        { k: 'series_category', label: 'Series category', options: ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Tertiary', 'Open'] },
         { k: 'first_name', label: 'First name' }, { k: 'last_name', label: 'Last name' },
         { k: 'nationality', label: 'Nationality' }, { k: 'bio', label: 'Bio' }, { k: 'image_url', label: 'Image URL' },
       ]}

@@ -5,7 +5,7 @@ import Dropdown from './Dropdown';
 
 export { HEIGHT_BANDS, heightParams };
 
-export const SERIES_CATS = ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Open'];
+export const SERIES_CATS = ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Tertiary', 'Open'];
 
 export function FilterBar({ f, set, seasons, regions, arenas, showHeight = true, showMinStarts = true, showCategory = false }) {
   const upd = (k) => (e) => set({ ...f, [k]: e.target.value });

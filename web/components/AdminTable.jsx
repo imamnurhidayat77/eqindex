@@ -64,6 +64,16 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
   }
 
   const inputFor = (fld) => {
+    if (fld.bool) {
+      const on = form[fld.k] ?? true;
+      return (
+        <button type="button" role="switch" aria-checked={!!on} aria-label={fld.label}
+          onClick={() => setForm({ ...form, [fld.k]: !on })}
+          className={`w-10 h-[22px] rounded-full shrink-0 transition-colors ${on ? 'bg-moss' : 'bg-barbg'}`}>
+          <span className={`block w-[18px] h-[18px] rounded-full bg-white mt-[2px] transition-all ${on ? 'ml-[20px]' : 'ml-[2px]'}`} />
+        </button>
+      );
+    }
     if (fld.options) {
       return (
         <Dropdown ariaLabel={fld.label} value={form[fld.k] ?? ''} placeholder="—"
@@ -99,7 +109,11 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
                   <td key={c.k} className={`${TD} ${c.num ? `${NUM} text-muted` : ''}`}>
                     {c.k === 'name' && profile && profile(r)
                       ? <Link className={LINK} href={profile(r)}><b>{r.name}</b></Link>
-                      : c.k === 'name' ? <b>{r.name}</b> : String(r[c.k] ?? '–')}
+                      : c.bool
+                        ? <span className={`inline-block text-[11px] font-bold rounded-md px-2 py-[3px] ${r[c.k] === false ? 'bg-redbg text-blood' : 'bg-greenbg text-moss'}`}>
+                            {r[c.k] === false ? 'OFF' : 'ON'}
+                          </span>
+                        : c.k === 'name' ? <b>{r.name}</b> : Array.isArray(r[c.k]) ? r[c.k].join(', ') || '–' : String(r[c.k] ?? '–')}
                   </td>
                 ))}
                 <td className={`${TD} whitespace-nowrap`}>
