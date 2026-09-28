@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { Pagination } from './list-controls';
+import { TableEmpty } from './EmptyState';
 
 // Generic client-side datatable: text filter + pagination around any table.
 // Props:
@@ -65,9 +66,20 @@ export default function DataTable({
           <tbody>
             {view.map((r, i) => renderRow(r, i))}
             {!view.length && (
-              <tr><td colSpan={colSpan} className="px-2 py-6 text-center text-muted">
-                {loading ? 'Loading…' : emptyText}
-              </td></tr>
+              loading ? (
+                <tr><td colSpan={colSpan} className="px-2 py-4">
+                  <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
+                    {[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}
+                  </span>
+                </td></tr>
+              ) : (
+                <TableEmpty
+                  colSpan={colSpan}
+                  icon="◌"
+                  title={emptyText}
+                  hint="Try widening the search or clearing the filter."
+                />
+              )
             )}
           </tbody>
         </table>

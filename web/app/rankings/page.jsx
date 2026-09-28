@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { getJSON } from '../../lib/api';
-import { BADGE, BTN, CARD, EMPTY, H1, H2, INP, LINK, LIVE, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../lib/tokens';
+import { BADGE, BTN, CARD, H1, H2, INP, LINK, LIVE, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../lib/tokens';
 import { HEIGHT_BANDS, heightParams } from '../../lib/heights';
 import ChipSelect from '../../components/ChipSelect';
 import { eqScore, trendBadge, consistencyPts } from '../../lib/eq';
 import WatchButton from '../../components/WatchButton';
+import { EmptyState, TableEmpty } from '../../components/EmptyState';
 
 export const revalidate = 30;
 
@@ -358,7 +359,9 @@ export default async function Rankings({ searchParams }) {
                 </tr>
               );
             })}
-            {!dispH.length && <tr><td className={EMPTY} colSpan={8}>No horses match these filters.</td></tr>}
+            {!dispH.length && (
+              <TableEmpty icon="🐎" title="No horses match these filters" hint="Try widening the season, region or height band — or reset the filters." />
+            )}
           </tbody>
         </table>
         </div>
@@ -407,7 +410,9 @@ export default async function Rankings({ searchParams }) {
                 </tr>
               );
             })}
-            {!dispR.length && <tr><td className={EMPTY} colSpan={8}>No riders match these filters.</td></tr>}
+            {!dispR.length && (
+              <TableEmpty icon="🏇" title="No riders match these filters" hint="Try widening the season, region or height band — or reset the filters." />
+            )}
           </tbody>
         </table>
         </div>
@@ -442,7 +447,9 @@ export default async function Rankings({ searchParams }) {
                 </td>
               </tr>
             ))}
-            {!combos.length && <tr><td className={EMPTY} colSpan={7}>No partnerships found.</td></tr>}
+            {!combos.length && (
+              <TableEmpty icon="🤝" title="No partnerships found" hint="Partnerships appear once horses log rounds with two or more riders." />
+            )}
           </tbody>
         </table>
         </div>
@@ -608,7 +615,12 @@ export default async function Rankings({ searchParams }) {
               </div>
             </div>
           ) : (
-            <p className="text-muted text-sm">No match for “{q('q')}”. Try another horse or rider.</p>
+            <EmptyState
+              icon="◌"
+              title={`No match for “${q('q')}”`}
+              hint="Try another horse or rider — check the spelling or shorten the search."
+              compact
+            />
           )}
           {(hitR.length > 0) && (
             <div className="text-[12px] text-muted mt-2">Riders: {hitR.map((r) => r.rider).join(', ')}</div>

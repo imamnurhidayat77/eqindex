@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getJSON } from '../lib/api';
 import { CARD, H2, LINK, LIVE, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge, BADGE } from '../lib/tokens';
 import EventCarousel from '../components/EventCarousel';
+import { TableEmpty } from '../components/EmptyState';
 
 export const revalidate = 30;
 
@@ -142,7 +143,9 @@ export default async function Landing({ searchParams }) {
                     <td className={`${TD} ${NUM} text-moss`}>{Number(h.clear_pct).toFixed(0)}%</td>
                   </tr>
                 ))}
-                {!topH.length && <tr><td className={TD}>No data yet.</td></tr>}
+                {!topH.length && (
+                  <TableEmpty icon="🐎" title="Leaderboard updating" hint="Rankings refresh as new results are imported." />
+                )}
               </tbody>
             </table>
             </div>
@@ -167,7 +170,9 @@ export default async function Landing({ searchParams }) {
                     <td className={`${TD} ${NUM} text-moss`}>{Number(r.clear_pct).toFixed(0)}%</td>
                   </tr>
                 ))}
-                {!topR.length && <tr><td className={TD}>No data yet.</td></tr>}
+                {!topR.length && (
+                  <TableEmpty icon="🏇" title="Leaderboard updating" hint="Rankings refresh as new results are imported." />
+                )}
               </tbody>
             </table>
             </div>

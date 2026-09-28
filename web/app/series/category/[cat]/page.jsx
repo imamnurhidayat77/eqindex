@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { getJSON } from '../../../../lib/api';
-import { CARD, EMPTY, H1, SUB, LINK } from '../../../../lib/tokens';
+import { CARD, H1, SUB, LINK } from '../../../../lib/tokens';
 import { CategoryTable } from '../../../../components/SeriesTables';
+import { EmptyState } from '../../../../components/EmptyState';
 
 export const revalidate = 30;
 
@@ -52,7 +53,15 @@ export default async function SeriesCategory({ params }) {
       </div>
       <section className={CARD}>
         <CategoryTable rows={rows} />
-        {!rows.length && <p className={EMPTY}>No ranked riders in this category yet — assign categories in Admin → Riders.</p>}
+        {!rows.length && (
+          <EmptyState
+            icon="🏇"
+            title="No ranked riders in this category yet"
+            hint="Categories are assigned per rider — ask an admin to set them under Admin → Riders."
+            action={<Link className={LINK} href="/rankings">National leaderboard →</Link>}
+            compact
+          />
+        )}
       </section>
       <p className="text-[12px] text-faint">Riders without a category compete as Open. <Link className={LINK} href="/rankings">National leaderboard →</Link></p>
     </>

@@ -2,7 +2,8 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API, DEMO_USER } from '../../../lib/api';
-import { BTN, BTN_DANGER, CARD, EMPTY, H1, H2, LINK, MUT, SUB, TABLE, TABLEWRAP, TD, TH } from '../../../lib/tokens';
+import { BTN, BTN_DANGER, CARD, H1, H2, LINK, MUT, SUB, TABLE, TABLEWRAP, TD, TH } from '../../../lib/tokens';
+import { EmptyState, Dash } from '../../../components/EmptyState';
 
 export default function SavedComparisons() {
   const [items, setItems] = useState([]);
@@ -22,7 +23,7 @@ export default function SavedComparisons() {
   const dispName = (t, x) => (t === 'combination' ? `${x.horse} + ${x.rider}` : t === 'horse' ? x.horse : x.rider);
   const disp = (t, x, k) => {
     if (t === 'combination' && k === 'starts') return x.rounds_together;
-    if (t === 'combination' && k === 'wins') return '–';
+    if (t === 'combination' && k === 'wins') return <Dash label="Not applicable to combinations" />;
     return x[k];
   };
   return (
@@ -53,7 +54,16 @@ export default function SavedComparisons() {
           </div>
         </section>
       ))}
-      {!loading && !items.length && <section className={CARD}><p className={EMPTY}>Empty — save one from the <Link className={LINK} href="/comparison">Comparison</Link> page.</p></section>}
+      {!loading && !items.length && (
+        <section className={CARD}>
+          <EmptyState
+            icon="⚖"
+            title="No saved comparisons yet"
+            hint="Build a head-to-head matchup, then save it here for quick access."
+            action={<Link className={LINK} href="/comparison">Open the Comparison page →</Link>}
+          />
+        </section>
+      )}
     </>
   );
 }

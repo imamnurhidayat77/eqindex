@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useRef, useState, useEffect } from 'react';
 import { CARD, LINK, badge, BADGE } from '../lib/tokens';
+import { EmptyState } from './EmptyState';
 
 const statusBadge = (s) => {
   if (s === 'official') return badge(BADGE.green);
@@ -38,7 +39,16 @@ export default function EventCarousel({ events }) {
     el.scrollBy({ left: dir * Math.min(el.clientWidth * 0.8, 560), behavior: 'smooth' });
   };
   if (!events.length) {
-    return <section className={CARD}><p className="text-muted text-sm">No events found.</p></section>;
+    return (
+      <section className={CARD}>
+        <EmptyState
+          icon="📅"
+          title="No events to show"
+          hint="New events appear here as results are published."
+          action={<Link href="/events" className={LINK}>Browse all events →</Link>}
+        />
+      </section>
+    );
   }
   return (
     <section className={CARD}>

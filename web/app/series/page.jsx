@@ -2,10 +2,11 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
-import { CARD, EMPTY, H1, LINK, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
+import { CARD, H1, LINK, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
 import { useSeason } from '../../components/global';
 import Dropdown from '../../components/Dropdown';
 import { Pagination } from '../../components/list-controls';
+import { TableEmpty } from '../../components/EmptyState';
 
 export default function SeriesIndex() {
   const [rows, setRows] = useState([]);
@@ -105,7 +106,17 @@ export default function SeriesIndex() {
                 <td className={`${TD} ${NUM}`}><Link className={LINK} href={`/series/${x.series_key}`}>Standings →</Link></td>
               </tr>
             ))}
-            {!view.length && <tr><td colSpan={5} className={EMPTY}>{loading ? (<span className="flex flex-col gap-2 py-1" aria-hidden="true">{[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}</span>) : ('No series match these filters.')}</td></tr>}
+            {!view.length && (
+              loading ? (
+                <tr><td colSpan={5} className="px-2 py-4">
+                  <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
+                    {[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}
+                  </span>
+                </td></tr>
+              ) : (
+                <TableEmpty icon="🏆" title="No series match these filters" hint="Try a different season or search — or reset the filters." />
+              )
+            )}
           </tbody>
         </table>
         </div>

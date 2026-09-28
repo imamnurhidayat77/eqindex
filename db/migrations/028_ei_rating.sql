@@ -121,11 +121,12 @@ agg AS (
   SELECT horse_id, COUNT(*)::INT AS starts, SUM(recency_w) AS eff_n,
     SUM(weighted) AS wsum,
     AVG(base) AS raw_avg,
-    STDDEV_POP(base) AS base_sd,
-    AVG(weighted/NULLIF(recency_w,0)) AS unw_avg
+    STDDEV_POP(base) AS base_sd
   FROM w GROUP BY horse_id
 ),
-pop AS (SELECT AVG(raw_avg) AS m, STDDEV_POP(raw_avg) AS s FROM agg WHERE starts >= 5),
+pop AS (SELECT COALESCE(
+    (SELECT AVG(raw_avg) FROM agg WHERE starts >= 5),
+    (SELECT AVG(raw_avg) FROM agg)) AS m),
 peer AS (
   SELECT h.id AS horse_id, AVG(a2.raw_avg) AS peer_avg
   FROM horses h
@@ -143,7 +144,8 @@ SELECT h.id AS horse_id, h.name AS horse, h.slug AS horse_slug,
   LEAST(2000, GREATEST(0, ROUND(1000 + 25*(
     (a.wsum + (25*(1 + COALESCE(a.base_sd,0)/10))*(SELECT m FROM pop))
     / NULLIF(a.eff_n + (25*(1 + COALESCE(a.base_sd,0)/10)), 0)
-    - (SELECT m FROM pop)))))::INT AS rating,
+    - (SELECT m FROM pop))
+    + COALESCE(GREATEST(-30, LEAST(30, (a.raw_avg - p.peer_avg)*3)), 0))))::INT AS rating,
   (a.starts < 15) AS provisional,
   ROUND(COALESCE(GREATEST(-30, LEAST(30, (a.raw_avg - p.peer_avg)*3)), 0), 1) AS age_adj,
   s.clears, s.clear_pct, s.avg_faults, s.faults_stddev, s.wins, s.best_place, s.last_start
@@ -170,7 +172,9 @@ agg AS (
     STDDEV_POP(base) AS base_sd
   FROM w GROUP BY rider_id
 ),
-pop AS (SELECT AVG(raw_avg) AS m FROM agg WHERE starts >= 5)
+pop AS (SELECT COALESCE(
+    (SELECT AVG(raw_avg) FROM agg WHERE starts >= 5),
+    (SELECT AVG(raw_avg) FROM agg)) AS m)
 SELECT r.id AS rider_id, r.name AS rider, r.slug AS rider_slug, r.series_category,
   a.starts, ROUND(a.eff_n, 2) AS eff_starts,
   ROUND(a.raw_avg, 2) AS raw_avg,

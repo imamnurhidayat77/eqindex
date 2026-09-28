@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import Dropdown from './Dropdown';
+import { TableEmpty } from './EmptyState';
 
 const CATS = ['VET', 'TREATMENT', 'FARRIER', 'VACCINATION', 'OTHER'];
 const CAT_STYLE = {
@@ -77,7 +78,13 @@ export default function HealthPanel({ horseId, compact = false }) {
                 <td className="px-4 py-2.5 text-right"><button onClick={() => remove(x.id)} className="text-[12px] text-faint hover:text-danger">Delete</button></td>
               </tr>
             ))}
-            {!items.length && <tr><td colSpan={5} className="px-4 py-6 text-center text-muted">No health records yet.</td></tr>}
+            {!items.length && (
+              <TableEmpty
+                icon="✚"
+                title="No health records yet"
+                hint="Vet, farrier and treatment entries will appear here once logged."
+              />
+            )}
           </tbody>
         </table>
       </div>

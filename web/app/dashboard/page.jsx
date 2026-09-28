@@ -7,11 +7,16 @@ import { MiniSpark, TrendPanel, BenchChart } from '../../components/Graphs';
 import Filters from '../../components/Filters';
 import EventCarousel from '../../components/EventCarousel';
 import { heightParams } from '../../lib/heights';
+import { EmptyState } from '../../components/EmptyState';
 
 export const revalidate = 30;
 
 const pct = (v) => `${Number(v).toFixed(1)}%`;
-const diffBadge = (d) => `${d > 0 ? '+' : ''}${d.toFixed(1)}%`;
+const diffBadge = (d) => {
+  if (d === null || d === undefined || !Number.isFinite(Number(d))) return '–';
+  const n = Number(d);
+  return `${n > 0 ? '+' : ''}${n.toFixed(1)}%`;
+};
 
 function difficulty(avg) {
   const a = Number(avg);
@@ -83,12 +88,21 @@ export default async function Dashboard({ searchParams }) {
     Number(b.clear_pct) - Number(a.clear_pct) || Number(b.height_cm) - Number(a.height_cm))[0];
   const fMonths = fTrend.data;
   const seasonDelta = fMonths.length > 1
-    ? Number(fMonths[fMonths.length - 1].clear_pct) - Number(fMonths[0].clear_pct) : 0;
+    ? Number(fMonths[fMonths.length - 1].clear_pct) - Number(fMonths[0].clear_pct) : null;
 
-  // circuit totals + deltas
+  // circuit totals + deltas (null = no prior month to compare against)
   const m = circuit.data;
-  const last = m[m.length - 1] || {}, prev = m[m.length - 2] || last;
-  const dPct = (a, b) => b ? ((Number(a) - Number(b)) / Number(b)) * 100 : 0;
+  const hasPrev = m.length > 1;
+  const last = m[m.length - 1] || {}, prev = hasPrev ? m[m.length - 2] : {};
+  const dPct = (a, b) => {
+    const na = Number(a), nb = Number(b);
+    if (!hasPrev || !Number.isFinite(na) || !Number.isFinite(nb) || nb === 0) return null;
+    return ((na - nb) / nb) * 100;
+  };
+  const clearDelta = (last.clear_pct == null || prev.clear_pct == null)
+    ? null : Number(last.clear_pct) - Number(prev.clear_pct);
+  const avgBase = dPct(last.avg_faults, prev.avg_faults);
+  const avgDelta = avgBase === null ? null : -avgBase;
   const totalRounds = ranked.reduce((st, h) => st + Number(h.starts), 0);
   const totalClears = ranked.reduce((st, h) => st + Number(h.clears), 0);
   const circuitClear = totalRounds ? (100 * totalClears / totalRounds) : 0;
@@ -149,7 +163,14 @@ export default async function Dashboard({ searchParams }) {
       <Filters current={current} seasons={seasons} regions={regions} arenas={arenas} />
 
       {!ranked.length && !rankedR.length ? (
-        <section className={CARD}><p className={MUT}>No rounds match these filters. <Link href="/dashboard">Reset Filters</Link></p></section>
+        <section className={CARD}>
+          <EmptyState
+            icon="◌"
+            title="No rounds match these filters"
+            hint="Try a different season, region or height band."
+            action={<Link className={LINK} href="/dashboard">Reset filters →</Link>}
+          />
+        </section>
       ) : (
         <>
           <h2 className={H2}>Performance Overview</h2>
@@ -160,13 +181,13 @@ export default async function Dashboard({ searchParams }) {
               ['RIDERS ANALYSED', diffBadge(dPct(last.riders, prev.riders)), false, rankedR.length, spark('riders'), '#FFD700'],
               ['COMPETITION ROUNDS', diffBadge(dPct(last.starts, prev.starts)), false, totalRounds.toLocaleString(), spark('starts'), '#FFD700'],
               ['EVENTS TRACKED', diffBadge(dPct(last.events, prev.events)), false, events.data.length, spark('events'), '#FFD700'],
-              ['CLEAR ROUND RATE', diffBadge(Number(last.clear_pct) - Number(prev.clear_pct)), true, pct(circuitClear), spark('clear_pct'), '#00C853'],
-              ['AVERAGE FAULTS', diffBadge(-dPct(last.avg_faults, prev.avg_faults)), true, circuitAvg.toFixed(2), spark('avg_faults'), '#00C853'],
+              ['CLEAR ROUND RATE', diffBadge(hasPrev ? clearDelta : null), true, pct(circuitClear), spark('clear_pct'), '#00C853'],
+              ['AVERAGE FAULTS', diffBadge(hasPrev ? avgDelta : null), true, circuitAvg.toFixed(2), spark('avg_faults'), '#00C853'],
             ].map(([lbl, d, good, big, sp, col]) => (
               <div className="bg-card border border-line rounded p-3.5 px-4 flex flex-col justify-between gap-2 min-h-[108px]" key={lbl}>
                 <div className="flex justify-between items-start gap-2">
                   <span className="text-[11px] text-muted tracking-[0.4px] uppercase leading-snug">{lbl}</span>
-                  <span className={`text-[11px] font-bold whitespace-nowrap rounded-full px-2 py-0.5 ${good ? 'text-moss bg-greenbg/40' : 'text-gold bg-goldbg/40'}`}>{d}</span>
+                  <span className={`text-[11px] font-bold whitespace-nowrap rounded-full px-2 py-0.5 ${d === '–' ? 'text-faint bg-line/60' : good ? 'text-moss bg-greenbg/40' : 'text-gold bg-goldbg/40'}`}>{d}</span>
                 </div>
                 <div className="flex items-end justify-between gap-2">
                   <span className="text-[30px] font-extrabold leading-none tabular-nums">{big}</span>

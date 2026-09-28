@@ -5,8 +5,9 @@ import { API } from '../../lib/api';
 import { useAuth } from '../../components/auth';
 import { eqScore } from '../../lib/eq';
 import { recommendHeight } from '../../lib/forecast';
-import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, EMPTY, INP, BTN_PRIMARY, BTN_DANGER, LINK, LIVE, badge, BADGE } from '../../lib/tokens';
+import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, LINK, LIVE, badge, BADGE } from '../../lib/tokens';
 import { TableRowsSk } from '../../components/Skeletons';
+import { EmptyState, TableEmpty } from '../../components/EmptyState';
 
 async function authed(path, opts = {}) {
   const res = await fetch(`${API}${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
@@ -177,14 +178,28 @@ export default function MyStable() {
     return (<>
       <h1 className={H1}>My Stable</h1>
       <p className={SUB}>Coach workspace for monitoring athlete performance.</p>
-      <section className={CARD}><p className={EMPTY}>Log in as a coach to manage your roster. <Link className={LINK} href="/login?next=/my-stable">Log in →</Link></p></section>
+      <section className={CARD}>
+        <EmptyState
+          icon="🔐"
+          title="Coach sign-in required"
+          hint="Log in with a coach account to manage your roster."
+          action={<Link className={LINK} href="/login?next=/my-stable">Log in →</Link>}
+        />
+      </section>
     </>);
   }
   if (user.role !== 'COACH' && user.role !== 'ADMIN') {
     return (<>
       <h1 className={H1}>My Stable</h1>
       <p className={SUB}>Coach workspace for monitoring athlete performance.</p>
-      <section className={CARD}><p className={EMPTY}>My Stable is a coach workspace — your account is registered as {user.role}. <Link className={LINK} href="/watchlist">Track athletes via Watchlist →</Link></p></section>
+      <section className={CARD}>
+        <EmptyState
+          icon="⭐"
+          title="Coach workspace"
+          hint={`My Stable is a coach workspace — your account is registered as ${user.role}.`}
+          action={<Link className={LINK} href="/watchlist">Track athletes via Watchlist →</Link>}
+        />
+      </section>
     </>);
   }
 
@@ -275,7 +290,13 @@ export default function MyStable() {
               {expanded[a.id] && <AthleteDetail key={'d'+a.id} a={a} />}
               </>
             ))}
-            {!athletes.length && !loading && <tr><td colSpan={11} className={EMPTY}>Roster empty — add your first athlete above.</td></tr>}
+            {!athletes.length && !loading && (
+              <TableEmpty
+                icon="⭐"
+                title="Your roster is empty"
+                hint="Add your first athlete with the form above to start tracking form."
+              />
+            )}
             {loading && <TableRowsSk rows={6} />}
           </tbody>
         </table>

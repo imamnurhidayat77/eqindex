@@ -126,6 +126,23 @@ app.get('/health', asyncH(async (req, res) => {
 // ---- Rankings (PRD §7.5) ----
 app.get('/rankings/horses', asyncH(async (req, res) => {
   const { limit, minStarts } = paging(req);
+  // EI rating mode (Briefing §13): ?metric=ei — 0–2000 centred 1000.
+  // Min 5 rounds per EI methodology; adapted to 3 while circuit data is thin
+  // (max 4 starts/horse in current data — revisit to 5 as volume grows).
+  if (req.query.metric === 'ei') {
+    const minS = req.query.min_starts ? minStarts : 3;
+    const { rows } = await pool.query(
+      `SELECT e.horse_id, e.horse, e.horse_slug, e.starts, e.eff_starts,
+         e.raw_avg, e.shrunk_avg, e.rating, e.provisional, e.age_adj,
+         e.clears, e.clear_pct, e.avg_faults, e.faults_stddev,
+         e.wins, e.best_place, e.last_start
+       FROM horse_ei_rating e
+       WHERE e.starts >= $1
+       ORDER BY e.rating DESC, e.wins DESC, e.starts DESC LIMIT $2`,
+      [minS, limit]
+    );
+    return res.json({ data: rows, metric: 'ei' });
+  }
   // Briefing §5 points mode: ?metric=points&window=all|12m|3m (views, pre-aggregated).
   if (req.query.metric === 'points') {
     const col = req.query.window === '12m' ? 'points_12m' : req.query.window === '3m' ? 'points_3m' : 'total_points';
@@ -164,6 +181,20 @@ app.get('/rankings/horses', asyncH(async (req, res) => {
 app.get('/rankings/riders', asyncH(async (req, res) => {
   const { limit, minStarts } = paging(req);
   const cat = req.query.series || '';
+  if (req.query.metric === 'ei') {
+    const minS = req.query.min_starts ? minStarts : 3;
+    const catFilter = cat ? ` AND e.series_category = $3` : '';
+    const { rows } = await pool.query(
+      `SELECT e.rider_id, e.rider, e.rider_slug, e.series_category, e.starts,
+         e.eff_starts, e.raw_avg, e.shrunk_avg, e.rating, e.provisional,
+         e.clears, e.clear_pct, e.avg_faults, e.wins, e.horses_ridden, e.last_start
+       FROM rider_ei_rating e
+       WHERE e.starts >= $1${catFilter}
+       ORDER BY e.rating DESC, e.wins DESC, e.starts DESC LIMIT $2`,
+      cat ? [minS, limit, cat] : [minS, limit]
+    );
+    return res.json({ data: rows, metric: 'ei' });
+  }
   if (req.query.metric === 'points') {
     const col = req.query.window === '12m' ? 'points_12m' : req.query.window === '3m' ? 'points_3m' : 'total_points';
     const catFilter = cat ? ` AND p.series_category = $3` : '';
@@ -286,6 +317,51 @@ app.get('/horses/:id', asyncH(async (req, res) => {
     [req.params.id]
   );
   res.json({ data: horse.rows[0], stats: stats.rows[0] || null, history: history.rows, partnerships: partners.rows });
+}));
+
+// ---- EI rating breakdown (transparency: every component per round) ----
+const EI_BREAKDOWN_SQL = `
+  SELECT c.class_date, e.name AS event_name, c.name AS class_name,
+    rr.finish_place, rr.clear_round, rr.jump_faults, rr.time_faults,
+    r.base, ROUND(r.base,2) AS base_pts,
+    ROUND(r.height_mult,2) AS height_mult,
+    ROUND(r.di_mult,3) AS di_mult,
+    ROUND(r.field_mult,3) AS field_mult,
+    ROUND(r.size_mod,2) AS size_mod,
+    ROUND(hp.handicap,3) AS handicap,
+    ROUND(r.recency_w,3) AS recency_w,
+    ROUND(r.base * r.height_mult * r.di_mult * r.field_mult * r.size_mod
+      * hp.handicap * r.recency_w, 2) AS weighted
+  FROM ei_round r
+  JOIN round_results rr ON rr.id = r.id
+  JOIN classes c ON c.id = rr.class_id
+  JOIN LATERAL (
+    SELECT ei_handicap(
+      (SELECT MAX(x.h) FROM ei_round x WHERE x.%IDCOL% = rr.%IDCOL%),
+      r.h) AS handicap
+  ) hp ON true
+  JOIN events e ON e.id = rr.event_id
+  WHERE rr.%IDCOL% = $1
+  ORDER BY c.class_date DESC NULLS LAST, c.name LIMIT 50`;
+
+app.get('/horses/:id/rating', asyncH(async (req, res) => {
+  req.params.id = await resolveId('horses', req.params.id, res);
+  if (!req.params.id) return;
+  const agg = await pool.query('SELECT * FROM horse_ei_rating WHERE horse_id = $1', [req.params.id]);
+  if (!agg.rows.length) return res.status(404).json({ error: 'no rounds for this horse' });
+  const sql = EI_BREAKDOWN_SQL.replace(/%IDCOL%/g, 'horse_id');
+  const rounds = await pool.query(sql, [req.params.id]);
+  res.json({ data: agg.rows[0], rounds: rounds.rows });
+}));
+
+app.get('/riders/:id/rating', asyncH(async (req, res) => {
+  req.params.id = await resolveId('riders', req.params.id, res);
+  if (!req.params.id) return;
+  const agg = await pool.query('SELECT * FROM rider_ei_rating WHERE rider_id = $1', [req.params.id]);
+  if (!agg.rows.length) return res.status(404).json({ error: 'no rounds for this rider' });
+  const sql = EI_BREAKDOWN_SQL.replace(/%IDCOL%/g, 'rider_id');
+  const rounds = await pool.query(sql, [req.params.id]);
+  res.json({ data: agg.rows[0], rounds: rounds.rows });
 }));
 
 app.get('/riders/:id', asyncH(async (req, res) => {

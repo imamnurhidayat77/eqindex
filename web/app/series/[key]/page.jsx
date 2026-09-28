@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getJSON } from '../../../lib/api';
 import { eqScore } from '../../../lib/eq';
 import { SeriesMatrixTable } from '../../../components/SeriesTables';
+import { EmptyState } from '../../../components/EmptyState';
 
 export const revalidate = 30;
 
@@ -122,7 +123,14 @@ export default async function SeriesPage({ params }) {
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Points from each qualifying event per combination.</p>
       <section className="mb-6 rounded border border-line bg-card p-4">
         <SeriesMatrixTable table={table} evLabels={evLabels} hasDropped={table.some((r) => r.dropped)} />
-        {!table.length && <p className="px-1 py-4 text-center text-muted">No standings for this series yet.</p>}
+        {!table.length && (
+          <EmptyState
+            icon="🏆"
+            title="No standings for this series yet"
+            hint="Standings appear once classes in this series publish results."
+            compact
+          />
+        )}
       </section>
 
       <h2 className="mb-3 text-[15px] font-bold">Points Race</h2>
@@ -137,7 +145,14 @@ export default async function SeriesPage({ params }) {
               <span className="text-right font-bold tabular-nums">{r.total}</span>
             </div>
           ))}
-          {!table.length && <p className="text-muted">No points recorded.</p>}
+          {!table.length && (
+            <EmptyState
+              icon="🏆"
+              title="No points recorded yet"
+              hint="Points appear once classes in this series publish results."
+              compact
+            />
+          )}
         </div>
       </section>
 

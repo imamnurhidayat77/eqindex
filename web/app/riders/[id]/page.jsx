@@ -9,6 +9,7 @@ import { RiderSeasonChart, RiderMiniTrend } from '../../../components/rider-prof
 import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
 import HistoryTable from '../../../components/HistoryTable';
+import { EmptyState, TableEmpty } from '../../../components/EmptyState';
 
 export const revalidate = 30;
 
@@ -365,7 +366,14 @@ export default async function RiderProfile({ params }) {
             </dl>
           </section>
         ) : (
-          <section className="rounded border border-line bg-card p-5 text-muted">No partnership data.</section>
+          <section className="rounded border border-line bg-card p-5">
+            <EmptyState
+              icon="🤝"
+              title="No partnership data yet"
+              hint="Partnerships appear once this rider logs rounds with a horse."
+              compact
+            />
+          </section>
         )}
         <section className="overflow-x-auto rounded border border-line bg-card p-5">
           <h3 className="mb-3 text-[13px] font-bold">All Horse Synergies</h3>
@@ -394,6 +402,13 @@ export default async function RiderProfile({ params }) {
                   </tr>
                 );
               })}
+              {!parts.length && (
+                <TableEmpty
+                  icon="🤝"
+                  title="No synergies recorded yet"
+                  hint="Horse-by-horse breakdowns appear once rounds are logged."
+                />
+              )}
             </tbody>
           </table>
         </section>
@@ -436,7 +451,14 @@ export default async function RiderProfile({ params }) {
               </div>
             );
           })}
-          {!parts.length && <p className="text-muted">No partnerships recorded.</p>}
+          {!parts.length && (
+            <EmptyState
+              icon="🤝"
+              title="No partnerships recorded yet"
+              hint="Synergies appear once this rider logs rounds."
+              compact
+            />
+          )}
         </div>
       </section>
 
@@ -444,10 +466,10 @@ export default async function RiderProfile({ params }) {
       <h2 className="mb-3 text-[15px] font-bold">Where {r.name.split(' ')[0]} Performs Best</h2>
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          ['Best Height Class', byHeight[0]?.key || '—', byHeight[0] ? `◦ ${byHeight[0].clear.toFixed(0)}% Clear Rate` : 'No data', 'text-mint'],
-          ['Best Arena Surface', byArena[0]?.key || '—', byArena[0] ? `◦ ${byArena[0].clear.toFixed(0)}% Consistency Index` : 'No data', 'text-mint'],
-          ['Best Competition Level', byLevel[0]?.key || '—', byLevel[0] ? `◦ ${byLevel[0].clear.toFixed(0)}% Clear Rate` : 'No data', 'text-mint'],
-          ['Best Circuit Venue', bestVenueWins?.key || '—', bestVenueWins ? `◦ ${bestVenueWins.wins} Wins (Current Season)` : 'No data', 'text-gold'],
+          ['Best Height Class', byHeight[0]?.key || '—', byHeight[0] ? `◦ ${byHeight[0].clear.toFixed(0)}% Clear Rate` : 'Awaiting rounds', 'text-mint'],
+          ['Best Arena Surface', byArena[0]?.key || '—', byArena[0] ? `◦ ${byArena[0].clear.toFixed(0)}% Consistency Index` : 'Awaiting rounds', 'text-mint'],
+          ['Best Competition Level', byLevel[0]?.key || '—', byLevel[0] ? `◦ ${byLevel[0].clear.toFixed(0)}% Clear Rate` : 'Awaiting rounds', 'text-mint'],
+          ['Best Circuit Venue', bestVenueWins?.key || '—', bestVenueWins ? `◦ ${bestVenueWins.wins} Wins (Current Season)` : 'Awaiting rounds', 'text-gold'],
         ].map(([label, big, sub, subCls]) => (
           <div key={label} className="rounded border border-line bg-card p-4">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-faint">{label}</div>

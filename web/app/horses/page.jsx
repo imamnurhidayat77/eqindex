@@ -5,6 +5,7 @@ import { API } from '../../lib/api';
 import { CARD, H1, NUM, SUB, TABLE, TD, TH } from '../../lib/tokens';
 import { eqScore } from '../../lib/eq';
 import { FilterBar, Pagination } from '../../components/list-controls';
+import { TableEmpty } from '../../components/EmptyState';
 import { heightParams } from '../../lib/heights';
 import { useSeason } from '../../components/global';
 
@@ -81,9 +82,15 @@ export default function Horses() {
               );
             })}
             {!view.length && (
-              <tr><td colSpan={6} className="px-2 py-6 text-center text-muted">
-                {loading ? (<span className="flex flex-col gap-2 py-1" aria-hidden="true">{[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}</span>) : ('No horses match these filters.')}
-              </td></tr>
+              loading ? (
+                <tr><td colSpan={6} className="px-2 py-4">
+                  <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
+                    {[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}
+                  </span>
+                </td></tr>
+              ) : (
+                <TableEmpty icon="🐎" title="No horses match these filters" hint="Try widening the season, region or search — or reset the filters." />
+              )
             )}
           </tbody>
         </table>

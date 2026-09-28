@@ -5,6 +5,7 @@ import { API } from '../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, LINK } from '../lib/tokens';
 import Dropdown from './Dropdown';
 import { Pagination } from './list-controls';
+import { TableEmpty } from './EmptyState';
 
 // Generic admin CRUD table. Config: { title, sub, base ('horses'|'riders'|'events'),
 // profile: (row) => href|null, columns: [{k,label,num?}], fields: [{k,label,type?,options?}] }
@@ -107,8 +108,18 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
                 </td>
               </tr>
             ))}
-            {!rows.length && !loading && <tr><td colSpan={columns.length + 1} className={EMPTY}>No records found.</td></tr>}
-            {loading && <tr><td colSpan={columns.length + 1} className={EMPTY}>Loading…</td></tr>}
+            {!rows.length && !loading && (
+              <TableEmpty
+                icon="◌"
+                title="No records found"
+                hint="Try a different search — or add the first record below."
+              />
+            )}
+            {loading && <tr><td colSpan={columns.length + 1} className={EMPTY}>
+              <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
+                {[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}
+              </span>
+            </td></tr>}
           </tbody>
         </table>
         </div>

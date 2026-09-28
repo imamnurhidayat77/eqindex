@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { CARD, LINK, NUM, TABLE, TABLEWRAP, TD, TH, badge, BADGE } from '../lib/tokens';
 import { ordinal } from '../lib/eq';
 import { Pagination } from './list-controls';
+import { EmptyState, TableEmpty } from './EmptyState';
 
 const fmt1 = (v) => (v === null || v === undefined ? '–' : Number(v).toFixed(1));
 
@@ -29,7 +30,15 @@ export default function ClassResults({ groups }) {
   const [perPage, setPerPage] = useState(15);
   const selectClass = (id) => { setOpen(id); setCq(''); setCpage(1); };
   if (!groups.length) {
-    return <section className={CARD}><p className="text-muted text-sm">No class results recorded for this event.</p></section>;
+    return (
+      <section className={CARD}>
+        <EmptyState
+          icon="🏟"
+          title="No class results recorded"
+          hint="Results appear here once the organiser's file is imported and reviewed."
+        />
+      </section>
+    );
   }
   return (
     <div className="space-y-3 mb-6">
@@ -105,7 +114,13 @@ export default function ClassResults({ groups }) {
                       </tr>
                     );
                   })}
-                  {!view.length && <tr><td colSpan={99} className="px-2 py-6 text-center text-muted">No rounds match this filter.</td></tr>}
+                  {!view.length && (
+                    <TableEmpty
+                      icon="◌"
+                      title="No rounds match this filter"
+                      hint="Try a different rider or horse name."
+                    />
+                  )}
                 </tbody>
               </table>
               <Pagination page={safe} pages={pages} setPage={setCpage} perPage={perPage} setPerPage={setPerPage} total={filtered.length} />

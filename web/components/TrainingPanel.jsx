@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import Dropdown from './Dropdown';
+import { TableEmpty } from './EmptyState';
 
 const INTENSITY_STYLE = {
   High: 'bg-danger/15 text-danger border border-danger/30',
@@ -87,7 +88,13 @@ export default function TrainingPanel({ horseId, riders = [], compact = false })
                 <td className="px-4 py-2.5 text-right"><button onClick={() => remove(t.id)} className="text-[12px] text-faint hover:text-danger">Delete</button></td>
               </tr>
             ))}
-            {!items.length && <tr><td colSpan={6} className="px-4 py-6 text-center text-muted">No training sessions logged yet.</td></tr>}
+            {!items.length && (
+              <TableEmpty
+                icon="◷"
+                title="No training sessions logged yet"
+                hint="Sessions added for this horse will appear here."
+              />
+            )}
           </tbody>
         </table>
       </div>

@@ -9,6 +9,7 @@ import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
 import HealthPanel from '../../../components/HealthPanel';
 import HistoryTable from '../../../components/HistoryTable';
+import { EmptyState } from '../../../components/EmptyState';
 import { Spark, EQMonthlyChart, MiniTrend } from '../../../components/horse-profile-charts';
 
 export const revalidate = 30;
@@ -295,7 +296,14 @@ export default async function HorseProfile({ params, searchParams }) {
             </dl>
           </section>
         ) : (
-          <section className="rounded border border-line bg-card p-5 text-muted">No partnership data.</section>
+          <section className="rounded border border-line bg-card p-5">
+            <EmptyState
+              icon="🤝"
+              title="No partnership data yet"
+              hint="Partnerships appear once this horse logs competition rounds."
+              compact
+            />
+          </section>
         )}
         {alt ? (
           <section className="rounded border border-line bg-card p-5">
@@ -317,7 +325,14 @@ export default async function HorseProfile({ params, searchParams }) {
             </dl>
           </section>
         ) : (
-          <section className="rounded border border-dashed border-line bg-card p-5 text-[13px] text-muted">Single-rider combination — alternate partnership unlocks after rounds with a second rider.</section>
+          <section className="rounded border border-dashed border-line bg-card p-5">
+            <EmptyState
+              icon="♾"
+              title="Single-rider combination"
+              hint="An alternate partnership unlocks after rounds with a second rider."
+              compact
+            />
+          </section>
         )}
       </div>
 

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getJSON } from '../../../lib/api';
-import { CARD, EMPTY, H1, SUB, H2, TABLE, TABLEWRAP, TD, TH, NUM, LINK } from '../../../lib/tokens';
+import { CARD, H1, SUB, H2, TABLE, TABLEWRAP, TD, TH, NUM, LINK } from '../../../lib/tokens';
+import { TableEmpty } from '../../../components/EmptyState';
 
 export const revalidate = 30;
 
@@ -33,7 +34,13 @@ export default async function VenueDetail({ params }) {
                     <td className={`${TD} ${NUM} text-muted`}>{e.round_count}</td>
                   </tr>
                 ))}
-                {!(d.events || []).length && <tr><td colSpan={3} className={EMPTY}>No events linked.</td></tr>}
+                {!(d.events || []).length && (
+                  <TableEmpty
+                    icon="📅"
+                    title="No events linked to this venue yet"
+                    hint="Events hosted here will appear once results are imported."
+                  />
+                )}
               </tbody>
             </table>
             </div>
@@ -53,7 +60,13 @@ export default async function VenueDetail({ params }) {
                     <td className={`${TD} ${NUM} text-moss`}>{Number(h.clear_pct).toFixed(0)}%</td>
                   </tr>
                 ))}
-                {!(d.topHorses || []).length && <tr><td colSpan={3} className={EMPTY}>Not enough rounds yet.</td></tr>}
+                {!(d.topHorses || []).length && (
+                  <TableEmpty
+                    icon="🐎"
+                    title="Not enough rounds yet"
+                    hint="Horse rankings unlock once rounds at this venue are recorded."
+                  />
+                )}
               </tbody>
             </table>
             </div>
@@ -71,7 +84,13 @@ export default async function VenueDetail({ params }) {
                     <td className={`${TD} ${NUM} text-moss`}>{Number(r.clear_pct).toFixed(0)}%</td>
                   </tr>
                 ))}
-                {!(d.topRiders || []).length && <tr><td colSpan={3} className={EMPTY}>Not enough rounds yet.</td></tr>}
+                {!(d.topRiders || []).length && (
+                  <TableEmpty
+                    icon="🏇"
+                    title="Not enough rounds yet"
+                    hint="Rider rankings unlock once rounds at this venue are recorded."
+                  />
+                )}
               </tbody>
             </table>
             </div>

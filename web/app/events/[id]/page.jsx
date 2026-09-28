@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { getJSON } from '../../../lib/api';
 import { eqScore, fieldScore, strengthLabel, ordinal } from '../../../lib/eq';
-import { BADGE, CARD, EMPTY, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
+import { BADGE, CARD, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
 import { ScoreRing } from '../../../components/charts';
 import MiniTrend from '../../../components/MiniTrend';
 import ClassResults from '../../../components/ClassResults';
 import { EventDifficultyTable, EventCombosTable } from '../../../components/EventTables';
+import { TableEmpty } from '../../../components/EmptyState';
 
 export const revalidate = 30;
 
@@ -448,7 +449,13 @@ export default async function EventDetail({ params }) {
                 <td className={`${TD} ${NUM} text-muted`}>{x.avg_faults === null ? '–' : Number(x.avg_faults).toFixed(2)}</td>
               </tr>
             ))}
-            {!pastEditions.length && <tr><td colSpan={5} className={EMPTY}>No other editions recorded.</td></tr>}
+            {!pastEditions.length && (
+              <TableEmpty
+                icon="🗓"
+                title="No other editions recorded"
+                hint="Once this event returns for another season, year-on-year editions will appear here."
+              />
+            )}
           </tbody>
         </table>
         </div>

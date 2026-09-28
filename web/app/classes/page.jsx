@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
-import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, badge, BADGE } from '../../lib/tokens';
+import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, badge, BADGE } from '../../lib/tokens';
 import { heightParams } from '../../lib/heights';
 import { FilterBar, Pagination } from '../../components/list-controls';
+import { TableEmpty } from '../../components/EmptyState';
 import Dropdown from '../../components/Dropdown';
 
 const TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
@@ -95,7 +96,17 @@ export default function Classes() {
                 </tr>
               );
             })}
-            {!view.length && <tr><td colSpan={7} className={EMPTY}>{loading ? (<span className="flex flex-col gap-2 py-1" aria-hidden="true">{[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}</span>) : ('No classes match these filters.')}</td></tr>}
+            {!view.length && (
+              loading ? (
+                <tr><td colSpan={7} className="px-2 py-4">
+                  <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
+                    {[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}
+                  </span>
+                </td></tr>
+              ) : (
+                <TableEmpty icon="📋" title="No classes match these filters" hint="Try widening the height, type or search — or reset the filters." />
+              )
+            )}
           </tbody>
         </table>
         </div>
