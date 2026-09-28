@@ -28,7 +28,6 @@ export default function UserMenu() {
     setOpen(false);
     setBusy(false);
     router.push('/login');
-    router.refresh();
   }
   return (
     <span className="relative">

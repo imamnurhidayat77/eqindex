@@ -19,10 +19,13 @@ export default function Register() {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [busyOut, setBusyOut] = useState(false);
+  // Register just succeeded via the form below: navigation is in flight.
+  const [done, setDone] = useState(false);
+  useEffect(() => { router.prefetch('/dashboard'); }, [router]);
   // Already authenticated: forward instead of stranding on a dead-end card.
   useEffect(() => {
-    if (!loading && user) router.replace('/watchlist');
-  }, [loading, user, router]);
+    if (!loading && user && !done) router.replace('/dashboard');
+  }, [loading, user, done, router]);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const pwScore = form.password.length >= 12 ? 3 : form.password.length >= 8 ? 2 : form.password.length > 0 ? 1 : 0;
   async function submit(e) {
@@ -33,9 +36,21 @@ export default function Register() {
     setBusy(true);
     try {
       await register({ name: form.name.trim(), email: form.email.trim(), password: form.password, role: form.role });
-      router.push('/watchlist'); router.refresh();
-    } catch (ex) { setErr(ex.message); }
-    setBusy(false);
+      setDone(true); router.push('/dashboard');
+    } catch (ex) { setErr(ex.message); setBusy(false); }
+  }
+  if (done) {
+    return (
+      <div className="py-6 md:py-10">
+        <div className="mx-auto w-full max-w-[520px] rounded border border-line bg-card p-6 sm:p-8 text-center">
+          <h1 className="font-display text-[24px] font-bold uppercase tracking-tight">Creating your stable…</h1>
+          <p className="text-muted text-sm mt-2 mb-5 flex items-center justify-center gap-2">
+            <span className="spinner spinner-gold" aria-hidden="true" />
+            Taking you to your workspace…
+          </p>
+        </div>
+      </div>
+    );
   }
   return (
     <div className="py-6 md:py-10">
@@ -46,7 +61,7 @@ export default function Register() {
             You are logged in as <b className="text-body">{user.name}</b> ({user.email}).
             Taking you to your workspace…
           </p>
-          <p className="mb-5"><Link className={LINK} href="/watchlist">Continue →</Link></p>
+          <p className="mb-5"><Link className={LINK} href="/dashboard">Continue →</Link></p>
           <button
             onClick={async () => { if (busyOut) return; setBusyOut(true); try { await logout(); } finally { setBusyOut(false); router.refresh(); } }}
             disabled={busyOut}

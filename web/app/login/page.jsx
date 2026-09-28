@@ -7,7 +7,7 @@ import { INP, BTN_PRIMARY, LINK } from '../../lib/tokens';
 
 function safeNext(v) {
   return v && v.startsWith('/') && !v.startsWith('//') && v !== '/login' && v !== '/register'
-    ? v : '/watchlist';
+    ? v : '/dashboard';
 }
 
 function LoginForm() {
@@ -20,12 +20,29 @@ function LoginForm() {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const [busyOut, setBusyOut] = useState(false);
+  // Login just succeeded via the form below: navigation is in flight.
+  // Render a loading screen (never the "Already logged in" card) until
+  // the destination commits and this page unmounts.
+  const [done, setDone] = useState(false);
+  // Warm the destination RSC payload while the user types, so the
+  // post-login push commits faster.
+  useEffect(() => { router.prefetch(next); }, [router, next]);
   async function submit(e) {
     e.preventDefault();
     setErr(''); setBusy(true);
-    try { await login(email.trim(), password); router.push(next); router.refresh(); }
-    catch (ex) { setErr(ex.message); }
-    setBusy(false);
+    try { await login(email.trim(), password); setDone(true); router.push(next); }
+    catch (ex) { setErr(ex.message); setBusy(false); }
+  }
+  if (done) {
+    return (
+      <div className="mx-auto w-full max-w-[520px] rounded border border-line bg-card p-6 sm:p-8 text-center">
+        <h1 className="font-display text-[24px] font-bold uppercase tracking-tight">Signing you in…</h1>
+        <p className="text-muted text-sm mt-2 mb-5 flex items-center justify-center gap-2">
+          <span className="spinner spinner-gold" aria-hidden="true" />
+          Taking you to your workspace…
+        </p>
+      </div>
+    );
   }
   // Already authenticated (landed here via back button / stale link):
   // forward instead of stranding on a dead-end card.
