@@ -217,7 +217,7 @@ export default async function RiderProfile({ params }) {
             </div>
             <div className="text-center">
               <div className="text-[26px] font-extrabold leading-none tabular-nums">{ei?.data?.rating ?? eq}</div>
-              <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">EI Rating</div>
+              <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">EQIndex Rating</div>
               {ei?.data?.provisional ? <div className="mt-1 text-[10px] font-bold text-faint border border-line rounded px-1.5 py-px" title="<15 rounds — shrunk toward mean">PROVISIONAL</div> : null}
             </div>
           </div>
@@ -252,7 +252,7 @@ export default async function RiderProfile({ params }) {
       {/* EI rating breakdown — transparent per-round components */}
       {ei?.data && (
         <>
-          <h2 className="text-[15px] font-bold">EI Rating Breakdown</h2>
+          <h2 className="text-[15px] font-bold">EQIndex Rating Breakdown</h2>
           <p className="mb-3 mt-0.5 text-[12.5px] text-muted">
             {ei.data.rating} overall (raw {ei.data.raw_avg} → shrunk {ei.data.shrunk_avg} over {ei.data.starts} rounds).
             Base = placing + clear − faults; weighted by height, difficulty, field, size, handicap &amp; recency.

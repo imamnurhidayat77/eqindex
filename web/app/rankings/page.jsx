@@ -77,7 +77,7 @@ export default async function Rankings({ searchParams }) {
   const rCat = q('series') || '';
   const search = (q('q') || '').toLowerCase();
   const byRaw = q('by');
-  const by = byRaw === 'points' ? 'points' : byRaw === 'eq' ? 'eq' : 'ei';
+  const by = byRaw === 'points' ? 'points' : byRaw === 'eq' ? 'eq' : 'eqindex';
   const window = q('window') === '12m' ? '12m' : q('window') === '3m' ? '3m' : 'all';
   const ptsCol = window === '12m' ? 'points_12m' : window === '3m' ? 'points_3m' : 'total_points';
   const sortH = q('sortH') || '', sortR = q('sortR') || '';
@@ -85,7 +85,7 @@ export default async function Rankings({ searchParams }) {
   const pgH = Math.max(1, parseInt(q('pgH') || '1', 10) || 1);
   const pgR = Math.max(1, parseInt(q('pgR') || '1', 10) || 1);
   const dirH = q('dirH') === 'asc' ? 1 : -1, dirR = q('dirR') === 'asc' ? 1 : -1;
-  const scoreOf = (x) => (by === 'points' ? Number(x[ptsCol]) : by === 'ei' ? Number(x.rating) : x.eq);
+  const scoreOf = (x) => (by === 'points' ? Number(x[ptsCol]) : by === 'eqindex' ? Number(x.rating) : x.eq);
   const applySort = (arr, key, dir, score) => {
     const val = (x) => key === 'score' ? score(x) : key === 'winrate' ? Number(x.win_rate ?? -1)
       : key === 'podiums' ? Number(x.podiums ?? -1) : Number(x[key] ?? -1);
@@ -132,7 +132,7 @@ export default async function Rankings({ searchParams }) {
 
   let horses = { data: [] }, riders = { data: [] }, classes = { data: [] }, heights = { data: [] }, movH = { data: {} }, movR = { data: {} };
   try {
-    const RQs = by === 'ei' ? qsEi : qs;
+    const RQs = by === 'eqindex' ? qsEi : qs;
     [horses, riders, classes, heights, movH, movR] = await Promise.all([
       getJSON(`/rankings/horses?limit=100${RQs ? '&' + RQs : ''}${metricQs}`),
       getJSON(`/rankings/riders?limit=100${RQs ? '&' + RQs : ''}${metricQs}${rCat ? `&series=${encodeURIComponent(rCat)}` : ''}`),
@@ -149,14 +149,14 @@ export default async function Rankings({ searchParams }) {
     .map((h) => ({ ...h, eq: eqScore(h.clear_pct, h.avg_faults, h.starts) }))
     .sort((a, b) => by === 'points'
       ? Number(b[ptsCol]) - Number(a[ptsCol]) || Number(b.wins) - Number(a.wins)
-      : by === 'ei'
+      : by === 'eqindex'
         ? Number(b.rating) - Number(a.rating) || Number(b.wins) - Number(a.wins)
         : b.eq - a.eq || Number(b.clear_pct) - Number(a.clear_pct));
   const rankedR = riders.data
     .map((r) => ({ ...r, eq: eqScore(r.clear_pct, r.avg_faults, r.starts) }))
     .sort((a, b) => by === 'points'
       ? Number(b[ptsCol]) - Number(a[ptsCol]) || Number(b.wins) - Number(a.wins)
-      : by === 'ei'
+      : by === 'eqindex'
         ? Number(b.rating) - Number(a.rating) || Number(b.wins) - Number(a.wins)
         : b.eq - a.eq);
   // ?q= text filter narrows both leaderboards (spotlight panel stays above)
@@ -253,7 +253,7 @@ export default async function Rankings({ searchParams }) {
     if (minRounds) p.set('min_rounds', minRounds);
     if (search) p.set('q', search);
     if (rCat) p.set('series', rCat);
-    if (by !== 'ei') p.set('by', by);
+    if (by !== 'eqindex') p.set('by', by);
     if (window !== 'all') p.set('window', window);
     if (sortH) p.set('sortH', sortH);
     if (dirH === 1) p.set('dirH', 'asc');
@@ -322,15 +322,15 @@ export default async function Rankings({ searchParams }) {
       {/* metric + window toggles (Briefing §7: time-filtered leaderboards) */}
       <div className="flex flex-wrap gap-2 mb-5 items-center">
         <span className="text-[11px] uppercase tracking-wide text-faint font-bold">Metric:</span>
-        {[['ei', 'EI Rating'], ['eq', 'EQ Score'], ['points', 'Points']].map(([v, l]) => (
-          <Link key={v} href={baseQ({ by: v === 'ei' ? '' : v })} className={`text-xs rounded-full px-3 py-[6px] border no-underline ${by === v ? 'bg-goldbg border-gold text-gold' : 'bg-card2 border-line text-muted'}`}><b>{l}</b></Link>
+        {[['eqindex', 'EQIndex Rating'], ['eq', 'EQ Score'], ['points', 'Points']].map(([v, l]) => (
+          <Link key={v} href={baseQ({ by: v === 'eqindex' ? '' : v })} className={`text-xs rounded-full px-3 py-[6px] border no-underline ${by === v ? 'bg-goldbg border-gold text-gold' : 'bg-card2 border-line text-muted'}`}><b>{l}</b></Link>
         ))}
         <span className="text-[11px] uppercase tracking-wide text-faint font-bold ml-2">Window:</span>
         {[['all', 'All Time'], ['12m', '12 Months'], ['3m', '3 Months']].map(([v, l]) => (
           <Link key={v} href={baseQ({ window: v === 'all' ? '' : v, ...(by !== 'points' ? { by: 'points' } : {}) })} className={`text-xs rounded-full px-3 py-[6px] border no-underline ${window === v ? 'bg-goldbg border-gold text-gold' : 'bg-card2 border-line text-muted'}`}>{l}</Link>
         ))}
         {by === 'points' && <span className="text-[11px] text-faint">Points: 12/9/7/6/5/4/3/2/1/1 × class multiplier ({winLabel})</span>}
-        {by === 'ei' && <span className="text-[11px] text-faint">EI Rating 0–2000 (∅1000): placing + clear − faults, weighted by height, difficulty, field, handicap &amp; recency. Career-based; min 3 rounds, &lt;15 provisional.</span>}
+        {by === 'eqindex' && <span className="text-[11px] text-faint">EQIndex Rating 0–2000 (∅1000): placing + clear − faults, weighted by height, difficulty, field, handicap &amp; recency. Career-based; min 3 rounds, &lt;15 provisional.</span>}
       </div>
 
       {/* Horse Rankings */}
@@ -343,8 +343,8 @@ export default async function Rankings({ searchParams }) {
             <th className={TH}>Rank</th><th className={TH}>Horse</th>
             {by === 'points' ? (
               <><th className={`${TH} ${NUM}`}><Link href={thSort('Points', 'score', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Points', 'score', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Points', 'score', sortH, dirH, 'H').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Podiums', 'podiums', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Podiums', 'podiums', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Podiums', 'podiums', sortH, dirH, 'H').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Win Rate', 'winrate', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Win Rate', 'winrate', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Win Rate', 'winrate', sortH, dirH, 'H').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Rounds', 'starts', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Rounds', 'starts', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Rounds', 'starts', sortH, dirH, 'H').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Wins', 'wins', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Wins', 'wins', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Wins', 'wins', sortH, dirH, 'H').label}</Link></th><th className={TH}>Trend</th></>
-            ) : by === 'ei' ? (
-              <><th className={`${TH} ${NUM}`}>EI Rating</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Wins</th><th className={TH}>Trend</th></>
+            ) : by === 'eqindex' ? (
+              <><th className={`${TH} ${NUM}`}>EQIndex Rating</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Wins</th><th className={TH}>Trend</th></>
             ) : (
               <><th className={`${TH} ${NUM}`}><Link href={thSort('EQ Score', 'score', sortH, dirH, 'H').href} className={`${LINK} ${thSort('EQ Score', 'score', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('EQ Score', 'score', sortH, dirH, 'H').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Clear %', 'clear_pct', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Clear %', 'clear_pct', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Clear %', 'clear_pct', sortH, dirH, 'H').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Avg Faults', 'avg_faults', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Avg Faults', 'avg_faults', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Avg Faults', 'avg_faults', sortH, dirH, 'H').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Rounds', 'starts', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Rounds', 'starts', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Rounds', 'starts', sortH, dirH, 'H').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Wins', 'wins', sortH, dirH, 'H').href} className={`${LINK} ${thSort('Wins', 'wins', sortH, dirH, 'H').active ? 'font-bold' : ''}`}>{thSort('Wins', 'wins', sortH, dirH, 'H').label}</Link></th><th className={TH}>Trend</th></>
             )}
@@ -364,7 +364,7 @@ export default async function Rankings({ searchParams }) {
                     <td className={`${TD} ${NUM} text-muted`}>{h.win_rate === null || h.win_rate === undefined ? '–' : `${Number(h.win_rate).toFixed(1)}%`}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.starts}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.wins}</td></>
-                  ) : by === 'ei' ? (
+                  ) : by === 'eqindex' ? (
                     <><td className={`${TD} ${NUM}`}><b className={rankH === 1 ? 'text-gold' : ''}>{h.rating}</b>{h.provisional ? <span className="ml-1.5 text-[10px] font-bold text-faint border border-line rounded px-1 py-px" title="<15 rounds — shrunk toward mean">PROV</span> : null}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{h.starts}</td>
                     <td className={`${TD} ${NUM} ${rankH === 1 ? 'text-moss font-bold' : 'text-muted'}`}>{pct1(h.clear_pct)}</td>
@@ -399,8 +399,8 @@ export default async function Rankings({ searchParams }) {
             <th className={TH}>Rank</th><th className={TH}>Rider</th>
             {by === 'points' ? (
               <><th className={`${TH} ${NUM}`}><Link href={thSort('Points', 'score', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Points', 'score', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Points', 'score', sortR, dirR, 'R').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Podiums', 'podiums', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Podiums', 'podiums', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Podiums', 'podiums', sortR, dirR, 'R').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Win Rate', 'winrate', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Win Rate', 'winrate', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Win Rate', 'winrate', sortR, dirR, 'R').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Rounds', 'starts', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Rounds', 'starts', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Rounds', 'starts', sortR, dirR, 'R').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Wins', 'wins', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Wins', 'wins', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Wins', 'wins', sortR, dirR, 'R').label}</Link></th><th className={TH}>Top Partnership</th></>
-            ) : by === 'ei' ? (
-              <><th className={`${TH} ${NUM}`}>EI Rating</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Wins</th>
+            ) : by === 'eqindex' ? (
+              <><th className={`${TH} ${NUM}`}>EQIndex Rating</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Wins</th>
               <th className={TH}>Top Partnership</th><th className={TH}>Trend</th></>
             ) : (
               <><th className={`${TH} ${NUM}`}><Link href={thSort('EQ Score', 'score', sortR, dirR, 'R').href} className={`${LINK} ${thSort('EQ Score', 'score', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('EQ Score', 'score', sortR, dirR, 'R').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Clear %', 'clear_pct', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Clear %', 'clear_pct', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Clear %', 'clear_pct', sortR, dirR, 'R').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Rounds', 'starts', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Rounds', 'starts', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Rounds', 'starts', sortR, dirR, 'R').label}</Link></th><th className={`${TH} ${NUM}`}><Link href={thSort('Wins', 'wins', sortR, dirR, 'R').href} className={`${LINK} ${thSort('Wins', 'wins', sortR, dirR, 'R').active ? 'font-bold' : ''}`}>{thSort('Wins', 'wins', sortR, dirR, 'R').label}</Link></th>
@@ -423,7 +423,7 @@ export default async function Rankings({ searchParams }) {
                     <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.wins}</td>
                     <td className={TD}>{best ? <Link className={LINK} href={`/horses/${best.horse_slug || best.horse_id}`}>{best.horse}</Link> : <span className="text-faint">—</span>}</td></>
-                  ) : by === 'ei' ? (
+                  ) : by === 'eqindex' ? (
                     <><td className={`${TD} ${NUM}`}><b className={rankR === 1 ? 'text-gold' : ''}>{r.rating}</b>{r.provisional ? <span className="ml-1.5 text-[10px] font-bold text-faint border border-line rounded px-1 py-px" title="<15 rounds — shrunk toward mean">PROV</span> : null}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
                     <td className={`${TD} ${NUM} ${rankR === 1 ? 'text-moss' : 'text-muted'}`}>{pct1(r.clear_pct)}</td>

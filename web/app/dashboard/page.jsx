@@ -58,8 +58,8 @@ export default async function Dashboard({ searchParams }) {
     getJSON('/height-stats?limit=200'),
     // EI leaders are career-based (all data) — the rating answers
     // "who is genuinely strongest", not "who leads this slice".
-    getJSON('/rankings/horses?limit=5&metric=ei').catch(() => ({ data: [] })),
-    getJSON('/rankings/riders?limit=4&metric=ei').catch(() => ({ data: [] })),
+    getJSON('/rankings/horses?limit=5&metric=eqindex').catch(() => ({ data: [] })),
+    getJSON('/rankings/riders?limit=4&metric=eqindex').catch(() => ({ data: [] })),
     // Exact slice totals (rankings/events lists are paging-capped — never count from them).
     getJSON(`/stats/circuit${Q}`).catch(() => null),
   ]);
@@ -220,7 +220,7 @@ export default async function Dashboard({ searchParams }) {
                 <div className="flex gap-5 items-center my-3">
                   <div className="text-center shrink-0">
                     <div className="text-[34px] font-extrabold leading-none text-gold tabular-nums">{feat.rating}</div>
-                    <div className="mt-1 text-[10px] tracking-wide text-muted">EI RATING</div>
+                    <div className="mt-1 text-[10px] tracking-wide text-muted">EQINDEX RATING</div>
                     {feat.provisional ? <div className="mt-1 text-[10px] font-bold text-faint border border-line rounded px-1.5 py-px" title="<15 rounds — shrunk toward mean">PROVISIONAL</div> : null}
                   </div>
                   <div>
@@ -280,11 +280,11 @@ export default async function Dashboard({ searchParams }) {
           {showHorses && (
             <>
               <h2 className={H2}>Top Horses</h2>
-              <p className={SUB}>Career EI rating (0–2000, ∅1000) — placing, difficulty, handicap &amp; form, not just clears</p>
+              <p className={SUB}>Career EQIndex rating (0–2000, ∅1000) — placing, difficulty, handicap &amp; form, not just clears</p>
               <section className={CARD}>
                 <div className={TABLEWRAP}>
                 <table className={TABLE}>
-                  <thead><tr><th className={TH}>Rank</th><th className={TH}>Horse Name</th><th className={`${TH} ${NUM}`}>EI Rating</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg Faults</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Trend</th></tr></thead>
+                  <thead><tr><th className={TH}>Rank</th><th className={TH}>Horse Name</th><th className={`${TH} ${NUM}`}>EQIndex Rating</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg Faults</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Trend</th></tr></thead>
                   <tbody>
                     {top5.map((h, i) => {
                       const [lbl, cls] = trendBadge(h.clear_pct, (details[h.horse_id].history || []).slice(0, 5));
@@ -310,11 +310,11 @@ export default async function Dashboard({ searchParams }) {
           {showRiders && (
             <>
               <h2 className={H2}>Top Riders</h2>
-              <p className={SUB}>Career EI rating (0–2000, ∅1000) across all partnerships</p>
+              <p className={SUB}>Career EQIndex rating (0–2000, ∅1000) across all partnerships</p>
               <section className={CARD}>
                 <div className={TABLEWRAP}>
                 <table className={TABLE}>
-                  <thead><tr><th className={TH}>Rank</th><th className={TH}>Rider Name</th><th className={`${TH} ${NUM}`}>EI Rating</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Best Partnership</th></tr></thead>
+                  <thead><tr><th className={TH}>Rank</th><th className={TH}>Rider Name</th><th className={`${TH} ${NUM}`}>EQIndex Rating</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Best Partnership</th></tr></thead>
                   <tbody>
                     {top4R.map((r, i) => {
                       const best = (rDetails[r.rider_id].partnerships || [])[0];
@@ -343,7 +343,7 @@ export default async function Dashboard({ searchParams }) {
               <section className={CARD}>
                 <div className={TABLEWRAP}>
                 <table className={TABLE}>
-                  <thead><tr><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>EI Rating</th><th className={TH}>Recent Insight</th></tr></thead>
+                  <thead><tr><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>EQIndex Rating</th><th className={TH}>Recent Insight</th></tr></thead>
                   <tbody>
                     {trending.map((t) => (
                       <tr key={t.h.horse_id}>
