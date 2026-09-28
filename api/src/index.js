@@ -10,7 +10,7 @@ app.use(cors({
   origin: process.env.WEB_ORIGIN ? process.env.WEB_ORIGIN.split(',') : true,
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // ---- Session auth (best practice: opaque token, sha256 at rest, httpOnly cookie) ----
 const SESSION_COOKIE = 'eq_session';
@@ -1210,12 +1210,14 @@ function parseCsv(text) {
 }
 const CLASS_TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
 const FORMATS = ['Two-phase', 'Jump-off', 'Speed', 'Power & Speed'];
-const STATUS_MAP = { E: 'eliminated', R: 'retired', W: 'withdrawn', DQ: 'disqualified', ELIM: 'eliminated', RET: 'retired', WD: 'withdrawn' };
+const STATUS_MAP = { E: 'eliminated', R: 'retired', W: 'withdrawn', DQ: 'disqualified', ELIM: 'eliminated', RET: 'retired', WD: 'withdrawn', NS: 'withdrawn' };
 
 // Canonical import record (JSON mode uses these exact keys; CSV headers map to them).
 const IMPORT_FIELDS = ['class_name', 'class_type', 'class_date', 'rider_name', 'horse_name',
   'placing', 'faults', 'time', 'time_faults', 'height_cm', 'format', 'status', 'notes', 'series_key',
-  'breed', 'age', 'gender', 'sire', 'dam', 'breeder', 'country',
+  'breed', 'age', 'gender', 'sire', 'dam', 'damsire', 'breeder', 'country', 'color', 'year_of_birth',
+  'arena_name', 'arena_type', 'surface', 'start_time',
+  'round2_faults', 'round2_time', 'jumpoff_faults', 'jumpoff_time', 'prize',
   'region', 'rider_region', 'series_category', 'rider_series', 'nationality', 'rider_nationality',
   'venue', 'venue_country', 'arena_type', 'event_name', 'date_start', 'date_end'];
 // Optional enrichment columns (fill-if-null only — never overwrites curated data).
@@ -1231,6 +1233,26 @@ const cleanAge = (v) => {
   if (!t) return null;
   const n = Number(t);
   return Number.isInteger(n) && n >= 0 && n <= 40 ? n : null;
+};
+const JUNK = new Set(['', 'unknown', 'n/a', 'na', 'n-a', '-', '--', 'unsure', 'nil', 'tbd']);
+const cleanName = (v) => {
+  const t = String(v ?? '').trim();
+  if (!t || JUNK.has(t.toLowerCase())) return null;
+  return t.slice(0, 100);
+};
+const cleanYob = (v) => {
+  const t = String(v ?? '').trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isInteger(n) && n >= 1980 && n <= 2100 ? n : null;
+};
+const ARENA_TYPES = ['Indoor', 'Outdoor', 'Covered outdoor arena', 'Unknown'];
+const SURFACES = ['Grass', 'Sand', 'Fibre-sand', 'Synthetic', 'Other', 'Unknown'];
+const canonSurface = (v) => {
+  const t = String(v || '').trim().toLowerCase();
+  if (!t) return null;
+  if (t.startsWith('fibre') || t.startsWith('fiber')) return 'Fibre-sand';
+  return canon(v, SURFACES);
 };
 
 app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
@@ -1262,6 +1284,13 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
     place: col('placing', 'finish_place', 'place'), faults: col('faults', 'jump_faults'),
     time: col('time', 'time_seconds'), tfaults: col('time_faults'), height: col('height_cm', 'height'),
     format: col('format'), status: col('status'), notes: col('notes'),
+    color: col('color', 'colour'), yob: col('year_of_birth', 'born', 'yob'),
+    damsire: col('damsire', 'dam_sire', 'dam-sire'),
+    arena_name: col('arena_name', 'arena', 'location'),
+    arena_type_c: col('class_arena_type'), surface: col('surface'),
+    start_time: col('start_time', 'time_started'),
+    r2f: col('round2_faults'), r2t: col('round2_time'),
+    jof: col('jumpoff_faults'), jot: col('jumpoff_time'), prize: col('prize', 'prize_money'),
     breed: col('breed'), age: col('age'), gender: col('gender'), sire: col('sire'), dam: col('dam'),
     breeder: col('breeder'), country: col('country'),
     region: col('region'), rider_region: col('rider_region'),
@@ -1359,6 +1388,18 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       const fmtRaw = g(ci.format);
       if (fmtRaw && !FORMATS.includes(fmtRaw)) errs.push(`format must be ${FORMATS.join('|')}`);
       const fmt = fmtRaw || null;
+      const cArenaType = canon(g(ci.arena_type_c), ARENA_TYPES);
+      if (g(ci.arena_type_c) && !cArenaType) errs.push(`class arena_type must be ${ARENA_TYPES.join('|')}`);
+      const cSurface = canonSurface(g(ci.surface));
+      if (g(ci.surface) && !cSurface) errs.push(`surface must be ${SURFACES.join('|')}`);
+      const cArenaName = g(ci.arena_name) || null;
+      const cStart = g(ci.start_time) || null;
+      if (cStart && !/^([01]\d|2[0-3]):[0-5]\d$/.test(cStart)) errs.push('start_time must be HH:MM');
+      const r2f = num(g(ci.r2f)), r2t = num(g(ci.r2t)), jof = num(g(ci.jof)), jot = num(g(ci.jot));
+      const prize = num(g(ci.prize));
+      for (const [v, n] of [[r2f, 'round2_faults'], [r2t, 'round2_time'], [jof, 'jumpoff_faults'], [jot, 'jumpoff_time'], [prize, 'prize']]) {
+        if (v !== null && (typeof v !== 'number' || Number.isNaN(v))) errs.push(`${n} must be numeric`);
+      }
       const place = g(ci.place) === '' ? null : parseInt(g(ci.place), 10);
       if (g(ci.place) !== '' && !(place >= 1)) errs.push('placing must be a positive integer');
       const faults = num(g(ci.faults)); const tsec = num(g(ci.time));
@@ -1369,9 +1410,9 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       let status = 'finished';
       const stRaw = g(ci.status).toUpperCase();
       if (stRaw) {
-        if (['FINISHED', 'E', 'R', 'W', 'DQ', 'ELIM', 'RET', 'WD', 'ELIMINATED', 'RETIRED', 'WITHDRAWN', 'DISQUALIFIED'].includes(stRaw)) {
+        if (['FINISHED', 'E', 'R', 'W', 'DQ', 'NS', 'ELIM', 'RET', 'WD', 'ELIMINATED', 'RETIRED', 'WITHDRAWN', 'DISQUALIFIED'].includes(stRaw)) {
           status = STATUS_MAP[stRaw] || 'finished';
-        } else errs.push('status must be finished|E|R|W|DQ');
+        } else errs.push('status must be finished|E|R|W|DQ|NS');
       }
       const cdate = g(ci.cdate) || null;
       if (cdate && !/^\d{4}-\d{2}-\d{2}$/.test(cdate)) errs.push('class_date must be YYYY-MM-DD');
@@ -1389,9 +1430,10 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       // optional enrichment (fill-if-null only — curated values always win)
       const hEn = {
         breed: g(ci.breed) || null, age: cleanAge(g(ci.age)),
-        gender: canon(g(ci.gender), GENDERS), sire: g(ci.sire) || null,
-        dam: g(ci.dam) || null, breeder: g(ci.breeder) || null,
-        country: g(ci.country) || null,
+        gender: canon(g(ci.gender), GENDERS), sire: cleanName(g(ci.sire)), dam: cleanName(g(ci.dam)),
+        damsire: cleanName(g(ci.damsire)), breeder: cleanName(g(ci.breeder)),
+        country: g(ci.country) || null, color: g(ci.color) || null,
+        year_of_birth: cleanYob(g(ci.yob)),
       };
       const rEn = {
         region: g(ci.rider_region) || null,
@@ -1439,11 +1481,23 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       const newClass = !cRow;
       if (!cRow) {
         cRow = (await client.query(
-          'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, format, series_key, source) VALUES ($1,$2,$3,$4,$5,$6,$7,\'MANUAL\') RETURNING id',
-          [rEvId, cls, cdate || null, hcm, ctype, fmt, seriesKey])).rows[0];
-      } else if (seriesKey && !cRow.series_key) {
-        await client.query('UPDATE classes SET series_key = $2 WHERE id = $1', [cRow.id, seriesKey]);
-        cRow.series_key = seriesKey;
+          'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, format, series_key, arena_name, arena_type, surface, start_time, source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,\'MANUAL\') RETURNING id',
+          [rEvId, cls, cdate || null, hcm, ctype, fmt, seriesKey, cArenaName, cArenaType, cSurface, cStart])).rows[0];
+      } else {
+        if (seriesKey && !cRow.series_key) {
+          await client.query('UPDATE classes SET series_key = $2 WHERE id = $1', [cRow.id, seriesKey]);
+          cRow.series_key = seriesKey;
+        }
+        const fills = [];
+        if (cArenaName) fills.push(['arena_name', cArenaName]);
+        if (cArenaType) fills.push(['arena_type', cArenaType]);
+        if (cSurface) fills.push(['surface', cSurface]);
+        if (cStart) fills.push(['start_time', cStart]);
+        if (fills.length) {
+          await client.query(
+            `UPDATE classes SET ${fills.map(([k], i) => `${k} = COALESCE(${k}, $${i + 2})`).join(', ')} WHERE id = $1`,
+            [cRow.id, ...fills.map(([, v]) => v)]);
+        }
       }
       const dup = await client.query(
         'SELECT id FROM round_results WHERE class_id = $1 AND horse_id = $2 AND rider_id = $3',
@@ -1456,10 +1510,11 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
       const tot = (faults ?? 0) + (tf ?? 0);
       const ins = await client.query(
         `INSERT INTO round_results (event_id, class_id, horse_id, rider_id, jump_faults, time_faults,
-          total_faults, time_seconds, finish_place, clear_round, height_cm, status, notes, source, points)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'MANUAL',0) RETURNING id, points`,
+          total_faults, time_seconds, finish_place, clear_round, height_cm, status, notes, source, points,
+          round2_faults, round2_time_seconds, jumpoff_faults, jumpoff_time_seconds, prize_money)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'MANUAL',0,$14,$15,$16,$17,$18) RETURNING id, points`,
         [rEvId, cRow.id, hRow.id, rRow.id, faults ?? 0, tf ?? 0, tot, tsec, place,
-         status === 'finished' && tot === 0, hcm, status, g(ci.notes) || null]);
+         status === 'finished' && tot === 0, hcm, status, g(ci.notes) || null, r2f, r2t, jof, jot, prize]);
       okCount++;
       bump(rEvId, rowEv.name, 'ok');
       out.push({ line: li + 1, ok: true, errors: [], preview: {
