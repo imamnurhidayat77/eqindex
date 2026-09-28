@@ -6,8 +6,8 @@ export const API = typeof window === 'undefined'
   : '/api';
 export const DEMO_USER = process.env.NEXT_PUBLIC_DEMO_USER_ID || '';
 
-export async function getJSON(path) {
-  const res = await fetch(`${API}${path}`, { cache: 'no-store' });
+export async function getJSON(path, { revalidate = 30 } = {}) {
+  const res = await fetch(`${API}${path}`, { next: { revalidate } });
   if (!res.ok) throw new Error(`API ${path}: ${res.status}`);
   return res.json();
 }
