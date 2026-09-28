@@ -9,16 +9,20 @@ export const revalidate = 30;
 export default async function Landing({ searchParams }) {
   const sp = searchParams || {};
   const showN = (Array.isArray(sp?.n) ? sp.n[0] : sp?.n) === '12' ? 12 : 10;
-  const [horses, riders, events, series, circuit, classes] = await Promise.all([
+  const [horses, riders, events, series, circuit, classes, eiH, eiR] = await Promise.all([
     getJSON('/rankings/horses?limit=200&metric=points').catch(() => ({ data: [] })),
     getJSON('/rankings/riders?limit=200&metric=points').catch(() => ({ data: [] })),
     getJSON('/events?limit=100').catch(() => ({ data: [] })),
     getJSON('/series').catch(() => ({ data: [] })),
     getJSON('/trends/circuit').catch(() => ({ data: [] })),
     getJSON('/classes?limit=200').catch(() => ({ data: [] })),
+    getJSON('/rankings/horses?limit=1&metric=eqindex').catch(() => ({ data: [] })),
+    getJSON('/rankings/riders?limit=1&metric=eqindex').catch(() => ({ data: [] })),
   ]);
   const topH = (horses.data || []).slice(0, 5);
   const topR = (riders.data || []).slice(0, 5);
+  const topRatedH = (eiH.data || [])[0] || null;
+  const topRatedR = (eiR.data || [])[0] || null;
   const evs = events.data || [];
   // per-event result status from its classes: all official → Official,
   // any provisional → Provisional, else Complete.
@@ -79,7 +83,7 @@ export default async function Landing({ searchParams }) {
           {/* leader spotlight */}
           <div className="rounded border border-gold/40 bg-ink/60 p-5 self-start w-full">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wide text-faint">Circuit leader</span>
+              <span className="text-[11px] font-bold uppercase tracking-wide text-faint">Circuit points leader</span>
               <span className={badge(BADGE.goldfill)}>#{1} NATIONAL</span>
             </div>
             {leader ? (
@@ -94,6 +98,14 @@ export default async function Landing({ searchParams }) {
                     <Link href={`/riders/${leadRider.rider_slug || leadRider.rider_id}`} className="text-white font-bold no-underline hover:text-gold">{leadRider.rider}</Link>
                   ) : <span className="text-faint">—</span>}
                   {leadRider && <span className="text-muted"> · <b className="text-gold">{leadRider.total_points}</b> pts</span>}
+                </div>
+                <div className="mt-3 pt-3 border-t border-line/60 text-[13px]">
+                  <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1">Top rated (EQIndex Rating)</div>
+                  {topRatedH ? (
+                    <Link href="/rankings" className="text-white font-bold no-underline hover:text-gold">{topRatedH.horse}</Link>
+                  ) : <span className="text-faint">—</span>}
+                  {topRatedH && <span className="text-muted"> · <b className="text-gold">{topRatedH.rating}</b></span>}
+                  {topRatedR && <div className="mt-1"><Link href="/rankings" className="text-white font-semibold no-underline hover:text-gold">{topRatedR.rider}</Link><span className="text-muted"> · <b className="text-gold">{topRatedR.rating}</b></span></div>}
                 </div>
                 <div className="mt-3 pt-3 border-t border-line/60 text-[13px]">
                   <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1">Latest event</div>
@@ -126,7 +138,7 @@ export default async function Landing({ searchParams }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div>
           <div className="flex items-baseline justify-between">
-            <h2 className={H2}>Top Horses</h2>
+            <h2 className={H2}>Top Horses on Points</h2>
             <Link href="/horses" className={`${LINK} text-[12px]`}>Full table →</Link>
           </div>
           <section className={CARD}>
@@ -153,7 +165,7 @@ export default async function Landing({ searchParams }) {
         </div>
         <div>
           <div className="flex items-baseline justify-between">
-            <h2 className={H2}>Top Riders</h2>
+            <h2 className={H2}>Top Riders on Points</h2>
             <Link href="/riders" className={`${LINK} text-[12px]`}>Full table →</Link>
           </div>
           <section className={CARD}>
