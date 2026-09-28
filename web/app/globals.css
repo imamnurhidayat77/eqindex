@@ -41,3 +41,28 @@ pre code { display: block; padding: 12px 14px; overflow-x: auto; }
 
 /* shared rank highlight (replaces dead .rank1) */
 .rank1 { color: #FFD700; font-weight: 800; }
+
+/* ---------- skeleton shimmer (loading states) ---------- */
+.sk {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: #1E1E1E;
+  border-radius: 6px;
+}
+.sk::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 215, 0, 0.09), rgba(255, 255, 255, 0.06), transparent);
+  animation: sk-shimmer 1.6s ease-in-out infinite;
+}
+.sk-circle { border-radius: 9999px; }
+@keyframes sk-shimmer {
+  0% { transform: translateX(-100%); }
+  60%, 100% { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk::after { animation: none; }
+}

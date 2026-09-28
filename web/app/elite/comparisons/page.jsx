@@ -29,7 +29,7 @@ export default function SavedComparisons() {
       <h1 className={H1}>Elite — Saved Comparisons</h1>
       <p className={SUB}>Head-to-head matchups stored to your workspace.</p>
       {loading ? (
-        <section className={CARD}><p className={EMPTY}>Loading saved comparisons…</p></section>
+        <section className={CARD}><span className='sk h-5 w-52 mb-3' /><span className='sk h-4 w-full mb-2' /><span className='sk h-4 w-5/6 mb-2' /><span className='sk h-4 w-4/6' /></section>
       ) : null}
       {items.map((sc) => (
         <section className={CARD} key={sc.id}>

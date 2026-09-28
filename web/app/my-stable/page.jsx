@@ -5,6 +5,7 @@ import { useAuth } from '../../components/auth';
 import { eqScore } from '../../lib/eq';
 import { recommendHeight } from '../../lib/forecast';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, EMPTY, INP, BTN_PRIMARY, BTN_DANGER, LINK, LIVE, badge, BADGE } from '../../lib/tokens';
+import { TableRowsSk } from '../../components/Skeletons';
 
 async function authed(path, opts = {}) {
   const res = await fetch(`${API}${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
@@ -170,7 +171,7 @@ export default function MyStable() {
     return candidates.filter((c) => !have.has(c.rider_id) && (c.rider || '').toLowerCase().includes(s)).slice(0, 6);
   }, [q, candidates, roster]);
 
-  if (authLoading) return <section className={CARD}><p className={EMPTY}>Loading stable…</p></section>;
+  if (authLoading) return (<section className={CARD}><div className='flex gap-2 mb-3'>{[0,1,2,3].map((i) => <span key={i} className='sk h-16 flex-1' />)}</div><span className='sk h-4 w-2/3' /><span className='sk h-4 w-1/2 mt-2' /></section>);
   if (!user) {
     return (<>
       <h1 className={H1}>My Stable</h1>
@@ -274,7 +275,7 @@ export default function MyStable() {
               </>
             ))}
             {!athletes.length && !loading && <tr><td colSpan={11} className={EMPTY}>Roster empty — add your first athlete above.</td></tr>}
-            {loading && <tr><td colSpan={11} className={EMPTY}>Loading roster…</td></tr>}
+            {loading && <TableRowsSk rows={6} />}
           </tbody>
         </table>
         </div>

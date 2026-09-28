@@ -104,7 +104,7 @@ export default function SeriesIndex() {
                 <td className={`${TD} ${NUM}`}><a className={LINK} href={`/series/${x.series_key}`}>Standings →</a></td>
               </tr>
             ))}
-            {!view.length && <tr><td colSpan={5} className={EMPTY}>{loading ? 'Loading…' : 'No series match these filters.'}</td></tr>}
+            {!view.length && <tr><td colSpan={5} className={EMPTY}>{loading ? (<span className="flex flex-col gap-2 py-1" aria-hidden="true">{[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}</span>) : ('No series match these filters.')}</td></tr>}
           </tbody>
         </table>
         </div>

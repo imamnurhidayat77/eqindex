@@ -95,7 +95,7 @@ export default function Classes() {
                 </tr>
               );
             })}
-            {!view.length && <tr><td colSpan={7} className={EMPTY}>{loading ? 'Loading…' : 'No classes match these filters.'}</td></tr>}
+            {!view.length && <tr><td colSpan={7} className={EMPTY}>{loading ? (<span className="flex flex-col gap-2 py-1" aria-hidden="true">{[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}</span>) : ('No classes match these filters.')}</td></tr>}
           </tbody>
         </table>
         </div>

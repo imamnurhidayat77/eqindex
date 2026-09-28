@@ -71,7 +71,7 @@ export default function Events() {
             ))}
             {!view.length && (
               <tr><td colSpan={6} className="px-2 py-6 text-center text-muted">
-                {loading ? 'Loading…' : 'No events match these filters.'}
+                {loading ? (<span className="flex flex-col gap-2 py-1" aria-hidden="true">{[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}</span>) : ('No events match these filters.')}
               </td></tr>
             )}
           </tbody>
