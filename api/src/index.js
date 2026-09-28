@@ -711,8 +711,8 @@ app.get('/arenas', asyncH(async (req, res) => {
        JOIN classes c ON c.id = rr.class_id
        JOIN horses h ON h.id = rr.horse_id
        WHERE COALESCE(c.arena_type, e.arena_type) IS NOT NULL
-       GROUP BY e.arena_type, h.id, h.name HAVING COUNT(*) >= 3
-       ORDER BY e.arena_type, AVG(rr.clear_round::INT) DESC
+      GROUP BY COALESCE(c.arena_type, e.arena_type), h.id, h.name HAVING COUNT(*) >= 3
+      ORDER BY COALESCE(c.arena_type, e.arena_type), AVG(rr.clear_round::INT) DESC
      )
      SELECT a.*, t.horse AS top_horse FROM a
      LEFT JOIN top t ON t.arena = a.arena ORDER BY a.rounds DESC`
