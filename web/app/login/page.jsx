@@ -24,9 +24,8 @@ function LoginForm() {
   // Render a loading screen (never the "Already logged in" card) until
   // the destination commits and this page unmounts.
   const [done, setDone] = useState(false);
-  // Warm the destination RSC payload while the user types, so the
-  // post-login push commits faster.
-  useEffect(() => { router.prefetch(next); }, [router, next]);
+  // NOTE: no router.prefetch here — while logged out the middleware would
+  // just prefetch the login redirect, wasting the warmup.
   // Already authenticated (landed here via back button / stale link):
   // forward instead of stranding on a dead-end card.
   // NOTE: all hooks must stay above every early return (React #300).
@@ -36,7 +35,14 @@ function LoginForm() {
   async function submit(e) {
     e.preventDefault();
     setErr(''); setBusy(true);
-    try { await login(email.trim(), password); setDone(true); router.push(next); }
+    try {
+      await login(email.trim(), password);
+      setDone(true);
+      // Full page load (not router.push): /dashboard is heavy (~4s SSR) and
+      // streams progressively with its own skeleton — perceived as faster
+      // than staring at this card waiting for an SPA transition to commit.
+      window.location.assign(next);
+    }
     catch (ex) { setErr(ex.message); setBusy(false); }
   }
   if (done) {

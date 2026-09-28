@@ -21,7 +21,7 @@ export default function Register() {
   const [busyOut, setBusyOut] = useState(false);
   // Register just succeeded via the form below: navigation is in flight.
   const [done, setDone] = useState(false);
-  useEffect(() => { router.prefetch('/dashboard'); }, [router]);
+  // NOTE: no prefetch — logged-out prefetch would only warm the login redirect.
   // Already authenticated: forward instead of stranding on a dead-end card.
   useEffect(() => {
     if (!loading && user && !done) router.replace('/dashboard');
@@ -36,7 +36,9 @@ export default function Register() {
     setBusy(true);
     try {
       await register({ name: form.name.trim(), email: form.email.trim(), password: form.password, role: form.role });
-      setDone(true); router.push('/dashboard');
+      setDone(true);
+      // Full page load so the heavy destination streams with its skeleton.
+      window.location.assign('/dashboard');
     } catch (ex) { setErr(ex.message); setBusy(false); }
   }
   if (done) {
