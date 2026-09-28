@@ -42,7 +42,7 @@ function groupBest(rows, keyFn, labelFn) {
 }
 
 export default async function RiderProfile({ params }) {
-  const [p, allRiders, events, allHorses, heightStats, splits] = await Promise.all([
+  const [p, allRiders, events, allHorses, heightStats, splits, ei] = await Promise.all([
     getJSON(`/riders/${params.id}`),
     getJSON('/rankings/riders?limit=100').catch(() => ({ data: [] })),
     getJSON('/events?limit=100').catch(() => ({ data: [] })),
@@ -215,16 +215,10 @@ export default async function RiderProfile({ params }) {
               <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Showjumping Athlete</div>
               <div className="mt-1 text-[30px] font-extrabold leading-none">{r.name}</div>
             </div>
-            <div className="relative flex h-[92px] w-[92px] shrink-0 items-center justify-center">
-              <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full -rotate-90">
-                <circle cx="50" cy="50" r="42" fill="none" stroke="#2A2A2A" strokeWidth="7" />
-                <circle cx="50" cy="50" r="42" fill="none" stroke="#FFD700" strokeWidth="7" strokeLinecap="round"
-                  strokeDasharray={`${(2 * Math.PI * 42 * eq) / 100} ${2 * Math.PI * 42}`} />
-              </svg>
-              <div className="text-center">
-                <div className="text-[26px] font-extrabold leading-none">{eq}</div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">EQ Score</div>
-              </div>
+            <div className="text-center">
+              <div className="text-[26px] font-extrabold leading-none tabular-nums">{ei?.data?.rating ?? eq}</div>
+              <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">EI Rating</div>
+              {ei?.data?.provisional ? <div className="mt-1 text-[10px] font-bold text-faint border border-line rounded px-1.5 py-px" title="<15 rounds — shrunk toward mean">PROVISIONAL</div> : null}
             </div>
           </div>
           <div className="mt-4 rounded bg-card2 p-3 text-[12.5px] italic leading-relaxed text-muted">
@@ -254,6 +248,45 @@ export default async function RiderProfile({ params }) {
           </dl>
         </section>
       </div>
+
+      {/* EI rating breakdown — transparent per-round components */}
+      {ei?.data && (
+        <>
+          <h2 className="text-[15px] font-bold">EI Rating Breakdown</h2>
+          <p className="mb-3 mt-0.5 text-[12.5px] text-muted">
+            {ei.data.rating} overall (raw {ei.data.raw_avg} → shrunk {ei.data.shrunk_avg} over {ei.data.starts} rounds).
+            Base = placing + clear − faults; weighted by height, difficulty, field, size, handicap &amp; recency.
+          </p>
+          <section className="mb-6 overflow-x-auto rounded border border-line bg-card">
+            <table className="w-full min-w-[980px] border-collapse text-[13px]">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
+                  {['Date', 'Class', 'Place', 'Base', 'Height', 'Diffic.', 'Field', 'Size', 'Handicap', 'Recency', 'Weighted'].map((c, i) => (
+                    <th key={c} className={`border-b border-line px-3 py-2.5 font-semibold ${i >= 3 ? 'text-right' : ''}`}>{c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(ei.rounds || []).map((r, i) => (
+                  <tr key={i} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
+                    <td className="whitespace-nowrap px-3 py-2.5 text-muted">{fmtDate(r.class_date)}</td>
+                    <td className="px-3 py-2.5 text-slate-200">{r.class_name}</td>
+                    <td className="px-3 py-2.5 text-muted">{r.finish_place ?? '–'}</td>
+                    <td className="px-3 py-2.5 text-right font-semibold">{r.base_pts}</td>
+                    <td className="px-3 py-2.5 text-right text-muted">×{r.height_mult}</td>
+                    <td className="px-3 py-2.5 text-right text-muted">×{r.di_mult}</td>
+                    <td className="px-3 py-2.5 text-right text-muted">×{r.field_mult}</td>
+                    <td className="px-3 py-2.5 text-right text-muted">×{r.size_mod}</td>
+                    <td className="px-3 py-2.5 text-right text-muted">×{r.handicap}</td>
+                    <td className="px-3 py-2.5 text-right text-muted">×{r.recency_w}</td>
+                    <td className="px-3 py-2.5 text-right font-bold text-gold">{r.weighted}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        </>
+      )}
 
       {/* markers */}
       <h2 className="text-[15px] font-bold">Athlete Performance Markers</h2>

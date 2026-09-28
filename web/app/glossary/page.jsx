@@ -14,7 +14,10 @@ const TERMS = [
   ['Two Phase', 'Format where the second phase runs immediately after a clear first phase.'],
   ['Elimination (E)', 'Excluded from placings, 0 points. Shown as E.'],
   ['Retirement (R) / Withdrawal (W) / Disqualification (DQ)', 'Non-finish states, 0 points.'],
-  ['EQ Score', '0–99 form index from clear rate, faults and volume. Provisional unless labelled Official.'],
+  ['EQ Score', '0–99 form index from clear rate, faults and volume. Legacy display; rankings now default to EI Rating.'],
+  ['EI Rating', '0–2000 ability rating centred at 1000. Per-round points (placing + clear − faults) weighted by height, class difficulty, field strength, field size, handicap (proven level vs class) and recency, shrunk toward the mean. Min 3 rounds to rank; under 15 rounds is Provisional.'],
+  ['Handicap', 'Proven-level adjustment: a horse jumping below its proven max is discounted (expected), above it is bonused — up to ±30%.'],
+  ['Recency', 'Rounds decay ~37% per year (×0.63^(days/365)); recent form counts more.'],
   ['Win rate', 'Wins ÷ starts × 100 over the selected window.'],
 ];
 
