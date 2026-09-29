@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { API, DEMO_USER } from '../../lib/api';
+import { API } from '../../lib/api';
 import { eqScore } from '../../lib/eq';
 import { matchupEdge } from '../../lib/forecast';
 import { statusBadge } from '../../lib/tokens';
@@ -110,9 +110,9 @@ export default function Comparison() {
     const label = prompt('Label for this comparison:') || '';
     const res = await fetch(`${API}/comparisons`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: DEMO_USER, type, a_id: aId, b_id: bId, label }),
+      body: JSON.stringify({ type, a_id: aId, b_id: bId, label }),
     });
-    setErr(res.ok ? 'Saved to Elite.' : 'Save failed');
+    setErr(res.ok ? 'Saved to Elite.' : res.status === 401 ? 'Log in to save comparisons.' : 'Save failed');
   }
 
   const R = result ? (type === 'event' ? {

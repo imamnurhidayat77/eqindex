@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
+import { useAdminApi } from '../../../components/useAdminApi';
 
 const STATUSES = ['open', 'in_review', 'resolved', 'rejected'];
 const stBadge = (s) => s === 'open' ? badge(BADGE.goldfill) : s === 'in_review' ? badge(BADGE.blue)
@@ -13,12 +13,7 @@ export default function AdminCorrections() {
   const [note, setNote] = useState({});
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
-  async function call(path, opts = {}) {
-    const res = await fetch(`${API}${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
-    return j.data;
-  }
+  const call = useAdminApi();
   async function load() {
     setLoading(true); setErr('');
     try { setRows(await call(`/admin/corrections?status=${status}`)); }

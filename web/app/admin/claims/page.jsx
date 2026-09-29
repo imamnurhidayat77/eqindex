@@ -1,31 +1,28 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, BTN_PRIMARY, BTN_DANGER } from '../../../lib/tokens';
+import { useAdminApi } from '../../../components/useAdminApi';
 
 export default function AdminClaims() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const call = useAdminApi();
   async function load() {
     setErr('');
     try {
-      const res = await fetch(`${API}/claims?status=pending`, { credentials: 'include' });
-      if (!res.ok) throw new Error(res.status === 401 || res.status === 403 ? 'Admin login required.' : `Failed (${res.status})`);
-      setRows((await res.json()).data || []);
-    } catch (e) { setErr(e.message); }
+      setRows(await call('/claims?status=pending'));
+    } catch (e) { setErr(/401|403/.test(e.message) ? 'Admin login required.' : e.message); }
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
   async function decide(id, approve) {
     setBusy(true); setErr('');
     try {
-      const res = await fetch(`${API}/claims/${id}`, {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approve }),
+      await call(`/claims/${id}`, {
+        method: 'POST', body: JSON.stringify({ approve }),
       });
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
       await load();
     } catch (e) { setErr(e.message); }
     setBusy(false);

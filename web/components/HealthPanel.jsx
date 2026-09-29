@@ -1,7 +1,10 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
+import { useAuth } from './auth';
 import Dropdown from './Dropdown';
+import { ConfirmDialog } from './Modal';
 import { TableEmpty } from './EmptyState';
 
 const CATS = ['VET', 'TREATMENT', 'FARRIER', 'VACCINATION', 'OTHER'];
@@ -15,8 +18,12 @@ const CAT_STYLE = {
 };
 
 export default function HealthPanel({ horseId, compact = false }) {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
+  const [err, setErr] = useState('');
+  const [confirming, setConfirming] = useState(null);
+  const canDelete = (x) => !!user && (user.role === 'ADMIN' || (x.created_by && x.created_by === user.id));
   const [form, setForm] = useState({ date: '', category: 'VET', description: '', provider: '' });
   async function load() {
     try {
@@ -27,23 +34,33 @@ export default function HealthPanel({ horseId, compact = false }) {
   useEffect(() => { load(); }, []);
   async function add(e) {
     e.preventDefault();
+    setErr('');
     const res = await fetch(`${API}/horses/${horseId}/health`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
     });
     if (res.ok) { setForm({ date: '', category: 'VET', description: '', provider: '' }); setOpen(false); load(); }
+    else if (res.status === 401) setErr('Log in to log health records.');
+    else setErr('Could not save — please try again.');
   }
-  async function remove(id) {
-    await fetch(`${API}/health/${id}`, { method: 'DELETE' });
+  async function doRemove() {
+    if (!confirming) return;
+    await fetch(`${API}/health/${confirming}`, { method: 'DELETE' });
+    setConfirming(null);
     load();
   }
   return (
     <section className="mb-6 overflow-hidden rounded border border-line bg-card">
       {!compact && <h2 className="px-5 pt-4 text-[15px] font-bold">Health &amp; care</h2>}
       <div className="flex justify-end px-4 pt-3">
-        <button onClick={() => setOpen((o) => !o)} className="rounded border border-line bg-card2 px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-white">
-          {open ? '− Close' : '+ Log record'}
-        </button>
+        {user ? (
+          <button onClick={() => setOpen((o) => !o)} className="rounded border border-line bg-card2 px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-white">
+            {open ? '− Close' : '+ Log record'}
+          </button>
+        ) : (
+          <Link href="/login" className="text-[12px] text-sky hover:text-white">Log in to log records →</Link>
+        )}
       </div>
+      {err && <p className="mx-5 mt-2 rounded border border-blood/40 bg-redbg/40 px-3 py-2 text-blood text-[13px]">{err}</p>}
       {open && (
         <form onSubmit={add} className="flex flex-wrap items-end gap-3 px-5 pb-4 pt-2">
           <label className="text-[12px] text-muted">Date<br /><input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
@@ -75,7 +92,7 @@ export default function HealthPanel({ horseId, compact = false }) {
                 <td className="px-4 py-2.5"><span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${CAT_STYLE[x.category] || CAT_STYLE.OTHER}`}>{x.category}</span></td>
                 <td className="px-4 py-2.5 text-slate-200">{x.description}</td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted">{x.provider || '—'}</td>
-                <td className="px-4 py-2.5 text-right"><button onClick={() => remove(x.id)} className="text-[12px] text-faint hover:text-danger">Delete</button></td>
+                <td className="px-4 py-2.5 text-right">{canDelete(x) && <button onClick={() => setConfirming(x.id)} className="text-[12px] text-faint hover:text-danger">Delete</button>}</td>
               </tr>
             ))}
             {!items.length && (
@@ -88,6 +105,15 @@ export default function HealthPanel({ horseId, compact = false }) {
           </tbody>
         </table>
       </div>
+      {confirming && (
+        <ConfirmDialog
+          title="Delete this record?"
+          body="The health entry is removed permanently."
+          confirmLabel="Delete record"
+          onCancel={() => setConfirming(null)}
+          onConfirm={doRemove}
+        />
+      )}
     </section>
   );
 }

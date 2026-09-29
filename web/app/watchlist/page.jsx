@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { DEMO_USER, getJSON } from '../../lib/api';
+import { cookies } from 'next/headers';
+import { getJSON, getPrivateJSON } from '../../lib/api';
 import { CARD, H1, LINK, LIVE, SUB } from '../../lib/tokens';
 import { eqScore, trendBadge } from '../../lib/eq';
 import WatchlistView from '../../components/WatchlistView';
@@ -32,9 +33,12 @@ function fmtRel(ds, now) {
 
 export default async function Watchlist() {
   const now = Date.now();
+  // Session-scoped reads: forward the session cookie (server has no jar),
+  // never cached (per-URL cache would leak across users).
+  const token = cookies().get('eq_session')?.value;
   let watch = { data: [] };
   try {
-    watch = DEMO_USER ? await getJSON(`/watchlist?user_id=${DEMO_USER}`) : { data: [] };
+    watch = await getPrivateJSON('/watchlist', token);
   } catch { watch = { data: [] }; }
   const items = watch.data || [];
   const horseItems = items.filter((w) => w.entity_type === 'horse');
@@ -45,8 +49,8 @@ export default async function Watchlist() {
   let prefs = null, updates = { data: [] };
   try {
     [prefs, updates] = await Promise.all([
-      DEMO_USER ? getJSON(`/alert-prefs?user_id=${DEMO_USER}`) : { data: null },
-      DEMO_USER ? getJSON(`/watchlist/updates?user_id=${DEMO_USER}&days=30&limit=100`) : { data: [] },
+      getPrivateJSON('/alert-prefs', token).catch(() => ({ data: null })),
+      getPrivateJSON('/watchlist/updates?days=30&limit=100', token).catch(() => ({ data: [] })),
     ]);
   } catch { /* shells */ }
 

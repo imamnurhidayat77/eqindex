@@ -126,26 +126,30 @@ test('auth: register/login/me/logout cycle', async () => {
 });
 
 test('phase B: audit trail + visibility + activity gate', async () => {
-  // Own throwaway user (the historic seed admin id may not exist in this DB).
+  // Own throwaway user (session-scoped routes: no more ?user_id=/body spoofing).
   const email = `smokephase${Date.now()}@test.local`;
-  const reg = await (await fetch(`${BASE}/auth/register`, {
+  const regRes = await fetch(`${BASE}/auth/register`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'Smoke Phase', email, password: 'secret123', role: 'PUBLIC' }),
-  })).json();
-  const U = reg.data.id;
-  assert.ok(U);
+  });
+  assert.equal(regRes.status, 201);
+  const reg = await regRes.json();
+  assert.ok(reg.data.id);
+  const cookie = regRes.headers.get('set-cookie');
+  assert.ok(cookie && cookie.includes('eq_session'));
+  const H = { 'Content-Type': 'application/json', cookie };
   const HID = (await get('/rankings/horses?limit=1')).data[0].horse_id;
   const w = await (await fetch(`${BASE}/watchlist`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: U, entity_type: 'horse', entity_id: HID }),
+    method: 'POST', headers: H,
+    body: JSON.stringify({ entity_type: 'horse', entity_id: HID }),
   })).json();
   assert.equal(w.data.is_public, false);
-  const patched = await (await fetch(`${BASE}/watchlist/${w.data.id}?user_id=${U}`, {
-    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+  const patched = await (await fetch(`${BASE}/watchlist/${w.data.id}`, {
+    method: 'PATCH', headers: H,
     body: JSON.stringify({ is_public: true }),
   })).json();
   assert.equal(patched.data.is_public, true);
-  await fetch(`${BASE}/watchlist/${w.data.id}?user_id=${U}`, { method: 'DELETE' });
+  await fetch(`${BASE}/watchlist/${w.data.id}`, { method: 'DELETE', headers: H });
   await get('/admin/activity', 401);
 });
 

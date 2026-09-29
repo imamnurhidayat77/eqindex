@@ -4,6 +4,7 @@ import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_DANGER } from '../../../lib/tokens';
 import Dropdown from '../../../components/Dropdown';
 import { ConfirmDialog } from '../../../components/Modal';
+import { useAdminApi } from '../../../components/useAdminApi';
 
 const ROLES = ['PUBLIC', 'RIDER', 'COACH', 'OWNER', 'BREEDER', 'ADMIN'];
 
@@ -15,12 +16,7 @@ export default function AdminUsers() {
   const [revoking, setRevoking] = useState(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
-  async function call(path, opts = {}) {
-    const res = await fetch(`${API}${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
-    return j.data;
-  }
+  const call = useAdminApi();
   async function load(query = '') {
     setLoading(true); setErr('');
     try { setRows(await call(`/admin/users${query ? `?q=${encodeURIComponent(query)}` : ''}`)); }

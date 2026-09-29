@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, INP, badge, BADGE } from '../../../lib/tokens';
 import Dropdown from '../../../components/Dropdown';
+import { useAdminApi } from '../../../components/useAdminApi';
 
 const ACT_CLS = { review: 'goldfill', claim: 'blue', training: 'green', health: 'green', watchlist: 'gray', comparison: 'gray', coach: 'blue' };
 const ENTITIES = ['', 'horse', 'rider', 'event', 'series', 'user', 'combination', 'entity'];
@@ -13,24 +13,21 @@ export default function AdminActivity() {
   const [f, setF] = useState({ action: '', entity: '', actor: '', since: '', until: '' });
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const call = useAdminApi();
   async function load(filters) {
     setLoading(true); setErr('');
     try {
       const p = new URLSearchParams({ limit: '100' });
       for (const [k, v] of Object.entries(filters)) if (v) p.set(k, v);
-      const res = await fetch(`${API}/admin/activity?${p}`, { credentials: 'include' });
-      if (res.status === 401 || res.status === 403) { setErr('Admin login required.'); setRows([]); }
-      else setRows((await res.json()).data || []);
-    } catch { setErr('API unreachable.'); }
+      setRows(await call(`/admin/activity?${p}`) || []);
+    } catch (e) {
+      if (/401|403/.test(e.message)) { setErr('Admin login required.'); setRows([]); }
+      else setErr(e.message);
+    }
     setLoading(false);
   }
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`${API}/admin/activity/actions`, { credentials: 'include' });
-        if (res.ok) setActions((await res.json()).data || []);
-      } catch { /* optional */ }
-    })();
+    call('/admin/activity/actions').then((d) => setActions(d || [])).catch(() => { /* optional */ });
   }, []);
   useEffect(() => {
     const t = setTimeout(() => load(f), f.actor ? 350 : 0);

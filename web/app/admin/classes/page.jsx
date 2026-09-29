@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { API } from '../../../lib/api';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP } from '../../../lib/tokens';
+import { useAdminApi } from '../../../components/useAdminApi';
 import { TableEmpty } from '../../../components/EmptyState';
 import { Pagination } from '../../../components/list-controls';
 import { LabeledSwitch } from '../../../components/Switch';
@@ -17,16 +17,14 @@ export default function AdminClasses() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(15);
   const [busyId, setBusyId] = useState(null);
+  const call = useAdminApi();
 
   async function load(query) {
     setLoading(true); setErr('');
     try {
       const p = new URLSearchParams({ limit: '100' });
       if (query.trim().length >= 2) p.set('q', query.trim());
-      const res = await fetch(`${API}/admin/classes?${p}`, { credentials: 'include' });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
-      setRows(j.data || []); setPage(1);
+      setRows(await call(`/admin/classes?${p}`) || []); setPage(1);
     } catch (e) { setErr(e.message); setRows([]); }
     setLoading(false);
   }
@@ -38,14 +36,10 @@ export default function AdminClasses() {
   async function flip(r) {
     setBusyId(r.id);
     try {
-      const res = await fetch(`${API}/admin/classes/${r.id}`, {
-        method: 'PATCH', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_active: !(r.is_active ?? true) }),
+      const updated = await call(`/admin/classes/${r.id}`, {
+        method: 'PATCH', body: JSON.stringify({ is_active: !(r.is_active ?? true) }),
       });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
-      setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, is_active: j.data.is_active } : x)));
+      setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, ...(updated || {}), is_active: updated?.is_active ?? !(r.is_active ?? true) } : x)));
     } catch (e) { setErr(e.message); }
     setBusyId(null);
   }

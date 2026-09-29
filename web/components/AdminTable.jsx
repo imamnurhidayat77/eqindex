@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { API } from '../lib/api';
+import { useAdminApi } from './useAdminApi';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY } from '../lib/tokens';
 import Dropdown from './Dropdown';
 import Modal, { ConfirmDialog } from './Modal';
@@ -46,6 +46,7 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
   const [colsOpen, setColsOpen] = useState(false);
 
   const rowName = (r) => (typeof nameKey === 'function' ? nameKey(r) : r[nameKey]);
+  const call = useAdminApi();
   const visibleColumns = columns.filter((c) => !hiddenCols.includes(c.k));
   const shownColumns = visibleColumns.length ? visibleColumns : columns;
   const setDensityPersist = (d) => {
@@ -61,12 +62,6 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
     });
   };
 
-  async function call(path, opts = {}) {
-    const res = await fetch(`${API}${path}`, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
-    const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
-    return j.data;
-  }
   async function load(query = '') {
     setLoading(true); setErr('');
     try { setRows(await call(`/admin/${base}${query ? `?q=${encodeURIComponent(query)}` : ''}`) || []); }

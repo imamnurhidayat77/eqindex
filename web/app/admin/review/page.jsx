@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { BTN_SECONDARY, BTN_DANGER, BTN_PRIMARY, CARD, EMPTY, H1, H2, INP, MUT, SUB } from '../../../lib/tokens';
 import Dropdown from '../../../components/Dropdown';
+import { useAdminApi } from '../../../components/useAdminApi';
 
 export default function ReviewQueue() {
   const [items, setItems] = useState([]);
@@ -10,10 +11,11 @@ export default function ReviewQueue() {
   const [match, setMatch] = useState({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  const call = useAdminApi();
   async function load() {
     setErr('');
     try {
-      setItems(((await (await fetch(`${API}/review?status=pending`)).json()).data) || []);
+      setItems(await call('/review?status=pending') || []);
       const [h, r] = await Promise.all([
         (await fetch(`${API}/rankings/horses?limit=100`)).json(),
         (await fetch(`${API}/rankings/riders?limit=100`)).json(),
@@ -28,17 +30,11 @@ export default function ReviewQueue() {
   async function act(id, action, match_id) {
     setErr('');
     try {
-      const res = await fetch(`${API}/review/${id}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, match_id }),
+      await call(`/review/${id}`, {
+        method: 'POST', body: JSON.stringify({ action, match_id }),
       });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        setErr(j.error || `Action failed (${res.status}).`);
-        return;
-      }
-    } catch {
-      setErr('API unreachable — action not saved.');
+    } catch (e) {
+      setErr(e.message || 'Action failed.');
       return;
     }
     load();

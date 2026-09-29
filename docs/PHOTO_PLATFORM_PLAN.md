@@ -257,10 +257,39 @@ UUIDs avoid collision work; revisit if SEO demands).
 | P2 | Display: event tab, profile strips, badges, `/photos` catalog + detail, search integration | 1.5–2 weeks |
 | P3 | Commerce: Stripe checkout + webhook + downloads + buyer library + admin sales | 1.5–2 weeks |
 | P4 | Packages auto + moment badges + feed notifs + analytics + share cards | 1–2 weeks |
-| P5 (later) | Multi-vendor switch-on, prints partner, ML bib | scoped when triggered |
+| P5 (later) | Multi-vendor switch-on, prints partner, ML bib | scoped when triggered — see §11.1 for group delta |
 
 Estimates assume single dev, existing auth/admin/console patterns reused.
 Each phase independently demoable; stop-points after P1, P2, P3.
+
+### 11.1 P5 Group delta — extra cost in context (no early pivot)
+
+v1 stays single-photographer. Schema is already multi-ready (`photographers`
+table + `photographer_id` FK on `media`/`packages`, `commission_rate`,
+`is_active` kill-switch), so group later = switch-on, not rebuild.
+
+Group adds over v1 (currently explicit non-goals in §1, §3.3, §3.7):
+
+- Vendor accounts: onboarding, photographer-linked logins (`photographers.user_id`),
+  isolated libraries, per-photographer `is_active` enforcement in all queries.
+- Per-vendor commerce config: per-photographer license tiers (v1: global tiers),
+  per-photographer `commission_rate` / pricing / package rules (v1: single value).
+- Checkout across vendors: multi-vendor cart, Stripe Connect (v1: single Checkout +
+  monthly settlement CSV, no split-payment plumbing, `payout_ref` wired but unused).
+- Per-photographer sales dashboard + settlement/payout report + GST export
+  (v1: one simple sales table).
+- Moderation queue for third parties, ownership/takedown per vendor, audit
+  (v1: single trusted uploader, no queue).
+- Storefront: filter/search by photographer, credit attribution, vendor profile pages.
+- Test + support overhead across vendors.
+
+Est. extra build if done now vs later: +3–4 weeks single dev
+(accounts 3–5d + storefront isolation 4–6d + per-vendor pricing/cart 3–5d +
+Connect/payouts 5–7d + moderation/disputes 3–4d + cross-vendor test 2–3d).
+
+Recommendation per Charles "do not pivot too early": ship P0–P4 single to prove
+tagging → discovery → purchase loop at stop-points, then trigger P5-group
+without migrations.
 
 ## 12. Running Costs (indicative, NZD-flavoured USD infra)
 
@@ -269,6 +298,15 @@ Each phase independently demoable; stop-points after P1, P2, P3.
 - Stripe: 1.75% + 30¢ (NZ domestic) per transaction.
 - Cloud Run worker: existing service, marginal.
 - Dominant cost is build time, not infra — infra stays <$20/mo until serious volume.
+
+### 12.1 Group running-cost delta
+
+- Infra delta ~$0: same R2 bucket/prefix pattern (`{originals,previews,thumbs}/{event_id}/`),
+  same CDN, same worker. Storage scales with GB, not vendor count.
+- Stripe delta: Connect adds per-transfer/payout fees + reconciliation overhead on top
+  of v1 1.75% + 30¢. No change to buyer pricing (NZD GST-inclusive display).
+- Ops delta (the real cost): multi-vendor support, payouts disputes, moderation.
+  This is why group is deferred to P5 despite zero infra delta.
 
 ## 13. Risks & Mitigations
 

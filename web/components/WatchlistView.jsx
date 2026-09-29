@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { API, DEMO_USER } from '../lib/api';
+import { API } from '../lib/api';
 import { CARD, H2, LINK, NUM, SUB, TABLE, TD, TH } from '../lib/tokens';
 import Switch from './Switch';
 
@@ -56,7 +56,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
       const res = await fetch(`${API}/alert-prefs`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          user_id: DEMO_USER, score_changes: next.score, ranking_movements: next.ranking,
+          score_changes: next.score, ranking_movements: next.ranking,
           new_results: next.results, benchmark_changes: next.benchmark,
         }),
       });
@@ -71,7 +71,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
   async function removeIds(ids) {
     setBusy(true);
     await Promise.all(ids.map((id) =>
-      fetch(`${API}/watchlist/${id}?user_id=${DEMO_USER}`, { method: 'DELETE' })));
+      fetch(`${API}/watchlist/${id}`, { method: 'DELETE' })));
     setSel([]);
     router.refresh();
     setBusy(false);
@@ -79,7 +79,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
 
   async function flipVisibility(watchId, current) {
     setBusy(true);
-    await fetch(`${API}/watchlist/${watchId}?user_id=${DEMO_USER}`, {
+    await fetch(`${API}/watchlist/${watchId}`, {
       method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_public: !current }),
     });
@@ -99,7 +99,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
     setBusy(true);
     await fetch(`${API}/watchlist`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: DEMO_USER, ...body }),
+      body: JSON.stringify({ ...body }),
     });
     router.refresh();
     setBusy(false);

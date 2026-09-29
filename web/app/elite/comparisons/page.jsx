@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { API, DEMO_USER } from '../../../lib/api';
+import { API } from '../../../lib/api';
 import { BTN, BTN_DANGER, CARD, H1, H2, LINK, MUT, SUB, TABLE, TABLEWRAP, TD, TH } from '../../../lib/tokens';
 import { EmptyState, Dash } from '../../../components/EmptyState';
 
@@ -10,14 +10,14 @@ export default function SavedComparisons() {
   const [loading, setLoading] = useState(true);
   async function load() {
     try {
-      const j = await (await fetch(`${API}/comparisons?user_id=${DEMO_USER}`)).json();
+      const j = await (await fetch(`${API}/comparisons`)).json();
       setItems(j.data || []);
     } catch { setItems([]); }
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
   async function remove(id) {
-    await fetch(`${API}/comparisons/${id}?user_id=${DEMO_USER}`, { method: 'DELETE' });
+    await fetch(`${API}/comparisons/${id}`, { method: 'DELETE' });
     load();
   }
   const dispName = (t, x) => (t === 'combination' ? `${x.horse} + ${x.rider}` : t === 'horse' ? x.horse : x.rider);

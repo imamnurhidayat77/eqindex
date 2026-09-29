@@ -1,7 +1,10 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
+import { useAuth } from './auth';
 import Dropdown from './Dropdown';
+import { ConfirmDialog } from './Modal';
 import { TableEmpty } from './EmptyState';
 
 const INTENSITY_STYLE = {
@@ -11,8 +14,12 @@ const INTENSITY_STYLE = {
 };
 
 export default function TrainingPanel({ horseId, riders = [], compact = false }) {
+  const { user } = useAuth();
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
+  const [err, setErr] = useState('');
+  const [confirming, setConfirming] = useState(null);
+  const canDelete = (t) => !!user && (user.role === 'ADMIN' || (t.created_by && t.created_by === user.id));
   const [form, setForm] = useState({ date: '', type: 'Flatwork', intensity: 'Medium', rider_id: '', notes: '' });
   async function load() {
     try {
@@ -23,24 +30,34 @@ export default function TrainingPanel({ horseId, riders = [], compact = false })
   useEffect(() => { load(); }, []);
   async function add(e) {
     e.preventDefault();
+    setErr('');
     const res = await fetch(`${API}/horses/${horseId}/training`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...form, rider_id: form.rider_id || null }),
     });
     if (res.ok) { setForm({ date: '', type: 'Flatwork', intensity: 'Medium', rider_id: '', notes: '' }); setOpen(false); load(); }
+    else if (res.status === 401) setErr('Log in to log training sessions.');
+    else setErr('Could not save — please try again.');
   }
-  async function remove(id) {
-    await fetch(`${API}/training/${id}`, { method: 'DELETE' });
+  async function doRemove() {
+    if (!confirming) return;
+    await fetch(`${API}/training/${confirming}`, { method: 'DELETE' });
+    setConfirming(null);
     load();
   }
   return (
     <section className="mb-6 overflow-hidden rounded border border-line bg-card">
       {!compact && <h2 className="px-5 pt-4 text-[15px] font-bold">Training</h2>}
       <div className="flex justify-end px-4 pt-3">
-        <button onClick={() => setOpen((o) => !o)} className="rounded border border-line bg-card2 px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-white">
-          {open ? '− Close' : '+ Log session'}
-        </button>
+        {user ? (
+          <button onClick={() => setOpen((o) => !o)} className="rounded border border-line bg-card2 px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-white">
+            {open ? '− Close' : '+ Log session'}
+          </button>
+        ) : (
+          <Link href="/login" className="text-[12px] text-sky hover:text-white">Log in to log sessions →</Link>
+        )}
       </div>
+      {err && <p className="mx-5 mt-2 rounded border border-blood/40 bg-redbg/40 px-3 py-2 text-blood text-[13px]">{err}</p>}
       {open && (
         <form onSubmit={add} className="flex flex-wrap items-end gap-3 px-5 pb-4 pt-2">
           <label className="text-[12px] text-muted">Date<br /><input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="mt-1 rounded border border-line bg-ink px-2.5 py-2 text-slate-100" /></label>
@@ -85,7 +102,7 @@ export default function TrainingPanel({ horseId, riders = [], compact = false })
                 <td className="px-4 py-2.5"><span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${INTENSITY_STYLE[t.intensity] || 'bg-card2 text-muted border border-line'}`}>{t.intensity}</span></td>
                 <td className="whitespace-nowrap px-4 py-2.5">{t.rider || '-'}</td>
                 <td className="px-4 py-2.5 text-muted">{t.notes || '—'}</td>
-                <td className="px-4 py-2.5 text-right"><button onClick={() => remove(t.id)} className="text-[12px] text-faint hover:text-danger">Delete</button></td>
+                <td className="px-4 py-2.5 text-right">{canDelete(t) && <button onClick={() => setConfirming(t.id)} className="text-[12px] text-faint hover:text-danger">Delete</button>}</td>
               </tr>
             ))}
             {!items.length && (
@@ -98,6 +115,15 @@ export default function TrainingPanel({ horseId, riders = [], compact = false })
           </tbody>
         </table>
       </div>
+      {confirming && (
+        <ConfirmDialog
+          title="Delete this session?"
+          body="The training entry is removed permanently."
+          confirmLabel="Delete session"
+          onCancel={() => setConfirming(null)}
+          onConfirm={doRemove}
+        />
+      )}
     </section>
   );
 }
