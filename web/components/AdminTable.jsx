@@ -193,7 +193,7 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
     }
     if (fld.options) {
       return (
-        <Dropdown ariaLabel={fld.label} value={form[fld.k] ?? ''} placeholder="—"
+        <Dropdown ariaLabel={fld.label} value={form[fld.k] ?? ''} placeholder="—" block
           options={[{ value: '', label: '—' }, ...fld.options.map((o) => ({ value: o, label: o }))]}
           onSelect={(o) => setForm({ ...form, [fld.k]: o.value })} />
       );

@@ -7,7 +7,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 export default function Dropdown({
   value, options = [], onSelect,   placeholder = 'Select…', disabled = false,
   align = 'left', size = 'md', variant = 'field', searchable = false, ariaLabel,
-  buttonClassName = '', menuClassName = '',
+  buttonClassName = '', menuClassName = '', block = false,
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -72,12 +72,12 @@ export default function Dropdown({
       : 'px-2.5 py-2 text-[13px] bg-ink border border-line';
 
   return (
-    <div ref={rootRef} className="relative inline-flex max-w-full">
+    <div ref={rootRef} className={`relative max-w-full ${block ? 'flex w-full' : 'inline-flex'}`}>
       <button
         ref={btnRef} type="button" disabled={disabled}
         aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel}
         onClick={() => setOpen((o) => !o)} onKeyDown={onBtnKey}
-        className={`flex items-center justify-between gap-2 rounded-lg font-semibold text-body hover:border-gold/50 focus:border-gold/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${btnSize} ${variant === 'bare' ? 'hover:bg-line/50' : ''} ${buttonClassName}`}
+        className={`flex items-center justify-between gap-2 rounded-lg font-semibold text-body hover:border-gold/50 focus:border-gold/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${btnSize} ${variant === 'bare' ? 'hover:bg-line/50' : ''} ${block ? 'w-full' : ''} ${buttonClassName}`}
       >
         <span className="truncate">{current ? current.label : <span className="font-normal text-faint">{placeholder}</span>}</span>
         <span className={`text-[10px] text-gold transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>

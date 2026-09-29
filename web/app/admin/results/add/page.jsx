@@ -84,7 +84,7 @@ export default function AddResult() {
   const comboBox = (label, q, setQ, val, setVal, rows) => (
     <label className="text-xs text-muted flex flex-col gap-1">{label}
       <span className="relative block">
-        <input className={INP} value={val.id ? `${val.name} ✓` : q}
+        <input className={`${INP} w-full`} value={val.id ? `${val.name} ✓` : q}
           onChange={(e) => { setQ(e.target.value); setVal({ id: '', name: e.target.value }); }}
           placeholder="type to search, or new name…" />
         {!!rows.length && !val.id && (
@@ -113,12 +113,12 @@ export default function AddResult() {
       <section className={CARD}>
         <div className="grid md:grid-cols-2 gap-3">
           <label className="text-xs text-muted flex flex-col gap-1">Event
-            <Dropdown ariaLabel="Event" value={eventId} searchable placeholder="— select —"
+            <Dropdown ariaLabel="Event" value={eventId} searchable block placeholder="— select —"
               options={[{ value: '', label: '— select —' },
                 ...events.map((e) => ({ value: e.id, label: `${e.name} · ${(e.date_start || '').slice(0, 10)}` }))]}
               onSelect={(o) => setEventId(o.value)} /></label>
           <label className="text-xs text-muted flex flex-col gap-1">Class
-            <Dropdown ariaLabel="Class" value={classId} searchable placeholder="— select or type new below —" disabled={!eventId}
+            <Dropdown ariaLabel="Class" value={classId} searchable block placeholder="— select or type new below —" disabled={!eventId}
               options={[{ value: '', label: '— select or type new below —' },
                 ...classes.map((c) => ({ value: c.id, label: `${c.name}${c.class_date ? ` · ${c.class_date.slice(0, 10)}` : ''}` }))]}
               onSelect={(o) => { setClassId(o.value); setNewClass(''); }} /></label>
@@ -137,7 +137,7 @@ export default function AddResult() {
           <label className="text-xs text-muted flex flex-col gap-1">Time (s)
             <input className={INP} inputMode="decimal" value={f.time_seconds} onChange={set('time_seconds')} placeholder="65.42" /></label>
           <label className="text-xs text-muted flex flex-col gap-1">Status
-            <Dropdown ariaLabel="Status" value={f.status}
+            <Dropdown ariaLabel="Status" value={f.status} block
               options={STATUSES.map((s) => ({ value: s, label: s }))}
               onSelect={(o) => setF({ ...f, status: o.value })} /></label>
           <label className="text-xs text-muted flex flex-col gap-1">Notes
