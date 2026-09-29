@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, H1, H2, SUB, INP, BTN_PRIMARY, LINK } from '../../../lib/tokens';
 import { EmptyState } from '../../../components/EmptyState';
+import Switch from '../../../components/Switch';
 
 const CLASS_TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
 
@@ -103,19 +104,27 @@ export default function AdminSettings() {
           </span>
         ) : vis ? (
           <form onSubmit={saveVis}>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {CLASS_TYPES.map((t) => {
+            <div className="mb-3 rounded border border-line overflow-hidden">
+              {CLASS_TYPES.map((t, i) => {
                 const n = (vis.by_type || []).find((x) => x.class_type === t);
                 const isOff = off.includes(t);
                 return (
-                  <button type="button" key={t} aria-pressed={isOff}
-                    onClick={() => setOff(isOff ? off.filter((x) => x !== t) : [...off, t])}
-                    title={n ? `${n.classes} classes · ${Number(n.rounds).toLocaleString()} rounds` : 'No classes yet'}
-                    className={`rounded-full px-3.5 py-2 text-[13px] font-semibold border transition-colors ${
-                      isOff ? 'border-blood/60 bg-redbg text-blood' : 'border-line bg-card2 text-muted hover:text-white'}`}>
-                    {isOff ? '✕ ' : '✓ '}{t}
-                    {n && <span className="ml-1.5 text-[11px] opacity-70">{n.classes} cls</span>}
-                  </button>
+                  <div key={t} className={`flex items-center gap-3 px-3.5 py-2.5 ${i > 0 ? 'border-t border-rowline' : ''}`}>
+                    <Switch
+                      on={!isOff}
+                      onFlip={() => setOff(isOff ? off.filter((x) => x !== t) : [...off, t])}
+                      label={`${t} tracked`}
+                    />
+                    <div className="min-w-0">
+                      <div className={`text-[13px] font-semibold ${isOff ? 'text-faint' : ''}`}>{t}</div>
+                      <div className="text-[11px] text-faint">
+                        {n ? `${n.classes} classes · ${Number(n.rounds).toLocaleString()} rounds` : 'No classes yet'}
+                      </div>
+                    </div>
+                    <span className={`ml-auto text-[11px] font-bold ${isOff ? 'text-blood' : 'text-moss'}`}>
+                      {isOff ? 'OFF' : 'ON'}
+                    </span>
+                  </div>
                 );
               })}
             </div>

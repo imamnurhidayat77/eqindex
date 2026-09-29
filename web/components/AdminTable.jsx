@@ -7,6 +7,7 @@ import Dropdown from './Dropdown';
 import Modal, { ConfirmDialog } from './Modal';
 import { Pagination } from './list-controls';
 import { TableEmpty } from './EmptyState';
+import Switch, { LabeledSwitch } from './Switch';
 
 // Generic admin CRUD table.
 //   base: 'horses'|'riders'|'events'|'series' (drives /admin/<base> endpoints)
@@ -105,13 +106,15 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
     const isOn = t.on === true && t.off === false ? row[t.field] !== false : row[t.field] === t.on;
     const label = isOn ? (t.onLabel || 'ON') : (t.offLabel || 'OFF');
     return (
-      <button onClick={() => flip(row, col)} disabled={busyId === row[idKey]}
-        aria-pressed={isOn} title={isOn ? 'Click to switch off' : 'Click to switch on'}
-        className={`text-[11px] font-bold rounded-md px-2 py-[3px] border cursor-pointer disabled:opacity-40 disabled:cursor-wait transition-colors ${
-          isOn ? 'bg-greenbg text-moss border-moss/30 hover:border-moss/70' : 'bg-redbg text-blood border-blood/40 hover:border-blood/70'
-        }`}>
-        {busyId === row[idKey] ? '…' : label}
-      </button>
+      <LabeledSwitch
+        on={isOn}
+        onFlip={() => flip(row, col)}
+        label={`${typeof col.label === 'string' ? col.label : 'Tracked'} — ${label}`}
+        disabled={busyId === row[idKey]}
+        size="sm"
+        onText={t.onLabel || 'ON'}
+        offText={t.offLabel || 'OFF'}
+      />
     );
   };
   function startEdit(row) {
@@ -184,11 +187,10 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
     if (fld.bool) {
       const on = form[fld.k] ?? true;
       return (
-        <button type="button" role="switch" aria-checked={!!on} aria-label={fld.label}
-          onClick={() => setForm({ ...form, [fld.k]: !on })}
-          className={`w-10 h-[22px] rounded-full shrink-0 transition-colors ${on ? 'bg-moss' : 'bg-barbg'}`}>
-          <span className={`block w-[18px] h-[18px] rounded-full bg-white mt-[2px] transition-all ${on ? 'ml-[20px]' : 'ml-[2px]'}`} />
-        </button>
+        <span className="inline-flex items-center gap-2.5 py-1">
+          <Switch on={!!on} onFlip={() => setForm({ ...form, [fld.k]: !on })} label={fld.label} />
+          <span className={`text-[12px] font-bold ${on ? 'text-moss' : 'text-faint'}`}>{on ? 'ON' : 'OFF'}</span>
+        </span>
       );
     }
     if (fld.options) {

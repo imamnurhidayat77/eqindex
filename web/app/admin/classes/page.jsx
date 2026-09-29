@@ -4,6 +4,7 @@ import { API } from '../../../lib/api';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP } from '../../../lib/tokens';
 import { TableEmpty } from '../../../components/EmptyState';
 import { Pagination } from '../../../components/list-controls';
+import { LabeledSwitch } from '../../../components/Switch';
 
 // Per-class on/off switches. Switched-off classes stay in the DB (audit trail,
 // profiles keep raw history) but are excluded from rankings, trends and every
@@ -86,12 +87,13 @@ export default function AdminClasses() {
                   <td className={`${TD} ${NUM} text-muted`}>{r.height_cm ? `${r.height_cm}cm` : '—'}</td>
                   <td className={`${TD} ${NUM} text-muted`}>{r.round_count}</td>
                   <td className={TD}>
-                    <button onClick={() => flip(r)} disabled={busyId === r.id}
-                      aria-pressed={on} title={on ? 'Switch off (keeps data, excludes from aggregates)' : 'Switch back on'}
-                      className={`text-[11px] font-bold rounded-md px-2 py-[3px] border disabled:opacity-40 ${
-                        on ? 'bg-greenbg text-moss border-moss/30' : 'bg-redbg text-blood border-blood/40'}`}>
-                      {busyId === r.id ? '…' : on ? 'ON' : 'OFF'}
-                    </button>
+                    <LabeledSwitch
+                      on={on}
+                      onFlip={() => flip(r)}
+                      label={`${r.name} tracked`}
+                      disabled={busyId === r.id}
+                      size="sm"
+                    />
                   </td>
                 </tr>
               );

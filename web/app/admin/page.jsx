@@ -1,10 +1,41 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { API } from '../../lib/api';
-import { CARD, EMPTY, H1, SUB, LINK, badge, BADGE } from '../../lib/tokens';
+import { CARD, EMPTY, H1, SUB, LINK } from '../../lib/tokens';
 import AdminCharts from '../../components/AdminCharts';
 
 export const dynamic = 'force-dynamic';
+
+// KPI cards link to the admin manage pages (not the public site).
+const KPIS = [
+  ['Horses', 'horses', '/admin/horses', 'text-gold'],
+  ['Riders', 'riders', '/admin/riders', 'text-sky'],
+  ['Events', 'events', '/admin/events', 'text-moss'],
+  ['Rounds', 'rounds', '/admin/classes', 'text-body'],
+];
+
+const GROUPS = [
+  ['Manage', [
+    ['⇪', 'Import CSV results', 'Organiser upload with preview', '/admin/import', false],
+    ['＋', 'Add single result', 'Manual entry, live points preview', '/admin/results/add', false],
+    ['♞', 'Horses', 'Profiles, pedigrees & visibility', '/admin/horses', false],
+    ['◉', 'Riders', 'Regions, categories & visibility', '/admin/riders', false],
+    ['▦', 'Events', 'Details & on/off switch', '/admin/events', false],
+    ['◫', 'Classes', 'Per-class tracking switches', '/admin/classes', false],
+  ]],
+  ['Curate', [
+    ['★', 'Series', 'Qual rules & official labelling', '/admin/series', false],
+    ['◐', 'Naming review', 'Ambiguous names awaiting decision', '/admin/review', 'pendingReview'],
+    ['✔', 'Rider claims', 'Ownership claims awaiting approval', '/admin/claims', 'pendingClaims'],
+    ['✉', 'Corrections inbox', 'Public reports awaiting triage', '/admin/corrections', false],
+  ]],
+  ['System', [
+    ['●', 'Users', 'Roles and session control', '/admin/users', 'users'],
+    ['▣', 'Data tools', 'Backup export & danger-zone wipe', '/admin/data', false],
+    ['☰', 'Audit log', 'Every change, who and when', '/admin/activity', false],
+    ['⚙', 'Settings', 'Password, sessions & workspace', '/admin/settings', false],
+  ]],
+];
 
 export default async function AdminOverview() {
   const token = cookies().get('eq_session')?.value;
@@ -26,82 +57,92 @@ export default async function AdminOverview() {
     return <section className={CARD}><p className={EMPTY}>Overview unavailable.</p></section>;
   }
   const c = d.counts;
-  const stats = [
-    ['Horses', c.horses, '/horses', 'text-gold'],
-    ['Riders', c.riders, '/riders', 'text-sky'],
-    ['Events', c.events, '/events', 'text-moss'],
-    ['Rounds', c.rounds, '/analytics', 'text-muted'],
-    ['Users', c.users, null, 'text-muted'],
-    ['Review pending', c.pendingReview, '/admin/review', c.pendingReview ? 'text-blood' : 'text-moss'],
-    ['Claims pending', c.pendingClaims, '/admin/claims', c.pendingClaims ? 'text-blood' : 'text-moss'],
-  ];
-  const groups = [
-    ['Manage', [
-      ['Import CSV results', 'Weekly organiser upload with preview', '/admin/import', 'gold'],
-      ['Add single result', 'Manual entry with live points preview', '/admin/results/add', null],
-      ['Horses', 'Edit profiles, pedigrees, photos & visibility', '/admin/horses', null],
-      ['Riders', 'Regions, series categories, bios & visibility', '/admin/riders', null],
-      ['Events', 'Details, on/off switch and cascade delete', '/admin/events', null],
-      ['Classes', 'Per-class tracking switches', '/admin/classes', null],
-      ['Series', 'Qual rules and official labelling', '/admin/series', null],
-    ]],
-    ['Curate', [
-      [`Naming review${c.pendingReview ? ` (${c.pendingReview})` : ''}`, 'Ambiguous names awaiting decision', '/admin/review', c.pendingReview ? 'gold' : null],
-      [`Rider claims${c.pendingClaims ? ` (${c.pendingClaims})` : ''}`, 'Ownership claims awaiting approval', '/admin/claims', c.pendingClaims ? 'gold' : null],
-      ['Corrections inbox', 'Public reports awaiting triage', '/admin/corrections', null],
-    ]],
-    ['System', [
-      ['Users', 'Roles and session control', '/admin/users', null],
-      ['Data tools', 'Backup export and danger-zone wipe', '/admin/data', null],
-      ['Audit log', 'Every material change, who and when', '/admin/activity', null],
-      ['Settings', 'Password, sessions and workspace', '/admin/settings', null],
-    ]],
-  ];
   const queueTotal = (c.pendingReview || 0) + (c.pendingClaims || 0);
+  const imp = d.lastImport;
+  const impFailed = imp && Number(imp.rows_failed) > 0;
+  const queueBadge = (key) => {
+    const n = c[key];
+    if (!n) return <span className="text-[11px] text-faint">0</span>;
+    return <span className="bg-redbg text-blood text-[10px] font-bold rounded-full min-w-[20px] h-5 inline-flex items-center justify-center px-1.5">{n}</span>;
+  };
   return (
     <>
       <h1 className={H1}>Admin overview</h1>
       <p className={SUB}>System health, queues and recent activity at a glance.</p>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        {stats.map(([l, v, href, cls]) => (
-          <div key={l} className="bg-card border border-line rounded p-4">
-            <div className="text-[11px] text-muted tracking-[0.4px] uppercase">{l}</div>
-            <div className={`text-[28px] font-extrabold mt-1 ${cls || ''}`}>{v}</div>
-            {href && <Link href={href} className={LINK} style={{ fontSize: 12 }}>Open →</Link>}
-          </div>
-        ))}
-      </div>
-      {daily && <AdminCharts rows={daily.data} summary={daily.summary} />}
-      {d.lastImport && (
-        <section className={CARD}>
-          <span className={badge(BADGE.green)}>Last import</span>
-          <span className="ml-2 text-sm text-muted">
-            {(d.lastImport.created_at || '').slice(0, 16).replace('T', ' ')} · {d.lastImport.rows_ok} ok · {d.lastImport.rows_failed} failed
-          </span>
-        </section>
-      )}
-      {queueTotal > 0 && (        <section className="rounded border border-gold/50 bg-goldbg/20 px-5 py-4 mb-6 flex flex-wrap items-center gap-x-5 gap-y-2">
+
+      {queueTotal > 0 && (
+        <section className="rounded border border-gold/50 bg-goldbg/20 px-5 py-3.5 mb-5 flex flex-wrap items-center gap-x-5 gap-y-2">
           <span className="text-gold text-sm font-bold whitespace-nowrap">● {queueTotal} item{queueTotal === 1 ? '' : 's'} need{queueTotal === 1 ? 's' : ''} a decision</span>
           {!!c.pendingReview && <Link href="/admin/review" className={LINK} style={{ fontSize: 13 }}>Naming review ({c.pendingReview}) →</Link>}
           {!!c.pendingClaims && <Link href="/admin/claims" className={LINK} style={{ fontSize: 13 }}>Rider claims ({c.pendingClaims}) →</Link>}
         </section>
       )}
-      <div className="grid md:grid-cols-3 gap-5 items-start">
-        {groups.map(([g, items]) => (
-          <section key={g} className={CARD} style={{ marginBottom: 0 }}>
-            <h2 className="text-[15px] font-bold mb-2">{g}</h2>
-            <div className="flex flex-col gap-2">
-              {items.map(([t, s, href, hot]) => (
-                <Link key={href} href={href}
-                  className={`rounded border p-3 no-underline transition-colors ${hot ? 'border-gold/60 hover:bg-goldbg/40' : 'border-line hover:border-faint'}`}>
-                  <div className={`text-[13.5px] font-bold ${hot ? 'text-gold' : 'text-white'}`}>{t} →</div>
-                  <div className="text-[12px] text-muted mt-0.5">{s}</div>
+
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
+        {KPIS.map(([l, k, href, cls]) => (
+          <Link key={l} href={href} className="bg-card border border-line rounded p-4 no-underline hover:border-faint transition-colors block">
+            <div className="text-[11px] text-muted tracking-[0.4px] uppercase">{l}</div>
+            <div className={`text-[28px] font-extrabold mt-1 tabular-nums ${cls || ''}`}>{(c[k] ?? 0).toLocaleString()}</div>
+          </Link>
+        ))}
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[2fr_1fr] items-start mb-5">
+        <div className="min-w-0">
+          {daily ? <AdminCharts rows={daily.data} summary={daily.summary} /> : null}
+        </div>
+        <section className={CARD} style={{ marginBottom: 0 }}>
+          <h2 className="text-[15px] font-bold mb-3">Needs attention</h2>
+          <div className="flex flex-col">
+            {[
+              ['Naming review', c.pendingReview, '/admin/review', 'Ambiguous names'],
+              ['Rider claims', c.pendingClaims, '/admin/claims', 'Ownership approvals'],
+            ].map(([t, n, href, sub]) => (
+              <Link key={href} href={href} className="flex items-center gap-3 py-2.5 border-b border-rowline no-underline group">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${n ? 'bg-blood' : 'bg-moss'}`} />
+                <span className="min-w-0">
+                  <span className="block text-[13.5px] font-bold text-white group-hover:text-gold">{t}</span>
+                  <span className="block text-[12px] text-muted">{sub}</span>
+                </span>
+                <span className="ml-auto">{queueBadge(t === 'Naming review' ? 'pendingReview' : 'pendingClaims')}</span>
+              </Link>
+            ))}
+            <div className="flex items-center gap-3 py-2.5">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${!imp ? 'bg-barbg' : impFailed ? 'bg-blood' : 'bg-moss'}`} />
+              <span className="min-w-0">
+                <span className="block text-[13.5px] font-bold text-white">Last import</span>
+                <span className={`block text-[12px] ${impFailed ? 'text-blood font-semibold' : 'text-muted'}`}>
+                  {!imp ? 'No imports yet'
+                    : `${(imp.created_at || '').slice(0, 16).replace('T', ' ')} · ${imp.rows_ok} ok${impFailed ? ` · ${imp.rows_failed} failed` : ''}`}
+                </span>
+              </span>
+              <Link href="/admin/import" className={`${LINK} ml-auto shrink-0`} style={{ fontSize: 12 }}>Open →</Link>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section className={CARD}>
+        <h2 className="text-[15px] font-bold mb-1">Console</h2>
+        <div className="grid md:grid-cols-3 gap-x-8">
+          {GROUPS.map(([g, items]) => (
+            <div key={g}>
+              <div className="pt-2 pb-1 text-[10px] uppercase tracking-[0.8px] text-faint font-bold">{g}</div>
+              {items.map(([icon, t, s, href, countKey]) => (
+                <Link key={href} href={href} className="flex items-center gap-3 py-2 border-b border-rowline/60 last:border-0 no-underline group">
+                  <span className="w-4 text-center text-[13px] text-faint group-hover:text-gold shrink-0">{icon}</span>
+                  <span className="min-w-0">
+                    <span className="block text-[13.5px] font-bold text-white group-hover:text-gold leading-tight">{t}</span>
+                    <span className="block text-[12px] text-muted leading-snug">{s}</span>
+                  </span>
+                  {countKey && <span className="ml-auto shrink-0">{countKey === 'users' ? <span className="text-[11px] text-faint tabular-nums">{c.users}</span> : queueBadge(countKey)}</span>}
                 </Link>
               ))}
             </div>
-          </section>
-        ))}
-      </div>
+          ))}
+        </div>
+      </section>
+
       <section className={CARD}>
         <h2 className="text-[15px] font-bold mb-2">Recent activity</h2>
         {d.recent.length ? d.recent.map((r, i) => (

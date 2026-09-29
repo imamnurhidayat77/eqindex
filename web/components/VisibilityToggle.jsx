@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useAuth } from './auth';
+import Switch from './Switch';
 
 // Privacy opt-out control (migration 031).
 // - Everyone sees the 🔒 badge when the entity is anonymous.
@@ -27,24 +28,27 @@ export default function VisibilityToggle({ kind, id, ownerUserId, initial = 'pub
     } catch (e) { setErr(e.message); }
     setBusy(false);
   }
+  const isPublic = vis !== 'anonymous';
   return (
     <span className="inline-flex flex-col gap-1.5">
       <span className="inline-flex items-center gap-2">
-        {vis === 'anonymous' && (
+        {!isPublic && (
           <span className="inline-block text-[11px] font-bold rounded-full px-2 py-[3px] border border-gold/50 text-gold"
             title="Name withheld on request — results still count toward rankings">
             🔒 Private
           </span>
         )}
         {canEdit && (
-          <button
-            onClick={() => set(vis === 'anonymous' ? 'public' : 'anonymous')}
-            disabled={busy}
-            title={vis === 'anonymous' ? 'Show name publicly' : 'Hide name (results still count)'}
-            className="text-[11px] font-semibold rounded-full px-2 py-[3px] border border-line text-muted hover:text-white hover:border-faint bg-none cursor-pointer disabled:opacity-60 disabled:cursor-wait"
-          >
-            {busy ? 'Saving…' : vis === 'anonymous' ? 'Show name' : 'Hide name'}
-          </button>
+          <>
+            <Switch
+              on={isPublic} onFlip={() => set(isPublic ? 'anonymous' : 'public')}
+              label={isPublic ? 'Name shown publicly (switch to hide)' : 'Name hidden (switch to show)'}
+              disabled={busy} size="sm"
+            />
+            <span className={`text-[11px] font-bold ${isPublic ? 'text-moss' : 'text-faint'}`}>
+              {busy ? 'Saving…' : isPublic ? 'Public' : 'Hidden'}
+            </span>
+          </>
         )}
       </span>
       {err && <span className="text-[11px] text-blood">{err}</span>}
