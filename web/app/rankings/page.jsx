@@ -73,7 +73,11 @@ export default async function Rankings({ searchParams }) {
   const seasonParam = q('season');
   const region = q('region') || '';
   const heightQ = q('height') || '';
-  const minRounds = q('min_rounds') || '';
+  // Default Min Rounds 3 inside a height band (a single warm-up round from an
+  // elite rider must not top the group); explicit ?min_rounds= (even empty
+  // for "Any") always wins over the default.
+  const minRoundsRaw = q('min_rounds');
+  const minRounds = minRoundsRaw !== undefined ? minRoundsRaw : (heightQ ? '3' : '');
   const rCat = q('series') || '';
   const search = (q('q') || '').toLowerCase();
   const byRaw = q('by');
@@ -122,10 +126,10 @@ export default async function Rankings({ searchParams }) {
   if (height_max) api.height_max = height_max;
   const qs = new URLSearchParams(Object.entries(api).filter(([, v]) => v !== '' && v != null)).toString();
   const Q = qs ? `?${qs}` : '';
-  // No implicit minimum: min_starts is only sent when the user picks it.
-  // (The old default of 5 emptied the horse board — the circuit maxes out at
-  // ~4 starts/horse, while riders accumulate rounds across horses.)
-  // EI rating is career-based: slice filters don't apply; the API floors it at 3.
+  // Min Rounds defaults to 3 inside a height band (see minRounds above);
+  // "Any" in the chip opts back out explicitly.
+  // EI rating is career-based except the height band, which re-rates within
+  // the band (proven max + DI stay global); the API floors it at 3.
   const metricQs = by === 'eq' ? '' : by === 'points' ? `&metric=points&window=${window}` : '&metric=ei';
 
   let horses = { data: [] }, riders = { data: [] }, classes = { data: [] }, heights = { data: [] }, movH = { data: {} }, movR = { data: {} };
@@ -328,7 +332,7 @@ export default async function Rankings({ searchParams }) {
           <Link key={v} href={baseQ({ window: v === 'all' ? '' : v, ...(by !== 'points' ? { by: 'points' } : {}) })} className={`text-xs rounded-full px-3 py-[6px] border no-underline ${window === v ? 'bg-goldbg border-gold text-gold' : 'bg-card2 border-line text-muted'}`}>{l}</Link>
         ))}
         {by === 'points' && <span className="text-[11px] text-faint">Points: 12/9/7/6/5/4/3/2/1/1 × class multiplier ({winLabel})</span>}
-        {by === 'eqindex' && <span className="text-[11px] text-faint">EQIndex Rating 0–2000 (∅1000): placing + clear − faults, weighted by height, difficulty, field, handicap &amp; recency. Career-based; min 3 rounds, &lt;15 provisional.</span>}
+        {by === 'eqindex' && <span className="text-[11px] text-faint">EQIndex Rating 0–2000 (∅1000): placing + clear − faults, weighted by height, difficulty, field, handicap &amp; recency. Height band re-rates within the band; min 3 rounds, &lt;15 provisional.</span>}
       </div>
 
       {/* Horse Rankings */}

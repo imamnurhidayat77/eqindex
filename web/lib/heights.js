@@ -3,6 +3,8 @@
 // NOTE: keep this module free of 'use client' so server components can import it.
 export const HEIGHT_BANDS = [
   { v: '', label: 'All heights' },
+  { v: '-100', label: '<1.00m' },
+  { v: '100-110', label: '1.00m – 1.10m' },
   { v: '110-120', label: '1.10m – 1.20m' },
   { v: '120-130', label: '1.20m – 1.30m' },
   { v: '130-140', label: '1.30m – 1.40m' },

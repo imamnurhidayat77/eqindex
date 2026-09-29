@@ -121,6 +121,13 @@ function roundFilters(q) {
   return { clause: conds.length ? 'WHERE ' + conds.join(' AND ') : '', params };
 }
 
+// Numeric query param or null (blank/garbage never reach SQL as NaN).
+function numOrNull(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : n;
+}
+
 const asyncH = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 app.get('/health', asyncH(async (req, res) => {
@@ -137,6 +144,16 @@ app.get('/rankings/horses', asyncH(async (req, res) => {
   // metric=ei accepted as legacy alias.
   if (req.query.metric === 'eqindex' || req.query.metric === 'ei') {
     const minS = req.query.min_starts ? minStarts : 3;
+    // Height band re-rates within the band (031); career proven/DI stay global.
+    const hMin = numOrNull(req.query.height_min), hMax = numOrNull(req.query.height_max);
+    if (hMin !== null || hMax !== null) {
+      const { rows } = await pool.query(
+        `SELECT * FROM horse_eqindex_band($1,$2) WHERE starts >= $3
+         ORDER BY rating DESC, wins DESC, starts DESC LIMIT $4`,
+        [hMin, hMax, minS, limit]
+      );
+      return res.json({ data: rows, metric: 'eqindex', band: { height_min: hMin, height_max: hMax } });
+    }
     const { rows } = await pool.query(
       `SELECT e.horse_id, e.horse, e.horse_slug, e.starts, e.eff_starts,
          e.raw_avg, e.shrunk_avg, e.rating, e.provisional, e.age_adj,
@@ -189,6 +206,18 @@ app.get('/rankings/riders', asyncH(async (req, res) => {
   const cat = req.query.series || '';
   if (req.query.metric === 'eqindex' || req.query.metric === 'ei') {
     const minS = req.query.min_starts ? minStarts : 3;
+    const hMin = numOrNull(req.query.height_min), hMax = numOrNull(req.query.height_max);
+    if (hMin !== null || hMax !== null) {
+      const conds = ['starts >= $3'], params = [hMin, hMax, minS];
+      if (cat) { params.push(cat); conds.push(`series_category = $${params.length}`); }
+      params.push(limit);
+      const { rows } = await pool.query(
+        `SELECT * FROM rider_eqindex_band($1,$2) WHERE ${conds.join(' AND ')}
+         ORDER BY rating DESC, wins DESC, starts DESC LIMIT $${params.length}`,
+        params
+      );
+      return res.json({ data: rows, metric: 'eqindex', band: { height_min: hMin, height_max: hMax } });
+    }
     const catFilter = cat ? ` AND e.series_category = $3` : '';
     const { rows } = await pool.query(
       `SELECT e.rider_id, e.rider, e.rider_slug, e.series_category, e.starts,
