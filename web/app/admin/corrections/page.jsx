@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
-import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, INP, BTN_PRIMARY, badge, BADGE } from '../../../lib/tokens';
+import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
 
 const STATUSES = ['open', 'in_review', 'resolved', 'rejected'];
 const stBadge = (s) => s === 'open' ? badge(BADGE.goldfill) : s === 'in_review' ? badge(BADGE.blue)
@@ -45,7 +45,7 @@ export default function AdminCorrections() {
         ))}
       </div>
       {rows.map((r) => (
-        <section className={CARD} key={r.id}>
+        <section className={`${CARD} ${r.status === 'open' ? 'border-l-2 !border-l-gold/70' : ''}`} key={r.id}>
           <div className="flex flex-wrap gap-2 items-center mb-1.5">
             <b>{r.subject}</b><span className={stBadge(r.status)}>{r.status.replace('_', ' ')}</span>
             <span className="text-faint text-[12px]">{r.name} · {r.email} · {(r.created_at || '').slice(0, 10)}</span>
@@ -58,7 +58,7 @@ export default function AdminCorrections() {
                 <input className={INP} value={note[r.id] || ''} onChange={(e) => setNote({ ...note, [r.id]: e.target.value })} placeholder="optional" /></label>
               {status === 'open' && <button className={BTN_PRIMARY} onClick={() => decide(r.id, 'in_review')}>Take up</button>}
               <button className={BTN_PRIMARY} onClick={() => decide(r.id, 'resolved')}>Resolve</button>
-              <button className="text-blood text-sm" onClick={() => decide(r.id, 'rejected')}>Reject</button>
+              <button className={BTN_DANGER} onClick={() => decide(r.id, 'rejected')}>Reject</button>
             </div>
           )}
           {r.resolved_note && <p className="text-moss text-[13px] mt-2">Resolution: {r.resolved_note}</p>}

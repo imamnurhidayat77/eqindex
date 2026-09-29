@@ -9,7 +9,7 @@ export default function ManageRiders() {
       columns={[
         { k: 'name', label: 'Rider' }, { k: 'region', label: 'Region' },
         { k: 'series_category', label: 'Series' }, { k: 'starts', label: 'Starts', num: true },
-        { k: 'visibility', label: 'Visibility' },
+        { k: 'visibility', label: 'Visibility', toggle: { field: 'visibility', on: 'public', off: 'anonymous', onLabel: 'PUBLIC', offLabel: 'HIDDEN' } },
       ]}
       fields={[
         { k: 'name', label: 'Name' }, { k: 'region', label: 'Region' },

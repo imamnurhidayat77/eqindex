@@ -1430,11 +1430,50 @@ app.get('/admin/activity', needRole('ADMIN'), asyncH(async (req, res) => {
   const conds = [], params = [];
   if (req.query.action) { params.push(req.query.action); conds.push(`action = $${params.length}`); }
   if (req.query.entity) { params.push(req.query.entity); conds.push(`entity_type = $${params.length}`); }
+  if (req.query.actor) { params.push(`%${req.query.actor}%`); conds.push(`actor ILIKE $${params.length}`); }
+  if (req.query.since && /^\d{4}-\d{2}-\d{2}$/.test(req.query.since)) { params.push(req.query.since); conds.push(`created_at >= $${params.length}::date`); }
+  if (req.query.until && /^\d{4}-\d{2}-\d{2}$/.test(req.query.until)) { params.push(req.query.until); conds.push(`created_at < ($${params.length}::date + INTERVAL '1 day')`); }
   params.push(limit);
   const { rows } = await pool.query(
     `SELECT * FROM entity_audit ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
      ORDER BY created_at DESC LIMIT $${params.length}`, params);
   res.json({ data: rows });
+}));
+
+// Distinct audit actions for the admin filter dropdown.
+app.get('/admin/activity/actions', needRole('ADMIN'), asyncH(async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT action, COUNT(*)::INT AS n FROM entity_audit GROUP BY action ORDER BY n DESC LIMIT 100');
+  res.json({ data: rows });
+}));
+
+// Daily platform stats for the admin overview charts: competition rounds
+// (by class date) + imported rows (by log date) over the trailing window.
+app.get('/admin/stats/daily', needRole('ADMIN'), asyncH(async (req, res) => {
+  const days = Math.min(Math.max(parseInt(req.query.days || '90', 10) || 90, 7), 365);
+  const { rows } = await pool.query(
+    `WITH cal AS (
+       SELECT (CURRENT_DATE - (s || ' days')::INTERVAL)::DATE AS day
+       FROM generate_series(0, $1 - 1) s
+     ),
+     r AS (
+       SELECT c.class_date AS day, COUNT(*)::INT AS rounds
+       FROM round_results rr JOIN classes c ON c.id = rr.class_id
+       WHERE c.class_date >= CURRENT_DATE - ($1 - 1)
+       GROUP BY 1
+     ),
+     im AS (
+       SELECT created_at::DATE AS day, SUM(rows_ok)::INT AS imported
+       FROM import_logs
+       WHERE created_at >= CURRENT_DATE - ($1 - 1)
+       GROUP BY 1
+     )
+     SELECT cal.day, COALESCE(r.rounds, 0) AS rounds, COALESCE(im.imported, 0) AS imported
+     FROM cal LEFT JOIN r ON r.day = cal.day LEFT JOIN im ON im.day = cal.day
+     ORDER BY cal.day`, [days]);
+  const totalRounds = rows.reduce((t, x) => t + x.rounds, 0);
+  const totalImported = rows.reduce((t, x) => t + x.imported, 0);
+  res.json({ data: rows, summary: { days, totalRounds, totalImported } });
 }));
 
 // ---- Weather cache (measured service data; estimates labelled) ----

@@ -52,7 +52,7 @@ export default function ReviewQueue() {
       {err && <section className={CARD}><p className="text-blood text-sm">{err}</p></section>}
       {loading && <section className={CARD}><p className={EMPTY}>Loading queue…</p></section>}
       {items.map((q) => (
-        <section className={CARD} key={q.id}>
+        <section className={`${CARD} border-l-2 !border-l-gold/70`} key={q.id}>
           <h2 className={H2}>{q.raw_name} <span className={MUT}>({q.kind}, from {q.source})</span></h2>
           {q.suggested_match_name && (
             <p className={MUT}>Suggested match: <b className="text-body">{q.suggested_match_name}</b>{' '}

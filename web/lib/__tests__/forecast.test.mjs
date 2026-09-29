@@ -67,6 +67,9 @@ test('heights: shared vocabulary is sane', () => {
   assert.deepEqual(heightParams(''), {});
   assert.deepEqual(heightParams('130-140'), { height_min: '130', height_max: '140' });
   assert.deepEqual(heightParams('140-'), { height_min: '140' });
+  assert.deepEqual(heightParams('-100'), { height_max: '100' });
   assert.equal(heightLabel('130-140'), '1.30m – 1.40m');
-  assert.ok(HEIGHT_BANDS.length === 5);
+  assert.equal(heightLabel('-100'), '<1.00m');
+  assert.equal(heightLabel('100-110'), '1.00m – 1.10m');
+  assert.ok(HEIGHT_BANDS.length === 7);
 });

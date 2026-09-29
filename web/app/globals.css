@@ -75,6 +75,25 @@ pre code { display: block; padding: 12px 14px; overflow-x: auto; }
   .spinner { animation: none; border-top-color: currentColor; opacity: 0.7; }
 }
 
+/* ---------- admin table density ---------- */
+.tbl-compact td { padding-top: 6px; padding-bottom: 6px; font-size: 13px; }
+.tbl-compact th { padding-top: 6px; padding-bottom: 6px; }
+
+/* ---------- modal entrance ---------- */
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.modal-pop { animation: modal-in 0.18s ease-out; }
+.modal-fade { animation: fade-in 0.15s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .modal-pop, .modal-fade { animation: none; }
+}
+
 /* ---------- skeleton shimmer (loading states) ---------- */
 .sk {
   position: relative;

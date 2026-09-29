@@ -9,7 +9,7 @@ export default function ManageHorses() {
       columns={[
         { k: 'name', label: 'Horse' }, { k: 'breed', label: 'Breed' },
         { k: 'sire', label: 'Sire' }, { k: 'starts', label: 'Starts', num: true },
-        { k: 'visibility', label: 'Visibility' },
+        { k: 'visibility', label: 'Visibility', toggle: { field: 'visibility', on: 'public', off: 'anonymous', onLabel: 'PUBLIC', offLabel: 'HIDDEN' } },
       ]}
       fields={[
         { k: 'name', label: 'Name' }, { k: 'breed', label: 'Breed' },

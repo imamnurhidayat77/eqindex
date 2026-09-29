@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { API } from '../lib/api';
+import CommandPalette, { useCommandPalette } from './CommandPalette';
 
 const GROUPS = [
   { title: 'Manage', items: [
@@ -13,17 +14,17 @@ const GROUPS = [
     ['/admin/riders', '◉', 'Riders'],
     ['/admin/events', '▦', 'Events'],
     ['/admin/classes', '◫', 'Classes'],
-    ['/admin/series', '🏆', 'Series'],
+    ['/admin/series', '★', 'Series'],
   ]},
   { title: 'Curate', items: [
-    ['/admin/review', '🔎', 'Naming Review', 'review'],
+    ['/admin/review', '◐', 'Naming Review', 'review'],
     ['/admin/claims', '✔', 'Rider Claims', 'claims'],
     ['/admin/corrections', '✉', 'Corrections', 'corrections'],
   ]},
   { title: 'System', items: [
-    ['/admin/users', '👥', 'Users'],
-    ['/admin/activity', '📜', 'Audit Log'],
-    ['/admin/data', '💾', 'Data Tools'],
+    ['/admin/users', '●', 'Users'],
+    ['/admin/activity', '☰', 'Audit Log'],
+    ['/admin/data', '▣', 'Data Tools'],
     ['/admin/settings', '⚙', 'Settings'],
   ]},
 ];
@@ -31,6 +32,7 @@ const GROUPS = [
 export default function AdminNav({ user }) {
   const pathname = usePathname() || '/admin';
   const [counts, setCounts] = useState({});
+  const [palOpen, setPalOpen] = useCommandPalette();
   useEffect(() => {
     (async () => {
       try {
@@ -55,6 +57,13 @@ export default function AdminNav({ user }) {
           <div className="text-[13px] font-bold text-white leading-tight">Admin Console</div>
           <div className="text-[11px] text-muted truncate">{user.name} · {user.role}</div>
         </div>
+      </div>
+      <div className="px-4 pb-2">
+        <button onClick={() => setPalOpen(true)}
+          className="flex w-full items-center gap-2 rounded border border-line bg-ink px-2.5 py-[7px] text-[12px] text-faint hover:text-muted hover:border-faint cursor-pointer transition-colors">
+          <span aria-hidden="true">⌕</span> Jump to…
+          <kbd className="ml-auto rounded border border-line bg-card2 px-1.5 py-px text-[10px] text-muted font-sans">⌘K</kbd>
+        </button>
       </div>
       <nav className="p-2 flex lg:flex-col gap-0.5 overflow-x-auto">
         {GROUPS.map((g) => (
@@ -82,6 +91,7 @@ export default function AdminNav({ user }) {
       <div className="p-2 border-t border-rowline">
         <Link href="/" className="flex items-center gap-2.5 rounded px-2.5 py-2 text-[13px] text-faint no-underline hover:text-white">← Back to site</Link>
       </div>
+      <CommandPalette open={palOpen} onClose={() => setPalOpen(false)} />
     </aside>
   );
 }
