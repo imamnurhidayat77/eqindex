@@ -7,6 +7,7 @@ import { AuthProvider } from '../components/auth';
 import UserMenu from '../components/UserMenu';
 
 export const metadata = { title: 'EQIndex — Horse Intelligence' };
+export const viewport = { width: 'device-width', initialScale: 1 };
 
 export default function RootLayout({ children }) {
   return (

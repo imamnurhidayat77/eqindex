@@ -71,7 +71,7 @@ export default function EventCarousel({ events, kind = 'results' }) {
   }
   return (
     <section className={CARD}>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <div className="text-[13px] font-bold">{upcoming ? 'Upcoming Events' : 'Latest Events'} <span className="text-faint font-semibold">· {upcoming ? 'soonest first' : 'newest first'}</span></div>
         <div className="flex items-center gap-1.5">
           <Link href="/events" className={`${LINK} text-[12px] mr-2`}>View all →</Link>

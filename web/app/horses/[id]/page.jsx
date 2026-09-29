@@ -119,9 +119,9 @@ export default async function HorseProfile({ params, searchParams }) {
       <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
         <section className="rounded border border-line bg-card p-5">
           <div className="flex items-start justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Equine Subject</div>
-              <div className="mt-1 text-[30px] font-extrabold leading-none">{h.name}</div>
+              <div className="mt-1 text-[30px] font-extrabold leading-none break-words">{h.name}</div>
               <div className="mt-2"><VisibilityToggle kind="horse" id={h.id || params.id} ownerUserId={h.owner_id} initial={h.visibility} /></div>
             </div>
             <div className="flex flex-col items-center">
@@ -285,7 +285,7 @@ export default async function HorseProfile({ params, searchParams }) {
               <span className={statusBadge(forecast.confidence === 'High' ? 'Active' : 'Stable')}>{forecast.confidence} confidence</span>
               <span className="text-[12px] text-faint">{forecast.periods} periods · {forecast.starts} rounds · slope {forecast.slope > 0 ? '+' : ''}{forecast.slope} EQ/mo</span>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
                 ['Projected EQ', String(forecast.eq)],
                 ['Projected Clear', `${forecast.clear}%`],
@@ -458,6 +458,7 @@ export default async function HorseProfile({ params, searchParams }) {
                   </div>
                 ))}
               </div>
+              <div className="overflow-x-auto">
               <table className="w-full border-collapse text-[13px]">
                 <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
                   <th className="border-b border-line px-2 py-2 font-semibold">Peer</th>
@@ -480,6 +481,7 @@ export default async function HorseProfile({ params, searchParams }) {
                   ))}
                 </tbody>
               </table>
+              </div>
             </>
           );
         })()}

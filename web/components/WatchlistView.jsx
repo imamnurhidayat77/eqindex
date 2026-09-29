@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { API, DEMO_USER } from '../lib/api';
 import { CARD, H2, LINK, NUM, SUB, TABLE, TD, TH } from '../lib/tokens';
+import Switch from './Switch';
 
 const TABS = [
   ['all', 'All'], ['horses', 'Horses'], ['riders', 'Riders'],
@@ -22,14 +23,7 @@ function eqCls(eq, rank) {
 }
 
 function Toggle({ on, onFlip, label }) {
-  return (
-    <button
-      role="switch" aria-checked={on} aria-label={label} onClick={onFlip}
-      className={`w-10 h-[22px] rounded-full shrink-0 transition-colors ${on ? 'bg-moss' : 'bg-barbg'}`}
-    >
-      <span className={`block w-[18px] h-[18px] rounded-full bg-white mt-[2px] transition-all ${on ? 'ml-[20px]' : 'ml-[2px]'}`} />
-    </button>
-  );
+  return <Switch on={on} onFlip={onFlip} label={label} />;
 }
 
 export default function WatchlistView({ horses, riders, combos, eventsTop, timeline, insights, recentCount, initialPrefs }) {
@@ -168,13 +162,15 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
 
       {/* tabs */}
       <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="max-w-full overflow-x-auto">
         <div className="inline-flex gap-1 bg-card border border-line rounded p-1">
           {TABS.map(([k, lbl]) => (
             <button key={k} onClick={() => setTab(k)}
-              className={`px-4 py-[7px] rounded-md text-[13px] ${tab === k ? 'bg-card2 text-gold font-semibold' : 'text-muted'}`}>
+              className={`px-4 py-[7px] rounded-md text-[13px] whitespace-nowrap ${tab === k ? 'bg-card2 text-gold font-semibold' : 'text-muted'}`}>
               {lbl}
             </button>
           ))}
+        </div>
         </div>
         <input
           value={wq} onChange={(e) => setWq(e.target.value)} placeholder="Filter watched…"
@@ -310,6 +306,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
               <h2 className={H2}>Tracked Events</h2>
               <p className={SUB}>Events featuring your watched horses and riders.</p>
               <section className={CARD}>
+                <div className="overflow-x-auto">
                 <table className={TABLE}>
                   <thead><tr>
                     <th className={TH}>Event</th><th className={TH}>Date</th>
@@ -337,6 +334,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                     ))}
                   </tbody>
                 </table>
+                </div>
               </section>
             </>
           )}

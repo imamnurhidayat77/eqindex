@@ -86,8 +86,8 @@ export default function Comparison() {
           </div>
         )}
         {cur && (
-          <div className="bg-card2 border border-line rounded px-4 py-3 flex justify-between items-center">
-            <b>{nameOf(type, cur)}</b>
+          <div className="bg-card2 border border-line rounded px-4 py-3 flex flex-wrap justify-between items-center gap-2">
+            <b className="min-w-0 break-words">{nameOf(type, cur)}</b>
             {eq !== null
               ? <span className="text-gold text-sm">EQ {eq}</span>
               : <span className="text-muted text-sm">{cur.round_count ?? '?'} rounds · {cur.venue || ''}</span>}
@@ -138,7 +138,7 @@ export default function Comparison() {
   return (
     <>
       <section className="bg-card border border-line rounded px-5 py-[18px] mb-6">
-        <div className="flex gap-2 bg-card2 rounded p-1 w-fit mb-5">
+        <div className="flex flex-wrap gap-2 bg-card2 rounded p-1 w-fit max-w-full mb-5">
           {MODES.map(([k, l]) => (
             <button key={k} onClick={() => setType(k)}
               className={`px-4 py-2 rounded-md text-sm font-semibold ${type === k ? 'border border-gold text-gold' : 'text-muted'}`}>
@@ -265,6 +265,7 @@ export default function Comparison() {
           <h2 className="text-[17px] font-bold mb-0.5">Performance Metrics Comparison</h2>
           <p className="text-muted text-sm mb-[18px]">Comprehensive metric evaluation and raw data delta analysis</p>
           <section className="bg-card border border-line rounded px-5 py-[18px] mb-6">
+            <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead><tr>
                 <th className="text-left text-[11px] uppercase tracking-[0.4px] text-muted font-semibold px-2 py-2.5 border-b border-line">Evaluation Metric</th>
@@ -283,6 +284,7 @@ export default function Comparison() {
                 ))}
               </tbody>
             </table>
+            </div>
           </section>
         </>
       )}

@@ -1,7 +1,7 @@
 // Shared Tailwind UI tokens — single source for repeated patterns.
 // Prefer these over hand-written classes so every page stays premium & consistent.
 export const CARD = 'bg-card border border-line rounded px-5 py-[18px] mb-6';
-export const H1 = 'font-display text-[28px] font-bold uppercase tracking-tight mb-1';
+export const H1 = 'font-display text-[24px] md:text-[28px] font-bold uppercase tracking-tight mb-1';
 export const SUB = 'text-muted text-sm mb-[18px]';
 export const H2 = 'font-display text-[17px] font-bold uppercase tracking-tight mb-0.5';
 export const H3 = 'font-display text-[13px] font-bold uppercase tracking-wide';

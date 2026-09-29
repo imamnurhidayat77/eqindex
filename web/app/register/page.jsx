@@ -93,7 +93,7 @@ export default function Register() {
           <h1 className="font-display text-[24px] font-bold uppercase tracking-tight">Create account</h1>
           <p className="text-muted text-sm mt-1 mb-5">Start tracking the circuit in under a minute.</p>
           <form onSubmit={submit} className="flex flex-col gap-3.5">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {ROLES.map(([v, t, d]) => (
                 <button type="button" key={v} onClick={() => setForm({ ...form, role: v })}
                   className={`rounded border p-2.5 text-left transition-colors ${form.role === v ? 'border-gold bg-goldbg' : 'border-line bg-card2 hover:border-faint'}`}>
