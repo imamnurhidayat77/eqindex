@@ -9,10 +9,11 @@ export const revalidate = 30;
 export default async function Landing({ searchParams }) {
   const sp = searchParams || {};
   const showN = (Array.isArray(sp?.n) ? sp.n[0] : sp?.n) === '12' ? 12 : 10;
-  const [horses, riders, events, series, circuit, classes, eiH, eiR] = await Promise.all([
+  const [horses, riders, events, upcomingEv, series, circuit, classes, eiH, eiR] = await Promise.all([
     getJSON('/rankings/horses?limit=200&metric=points').catch(() => ({ data: [] })),
     getJSON('/rankings/riders?limit=200&metric=points').catch(() => ({ data: [] })),
-    getJSON('/events?limit=100').catch(() => ({ data: [] })),
+    getJSON('/events?limit=100&finished=1').catch(() => ({ data: [] })),
+    getJSON('/events?limit=20&upcoming=1').catch(() => ({ data: [] })),
     getJSON('/series').catch(() => ({ data: [] })),
     getJSON('/trends/circuit').catch(() => ({ data: [] })),
     getJSON('/classes?limit=200').catch(() => ({ data: [] })),
@@ -23,7 +24,9 @@ export default async function Landing({ searchParams }) {
   const topR = (riders.data || []).slice(0, 5);
   const topRatedH = (eiH.data || [])[0] || null;
   const topRatedR = (eiR.data || [])[0] || null;
-  const evs = events.data || [];
+  const evs = (events.data || []).filter(
+    (e) => Number(e.class_count || 0) > 0 || Number(e.round_count || 0) > 0 || Number(e.combo_count || 0) > 0
+  );
   // per-event result status from its classes: all official → Official,
   // any provisional → Provisional, else Complete.
   const byEvent = {};
@@ -37,6 +40,10 @@ export default async function Landing({ searchParams }) {
     .sort((a, b) => new Date(b.date_start || 0) - new Date(a.date_start || 0))
     .slice(0, showN)
     .map((e) => ({ ...e, status: byEvent[e.name] || null }));
+  // Fixtures not yet started (soonest first) — no results yet.
+  const upcoming = [...(upcomingEv.data || [])]
+    .sort((a, b) => new Date(a.date_start || 0) - new Date(b.date_start || 0))
+    .slice(0, 8);
   const totalRounds = (horses.data || []).reduce((s, h) => s + Number(h.starts || 0), 0);
   const leader = topH[0] || null;
   const leadRider = topR[0] || null;
@@ -204,8 +211,16 @@ export default async function Landing({ searchParams }) {
           <Link href="/events" className={`${LINK} text-[12px] ml-1`}>All events →</Link>
         </div>
       </div>
-      <p className={SUB}>Newest competitions on the circuit.</p>
+      <p className={SUB}>Finished competitions with published results.</p>
       <EventCarousel events={latest} />
+
+      {/* ============ UPCOMING EVENTS ============ */}
+      <div className="flex items-baseline justify-between">
+        <h2 className={H2}>Upcoming Events</h2>
+        <Link href="/events" className={`${LINK} text-[12px] ml-1`}>Full calendar →</Link>
+      </div>
+      <p className={SUB}>Fixtures on the calendar — results appear here once published.</p>
+      <EventCarousel events={upcoming} kind="upcoming" />
 
       {/* ============ TRUST + CTA ============ */}
       <div className="grid gap-5 lg:grid-cols-2">

@@ -107,7 +107,7 @@ export default async function Rankings({ searchParams }) {
   // seasons first — default to latest (2026/27 mock season) when ?season absent
   let events = { data: [] };
   try {
-    events = await getJSON('/events?limit=100');
+    events = await getJSON('/events?limit=100&has_data=1');
   } catch {
     // API down — render empty shells
   }

@@ -4,6 +4,7 @@ import { eqScore, consistencyPts } from '../../../lib/eq';
 import { projectForm, recommendHeight } from '../../../lib/forecast';
 import { statusBadge } from '../../../lib/tokens';
 import WatchButton from '../../../components/WatchButton';
+import VisibilityToggle from '../../../components/VisibilityToggle';
 import TrainingPanel from '../../../components/TrainingPanel';
 import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
@@ -121,6 +122,7 @@ export default async function HorseProfile({ params, searchParams }) {
             <div>
               <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Equine Subject</div>
               <div className="mt-1 text-[30px] font-extrabold leading-none">{h.name}</div>
+              <div className="mt-2"><VisibilityToggle kind="horse" id={h.id || params.id} ownerUserId={h.owner_id} initial={h.visibility} /></div>
             </div>
             <div className="flex flex-col items-center">
               <div className="text-center">

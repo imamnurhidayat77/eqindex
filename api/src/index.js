@@ -4,6 +4,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const pool = require('./db');
+const privacy = require('./privacy');
 
 const app = express();
 app.use(cors({
@@ -77,6 +78,18 @@ app.use((req, res, next) => {
   }
   next();
 });
+// ---- Privacy opt-out (migration 033): mask opted-out names for non-admins.
+// Admins and /auth/* (own session data) bypass. Fail-open: pre-migration or
+// on DB error the body passes through unchanged (never break reads).
+app.use((req, res, next) => {
+  const orig = res.json.bind(res);
+  res.json = (body) => {
+    if (req.authUser && req.authUser.role === 'ADMIN') return orig(body);
+    if (req.path.startsWith('/auth/')) return orig(body);
+    return privacy.maskResponse(pool, body).then(orig).catch(() => orig(body));
+  };
+  next();
+});
 function bustCache(prefix) {
   for (const k of [...cacheStore.keys()]) {
     if (k === prefix || k.startsWith(prefix + '?') || k.startsWith(prefix + '/')) cacheStore.delete(k);
@@ -126,6 +139,48 @@ function numOrNull(v) {
   if (v === undefined || v === null || v === '') return null;
   const n = Number(v);
   return Number.isNaN(n) ? null : n;
+}
+
+// ---- Class visibility (migration 032): per-class switch (classes.is_active)
+// plus per-category kill list (admin_settings 'excluded_class_types').
+// Excluded classes stay in the DB but vanish from every aggregate.
+// The kill list is cached 60s — admin toggles apply within a minute on hot paths.
+let visCache = { t: 0, excluded: [] };
+async function excludedClassTypes() {
+  if (Date.now() - visCache.t < 60 * 1000) return visCache.excluded;
+  try {
+    const { rows } = await pool.query(
+      "SELECT value FROM admin_settings WHERE key = 'excluded_class_types'");
+    const v = JSON.parse(rows[0]?.value || '[]');
+    visCache = { t: Date.now(), excluded: Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [] };
+  } catch { /* keep last good (fail-open) */ }
+  return visCache.excluded;
+}
+function bustVisibility() { visCache.t = 0; }
+// SQL fragment for class visibility on a `classes c` join — interpolate only
+// (never a param: call sites have fixed numbering). Values come from the
+// validated admin kill list; single-quotes escaped defensively.
+async function visSql() {
+  const excl = await excludedClassTypes();
+  const list = excl.map((t) => `'${String(t).replace(/'/g, "''")}'`).join(',');
+  return `c.is_active IS NOT FALSE${list ? ` AND NOT (c.class_type = ANY (ARRAY[${list}]))` : ''}`;
+}
+// Same slice filters as roundFilters() plus class visibility. All call sites
+// join round_results rr + classes c, so the predicate can reference c directly.
+async function roundFiltersVis(q) {
+  const f = roundFilters(q);
+  const conds = f.clause ? [f.clause.replace(/^WHERE /, '')] : [];
+  const params = [...f.params];
+  conds.push('c.is_active IS NOT FALSE');
+  const excluded = await excludedClassTypes();
+  if (excluded.length) {
+    params.push(excluded);
+    conds.push(`NOT (c.class_type = ANY ($${params.length}))`);
+  }
+  return { clause: 'WHERE ' + conds.join(' AND '), params };
+}
+function bustPublic() {
+  for (const p of ['/rankings', '/classes', '/trends/', '/stats/', '/arenas', '/venues', '/series', '/events/', '/horses/', '/riders/', '/comparison']) bustCache(p);
 }
 
 const asyncH = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -180,7 +235,7 @@ app.get('/rankings/horses', asyncH(async (req, res) => {
     );
     return res.json({ data: rows, metric: 'points', window: req.query.window || 'all' });
   }
-  const f = roundFilters(req.query);
+  const f = await roundFiltersVis(req.query);
   const { rows } = await pool.query(
     `SELECT h.id AS horse_id, h.name AS horse, h.slug AS horse_slug, COUNT(*) AS starts,
        SUM(rr.clear_round::INT) AS clears,
@@ -244,7 +299,7 @@ app.get('/rankings/riders', asyncH(async (req, res) => {
     );
     return res.json({ data: rows, metric: 'points', window: req.query.window || 'all' });
   }
-  const f = roundFilters(req.query);
+  const f = await roundFiltersVis(req.query);
   const catClause = cat ? ` AND r.series_category = $${f.params.length + 1}` : '';
   const catParams = cat ? [...f.params, cat] : f.params;
   const { rows } = await pool.query(
@@ -274,16 +329,35 @@ app.get('/events', asyncH(async (req, res) => {
   if (req.query.season) push('e.season = ?', req.query.season);
   if (req.query.region) push('e.region = ?', req.query.region);
   if (req.query.arena) push('e.arena_type = ?', req.query.arena);
+  // Empty placeholder events (no classes/rounds, e.g. calendar shells)
+  // are hidden by default so only events with real results show.
+  // Pass ?include_empty=1 to list everything (admin data-entry).
+  // ?has_data=1 is accepted as an explicit alias of the default.
+  const wantUpcoming = req.query.upcoming === '1' || req.query.upcoming === 'true';
+  const wantFinished = req.query.finished === '1' || req.query.finished === 'true';
+  if (wantUpcoming) {
+    // Fixtures not yet started. They have no results by definition,
+    // so this implies include_empty.
+    conds.push('e.date_start > CURRENT_DATE');
+  } else {
+    if (req.query.include_empty !== '1' && req.query.include_empty !== 'true') {
+      conds.push('(EXISTS (SELECT 1 FROM classes c WHERE c.event_id = e.id) OR EXISTS (SELECT 1 FROM round_results rr WHERE rr.event_id = e.id))');
+    }
+    // ?finished=1 → only events that have ended (date_end, else date_start).
+    if (wantFinished) conds.push('COALESCE(e.date_end, e.date_start) <= CURRENT_DATE');
+  }
   // Inactive shows are hidden by default (backend on/off switch); admin
   // callers pass ?include_inactive=1.
   if (!req.query.include_inactive) conds.push('e.is_active IS NOT FALSE');
   const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+  // Upcoming fixtures read soonest-first; everything else newest-first.
+  const orderDir = wantUpcoming ? 'ASC' : 'DESC';
   const { rows } = await pool.query(
     `SELECT e.*,
        (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id) AS class_count,
        (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.event_id = e.id) AS round_count,
        (SELECT COUNT(*)::INT FROM (SELECT DISTINCT rr.horse_id, rr.rider_id FROM round_results rr WHERE rr.event_id = e.id) t) AS combo_count
-     FROM events e ${where} ORDER BY e.date_start DESC LIMIT $${params.length + 1}`,
+     FROM events e ${where} ORDER BY e.date_start ${orderDir} LIMIT $${params.length + 1}`,
     [...params, limit]
   );
   res.json({ data: rows });
@@ -354,7 +428,10 @@ app.get('/horses/:id', asyncH(async (req, res) => {
     'SELECT * FROM partnership_stats WHERE horse_id = $1 ORDER BY rounds_together DESC',
     [req.params.id]
   );
-  res.json({ data: horse.rows[0], stats: stats.rows[0] || null, history: history.rows, partnerships: partners.rows });
+  // Privacy opt-out: mask the profile row itself (history/partnership rows
+  // are masked by the generic response wrapper). Admins see real names.
+  const sets = req.authUser?.role === 'ADMIN' ? null : await privacy.privacySets(pool);
+  res.json({ data: privacy.maskHorseRow(horse.rows[0], sets), stats: stats.rows[0] || null, history: history.rows, partnerships: partners.rows });
 }));
 
 // ---- EQIndex rating breakdown (transparency: every component per round) ----
@@ -421,7 +498,10 @@ app.get('/riders/:id', asyncH(async (req, res) => {
     'SELECT * FROM partnership_stats WHERE rider_id = $1 ORDER BY rounds_together DESC',
     [req.params.id]
   );
-  res.json({ data: rider.rows[0], stats: stats.rows[0] || null, history: history.rows, partnerships: partners.rows });
+  // Privacy opt-out: mask the profile row itself (history/partnership rows
+  // are masked by the generic response wrapper). Admins see real names.
+  const sets = req.authUser?.role === 'ADMIN' ? null : await privacy.privacySets(pool);
+  res.json({ data: privacy.maskRiderRow(rider.rows[0], sets), stats: stats.rows[0] || null, history: history.rows, partnerships: partners.rows });
 }));
 
 // ---- Stable-lite: training & health per horse ----
@@ -591,7 +671,8 @@ app.get('/comparison', asyncH(async (req, res) => {
     if (!uuid.test(a) || !uuid.test(b)) {
       return res.status(404).json({ error: 'one or both ids not found' });
     }
-    const { rows } = await pool.query(
+    const vis = await visSql();
+    const { rows: erows } = await pool.query(
       `SELECT e.id AS event_id, e.name AS event, e.season, e.venue, e.region,
          e.date_start, e.date_end, COUNT(*)::INT AS rounds,
          SUM(rr.clear_round::INT)::INT AS clears,
@@ -601,12 +682,13 @@ app.get('/comparison', asyncH(async (req, res) => {
          COUNT(DISTINCT rr.class_id)::INT AS classes,
          MIN(rr.finish_place) AS best_place
        FROM round_results rr JOIN events e ON e.id = rr.event_id
-       WHERE rr.event_id = ANY($1::uuid[])
+       JOIN classes c ON c.id = rr.class_id
+       WHERE rr.event_id = ANY($1::uuid[]) AND ${vis}
        GROUP BY e.id, e.name, e.season, e.venue, e.region, e.date_start, e.date_end`,
       [[a, b]]
     );
-    if (rows.length < 2) return res.status(404).json({ error: 'one or both ids not found' });
-    const byId = Object.fromEntries(rows.map((r) => [r.event_id, r]));
+    if (erows.length < 2) return res.status(404).json({ error: 'one or both ids not found' });
+    const byId = Object.fromEntries(erows.map((r) => [r.event_id, r]));
     return res.json({ a: byId[a], b: byId[b] });
   }
   if (type === 'combination') {
@@ -664,8 +746,16 @@ app.get('/peers', asyncH(async (req, res) => {
   const withStats = rows.filter((r) => r.starts !== null);
   const avg = (k) => withStats.length
     ? withStats.reduce((t, r) => t + Number(r[k]), 0) / withStats.length : null;
+  // Privacy opt-out: subject row carries a raw name (peers rows are
+  // masked by the generic response wrapper). Admins see real names.
+  const psets = req.authUser?.role === 'ADMIN' ? null : await privacy.privacySets(pool);
+  const subject = { ...sub.rows[0] };
+  if (psets && psets.horseIds.has(subject.id)) {
+    subject.name = privacy.pseudo('Horse', subject.id);
+    subject.is_anonymous = true;
+  }
   res.json({
-    subject: sub.rows[0],
+    subject,
     band: [age - 1, age + 1],
     peers: rows,
     peer_count: rows.length,
@@ -694,7 +784,7 @@ app.get('/series/:key/standings', asyncH(async (req, res) => {
 
 // ---- Trends (monthly aggregates for charts) ----
 app.get('/trends/circuit', asyncH(async (req, res) => {
-  const f = roundFilters(req.query);
+  const f = await roundFiltersVis(req.query);
   const { rows } = await pool.query(
     `SELECT to_char(date_trunc('month', c.class_date), 'Mon') AS month,
        date_trunc('month', c.class_date) AS m,
@@ -717,7 +807,7 @@ app.get('/trends/circuit', asyncH(async (req, res) => {
 // Same ?season=&region=&arena=&height_min=&height_max=&since= filters as
 // /trends/circuit, but aggregated over the whole slice — never capped by paging.
 app.get('/stats/circuit', asyncH(async (req, res) => {
-  const f = roundFilters(req.query);
+  const f = await roundFiltersVis(req.query);
   const { rows } = await pool.query(
     `SELECT COUNT(*)::INT AS rounds,
         COALESCE(SUM(rr.clear_round::INT), 0)::INT AS clears,
@@ -738,6 +828,7 @@ app.get('/stats/circuit', asyncH(async (req, res) => {
 app.get('/horses/:id/trend', asyncH(async (req, res) => {
   req.params.id = await resolveId('horses', req.params.id, res);
   if (!req.params.id) return;
+  const vis = await visSql();
   const { rows } = await pool.query(
     `SELECT to_char(date_trunc('month', c.class_date), 'Mon') AS month,
        date_trunc('month', c.class_date) AS m,
@@ -745,7 +836,7 @@ app.get('/horses/:id/trend', asyncH(async (req, res) => {
        ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
        ROUND(AVG(rr.total_faults), 2) AS avg_faults
      FROM round_results rr JOIN classes c ON c.id = rr.class_id
-     WHERE rr.horse_id = $1 AND c.class_date IS NOT NULL
+     WHERE rr.horse_id = $1 AND c.class_date IS NOT NULL AND ${vis}
      GROUP BY 1, 2 ORDER BY 2`,
     [req.params.id]
   );
@@ -793,7 +884,10 @@ app.get('/events/:id/analytics', asyncH(async (req, res) => {
   const e = ev.rows[0];
   // Independent queries — run concurrently. Horse/rider/partnership top lists
   // are derived from `rounds` client-side, so no extra aggregate queries here.
-  const [classes, rounds, weather] = await Promise.all([
+  // Hidden classes (switched off) are excluded from rounds; class_stats (view)
+  // already hides them. The counts below drive the transparency note in the UI.
+  const vis = await visSql();
+  const [classes, rounds, weather, hidden] = await Promise.all([
     pool.query(
       'SELECT * FROM class_stats WHERE class_id IN (SELECT id FROM classes WHERE event_id = $1)',
       [e.id]
@@ -805,28 +899,36 @@ app.get('/events/:id/analytics', asyncH(async (req, res) => {
        rr.jump_faults, rr.total_faults, rr.time_seconds, rr.finish_place, rr.clear_round,
        rr.status, rr.notes, rr.points,
        rr.round2_faults, rr.jumpoff_faults, rr.jumpoff_time_seconds, rr.prize_money
-     FROM round_results rr
-     JOIN horses h ON h.id = rr.horse_id
-     JOIN riders r ON r.id = rr.rider_id
-     JOIN classes c ON c.id = rr.class_id
-     WHERE rr.event_id = $1
-     ORDER BY c.class_date, c.name, rr.finish_place NULLS LAST`,
+      FROM round_results rr
+      JOIN horses h ON h.id = rr.horse_id
+      JOIN riders r ON r.id = rr.rider_id
+      JOIN classes c ON c.id = rr.class_id
+      WHERE rr.event_id = $1 AND ${vis}
+      ORDER BY c.class_date, c.name, rr.finish_place NULLS LAST`,
       [e.id]
     ),
     pool.query(
       `SELECT * FROM weather_cache WHERE venue_norm = lower(trim($1))
-     ORDER BY date`,
+      ORDER BY date`,
       [e.venue]
+    ),
+    pool.query(
+      `SELECT COUNT(*)::INT AS hidden_classes,
+        (SELECT COUNT(*)::INT FROM round_results rr JOIN classes c ON c.id = rr.class_id
+          WHERE rr.event_id = $1 AND NOT (${vis})) AS hidden_rounds
+      FROM classes c WHERE c.event_id = $1 AND NOT (${vis})`,
+      [e.id]
     ),
   ]);
   res.json({
     event: e, classes: classes.rows, rounds: rounds.rows,
-    weather: weather.rows,
+    weather: weather.rows, hidden: hidden.rows[0],
   });
 }));
 
 // ---- Arena aggregates (surface intelligence) ----
 app.get('/arenas', asyncH(async (req, res) => {
+  const vis = await visSql();
   const { rows } = await pool.query(
     `WITH a AS (
        SELECT COALESCE(c.arena_type, e.arena_type) AS arena, COUNT(*)::INT AS rounds,
@@ -834,7 +936,7 @@ app.get('/arenas', asyncH(async (req, res) => {
          ROUND(AVG(rr.total_faults), 2) AS avg_faults
        FROM round_results rr JOIN events e ON e.id = rr.event_id
        JOIN classes c ON c.id = rr.class_id
-       WHERE COALESCE(c.arena_type, e.arena_type) IS NOT NULL GROUP BY 1
+       WHERE COALESCE(c.arena_type, e.arena_type) IS NOT NULL AND ${vis} GROUP BY 1
      ),
      top AS (
        SELECT DISTINCT ON (COALESCE(c.arena_type, e.arena_type)) COALESCE(c.arena_type, e.arena_type) AS arena, h.name AS horse
@@ -842,7 +944,7 @@ app.get('/arenas', asyncH(async (req, res) => {
        JOIN events e ON e.id = rr.event_id
        JOIN classes c ON c.id = rr.class_id
        JOIN horses h ON h.id = rr.horse_id
-       WHERE COALESCE(c.arena_type, e.arena_type) IS NOT NULL
+       WHERE COALESCE(c.arena_type, e.arena_type) IS NOT NULL AND ${vis}
       GROUP BY COALESCE(c.arena_type, e.arena_type), h.id, h.name HAVING COUNT(*) >= 3
       ORDER BY COALESCE(c.arena_type, e.arena_type), AVG(rr.clear_round::INT) DESC
      )
@@ -1121,23 +1223,28 @@ app.post('/admin/snapshots', needRole('ADMIN'), asyncH(async (req, res) => {
 app.get('/venues/:id', asyncH(async (req, res) => {
   const v = await pool.query('SELECT * FROM venues WHERE id = $1', [req.params.id]);
   if (!v.rows.length) return res.status(404).json({ error: 'venue not found' });
+  const vis = await visSql();
   const events = await pool.query(
-    `SELECT e.*, (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id) AS class_count,
-       (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.event_id = e.id) AS round_count
-     FROM events e WHERE e.venue_id = $1 ORDER BY e.date_start DESC`, [req.params.id]);
+    `SELECT e.*, (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id AND ${vis}) AS class_count,
+       (SELECT COUNT(*)::INT FROM round_results rr JOIN classes c ON c.id = rr.class_id WHERE rr.event_id = e.id AND ${vis}) AS round_count
+     FROM events e WHERE e.venue_id = $1
+       AND (EXISTS (SELECT 1 FROM classes c WHERE c.event_id = e.id) OR EXISTS (SELECT 1 FROM round_results rr WHERE rr.event_id = e.id))
+     ORDER BY e.date_start DESC`, [req.params.id]);
   const rounds = events.rows.length
-    ? (await pool.query('SELECT COUNT(*)::INT AS n FROM round_results rr JOIN events e ON e.id = rr.event_id WHERE e.venue_id = $1', [req.params.id])).rows[0].n : 0;
+    ? (await pool.query(`SELECT COUNT(*)::INT AS n FROM round_results rr JOIN events e ON e.id = rr.event_id JOIN classes c ON c.id = rr.class_id WHERE e.venue_id = $1 AND ${vis}`, [req.params.id])).rows[0].n : 0;
   const topH = await pool.query(
     `SELECT h.id AS horse_id, h.name AS horse, h.slug AS horse_slug, COUNT(*)::INT AS starts,
        ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct
      FROM round_results rr JOIN horses h ON h.id = rr.horse_id
-     JOIN events e ON e.id = rr.event_id WHERE e.venue_id = $1
+     JOIN events e ON e.id = rr.event_id JOIN classes c ON c.id = rr.class_id
+     WHERE e.venue_id = $1 AND ${vis}
      GROUP BY h.id, h.name, h.slug HAVING COUNT(*) >= 2 ORDER BY clear_pct DESC LIMIT 5`, [req.params.id]);
   const topR = await pool.query(
     `SELECT r.id AS rider_id, r.name AS rider, r.slug AS rider_slug, COUNT(*)::INT AS starts,
        ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct
      FROM round_results rr JOIN riders r ON r.id = rr.rider_id
-     JOIN events e ON e.id = rr.event_id WHERE e.venue_id = $1
+     JOIN events e ON e.id = rr.event_id JOIN classes c ON c.id = rr.class_id
+     WHERE e.venue_id = $1 AND ${vis}
      GROUP BY r.id, r.name, r.slug HAVING COUNT(*) >= 2 ORDER BY clear_pct DESC LIMIT 5`, [req.params.id]);
   res.json({ data: { ...v.rows[0], event_count: events.rows.length, rounds, events: events.rows, topHorses: topH.rows, topRiders: topR.rows } });
 }));
@@ -1241,6 +1348,40 @@ app.get('/claims', needRole('ADMIN'), asyncH(async (req, res) => {
   res.json({ data: rows });
 }));
 
+// ---- Privacy opt-out (migration 033): verified riders toggle their own
+// visibility; horse owners theirs; admins either. Results stay counted.
+async function setVisibility(req, res, table, idCol, ownerCol, label) {
+  if (!req.authUser) return res.status(401).json({ error: 'login required' });
+  if (!(await privacy.privacyEnabled(pool))) {
+    return res.status(503).json({ error: 'privacy controls not yet enabled (migration 033 pending)' });
+  }
+  const { visibility } = req.body || {};
+  if (!['public', 'anonymous'].includes(visibility)) {
+    return res.status(400).json({ error: "visibility must be 'public' or 'anonymous'" });
+  }
+  const cur = await pool.query(`SELECT ${ownerCol} AS owner FROM ${table} WHERE id = $1`, [req.params.id]);
+  if (!cur.rows.length) return res.status(404).json({ error: `${label} not found` });
+  if (req.authUser.role !== 'ADMIN' && cur.rows[0].owner !== req.authUser.id) {
+    return res.status(403).json({ error: `only the verified ${label} or an admin can change visibility` });
+  }
+  await pool.query(`UPDATE ${table} SET visibility = $1 WHERE id = $2`, [visibility, req.params.id]);
+  audit(req, `${label}.visibility`, table, req.params.id, { visibility });
+  privacy.bustPrivacyCache();
+  res.json({ ok: true, visibility });
+}
+
+app.post('/riders/:id/visibility', asyncH(async (req, res) => {
+  req.params.id = await resolveId('riders', req.params.id, res);
+  if (!req.params.id) return;
+  return setVisibility(req, res, 'riders', 'id', 'user_id', 'rider');
+}));
+
+app.post('/horses/:id/visibility', asyncH(async (req, res) => {
+  req.params.id = await resolveId('horses', req.params.id, res);
+  if (!req.params.id) return;
+  return setVisibility(req, res, 'horses', 'id', 'owner_id', 'horse');
+}));
+
 app.post('/claims/:id', needRole('ADMIN'), asyncH(async (req, res) => {
   const { approve } = req.body || {};
   const q = await pool.query('SELECT * FROM rider_claims WHERE id = $1', [req.params.id]);
@@ -1263,7 +1404,9 @@ app.get('/coach/athletes', needRole('COACH'), asyncH(async (req, res) => {
   const { rows } = await pool.query(
     `SELECT r.* FROM coach_athletes ca JOIN riders r ON r.id = ca.rider_id
      WHERE ca.coach_user_id = $1 ORDER BY r.name`, [req.authUser.id]);
-  res.json({ data: rows });
+  // Privacy opt-out applies to coaches too (admins exempt).
+  const sets = req.authUser?.role === 'ADMIN' ? null : await privacy.privacySets(pool);
+  res.json({ data: rows.map((r) => privacy.maskRiderRow(r, sets)) });
 }));
 
 app.post('/coach/athletes', needRole('COACH'), asyncH(async (req, res) => {
@@ -1615,8 +1758,13 @@ app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
         enriched += await fillNull('riders', rRow.id, rEn);
       }
       const seriesKey = g(ci.series) || null;
-      let cRow = (await client.query('SELECT id, series_key FROM classes WHERE event_id = $1 AND name = $2 AND COALESCE(class_date::TEXT,\'\') = COALESCE($3,\'\')', [rEvId, cls, cdate])).rows[0];
+      let cRow = (await client.query('SELECT id, series_key, is_active FROM classes WHERE event_id = $1 AND name = $2 AND COALESCE(class_date::TEXT,\'\') = COALESCE($3,\'\')', [rEvId, cls, cdate])).rows[0];
       const newClass = !cRow;
+      if (cRow && cRow.is_active === false) {
+        out.push({ line: li + 1, ok: false, errors: [`class "${cls}" is switched off — enable it in Admin → Classes`] });
+        bump(rEvId, rowEv.name, 'failed');
+        continue;
+      }
       if (!cRow) {
         cRow = (await client.query(
           'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, format, series_key, arena_name, arena_type, surface, start_time, source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,\'MANUAL\') RETURNING id',
@@ -1763,9 +1911,54 @@ app.get('/admin/lookup', needRole('ADMIN'), asyncH(async (req, res) => {
 app.get('/admin/event-classes', needRole('ADMIN'), asyncH(async (req, res) => {
   if (!req.query.event_id) return res.status(400).json({ error: 'need ?event_id=' });
   const { rows } = await pool.query(
-    'SELECT id, name, class_date, height_cm, class_type FROM classes WHERE event_id = $1 ORDER BY class_date, name',
+    'SELECT id, name, class_date, height_cm, class_type, is_active FROM classes WHERE event_id = $1 ORDER BY class_date, name',
     [req.query.event_id]);
   res.json({ data: rows });
+}));
+
+// ---- Class visibility admin: per-class switch + per-category kill list ----
+app.get('/admin/classes', needRole('ADMIN'), asyncH(async (req, res) => {
+  const { limit } = paging(req, 50, 200);
+  const q = String(req.query.q || '').trim();
+  const like = `%${q}%`;
+  const { rows } = await pool.query(
+    `SELECT c.id, c.name, c.class_date, c.height_cm, c.class_type, c.is_active,
+       e.name AS event_name, e.season,
+       (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.class_id = c.id) AS round_count
+     FROM classes c JOIN events e ON e.id = c.event_id
+     ${q.length >= 2 ? 'WHERE c.name ILIKE $1 OR e.name ILIKE $1' : ''}
+     ORDER BY c.class_date DESC NULLS LAST, c.name LIMIT $${q.length >= 2 ? 2 : 1}`,
+    q.length >= 2 ? [like, limit] : [limit]
+  );
+  res.json({ data: rows });
+}));
+
+const CLASS_FIELDS = ['class_type', 'height_cm', 'is_active'];
+
+app.get('/admin/visibility', needRole('ADMIN'), asyncH(async (req, res) => {
+  const excluded = await excludedClassTypes();
+  const { rows: byType } = await pool.query(
+    `SELECT c.class_type, COUNT(DISTINCT c.id)::INT AS classes, COUNT(rr.id)::INT AS rounds
+     FROM classes c LEFT JOIN round_results rr ON rr.class_id = c.id
+     GROUP BY c.class_type ORDER BY 2 DESC`);
+  const inactive = (await pool.query(
+    'SELECT COUNT(*)::INT AS n FROM classes WHERE is_active IS FALSE')).rows[0].n;
+  res.json({ data: { excluded_class_types: excluded, by_type: byType, inactive_classes: inactive } });
+}));
+
+app.put('/admin/visibility', needRole('ADMIN'), asyncH(async (req, res) => {
+  const list = req.body?.excluded_class_types;
+  if (!Array.isArray(list) || !list.every((t) => CLASS_TYPES.includes(t))) {
+    return res.status(400).json({ error: `excluded_class_types must be an array of ${CLASS_TYPES.join('|')}` });
+  }
+  await pool.query(
+    `INSERT INTO admin_settings (key, value, updated_at) VALUES ('excluded_class_types', $1, NOW())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [JSON.stringify(list)]
+  );
+  bustVisibility(); bustPublic();
+  audit(req, 'visibility.edit', 'admin_settings', 'excluded_class_types', { excluded: list });
+  res.json({ data: { excluded_class_types: list } });
 }));
 
 app.post('/admin/results', needRole('ADMIN'), asyncH(async (req, res) => {
@@ -1819,9 +2012,10 @@ app.post('/admin/results', needRole('ADMIN'), asyncH(async (req, res) => {
     if (dup.rows.length) return res.status(409).json({ error: 'duplicate of an existing round' });
     const tot = (jf ?? 0) + (tf ?? 0);
     const ev = (await pool.query(
-      'SELECT c.event_id, e.is_active FROM classes c JOIN events e ON e.id = c.event_id WHERE c.id = $1',
+      'SELECT c.event_id, c.is_active AS class_active, e.is_active FROM classes c JOIN events e ON e.id = c.event_id WHERE c.id = $1',
       [cid])).rows[0];
     if (ev.is_active === false) return res.status(400).json({ error: 'event is switched off — enable it in Admin → Events' });
+    if (ev.class_active === false) return res.status(400).json({ error: 'class is switched off — enable it in Admin → Classes' });
     const { rows } = await pool.query(
       `INSERT INTO round_results (event_id, class_id, horse_id, rider_id, jump_faults, time_faults,
         total_faults, time_seconds, finish_place, clear_round, status, notes, source, points)
@@ -1878,8 +2072,8 @@ app.get('/admin/events', needRole('ADMIN'), asyncH(async (req, res) => {
 
 const normFn = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
-const HORSE_FIELDS = ['name', 'breed', 'gender', 'sire', 'dam', 'damsire', 'breeder', 'year_of_birth', 'color', 'height', 'country', 'image_url'];
-const RIDER_FIELDS = ['name', 'region', 'series_category', 'nationality', 'bio', 'image_url', 'first_name', 'last_name'];
+const HORSE_FIELDS = ['name', 'breed', 'gender', 'sire', 'dam', 'damsire', 'breeder', 'year_of_birth', 'color', 'height', 'country', 'image_url', 'visibility'];
+const RIDER_FIELDS = ['name', 'region', 'series_category', 'nationality', 'bio', 'image_url', 'first_name', 'last_name', 'visibility'];
 const EVENT_FIELDS = ['name', 'venue', 'region', 'date_start', 'date_end', 'arena_type', 'event_type', 'status', 'description', 'image_url', 'is_active', 'tier'];
 
 function patcher(table, fields, label) {
@@ -1889,6 +2083,14 @@ function patcher(table, fields, label) {
     for (const f of fields) {
       if (body[f] !== undefined) {
         let v = body[f] === '' ? null : body[f];
+        if (f === 'visibility') {
+          if (!['public', 'anonymous'].includes(v)) {
+            return res.status(400).json({ error: "visibility must be 'public' or 'anonymous'" });
+          }
+          if (!(await privacy.privacyEnabled(pool))) {
+            return res.status(503).json({ error: 'privacy controls not yet enabled (migration 033 pending)' });
+          }
+        }
         if (f === 'year_of_birth' && v !== null) {
           v = parseInt(v, 10);
           if (!(v >= 1980 && v <= 2100)) return res.status(400).json({ error: 'year_of_birth out of range' });
@@ -1906,7 +2108,9 @@ function patcher(table, fields, label) {
       `UPDATE ${table} SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
     if (!rows.length) return res.status(404).json({ error: `${label} not found` });
     audit(req, `${label}.edit`, table, req.params.id, { fields: Object.keys(body) });
+    if (table === 'riders' || table === 'horses') privacy.bustPrivacyCache();
     if (table === 'events') bustCache('/events');
+    if (table === 'classes') { bustVisibility(); bustPublic(); }
     res.json({ data: rows[0] });
   });
 }
@@ -1914,6 +2118,7 @@ function patcher(table, fields, label) {
 app.patch('/admin/horses/:id', needRole('ADMIN'), patcher('horses', HORSE_FIELDS, 'horse'));
 app.patch('/admin/riders/:id', needRole('ADMIN'), patcher('riders', RIDER_FIELDS, 'rider'));
 app.patch('/admin/events/:id', needRole('ADMIN'), patcher('events', EVENT_FIELDS, 'event'));
+app.patch('/admin/classes/:id', needRole('ADMIN'), patcher('classes', CLASS_FIELDS, 'class'));
 
 app.delete('/admin/horses/:id', needRole('ADMIN'), asyncH(async (req, res) => {
   const n = (await pool.query('SELECT COUNT(*)::INT AS n FROM round_results WHERE horse_id = $1', [req.params.id])).rows[0].n;
@@ -2115,9 +2320,11 @@ app.get('/riders/:id/splits', asyncH(async (req, res) => {
 // ---- Venues ----
 app.get('/venues', asyncH(async (req, res) => {
   const q = `%${String(req.query.q || '').trim()}%`;
+  const vis = await visSql();
   const { rows } = await pool.query(
-    `SELECT v.*, (SELECT COUNT(*)::INT FROM events e WHERE e.venue_id = v.id) AS events,
-       (SELECT COUNT(*)::INT FROM round_results rr JOIN events e ON e.id = rr.event_id WHERE e.venue_id = v.id) AS rounds
+    `SELECT v.*, (SELECT COUNT(*)::INT FROM events e WHERE e.venue_id = v.id
+       AND (EXISTS (SELECT 1 FROM classes c WHERE c.event_id = e.id) OR EXISTS (SELECT 1 FROM round_results rr WHERE rr.event_id = e.id))) AS events,
+       (SELECT COUNT(*)::INT FROM round_results rr JOIN events e ON e.id = rr.event_id JOIN classes c ON c.id = rr.class_id WHERE e.venue_id = v.id AND ${vis}) AS rounds
      FROM venues v ${req.query.q ? 'WHERE v.name ILIKE $1' : ''} ORDER BY v.name LIMIT 100`,
     req.query.q ? [q] : []);
   res.json({ data: rows });
@@ -2129,6 +2336,7 @@ app.get('/series/:key/detail', asyncH(async (req, res) => {
   const info = (await pool.query('SELECT * FROM series_info WHERE series_key = $1', [key])).rows[0] || null;
   let standings, events, source;
   if (info && info.auto_calc) {
+    const vis = await visSql();
     const { rows } = await pool.query(
       `SELECT r.name AS rider, h.name AS horse, e.name AS event, e.id AS event_id,
          MIN(c.class_date) AS event_date, SUM(rr.points)::INT AS pts, COUNT(*)::INT AS rounds
@@ -2137,7 +2345,7 @@ app.get('/series/:key/detail', asyncH(async (req, res) => {
        JOIN events e ON e.id = rr.event_id
        JOIN riders r ON r.id = rr.rider_id
        JOIN horses h ON h.id = rr.horse_id
-       WHERE c.series_key = $1
+       WHERE c.series_key = $1 AND ${vis}
        GROUP BY r.name, h.name, e.name, e.id`, [key]);
     const byCombo = {};
     for (const row of rows) {

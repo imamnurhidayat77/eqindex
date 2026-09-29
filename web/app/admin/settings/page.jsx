@@ -1,7 +1,11 @@
 'use client';
-import { useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
-import { CARD, H1, H2, SUB, INP, BTN_PRIMARY } from '../../../lib/tokens';
+import { CARD, H1, H2, SUB, INP, BTN_PRIMARY, LINK } from '../../../lib/tokens';
+import { EmptyState } from '../../../components/EmptyState';
+
+const CLASS_TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
 
 export default function AdminSettings() {
   const [cur, setCur] = useState('');
@@ -10,6 +14,41 @@ export default function AdminSettings() {
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [vis, setVis] = useState(null);
+  const [visErr, setVisErr] = useState('');
+  const [visMsg, setVisMsg] = useState('');
+  const [visBusy, setVisBusy] = useState(false);
+  const [off, setOff] = useState([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API}/admin/visibility`, { credentials: 'include' });
+        if (!res.ok) throw new Error(`Failed (${res.status})`);
+        const j = await res.json();
+        setVis(j.data);
+        setOff(j.data.excluded_class_types || []);
+      } catch (e) { setVisErr(e.message); }
+    })();
+  }, []);
+  async function saveVis(e) {
+    e.preventDefault();
+    setVisErr(''); setVisMsg(''); setVisBusy(true);
+    try {
+      const res = await fetch(`${API}/admin/visibility`, {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ excluded_class_types: off }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
+      setVisMsg(off.length
+        ? `${off.join(', ')} excluded from all rankings & analytics. Applies within ~60s; rounds stay in the DB.`
+        : 'All class categories tracked.');
+      const r2 = await fetch(`${API}/admin/visibility`, { credentials: 'include' });
+      if (r2.ok) setVis((await r2.json()).data);
+    } catch (e2) { setVisErr(e2.message); }
+    setVisBusy(false);
+  }
   async function changePw(e) {
     e.preventDefault();
     setErr(''); setMsg('');
@@ -45,6 +84,46 @@ export default function AdminSettings() {
             <input className={INP} type="password" required autoComplete="new-password" value={next2} onChange={(e) => setNext2(e.target.value)} /></label>
           <button className={BTN_PRIMARY} disabled={busy}>{busy ? 'Saving…' : 'Change password'}</button>
         </form>
+      </section>
+      <section className={CARD}>
+        <h2 className={H2}>Tracked class categories</h2>
+        <p className="text-muted text-sm mt-1 mb-3">
+          Switch a whole category off (e.g. Pony) to exclude it from rankings, trends and analytics.
+          Rounds stay in the DB and keep their audit trail. Per-class switches live under{' '}
+          <Link className={LINK} href="/admin/classes">Admin → Classes</Link>.
+          {vis && vis.inactive_classes > 0 && (
+            <> <b className="text-gold">{vis.inactive_classes} classes</b> are also switched off individually.</>
+          )}
+        </p>
+        {visErr && <p className="text-blood text-sm mb-2">{visErr}</p>}
+        {visMsg && <p className="text-moss text-sm mb-2">{visMsg}</p>}
+        {!vis && !visErr ? (
+          <span className="flex flex-col gap-2 py-1" aria-label="Loading">
+            {[0, 1].map((i) => <span key={i} className="sk h-9 w-full" />)}
+          </span>
+        ) : vis ? (
+          <form onSubmit={saveVis}>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {CLASS_TYPES.map((t) => {
+                const n = (vis.by_type || []).find((x) => x.class_type === t);
+                const isOff = off.includes(t);
+                return (
+                  <button type="button" key={t} aria-pressed={isOff}
+                    onClick={() => setOff(isOff ? off.filter((x) => x !== t) : [...off, t])}
+                    title={n ? `${n.classes} classes · ${Number(n.rounds).toLocaleString()} rounds` : 'No classes yet'}
+                    className={`rounded-full px-3.5 py-2 text-[13px] font-semibold border transition-colors ${
+                      isOff ? 'border-blood/60 bg-redbg text-blood' : 'border-line bg-card2 text-muted hover:text-white'}`}>
+                    {isOff ? '✕ ' : '✓ '}{t}
+                    {n && <span className="ml-1.5 text-[11px] opacity-70">{n.classes} cls</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <button className={BTN_PRIMARY} disabled={visBusy}>{visBusy ? 'Saving…' : 'Save category switches'}</button>
+          </form>
+        ) : (
+          <EmptyState icon="⚙" title="Visibility settings unavailable" hint="Reload the page or check the API connection." compact />
+        )}
       </section>
     </>
   );

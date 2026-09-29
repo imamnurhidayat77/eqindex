@@ -9,7 +9,7 @@ export default async function About() {
   const [horses, riders, events, classes, stats] = await Promise.all([
     getJSON('/rankings/horses?limit=500').catch(() => ({ data: [] })),
     getJSON('/rankings/riders?limit=500').catch(() => ({ data: [] })),
-    getJSON('/events?limit=100').catch(() => ({ data: [] })),
+    getJSON('/events?limit=100&has_data=1').catch(() => ({ data: [] })),
     getJSON('/classes?limit=500').catch(() => ({ data: [] })),
     // Exact totals (leaderboard lists are paging-capped — never count from them).
     getJSON('/stats/circuit').catch(() => null),

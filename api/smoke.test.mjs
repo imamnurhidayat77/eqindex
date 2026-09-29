@@ -251,3 +251,12 @@ test('404s are honest JSON', async () => {
   const badEv = await get('/events/00000000-0000-0000-0000-000000000000', 404);
   assert.ok(badEv.error);
 });
+
+test('class visibility admin is gated', async () => {
+  await get('/admin/classes?q=pony', 401);
+  await get('/admin/visibility', 401);
+  const bad = await fetch(`${BASE}/admin/visibility`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+  });
+  assert.equal(bad.status, 401); // gate first (no session)
+});

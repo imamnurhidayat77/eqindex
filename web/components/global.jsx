@@ -12,7 +12,7 @@ export function SeasonProvider({ children }) {
       const s = localStorage.getItem('eq-season') || '';
       if (s) setSeasonState(s);
     } catch { /* ignore */ }
-    fetch(`${API}/events?limit=100`)
+    fetch(`${API}/events?limit=100&has_data=1`)
       .then((r) => r.json())
       .then((j) => {
         const uniq = [...new Set((j.data || []).map((e) => e.season).filter(Boolean))].sort().reverse();

@@ -66,7 +66,7 @@ export default async function Watchlist() {
 
   // season rank lists for Current Rank (latest season first)
   let events = { data: [] };
-  try { events = await getJSON('/events?limit=100'); } catch { /* shell */ }
+  try { events = await getJSON('/events?limit=100&has_data=1'); } catch { /* shell */ }
   const seasons = [...new Set(events.data.map((e) => e.season).filter(Boolean))].sort().reverse();
   const season = seasons[0] || '';
   let rankH = { data: [] }, rankR = { data: [] };

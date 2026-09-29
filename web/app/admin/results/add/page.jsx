@@ -41,7 +41,7 @@ export default function AddResult() {
   const riders = useLookup('rider', rq);
 
   useEffect(() => {
-    fetch(`${API}/events?limit=100`).then((r) => r.json()).then((j) => setEvents(j.data || [])).catch(() => {});
+    fetch(`${API}/events?limit=100&include_empty=1`).then((r) => r.json()).then((j) => setEvents(j.data || [])).catch(() => {});
   }, []);
   useEffect(() => {
     if (!eventId) { setClasses([]); return; }

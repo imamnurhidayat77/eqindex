@@ -30,7 +30,7 @@ export default function Comparison() {
 
   useEffect(() => {
     setResult(null); setErr('');
-    const ep = type === 'event' ? '/events?limit=100'
+    const ep = type === 'event' ? '/events?limit=100&has_data=1'
       : type === 'combination' ? '/partnerships?limit=100'
       : type === 'horse' ? '/rankings/horses?limit=100' : '/rankings/riders?limit=100';
     fetch(`${API}${ep}`).then((r) => r.json()).then((j) => {

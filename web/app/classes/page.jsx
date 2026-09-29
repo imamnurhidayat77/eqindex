@@ -26,7 +26,7 @@ export default function Classes() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API}/events?limit=100`).then((r) => r.json()).then((j) => {
+    fetch(`${API}/events?limit=100&has_data=1`).then((r) => r.json()).then((j) => {
       const d = j.data || [];
       const uniq = (k) => [...new Set(d.map((x) => x[k]).filter(Boolean))].sort();
       setOpts({ seasons: uniq('season'), regions: uniq('region'), arenas: uniq('arena_type'), formats: [] });

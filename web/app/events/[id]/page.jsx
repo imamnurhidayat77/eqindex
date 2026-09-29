@@ -32,7 +32,9 @@ export default async function EventDetail({ params }) {
     getJSON('/trends/circuit'),
     getJSON(`/events/compare?name=${encodeURIComponent(e.name)}`).catch(() => ({ data: [] })),
   ]);
-  const pastEditions = (editions.data || []).filter((x) => x.id !== e.id);
+  const pastEditions = (editions.data || []).filter(
+    (x) => x.id !== e.id && (Number(x.class_count || 0) > 0 || Number(x.round_count || 0) > 0)
+  );
   const allClasses = simClasses;
   const n = rounds.length;
   const clears = rounds.filter((r) => r.clear_round).length;
@@ -214,6 +216,12 @@ export default async function EventDetail({ params }) {
 
       <h2 className={H2}>Circuit Performance Overview</h2>
       <p className={SUB}>Consolidated statistics of {e.name} Event</p>
+      {(a.hidden?.hidden_classes > 0) && (
+        <p className="text-[12px] text-faint -mt-3 mb-6">
+          {a.hidden.hidden_classes} class{a.hidden.hidden_classes === 1 ? '' : 'es'} ({a.hidden.hidden_rounds} rounds)
+          excluded from analytics by admin — data retained in the DB.
+        </p>
+      )}
       <StatGrid cols={7}>
         {[
           ['Total Classes', null, a.classes.length],

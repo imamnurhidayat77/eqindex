@@ -12,6 +12,7 @@ const GROUPS = [
     ['/admin/horses', '♞', 'Horses'],
     ['/admin/riders', '◉', 'Riders'],
     ['/admin/events', '▦', 'Events'],
+    ['/admin/classes', '◫', 'Classes'],
     ['/admin/series', '🏆', 'Series'],
   ]},
   { title: 'Curate', items: [

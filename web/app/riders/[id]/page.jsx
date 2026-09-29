@@ -8,6 +8,7 @@ import { RiderSeasonChart, RiderMiniTrend } from '../../../components/rider-prof
 import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
 import HistoryTable from '../../../components/HistoryTable';
+import VisibilityToggle from '../../../components/VisibilityToggle';
 import { EmptyState, TableEmpty } from '../../../components/EmptyState';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 
@@ -45,7 +46,7 @@ export default async function RiderProfile({ params }) {
   const [p, allRiders, events, allHorses, heightStats, splits, ei] = await Promise.all([
     getJSON(`/riders/${params.id}`),
     getJSON('/rankings/riders?limit=100').catch(() => ({ data: [] })),
-    getJSON('/events?limit=100').catch(() => ({ data: [] })),
+    getJSON('/events?limit=100&has_data=1').catch(() => ({ data: [] })),
     getJSON('/rankings/horses?limit=100').catch(() => ({ data: [] })),
     getJSON('/height-stats?limit=200').catch(() => ({ data: [] })),
     getJSON(`/riders/${params.id}/splits`).catch(() => ({ data: [] })),
@@ -214,6 +215,7 @@ export default async function RiderProfile({ params }) {
             <div>
               <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Showjumping Athlete</div>
               <div className="mt-1 text-[30px] font-extrabold leading-none">{r.name}</div>
+              <div className="mt-2"><VisibilityToggle kind="rider" id={r.id || params.id} ownerUserId={r.user_id} initial={r.visibility} /></div>
             </div>
             <div className="text-center">
               <div className="text-[26px] font-extrabold leading-none tabular-nums">{ei?.data?.rating ?? eq}</div>

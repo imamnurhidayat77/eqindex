@@ -49,10 +49,11 @@ export default async function Dashboard({ searchParams }) {
   const qs = new URLSearchParams(Object.entries(api).filter(([, v]) => v !== '' && v != null)).toString();
   const Q = qs ? `?${qs}` : '';
 
-  const [horses, riders, events, circuit, classes, heights, eiHorses, eiRiders, stats] = await Promise.all([
+  const [horses, riders, events, upcomingEv, circuit, classes, heights, eiHorses, eiRiders, stats] = await Promise.all([
     getJSON(`/rankings/horses?limit=100${Q ? '&' + qs : ''}`),
     getJSON(`/rankings/riders?limit=100${Q ? '&' + qs : ''}`),
-    getJSON(`/events?limit=100${Q ? '&' + qs : ''}`),
+    getJSON(`/events?limit=100&has_data=1${Q ? '&' + qs : ''}`),
+    getJSON('/events?limit=20&upcoming=1'),
     getJSON(`/trends/circuit${Q}`),
     getJSON(`/classes?limit=100${Q ? '&' + qs : ''}`),
     getJSON('/height-stats?limit=200'),
@@ -175,7 +176,13 @@ export default async function Dashboard({ searchParams }) {
     return `Holding a ${pct(t.h.clear_pct)} clear rate.`;
   };
   const latestEvents = [...(events.data || [])]
+    .filter((e) => (Number(e.class_count || 0) > 0 || Number(e.round_count || 0) > 0 || Number(e.combo_count || 0) > 0)
+      && (!e.date_start || new Date(e.date_start) <= new Date()))
     .sort((a, b) => new Date(b.date_start || 0) - new Date(a.date_start || 0))
+    .slice(0, 8);
+  // Fixtures not yet started (soonest first) — no results yet.
+  const upcomingEvents = [...((upcomingEv.data || []))]
+    .sort((a, b) => new Date(a.date_start || 0) - new Date(b.date_start || 0))
     .slice(0, 8);
 
   const consistencyWord = feat
@@ -230,8 +237,12 @@ export default async function Dashboard({ searchParams }) {
           </StatGrid>
 
           <h2 className={H2}>Latest Events</h2>
-          <p className={SUB}>Newest competitions on the circuit — scroll sideways.</p>
+          <p className={SUB}>Finished competitions with published results — scroll sideways.</p>
           <EventCarousel events={latestEvents} />
+
+          <h2 className={H2}>Upcoming Events</h2>
+          <p className={SUB}>Fixtures on the calendar — results appear here once published.</p>
+          <EventCarousel events={upcomingEvents} kind="upcoming" />
 
           {feat && (
             <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6">

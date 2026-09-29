@@ -11,6 +11,7 @@ const DEF = { q: '', season: '', region: '', arena: '', height: '', minStarts: '
 
 export default function Events() {
   const [f, setF] = useState(DEF);
+  const [state, setState] = useState('finished'); // finished | upcoming | all
   const { season: gSeason } = useSeason();
   useEffect(() => { setF((prev) => ({ ...prev, season: gSeason })); }, [gSeason]);
   const [rows, setRows] = useState([]);
@@ -21,6 +22,9 @@ export default function Events() {
   useEffect(() => {
     setLoading(true);
     const p = new URLSearchParams({ limit: '100' });
+    if (state === 'finished') p.set('finished', '1');
+    else if (state === 'upcoming') p.set('upcoming', '1');
+    else p.set('include_empty', '1');
     if (f.season) p.set('season', f.season);
     if (f.region) p.set('region', f.region);
     if (f.arena) p.set('arena', f.arena);
@@ -29,11 +33,11 @@ export default function Events() {
       .then((j) => { setRows(j.data || []); setPage(1); })
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-  }, [f.season, f.region, f.arena]);
+  }, [f.season, f.region, f.arena, state]);
 
   const [full, setFull] = useState([]);
   useEffect(() => {
-    fetch(`${API}/events?limit=100`).then((r) => r.json()).then((j) => setFull(j.data || [])).catch(() => {});
+    fetch(`${API}/events?limit=100&has_data=1`).then((r) => r.json()).then((j) => setFull(j.data || [])).catch(() => {});
   }, []);
   const pools = useMemo(() => {
     const uniq = (k) => [...new Set(full.map((x) => x[k]).filter(Boolean))].sort();
@@ -41,11 +45,19 @@ export default function Events() {
   }, [full]);
 
   const filtered = useMemo(() => {
+    // Safety net matching the active tab (backend already filters).
+    const scoped = state === 'upcoming'
+      ? rows.filter((x) => !x.date_start || new Date(x.date_start) > new Date())
+      : state === 'all'
+        ? rows
+        : rows.filter(
+          (x) => Number(x.class_count || 0) > 0 || Number(x.round_count || 0) > 0 || Number(x.combo_count || 0) > 0
+        );
     const q = f.q.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((x) =>
+    if (!q) return scoped;
+    return scoped.filter((x) =>
       (x.name || '').toLowerCase().includes(q) || (x.venue || '').toLowerCase().includes(q));
-  }, [rows, f.q]);
+  }, [rows, f.q, state]);
 
   useEffect(() => { setPage(1); }, [f.q]);
 
@@ -56,7 +68,13 @@ export default function Events() {
   return (
     <>
       <h1 className={H1}>Events</h1>
-      <p className={SUB}>NZ circuit events, newest first.</p>
+      <p className={SUB}>NZ circuit events, {state === 'upcoming' ? 'soonest first' : 'newest first'}.</p>
+      <div className="flex gap-1.5 mb-3">
+        {[['finished', 'Finished'], ['upcoming', 'Upcoming'], ['all', 'All']].map(([v, lbl]) => (
+          <button key={v} onClick={() => { setState(v); setPage(1); }}
+            className={`text-[12.5px] font-semibold no-underline px-3 py-1.5 rounded-full border ${state === v ? 'bg-goldbg text-gold border-gold/50' : 'text-muted border-line hover:text-white'}`}>{lbl}</button>
+        ))}
+      </div>
       <FilterBar f={f} set={setF} seasons={pools.seasons} regions={pools.regions} arenas={pools.arenas} showHeight={false} showMinStarts={false} />
       <section className={CARD}>
         <div className="overflow-x-auto">
