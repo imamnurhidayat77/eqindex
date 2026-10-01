@@ -112,9 +112,10 @@ export default function CommandPalette({ open, onClose }) {
   if (!open) return null;
   let lastGroup = null;
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Admin command palette">
-      <div aria-hidden="true" onClick={onClose} className="modal-fade absolute inset-0 bg-black/70 backdrop-blur-[2px]" />
-      <div className="modal-pop relative mx-auto mt-[12vh] w-[min(560px,calc(100vw-2rem))] overflow-hidden rounded border border-line bg-card2 shadow-2xl">
+    <div className="fixed inset-0 z-[80] isolate" role="dialog" aria-modal="true" aria-label="Admin command palette">
+      <div aria-hidden="true" onClick={onClose} className="modal-fade absolute inset-0 bg-black/80 backdrop-blur-[3px]" />
+      <div className="modal-pop relative mx-auto mt-[12vh] w-[min(560px,calc(100vw-2rem))] overflow-hidden rounded border border-line shadow-2xl"
+        style={{ backgroundColor: '#1E1E1E' }}>
         <div className="h-[3px] bg-gold" aria-hidden="true" />
         <div className="flex items-center gap-2 border-b border-line px-4">
           <span className="text-faint text-[15px]" aria-hidden="true">⌘</span>

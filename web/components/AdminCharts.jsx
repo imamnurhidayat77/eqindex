@@ -12,7 +12,7 @@ const tip = { backgroundColor: '#1C2330', border: '1px solid #2A2A2A', borderRad
 export default function AdminCharts({ rows = [], summary = null }) {
   const data = rows.map((r) => ({
     ...r,
-    label: String(r.day || '').slice(5).replace('-', '/'),
+    label: String(r.day || '').slice(0, 10).slice(5).replace('-', '/'),
   }));
   const avg = summary && summary.days ? Math.round(summary.totalRounds / summary.days) : 0;
   return (
