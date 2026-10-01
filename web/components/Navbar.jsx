@@ -41,9 +41,11 @@ export default function Navbar() {
   const pathname = usePathname() || '/';
   const router = useRouter();
   const hidden = useLandingHidden();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [drop, setDrop] = useState(null); // open desktop dropdown label
   if (hidden) return null;
+  const isAdmin = user?.role === 'ADMIN';
   const linkCls = (active) =>
     `no-underline text-sm px-0.5 pt-5 pb-[18px] transition-colors hover:text-white ${
       active ? 'text-white border-b-2 border-gold' : 'text-muted'
@@ -80,6 +82,14 @@ export default function Navbar() {
             </span>
           );
         })}
+        {isAdmin && (
+          <Link href="/admin" title="Admin Console"
+            className={`no-underline text-sm px-0.5 pt-5 pb-[18px] transition-colors hover:text-white flex items-center gap-1 ${
+              pathname.startsWith('/admin') ? 'text-gold border-b-2 border-gold' : 'text-gold/70'
+            }`}>
+            <span className="text-[11px]" aria-hidden="true">⛨</span> Admin
+          </Link>
+        )}
       </nav>
       <button
         className="md:hidden bg-card border border-line rounded text-body w-8 h-8"
@@ -125,6 +135,17 @@ export default function Navbar() {
               })}
             </span>
           ))}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              onClick={() => setOpen(false)}
+              className={`no-underline text-sm py-2.5 ${
+                pathname.startsWith('/admin') ? 'text-gold font-bold' : 'text-gold/70'
+              }`}
+            >
+              ⛨ Admin Console
+            </Link>
+          )}
         </div>
       )}
     </>

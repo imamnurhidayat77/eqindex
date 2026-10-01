@@ -41,7 +41,10 @@ export default function UserMenu() {
           <span className="block px-2 pb-1.5 text-[11px] text-muted">{user.email} · {user.role}</span>
           <Link href="/watchlist" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">My Watchlist</Link>
           {user.role === 'ADMIN' && (
-            <Link href="/admin/review" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">Review Queue</Link>
+            <>
+              <Link href="/admin" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-gold no-underline hover:text-white">⛨ Admin Console</Link>
+              <Link href="/admin/review" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">Review Queue</Link>
+            </>
           )}
           <button onClick={handleLogout} disabled={busy}
             className="flex w-full items-center gap-2 text-left px-2 py-1.5 text-[13px] text-blood bg-none border-0 cursor-pointer disabled:opacity-60 disabled:cursor-wait">
