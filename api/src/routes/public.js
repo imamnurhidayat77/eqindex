@@ -609,6 +609,55 @@ module.exports = function mountPublicRoutes(app) {
     res.json({ data: rows });
   }));
 
+  // ---- Weekend best (opening-page NEWS): top performance of the latest
+  // results weekend per rider category. Categories derive from the CLASS
+  // (riders carry no category yet): Pony/Junior/Young Rider by class name,
+  // Amateur by type-or-name, Pro = Grand Prix/Premier/Open. Window = latest
+  // class date with results minus 6 days (robust to sparse imports).
+  // Names flow through the privacy wrapper like every other response.
+  app.get('/news/weekend', asyncH(async (req, res) => {
+    const vis = await visSql();
+    const { rows } = await pool.query(
+      `WITH mx AS (
+         SELECT MAX(c.class_date)::DATE AS d1
+         FROM round_results rr JOIN classes c ON c.id = rr.class_id
+       ),
+       win AS (SELECT (SELECT d1 FROM mx) - 6 AS d0, (SELECT d1 FROM mx) AS d1),
+       rounds AS (
+         SELECT rr.horse_id, rr.rider_id, rr.finish_place, rr.total_faults,
+           c.id AS class_id, c.name AS class_name, c.class_type, c.class_date,
+           COALESCE(rr.height_cm, c.height_cm) AS h,
+           e.id AS event_id, e.name AS event_name, e.slug AS event_slug,
+           h.name AS horse, h.slug AS horse_slug, r.name AS rider, r.slug AS rider_slug,
+           CASE
+             WHEN c.name ILIKE '%pony%' THEN 'Pony'
+             WHEN c.name ILIKE '%junior%' THEN 'Junior'
+             WHEN c.name ILIKE '%young rider%' THEN 'Young Rider'
+             WHEN c.class_type = 'Amateur' OR c.name ILIKE '%amateur%' OR c.name ILIKE '%pro am%' THEN 'Amateur'
+             WHEN c.class_type IN ('Grand Prix', 'Premier', 'Open') THEN 'Pro'
+             ELSE NULL END AS cat
+         FROM round_results rr
+         JOIN classes c ON c.id = rr.class_id
+         JOIN events e ON e.id = rr.event_id
+         JOIN horses h ON h.id = rr.horse_id
+         JOIN riders r ON r.id = rr.rider_id, win w
+         WHERE c.class_date BETWEEN w.d0 AND w.d1 AND ${vis}
+       )
+       SELECT DISTINCT ON (cat) cat, horse, rider, horse_id, rider_id,
+         horse_slug, rider_slug, class_name, class_id,
+         event_name, event_id, event_slug,
+         h AS height_cm, finish_place, total_faults
+       FROM rounds WHERE cat IS NOT NULL
+       ORDER BY cat, h DESC NULLS LAST, finish_place ASC NULLS LAST, total_faults ASC NULLS LAST`,
+    );
+    const order = { Pro: 0, 'Young Rider': 1, Junior: 2, Amateur: 3, Pony: 4 };
+    rows.sort((a, b) => (order[a.cat] ?? 9) - (order[b.cat] ?? 9));
+    const { rows: wrows } = await pool.query(
+      `SELECT (MAX(c.class_date)::DATE - 6) AS d0, MAX(c.class_date)::DATE AS d1
+       FROM round_results rr JOIN classes c ON c.id = rr.class_id`);
+    res.json({ window: wrows[0] || null, data: rows });
+  }));
+
   // ---- Trends (monthly aggregates for charts) ----
   app.get('/trends/circuit', asyncH(async (req, res) => {
     const f = await roundFiltersVis(req.query);
