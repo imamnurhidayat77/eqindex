@@ -11,6 +11,16 @@ import Dropdown from '../../components/Dropdown';
 
 const DEF = { q: '', season: '', region: '', arena: '', height: '', minStarts: '5' };
 const TABS = [['points', 'Points'], ['series', 'Series'], ['clear', 'Clear %']];
+const AGE_GROUPS = [['', 'All ages'], ['5', '5YO'], ['6', '6YO'], ['7', '7YO'], ['8', '8YO'], ['9+', '9 & over']];
+// NZ age: season starting year minus birth year (birthday 1 Aug).
+const horseAge = (yob, season) => {
+  if (yob === null || yob === undefined || yob === '') return null;
+  const y = Number(yob);
+  if (!Number.isInteger(y) || y < 1900 || y > 2100) return null;
+  const m = /^(\d{4})/.exec(season || '');
+  const base = m ? Number(m[1]) : new Date().getFullYear();
+  return base - y;
+};
 
 export default function Horses() {
   const [tab, setTab] = useState('points');
@@ -24,6 +34,7 @@ export default function Horses() {
   const [seriesList, setSeriesList] = useState([]);
   const [seriesKey, setSeriesKey] = useState('');
   const [seriesDetail, setSeriesDetail] = useState(null);
+  const [ageGroup, setAgeGroup] = useState('');
 
   const [opts, setOpts] = useState({ seasons: [], regions: [], arenas: [] });
   useEffect(() => {
@@ -72,10 +83,18 @@ export default function Horses() {
   }, [tab, seriesKey]);
 
   const filtered = useMemo(() => {
+    let out = rows;
+    if (ageGroup && tab !== 'series') {
+      out = out.filter((x) => {
+        const a = horseAge(x.year_of_birth, f.season);
+        if (a === null) return false;
+        return ageGroup === '9+' ? a >= 9 : a === Number(ageGroup);
+      });
+    }
     const q = f.q.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((x) => (x.horse || '').toLowerCase().includes(q));
-  }, [rows, f.q]);
+    if (!q) return out;
+    return out.filter((x) => (x.horse || '').toLowerCase().includes(q));
+  }, [rows, f.q, ageGroup, tab, f.season]);
 
   const seriesRows = useMemo(() => {
     const all = seriesDetail?.standings || [];
@@ -95,13 +114,24 @@ export default function Horses() {
     <>
       <h1 className={H1}>Horses</h1>
       <p className={SUB}>Official ESNZ series points — every ranked horse on the NZ circuit.</p>
-      <div className="flex gap-1 bg-card2 border border-line rounded p-1 mb-3 overflow-x-auto w-fit">
-        {TABS.map(([k, lbl]) => (
-          <button key={k} onClick={() => { setTab(k); setPage(1); }}
-            className={`px-3.5 py-[7px] rounded-md text-[13px] whitespace-nowrap cursor-pointer border-0 ${tab === k ? 'bg-card text-gold font-bold' : 'bg-transparent text-muted hover:text-white'}`}>
-            {lbl}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <div className="flex gap-1 bg-card2 border border-line rounded p-1 overflow-x-auto w-fit">
+          {TABS.map(([k, lbl]) => (
+            <button key={k} onClick={() => { setTab(k); setPage(1); }}
+              className={`px-3.5 py-[7px] rounded-md text-[13px] whitespace-nowrap cursor-pointer border-0 ${tab === k ? 'bg-card text-gold font-bold' : 'bg-transparent text-muted hover:text-white'}`}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+        {tab !== 'series' && (
+          <div className="flex gap-1.5 items-center">
+            <span className="text-[11px] text-faint">Age:</span>
+            {AGE_GROUPS.map(([v, lbl]) => (
+              <button key={v || 'all'} onClick={() => { setAgeGroup(v); setPage(1); }}
+                className={`text-[12px] no-underline px-2.5 py-1 rounded-full border ${ageGroup === v ? 'bg-goldbg text-gold border-gold/50 font-bold' : 'text-muted border-line hover:text-white'}`}>{lbl}</button>
+            ))}
+          </div>
+        )}
       </div>
       {tab === 'series' ? (
         <div className="mb-3 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
@@ -121,7 +151,7 @@ export default function Horses() {
         <div className="overflow-x-auto">
         <table className={TABLE}>
           <thead><tr>
-            <th className={TH}>Rank</th><th className={TH}>Horse</th>
+            <th className={TH}>Rank</th><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Age</th>
             {tab === 'points' && (<><th className={`${TH} ${NUM}`}>Points</th><th className={`${TH} ${NUM}`}>Wins</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Starts</th></>)}
             {tab === 'series' && (<><th className={TH}>Rider</th><th className={`${TH} ${NUM}`}>Total</th><th className={`${TH} ${NUM}`}>Dropped</th></>)}
             {tab === 'clear' && (<><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th><th className={`${TH} ${NUM}`}>Starts</th></>)}
@@ -129,12 +159,14 @@ export default function Horses() {
           <tbody>
             {view.map((x, i) => {
               const rank = (safePage - 1) * perPage + i + 1;
+              const age = tab === 'series' ? null : horseAge(x.year_of_birth, f.season);
               return (
                 <tr key={tab === 'series' ? `${x.horse}-${x.rider}` : x.horse_id}>
                   <td className={rank === 1 && safePage === 1 ? 'rank1' : ''}>#{rank}</td>
                   <td className={TD}>{(tab === 'series' && !x.horse_slug && !x.horse_id)
                     ? <b>{x.horse}</b>
                     : <Link href={`/horses/${x.horse_slug || x.horse_id || ''}`} className="text-white font-semibold">{x.horse}</Link>}</td>
+                  <td className={`${TD} ${NUM} text-muted`}>{age === null ? '–' : age}</td>
                   {tab === 'points' && (<>
                     <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{x.total_points ?? 0}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{x.wins ?? 0}</td>
@@ -156,7 +188,7 @@ export default function Horses() {
             })}
             {!view.length && (
               loading ? (
-                <tr><td colSpan={6} className="px-2 py-4">
+                <tr><td colSpan={tab === 'series' ? 5 : 7} className="px-2 py-4">
                   <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
                     {[0, 1, 2].map((k) => <span key={k} className="sk h-3.5 w-full" />)}
                   </span>

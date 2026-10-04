@@ -101,8 +101,9 @@ module.exports = function mountPublicRoutes(app) {
       const { rows } = await pool.query(
         `SELECT p.horse_id, p.horse, p.horse_slug, p.total_starts AS starts, s.clears, s.clear_pct,
            s.avg_faults, s.faults_stddev, p.wins, p.podiums, p.win_rate,
-           p.total_points, p.points_12m, p.points_3m, p.last_start
+           p.total_points, p.points_12m, p.points_3m, p.last_start, h.year_of_birth
          FROM horse_point_stats p LEFT JOIN horse_stats s ON s.horse_id = p.horse_id
+         LEFT JOIN horses h ON h.id = p.horse_id
          WHERE p.total_starts >= $1
          ORDER BY p.${col} DESC, p.wins DESC, p.total_starts DESC LIMIT $2`,
         [minStarts, limit]
@@ -111,7 +112,7 @@ module.exports = function mountPublicRoutes(app) {
     }
     const f = await roundFiltersVis(req.query);
     const { rows } = await pool.query(
-      `SELECT h.id AS horse_id, h.name AS horse, h.slug AS horse_slug, COUNT(*) AS starts,
+      `SELECT h.id AS horse_id, h.name AS horse, h.slug AS horse_slug, h.year_of_birth, COUNT(*) AS starts,
          SUM(rr.clear_round::INT) AS clears,
          ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
          ROUND(AVG(rr.total_faults), 2) AS avg_faults,
