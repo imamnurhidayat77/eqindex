@@ -28,10 +28,7 @@ export const NAV_GROUPS = [
     { href: '/events', label: 'Events', match: (p) => p.startsWith('/events') },
     { href: '/series', label: 'Series', match: (p) => p.startsWith('/series') },
   ]},
-  { label: 'Intelligence', items: [
-    { href: '/rankings', label: 'Rankings', match: (p) => p.startsWith('/rankings') },
-    { href: '/comparison', label: 'Compare', match: (p) => p.startsWith('/comparison') },
-  ]},
+  // NOTE: Intelligence (Rankings, Compare) hidden for now — routes still live.
   { label: 'Workspace', items: [
     { href: '/watchlist', label: 'Watchlist', match: (p) => p.startsWith('/watchlist') },
     { href: '/my-stable', label: 'My Stable', match: (p) => p.startsWith('/my-stable') },
