@@ -32,15 +32,15 @@ export default function SeriesIndex() {
   }, []);
 
   const seasons = useMemo(
-    () => [...new Set(rows.map((x) => x.season).filter(Boolean))].sort().reverse(),
+    () => [...new Set(rows.flatMap((x) => x.seasons || []).filter(Boolean))].sort().reverse(),
     [rows]
   );
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     return rows.filter((x) =>
-      (!seasonF || x.season === seasonF) &&
-      (!s || (x.series_name || '').toLowerCase().includes(s) || (x.event_name || '').toLowerCase().includes(s)));
+      (!seasonF || (x.seasons || []).includes(seasonF)) &&
+      (!s || (x.series_name || '').toLowerCase().includes(s) || (x.series_key || '').toLowerCase().includes(s)));
   }, [rows, q, seasonF]);
 
   useEffect(() => { setPage(1); }, [q, seasonF]);
@@ -71,7 +71,7 @@ export default function SeriesIndex() {
           ['Series Tracked', String(filtered.length)],
           ['Total Entries', String(totalEntries)],
           ['Seasons', String(seasons.length)],
-          ['Events', String(new Set(filtered.map((x) => x.event_name)).size)],
+          ['Events', String(filtered.reduce((s, x) => s + Number(x.events || 0), 0))],
         ].map(([l, v]) => (
           <StatCard key={l} label={l} value={v} />
         ))}
@@ -80,7 +80,7 @@ export default function SeriesIndex() {
       <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
           Search
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Series or event…"
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Series…"
             className="w-[200px] rounded border border-line bg-ink px-2.5 py-2 text-[13px] normal-case text-white placeholder:text-faint focus:border-gold/60 focus:outline-none" />
         </label>
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
@@ -96,20 +96,21 @@ export default function SeriesIndex() {
       <section className={CARD}>
         <div className={TABLEWRAP}>
         <table className={TABLE}>
-          <thead><tr><th className={TH}>Series</th><th className={TH}>Event</th><th className={TH}>Season</th><th className={`${TH} ${NUM}`}>Entries</th><th className={TH}></th></tr></thead>
+          <thead><tr><th className={TH}>Series</th><th className={TH}>Seasons</th><th className={`${TH} ${NUM}`}>Events</th><th className={`${TH} ${NUM}`}>Classes</th><th className={`${TH} ${NUM}`}>Entries</th><th className={TH}></th></tr></thead>
           <tbody>
             {view.map((x) => (
               <tr key={x.series_key}>
                 <td className={TD}><Link className={LINK} href={`/series/${x.series_key}`}><b>{x.series_name}</b></Link></td>
-                <td className={TD}>{x.event_name}</td>
-                <td className={TD}>{(x.season || '').replace('-', '/')}</td>
+                <td className={TD}>{(x.seasons || []).map((s) => s.replace('-', '/')).join(', ') || '—'}</td>
+                <td className={`${TD} ${NUM}`}>{x.events}</td>
+                <td className={`${TD} ${NUM}`}>{x.classes}</td>
                 <td className={`${TD} ${NUM}`}>{x.entries}</td>
                 <td className={`${TD} ${NUM}`}><Link className={LINK} href={`/series/${x.series_key}`}>Standings →</Link></td>
               </tr>
             ))}
             {!view.length && (
               loading ? (
-                <tr><td colSpan={5} className="px-2 py-4">
+                <tr><td colSpan={6} className="px-2 py-4">
                   <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
                     {[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}
                   </span>

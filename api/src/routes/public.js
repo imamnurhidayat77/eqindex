@@ -743,9 +743,39 @@ module.exports = function mountPublicRoutes(app) {
 
   // ---- Series standings (NZ series points, PRD §7.5) ----
   app.get('/series', asyncH(async (req, res) => {
+    // Computed from our own results (series_info registry + live counts),
+    // not only imported official standings (series_standings may be empty).
     const { rows } = await pool.query(
-      `SELECT series_key, series_name, event_name, season, COUNT(*)::INT AS entries
-       FROM series_standings GROUP BY 1,2,3,4 ORDER BY event_name, series_name`
+      `WITH keys AS (
+        SELECT series_key FROM series_info
+        UNION
+        SELECT DISTINCT c.series_key FROM classes c WHERE c.series_key IS NOT NULL
+      ),
+      live AS (
+        SELECT c.series_key,
+          COUNT(DISTINCT c.id)::INT AS classes,
+          COUNT(DISTINCT c.event_id)::INT AS events,
+          COUNT(rr.id)::INT AS starts,
+          COUNT(DISTINCT (rr.horse_id, rr.rider_id))::INT AS entries,
+          ARRAY_AGG(DISTINCT e.season) FILTER (WHERE e.season IS NOT NULL) AS seasons
+        FROM classes c
+        LEFT JOIN round_results rr ON rr.class_id = c.id AND class_id_visible(rr.class_id)
+        LEFT JOIN events e ON e.id = c.event_id
+        GROUP BY 1
+      )
+      SELECT k.series_key,
+        COALESCE(i.display_name,
+          INITCAP(REPLACE(k.series_key, '-', ' '))) AS series_name,
+        COALESCE(l.classes, 0) AS classes,
+        COALESCE(l.events, 0) AS events,
+        COALESCE(l.starts, 0) AS starts,
+        COALESCE(l.entries, 0) AS entries,
+        COALESCE(l.seasons, '{}') AS seasons,
+        (i.auto_calc IS NOT FALSE) AS auto_calc
+      FROM keys k
+      LEFT JOIN series_info i ON i.series_key = k.series_key
+      LEFT JOIN live l ON l.series_key = k.series_key
+      ORDER BY l.starts DESC NULLS LAST, k.series_key`
     );
     res.json({ data: rows });
   }));
@@ -935,13 +965,47 @@ module.exports = function mountPublicRoutes(app) {
           COUNT(DISTINCT rr.horse_id)::INT AS horses,
           COUNT(DISTINCT rr.rider_id)::INT AS riders,
           COUNT(DISTINCT rr.event_id)::INT AS events,
-          COUNT(DISTINCT c.id)::INT AS classes
+          COUNT(DISTINCT c.id)::INT AS classes,
+          (SELECT MAX(created_at) FROM import_logs) AS last_import
         FROM round_results rr JOIN classes c ON c.id = rr.class_id
         JOIN events e ON e.id = rr.event_id
         ${f.clause}`,
       f.params
     );
     res.json({ data: rows[0] });
+  }));
+
+  // ---- Series leaders: top horse per official series_key (visible only).
+  app.get('/series/leaders', asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `WITH per_horse AS (
+        SELECT c.series_key, h.id AS horse_id, h.name AS horse,
+          h.slug AS horse_slug, SUM(rr.points)::INT AS pts,
+          COUNT(rr.id)::INT AS starts
+        FROM round_results rr
+        JOIN classes c ON c.id = rr.class_id
+        JOIN horses h ON h.id = rr.horse_id
+        WHERE c.series_key IS NOT NULL AND class_id_visible(rr.class_id)
+        GROUP BY 1, 2, 3, 4
+      ),
+      ranked AS (
+        SELECT *, ROW_NUMBER() OVER (
+            PARTITION BY series_key ORDER BY pts DESC, starts DESC) AS rk,
+          COUNT(*) OVER (PARTITION BY series_key)::INT AS horses
+        FROM per_horse
+      )
+      SELECT r.series_key,
+        COALESCE(i.display_name,
+          INITCAP(REPLACE(r.series_key, '-', ' '))) AS series_name,
+        r.horse_id, r.horse, r.horse_slug,
+        r.pts AS total_points, r.starts, r.horses,
+        (SELECT COUNT(DISTINCT c2.id) FROM classes c2
+          WHERE c2.series_key = r.series_key)::INT AS classes
+      FROM ranked r
+      LEFT JOIN series_info i ON i.series_key = r.series_key
+      WHERE r.rk = 1 ORDER BY r.series_key`
+    );
+    res.json({ data: rows });
   }));
 
   app.get('/horses/:id/trend', asyncH(async (req, res) => {
@@ -1207,8 +1271,23 @@ module.exports = function mountPublicRoutes(app) {
       // (60s cache — brief staleness after activation is acceptable.)
       const seriesCfg = await loadEsnzSeries();
       const cfg = (seriesCfg || {})[key] || {};
+      const isBreeder = cfg.seasonTotal === true;
+      // Breeder (Annex 11 §2-4): season total over ALL series classes except
+      // Stallion/Mare/8YO, grouped by recorded breeder. NZ-bred approximated
+      // by breeder presence (explicit §2.1 rule); country refinement later.
+      const excl = Array.isArray(cfg.excludeSeries) ? cfg.excludeSeries : [];
       const keys = Array.isArray(cfg.sources) && cfg.sources.length ? cfg.sources : [key];
-      const { rows } = await pool.query(
+      const { rows } = isBreeder ? (await pool.query(
+        `SELECT h.breeder AS breeder, e.name AS event, e.id AS event_id,
+           MIN(c.class_date) AS event_date, SUM(rr.points)::INT AS pts, COUNT(*)::INT AS rounds
+         FROM round_results rr
+         JOIN classes c ON c.id = rr.class_id
+         JOIN events e ON e.id = rr.event_id
+         JOIN horses h ON h.id = rr.horse_id
+         WHERE c.series_key IS NOT NULL AND NOT (c.series_key = ANY($1))
+           AND h.breeder IS NOT NULL AND h.breeder <> '' AND ${vis}
+         GROUP BY h.breeder, e.name, e.id`, [excl])).rows
+      : (await pool.query(
         `SELECT r.name AS rider, h.name AS horse, e.name AS event, e.id AS event_id,
            MIN(c.class_date) AS event_date, SUM(rr.points)::INT AS pts, COUNT(*)::INT AS rounds
          FROM round_results rr
@@ -1217,11 +1296,12 @@ module.exports = function mountPublicRoutes(app) {
          JOIN riders r ON r.id = rr.rider_id
          JOIN horses h ON h.id = rr.horse_id
          WHERE c.series_key = ANY($1) AND ${vis}
-         GROUP BY r.name, h.name, e.name, e.id`, [keys]);
+         GROUP BY r.name, h.name, e.name, e.id`, [keys])).rows;
       const byCombo = {};
       for (const row of rows) {
-        const k = `${row.rider}||${row.horse}`;
-        (byCombo[k] ||= { rider: row.rider, horse: row.horse, events: {}, rounds: 0 });
+        const k = isBreeder ? `breeder||${row.breeder}` : `${row.rider}||${row.horse}`;
+        (byCombo[k] ||= (isBreeder ? { breeder: row.breeder, events: {}, rounds: 0 }
+          : { rider: row.rider, horse: row.horse, events: {}, rounds: 0 }));
         byCombo[k].events[row.event] = (byCombo[k].events[row.event] || 0) + row.pts;
         byCombo[k].rounds += row.rounds;
       }

@@ -27,7 +27,7 @@ export default async function SeriesPage({ params }) {
       </div>
     );
   }
-  const { info, standings, events, source, last_calculated } = d.data;
+  const { info, standings, events, last_calculated } = d.data;
   const name = info?.display_name || standings[0]?.series_name || key;
 
   const horseMap = {};
@@ -44,7 +44,6 @@ export default async function SeriesPage({ params }) {
 
   const leader = table[0] || null;
   const totalPts = table.reduce((x, r) => x + num(r.total), 0);
-  const maxPts = leader ? num(leader.total) || 1 : 1;
   const gap = leader && table[1] ? num(leader.total) - num(table[1].total) : 0;
   const doneEv = events.filter((e) => e.completed === true);
   const openEv = events.filter((e) => e.completed === false);
@@ -68,11 +67,6 @@ export default async function SeriesPage({ params }) {
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <h1 className="text-[26px] font-extrabold tracking-tight">{name}</h1>
         <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ Points Race</span>
-        {source === 'official' || info?.is_official ? (
-          <span className="rounded-full border border-mint/40 bg-mint/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-mint">◦ Official{info?.official_source ? ` · ${info.official_source}` : ''}</span>
-        ) : (
-          <span className="rounded-full border border-info/40 bg-info/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-info">◦ Independent calculation</span>
-        )}
       </div>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
@@ -100,7 +94,6 @@ export default async function SeriesPage({ params }) {
           <h2 className="mb-2 text-[15px] font-bold">Series Registry</h2>
           <dl>
             {[
-              ['Status', source === 'official' || info?.is_official ? 'Official' : 'Independent'],
               ['Events completed', `${doneEv.length}${unkEv.length ? ` (+${unkEv.length} undated)` : ''} / ${events.length}`],
               ['Events remaining', String(openEv.length)],
               ['Best-of rule', info?.best_of ? `Best ${info.best_of}` : 'All count'],
@@ -128,29 +121,6 @@ export default async function SeriesPage({ params }) {
             compact
           />
         )}
-      </section>
-
-      <h2 className="mb-3 text-[15px] font-bold">Points Race</h2>
-      <section className="mb-6 rounded border border-line bg-card p-5">
-        <div className="space-y-2.5">
-          {table.slice(0, 10).map((r) => (
-            <div key={`${r.rider}-${r.horse}`} className="grid grid-cols-[150px_1fr_52px] items-center gap-3 text-[12.5px]">
-              <span className="truncate font-medium">#{r.rank} {r.rider}</span>
-              <div className="h-2 rounded bg-[#2A2A2A]">
-                <div className={`h-2 rounded ${r.rank === 1 ? 'bg-gold' : 'bg-info'}`} style={{ width: `${(100 * num(r.total)) / maxPts}%` }} />
-              </div>
-              <span className="text-right font-bold tabular-nums">{r.total}</span>
-            </div>
-          ))}
-          {!table.length && (
-            <EmptyState
-              icon="🏆"
-              title="No points recorded yet"
-              hint="Points appear once classes in this series publish results."
-              compact
-            />
-          )}
-        </div>
       </section>
 
       {!!insights.length && (

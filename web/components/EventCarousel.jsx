@@ -4,14 +4,6 @@ import { useRef, useState, useEffect } from 'react';
 import { CARD, LINK, badge, BADGE } from '../lib/tokens';
 import { EmptyState } from './EmptyState';
 
-const statusBadge = (s) => {
-  if (s === 'official') return badge(BADGE.green);
-  if (s === 'complete') return badge(BADGE.blue);
-  if (s === 'provisional') return badge(BADGE.goldfill);
-  if (s === 'upcoming') return badge(BADGE.goldfill);
-  return null;
-};
-
 const fmtDay = (d) => (d || '').slice(0, 10);
 const fmtUpdated = (d) => {
   if (!d) return null;
@@ -89,9 +81,7 @@ export default function EventCarousel({ events, kind = 'results' }) {
             className="snap-start shrink-0 w-[240px] bg-card2 border border-line rounded p-4 no-underline hover:border-gold/60 transition-colors group">
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] text-faint">{fmtDay(e.date_start)}{e.date_end && e.date_end !== e.date_start ? ` → ${fmtDay(e.date_end)}` : ''}</span>
-              {upcoming
-                ? <span className={statusBadge('upcoming')}>Upcoming</span>
-                : (e.status && <span className={statusBadge(e.status)}>{e.status[0].toUpperCase() + e.status.slice(1)}</span>)}
+              {upcoming && <span className={badge(BADGE.goldfill)}>Upcoming</span>}
             </div>
             <div className="mt-1 font-bold text-[14px] leading-snug text-white group-hover:text-gold line-clamp-2 min-h-[40px]">{e.name}</div>
             <div className="mt-1 text-[12px] text-muted truncate">{e.venue || '—'}{e.region ? ` · ${e.region}` : ''}</div>

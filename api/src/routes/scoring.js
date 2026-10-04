@@ -100,7 +100,8 @@ function validateEsnz(p, ez) {
     }
     for (const list of ['scaleOverride', 'multipliers']) {
       if (cfg[list] !== undefined && (!Array.isArray(cfg[list]) || !cfg[list].every((r) =>
-        Array.isArray(r.eventKinds) && (list === 'multipliers' ? Number(r.mult) > 0 : typeof r.scale === 'string')))) {
+        Array.isArray(r.eventKinds) && (list === 'multipliers' ? Number(r.mult) > 0 : typeof r.scale === 'string')
+        && (r.classNameContains === undefined || (Array.isArray(r.classNameContains) && r.classNameContains.every((s) => typeof s === 'string')))))) {
         return `esnz.series.${key}.${list} invalid`;
       }
     }

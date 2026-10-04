@@ -1,8 +1,7 @@
 import Link from 'next/link';
 import { getJSON } from '../../lib/api';
-import { BADGE, CARD, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../lib/tokens';
+import { BADGE, CARD, H1, H2, LINK, LIVE, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../lib/tokens';
 import { trendBadge, shrunkClear } from '../../lib/eq';
-import { TrendPanel, BenchChart } from '../../components/Graphs';
 import Filters from '../../components/Filters';
 import EventCarousel from '../../components/EventCarousel';
 import { heightParams } from '../../lib/heights';
@@ -17,14 +16,6 @@ const diffBadge = (d) => {
   const n = Number(d);
   return `${n > 0 ? '+' : ''}${n.toFixed(1)}%`;
 };
-
-function difficulty(avg) {
-  const a = Number(avg);
-  if (a >= 5) return ['Elite', 'goldfill'];
-  if (a >= 3) return ['High', 'gray'];
-  if (a >= 1.5) return ['Medium', 'gray'];
-  return ['Low', 'green'];
-}
 
 const s = (sp, k) => Array.isArray(sp?.[k]) ? sp[k][0] : sp?.[k];
 
@@ -43,25 +34,25 @@ export default async function Dashboard({ searchParams }) {
     api.since = d.toISOString().slice(0, 10);
   }
   if (range === 'season') {
-    const ref = season || '2025-2026';
+    const ref = season || '2026-2027';
     api.since = `${ref.slice(0, 4)}-08-01`;
   }
   const qs = new URLSearchParams(Object.entries(api).filter(([, v]) => v !== '' && v != null)).toString();
   const Q = qs ? `?${qs}` : '';
 
-  const [horses, riders, events, upcomingEv, circuit, classes, heights, ptHorses, ptRiders, stats] = await Promise.all([
+  const [horses, riders, events, upcomingEv, circuit, ptHorses, ptRiders, stats, seriesLeaders] = await Promise.all([
     getJSON(`/rankings/horses?limit=100${Q ? '&' + qs : ''}`),
     getJSON(`/rankings/riders?limit=100${Q ? '&' + qs : ''}`),
     getJSON(`/events?limit=100&has_data=1${Q ? '&' + qs : ''}`),
     getJSON('/events?limit=20&upcoming=1'),
     getJSON(`/trends/circuit${Q}`),
-    getJSON(`/classes?limit=100${Q ? '&' + qs : ''}`),
-    getJSON('/height-stats?limit=200'),
-    // Points leaders — single scoring (placing points), not clears alone.
+    // Points leaders — all-time ESNZ series points (series classes only),
+    // independent of the slice filters above.
     getJSON('/rankings/horses?limit=5&metric=points').catch(() => ({ data: [] })),
     getJSON('/rankings/riders?limit=4&metric=points').catch(() => ({ data: [] })),
     // Exact slice totals (rankings/events lists are paging-capped — never count from them).
     getJSON(`/stats/circuit${Q}`).catch(() => null),
+    getJSON('/series/leaders').catch(() => ({ data: [] })),
   ]);
   const current = { season, region, arena, height, min_rounds: minRounds, range, entity };
   const seasons = [...new Set(events.data.map((e) => e.season).filter(Boolean))].sort().reverse();
@@ -85,16 +76,6 @@ export default async function Dashboard({ searchParams }) {
   const rDetails = Object.fromEntries(await Promise.all(
     top4R.map(async (r) => [r.rider_id, await getJSON(`/riders/${r.rider_slug || r.rider_id}`)])
   ));
-
-  const feat = top5[0];
-  const fPart = feat ? (details[feat.horse_id].partnerships || [])[0] : null;
-  const fTrend = feat ? await getJSON(`/horses/${feat.horse_id}/trend`) : { data: [] };
-  const fHeights = feat ? heights.data.filter((x) => x.horse_id === feat.horse_id) : [];
-  const bestH = [...fHeights].sort((a, b) =>
-    Number(b.clear_pct) - Number(a.clear_pct) || Number(b.height_cm) - Number(a.height_cm))[0];
-  const fMonths = fTrend.data;
-  const seasonDelta = fMonths.length > 1
-    ? Number(fMonths[fMonths.length - 1].clear_pct) - Number(fMonths[0].clear_pct) : null;
 
   // circuit totals + deltas (null = no prior month to compare against)
   const m = circuit.data;
@@ -120,31 +101,6 @@ export default async function Dashboard({ searchParams }) {
   const horsesN = numOr(totals?.horses, ranked.length);
   const ridersN = numOr(totals?.riders, rankedR.length);
   const eventsN = numOr(totals?.events, events.data.length);
-  const winsAvg = ranked.length
-    ? ranked.reduce((st, h) => st + Number(h.wins || 0), 0) / ranked.length : 0;
-
-  // trending: biggest recent-form improvement
-  const trending = top5.map((h) => {
-    const hist = (details[h.horse_id].history || []).slice(0, 5);
-    const last5 = hist.length ? 100 * hist.filter((r) => r.clear_round).length / hist.length : 0;
-    return { h, diff: last5 - Number(h.clear_pct), n: hist.length };
-  }).sort((a, b) => b.diff - a.diff).slice(0, 3);
-
-  // competition intel: top 3 events by volume
-  const byEvent = {};
-  for (const c of classes.data) {
-    (byEvent[c.event] ||= { rounds: 0, cp: [], af: [] });
-    byEvent[c.event].rounds += Number(c.starters) || 0;
-    if (c.clear_pct !== null) byEvent[c.event].cp.push(Number(c.clear_pct));
-    if (c.avg_faults !== null) byEvent[c.event].af.push(Number(c.avg_faults));
-  }
-  const intel = Object.entries(byEvent)
-    .map(([event, v]) => ({
-      event,
-      clear: v.cp.length ? v.cp.reduce((a, b) => a + b, 0) / v.cp.length : 0,
-      avg: v.af.length ? v.af.reduce((a, b) => a + b, 0) / v.af.length : 0,
-    }))
-    .sort((a, b) => b.clear - a.clear).slice(0, 3);
 
   // leaderboards: thin samples can't top a board (min 3 rounds)
   const MINB = 3;
@@ -163,12 +119,6 @@ export default async function Dashboard({ searchParams }) {
 
   const badgeArrow = (lbl) => (lbl === 'Declining' ? '↓' : lbl === 'Stable' ? '→' : '↑');
   const spark = (k, n = 6) => m.slice(-n).map((x) => Number(x[k]));
-  const insight = (t) => {
-    const w = Number(t.h.wins);
-    if (t.diff > 10) return `Improved consistency over last ${t.n} competitions.`;
-    if (w > 0) return `${w} win${w === 1 ? '' : 's'} from ${t.h.starts} starts this season.`;
-    return `Holding a ${pct(t.h.clear_pct)} clear rate.`;
-  };
   const latestEvents = [...(events.data || [])]
     .filter((e) => (Number(e.class_count || 0) > 0 || Number(e.round_count || 0) > 0 || Number(e.combo_count || 0) > 0)
       && (!e.date_start || new Date(e.date_start) <= new Date()))
@@ -186,7 +136,7 @@ export default async function Dashboard({ searchParams }) {
           <h1 className={H1}>Equestrian Performance Intelligence</h1>
           <p className={SUB}>Transform competition data into meaningful horse and rider insights. NZ National Circuit.</p>
         </div>
-        <div className="flex gap-2.5 items-center shrink-0 pt-1.5"><span className={LIVE}>● LIVE FEED</span><span className="text-muted border border-line rounded-full px-3 py-[5px] text-xs">◷ Updated just now</span></div>
+        <div className="flex gap-2.5 items-center shrink-0 pt-1.5"><span className={LIVE}>● NZ CIRCUIT</span><span className="text-muted border border-line rounded-full px-3 py-[5px] text-xs">◷ Data as of {totals?.last_import ? String(totals.last_import).slice(0, 10) : '—'}</span></div>
       </div>
 
       <Filters current={current} seasons={seasons} regions={regions} arenas={arenas} />
@@ -230,75 +180,10 @@ export default async function Dashboard({ searchParams }) {
           <p className={SUB}>Finished competitions with published results — scroll sideways.</p>
           <EventCarousel events={latestEvents} />
 
-          <h2 className={H2}>Upcoming Events</h2>
-          <p className={SUB}>Fixtures on the calendar — results appear here once published.</p>
-          <EventCarousel events={upcomingEvents} kind="upcoming" />
-
-          {feat && (
-            <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6">
-              <section className={CARD}>
-                <h2 className={H2}>🎖 Featured Horse Intelligence</h2>
-                <div className="flex gap-5 items-center my-3">
-                  <div className="text-center shrink-0">
-                    <div className="text-[34px] font-extrabold leading-none text-gold tabular-nums">{Number(feat.total_points)}</div>
-                    <div className="mt-1 text-[10px] tracking-wide text-muted">POINTS</div>
-                  </div>
-                  <div>
-                    <div className="text-[22px] font-extrabold">{feat.horse}</div>
-                    <div className="flex gap-6 mt-1.5">
-                      <div><div className="text-[11px] text-muted">Rider</div><b className="text-[13px] text-white">{fPart ? fPart.rider : '—'}</b></div>
-                      <div><div className="text-[11px] text-muted">Owner</div><b className="text-[13px] text-white">{details[feat.horse_id].data.breeder || 'Private ownership'}</b></div>
-                    </div>
-                  </div>
-                  <div className="flex-1" />
-                  <span className="inline-block text-[11px] font-bold rounded-md px-2 py-[3px] border border-gold text-gold">Elite Performance</span>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 my-3.5">
-                  <div className="bg-card2 rounded p-2.5 px-3"><div className="text-[11px] text-muted">Clear Round Rate</div><div className="text-[15px] font-bold mt-0.5 text-moss">{pct(feat.clear_pct)}</div></div>
-                  <div className="bg-card2 rounded p-2.5 px-3"><div className="text-[11px] text-muted">Average Faults</div><div className="text-[15px] font-bold mt-0.5 text-moss">{Number(feat.avg_faults).toFixed(2)}</div></div>
-                  <div className="bg-card2 rounded p-2.5 px-3"><div className="text-[11px] text-muted">Rounds Analysed</div><div className="text-[15px] font-bold mt-0.5 text-sky">{feat.starts}</div></div>
-                  <div className="bg-card2 rounded p-2.5 px-3"><div className="text-[11px] text-muted">Season Trend</div><div className="text-[15px] font-bold mt-0.5 text-gold">{diffBadge(seasonDelta)}</div></div>
-                </div>
-                <div className="bg-card2 rounded p-3 px-3.5 text-muted italic text-[13px]">“{feat.horse} leads the circuit, with strong performance in {bestH ? `${bestH.height_cm}cm` : 'medium height'} classes.”</div>
-              </section>
-              <section className={CARD}>
-                <h2 className={H2}>🔗 Best Partnership</h2>
-                <div className="flex justify-between items-center my-2.5">
-                  <div><b>{fPart ? `${feat.horse} + ${fPart.rider}` : '—'}</b><div className="text-xs text-muted">Most rounds together this season</div></div>
-                </div>
-                {fPart && <>
-                  <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Rounds Together</span><span className="font-semibold">{fPart.rounds_together} Rounds</span></div>
-                  <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Clear Rate Together</span><span className="font-semibold text-moss">{pct(fPart.clear_pct)}</span></div>
-                  <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Average Faults</span><span className="font-semibold">{Number(fPart.avg_faults).toFixed(2)}</span></div>
-                  <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Best Height Class</span><span className="font-semibold">{bestH ? `${(Number(bestH.height_cm) / 100).toFixed(2)}m` : '—'}</span></div>
-                </>}
-              </section>
-            </div>
-          )}
-
-          {feat && (
-            <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6">
-              <section className={CARD}>
-                <h2 className={H2}>Season Performance Trend</h2>
-                <p className={SUB}>Temporal metrics comparison for featured class</p>
-                <TrendPanel monthly={fMonths} horseName={feat.horse} />
-              </section>
-              <section className={CARD}>
-                <h2 className={H2}>Performance Benchmarking</h2>
-                <p className={SUB}>{feat.horse} vs. Showjumping Circuit Avg</p>
-                <BenchChart items={[
-                  { label: 'Clear Round Rate', short: feat.horse.split(' ')[0] + ' S.', mine: feat.clear_pct, avg: circuitClear, text: `${pct(feat.clear_pct)} vs ${pct(circuitClear)}`, color: '#00C853' },
-                  { label: 'Average Faults (Lower is Better)', short: feat.horse.split(' ')[0] + ' S.', mine: feat.avg_faults, avg: circuitAvg, text: `${Number(feat.avg_faults).toFixed(2)} vs ${circuitAvg.toFixed(2)}`, color: '#FF1744' },
-                  { label: 'Wins', short: feat.horse.split(' ')[0] + ' S.', mine: feat.wins, avg: winsAvg, text: `${feat.wins} vs ${winsAvg.toFixed(1)}`, color: '#FFD700' },
-                ]} />
-              </section>
-            </div>
-          )}
-
           {showHorses && (
             <>
               <h2 className={H2}>Top Horses</h2>
-              <p className={SUB}>Most points wins</p>
+              <p className={SUB}>All-time ESNZ series points · series classes only · ignores slice filters</p>
               <section className={CARD}>
                 <div className={TABLEWRAP}>
                 <table className={TABLE}>
@@ -328,7 +213,7 @@ export default async function Dashboard({ searchParams }) {
           {showRiders && (
             <>
               <h2 className={H2}>Top Riders</h2>
-              <p className={SUB}>Placing points across all partnerships</p>
+              <p className={SUB}>All-time ESNZ series points across all partnerships · ignores slice filters</p>
               <section className={CARD}>
                 <div className={TABLEWRAP}>
                 <table className={TABLE}>
@@ -347,6 +232,31 @@ export default async function Dashboard({ searchParams }) {
                         </tr>
                       );
                     })}
+                  </tbody>
+                </table>
+                </div>
+              </section>
+            </>
+          )}
+
+          {(seriesLeaders.data || []).length > 0 && (
+            <>
+              <h2 className={H2}>Series Leaders</h2>
+              <p className={SUB}>Current leader of each official ESNZ series · <Link className={LINK} href="/series">All series →</Link></p>
+              <section className={CARD}>
+                <div className={TABLEWRAP}>
+                <table className={TABLE}>
+                  <thead><tr><th className={TH}>Series</th><th className={TH}>Leader</th><th className={`${TH} ${NUM}`}>Points</th><th className={`${TH} ${NUM}`}>Starts</th><th className={`${TH} ${NUM}`}>Classes</th></tr></thead>
+                  <tbody>
+                    {(seriesLeaders.data || []).map((s) => (
+                      <tr key={s.series_key}>
+                        <td className={TD}><Link className={LINK} href={`/series/${s.series_key}`}>{s.series_name || s.series_key}</Link></td>
+                        <td className={TD}><Link href={`/horses/${s.horse_slug || s.horse_id}`} className="text-white font-semibold">{s.horse}</Link></td>
+                        <td className={`${TD} ${NUM}`}><b>{Number(s.total_points)}</b></td>
+                        <td className={`${TD} ${NUM}`}>{s.starts}</td>
+                        <td className={`${TD} ${NUM} text-muted`}>{s.classes}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
                 </div>
@@ -447,49 +357,10 @@ export default async function Dashboard({ searchParams }) {
             </section>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h2 className={H2}>Trending Horses</h2>
-              <p className={SUB}>Steeds with highest rate of consistency gain over 5 rounds</p>
-              <section className={CARD}>
-                <div className={TABLEWRAP}>
-                <table className={TABLE}>
-                  <thead><tr><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Points</th><th className={TH}>Recent Insight</th></tr></thead>
-                  <tbody>
-                    {trending.map((t) => (
-                      <tr key={t.h.horse_id}>
-                        <td className={TD}><b>{t.h.horse}</b></td><td className={`${TD} ${NUM} text-gold`}><b>{Number(t.h.total_points)}</b></td>
-                        <td className={MUT}>{insight(t)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
-              </section>
-            </div>
-            <div>
-              <h2 className={H2}>Competition Intelligence</h2>
-              <p className={SUB}>Historical complexity profiles of NZ regional arenas</p>
-              <section className={CARD}>
-                <div className={TABLEWRAP}>
-                <table className={TABLE}>
-                  <thead><tr><th className={TH}>Event</th><th className={TH}>Difficulty</th><th className={`${TH} ${NUM}`}>Clear %</th></tr></thead>
-                  <tbody>
-                    {intel.map((x) => {
-                      const [lbl, cls] = difficulty(x.avg);
-                      return (
-                        <tr key={x.event}>
-                          <td className={TD}><b>{x.event}</b></td><td className={TD}><span className={badge(BADGE[cls])}>{lbl}</span></td>
-                          <td className={`${TD} ${NUM} text-moss`}>{pct(x.clear)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                </div>
-              </section>
-            </div>
-          </div>
+          <h2 className={H2}>Upcoming Events</h2>
+          <p className={SUB}>Fixtures on the calendar — results appear here once published.</p>
+          <EventCarousel events={upcomingEvents} kind="upcoming" />
+
         </>
       )}
     </>

@@ -43,12 +43,6 @@ export default async function About() {
       <section className={CARD}>
         <h2 className={H2}>Labels you will see</h2>
         <div className="flex flex-wrap gap-2 mt-2">
-          <span className={badge(BADGE.green)}>Official</span><span className="text-muted text-sm">Organiser-published table or result.</span>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-2">
-          <span className={badge(BADGE.goldfill)}>Provisional</span><span className="text-muted text-sm">Awaiting official confirmation.</span>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-2">
           <span className={badge(BADGE.blue)}>Independent</span><span className="text-muted text-sm">Compiled by EQIndex (series, forecasts, benchmarks).</span>
         </div>
       </section>
