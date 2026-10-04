@@ -1277,7 +1277,7 @@ module.exports = function mountPublicRoutes(app) {
       // by breeder presence (explicit §2.1 rule); country refinement later.
       const excl = Array.isArray(cfg.excludeSeries) ? cfg.excludeSeries : [];
       const keys = Array.isArray(cfg.sources) && cfg.sources.length ? cfg.sources : [key];
-      const { rows } = isBreeder ? (await pool.query(
+      const { rows } = isBreeder ? await pool.query(
         `SELECT h.breeder AS breeder, e.name AS event, e.id AS event_id,
            MIN(c.class_date) AS event_date, SUM(rr.points)::INT AS pts, COUNT(*)::INT AS rounds
          FROM round_results rr
@@ -1286,8 +1286,8 @@ module.exports = function mountPublicRoutes(app) {
          JOIN horses h ON h.id = rr.horse_id
          WHERE c.series_key IS NOT NULL AND NOT (c.series_key = ANY($1))
            AND h.breeder IS NOT NULL AND h.breeder <> '' AND ${vis}
-         GROUP BY h.breeder, e.name, e.id`, [excl])).rows
-      : (await pool.query(
+         GROUP BY h.breeder, e.name, e.id`, [excl])
+      : await pool.query(
         `SELECT r.name AS rider, h.name AS horse, e.name AS event, e.id AS event_id,
            MIN(c.class_date) AS event_date, SUM(rr.points)::INT AS pts, COUNT(*)::INT AS rounds
          FROM round_results rr
@@ -1296,7 +1296,7 @@ module.exports = function mountPublicRoutes(app) {
          JOIN riders r ON r.id = rr.rider_id
          JOIN horses h ON h.id = rr.horse_id
          WHERE c.series_key = ANY($1) AND ${vis}
-         GROUP BY r.name, h.name, e.name, e.id`, [keys])).rows;
+         GROUP BY r.name, h.name, e.name, e.id`, [keys]);
       const byCombo = {};
       for (const row of rows) {
         const k = isBreeder ? `breeder||${row.breeder}` : `${row.rider}||${row.horse}`;

@@ -7,46 +7,69 @@ import { FilterBar, Pagination } from '../../components/list-controls';
 import { TableEmpty } from '../../components/EmptyState';
 import { heightParams } from '../../lib/heights';
 import { useSeason } from '../../components/global';
+import Dropdown from '../../components/Dropdown';
 
-const DEF = { q: '', season: '', region: '', arena: '', height: '', minStarts: '1' };
+const DEF = { q: '', season: '', region: '', arena: '', height: '', minStarts: '5' };
+const TABS = [['points', 'Points'], ['series', 'Series'], ['clear', 'Clear %']];
 
 export default function Horses() {
+  const [tab, setTab] = useState('points');
   const [f, setF] = useState(DEF);
   const { season: gSeason } = useSeason();
   useEffect(() => { setF((prev) => ({ ...prev, season: gSeason })); }, [gSeason]);
   const [rows, setRows] = useState([]);
-  const [opts, setOpts] = useState({ seasons: [], regions: [], arenas: [] });
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(25);
   const [loading, setLoading] = useState(true);
+  const [seriesList, setSeriesList] = useState([]);
+  const [seriesKey, setSeriesKey] = useState('');
+  const [seriesDetail, setSeriesDetail] = useState(null);
 
+  const [opts, setOpts] = useState({ seasons: [], regions: [], arenas: [] });
   useEffect(() => {
     fetch(`${API}/events?limit=100&has_data=1`).then((r) => r.json()).then((j) => {
       const d = j.data || [];
       const uniq = (k) => [...new Set(d.map((x) => x[k]).filter(Boolean))].sort();
       setOpts({ seasons: uniq('season'), regions: uniq('region'), arenas: uniq('arena_type') });
     }).catch(() => {});
+    fetch(`${API}/series`).then((r) => r.json()).then((j) => {
+      const list = (j.data || []).filter((s) => Number(s.starts) > 0);
+      setSeriesList(list);
+      if (list.length && !seriesKey) setSeriesKey(list[0].series_key);
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Points tab: official ESNZ series points (strict scope — non-series horses score 0).
+  // Points are sums, not rates — no thin-sample problem, so the starts guard
+  // does NOT apply here (it would hide genuine series leaders with few starts).
+  // Clear tab: factual clear-rate stat (info only, min 5 starts).
   useEffect(() => {
+    if (tab === 'series') return;
     setLoading(true);
-    // Default ranking (clear%): lists EVERY horse with starts, including
-    // newly imported non-series classes. metric=points only scores series
-    // classes (scope=series_only), so new imports sit at 0 pts and fall
-    // outside limit=200 — they looked "empty"/missing.
-    const p = new URLSearchParams({ limit: '500', min_starts: f.minStarts, ...heightParams(f.height) });
+    const minStarts = tab === 'points' ? '0' : f.minStarts;
+    const p = new URLSearchParams({ limit: '500', min_starts: minStarts, ...heightParams(f.height) });
+    if (tab === 'points') p.set('metric', 'points');
     if (f.season) p.set('season', f.season);
     if (f.region) p.set('region', f.region);
     if (f.arena) p.set('arena', f.arena);
     fetch(`${API}/rankings/horses?${p}`)
       .then((r) => r.json())
-      .then((j) => {
-        setRows((j.data || []).map((x) => ({ ...x })));
-        setPage(1);
-      })
+      .then((j) => { setRows(j.data || []); setPage(1); })
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-  }, [f.season, f.region, f.arena, f.height, f.minStarts]);
+  }, [tab, f.season, f.region, f.arena, f.height, f.minStarts]);
+
+  // Series tab: official best-N standings per series (exactly as ESNZ publishes).
+  useEffect(() => {
+    if (tab !== 'series' || !seriesKey) return;
+    setLoading(true);
+    fetch(`${API}/series/${encodeURIComponent(seriesKey)}/detail`)
+      .then((r) => r.json())
+      .then((j) => { setSeriesDetail(j.data || null); setPage(1); })
+      .catch(() => setSeriesDetail(null))
+      .finally(() => setLoading(false));
+  }, [tab, seriesKey]);
 
   const filtered = useMemo(() => {
     const q = f.q.trim().toLowerCase();
@@ -54,39 +77,88 @@ export default function Horses() {
     return rows.filter((x) => (x.horse || '').toLowerCase().includes(q));
   }, [rows, f.q]);
 
-  useEffect(() => { setPage(1); }, [f.q]);
+  const seriesRows = useMemo(() => {
+    const all = seriesDetail?.standings || [];
+    const q = f.q.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter((x) => (x.horse || '').toLowerCase().includes(q) || (x.rider || '').toLowerCase().includes(q));
+  }, [seriesDetail, f.q]);
 
-  const pages = Math.max(1, Math.ceil(filtered.length / perPage));
+  useEffect(() => { setPage(1); }, [f.q]);
+  const list = tab === 'series' ? seriesRows : filtered;
+
+  const pages = Math.max(1, Math.ceil(list.length / perPage));
   const safePage = Math.min(page, pages);
-  const view = filtered.slice((safePage - 1) * perPage, safePage * perPage);
+  const view = list.slice((safePage - 1) * perPage, safePage * perPage);
 
   return (
     <>
       <h1 className={H1}>Horses</h1>
-      <p className={SUB}>Every ranked horse on the NZ circuit.</p>
-      <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} />
+      <p className={SUB}>Official ESNZ series points — every ranked horse on the NZ circuit.</p>
+      <div className="flex gap-1 bg-card2 border border-line rounded p-1 mb-3 overflow-x-auto w-fit">
+        {TABS.map(([k, lbl]) => (
+          <button key={k} onClick={() => { setTab(k); setPage(1); }}
+            className={`px-3.5 py-[7px] rounded-md text-[13px] whitespace-nowrap cursor-pointer border-0 ${tab === k ? 'bg-card text-gold font-bold' : 'bg-transparent text-muted hover:text-white'}`}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+      {tab === 'series' ? (
+        <div className="mb-3 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Series
+            <Dropdown ariaLabel="Series" value={seriesKey} placeholder="Select series"
+              options={seriesList.map((s) => ({ value: s.series_key, label: `${s.series_name || s.series_key} · ${s.starts} rounds` }))}
+              onSelect={(o) => setSeriesKey(o.value)} /></label>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
+            <input value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="Horse or rider…"
+              className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 200 }} /></label>
+          <span className="ml-auto text-[12px] text-faint">Best-N counting, exactly as ESNZ publishes · all seasons</span>
+        </div>
+      ) : (
+        <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} showMinStarts={tab !== 'points'} />
+      )}
       <section className={CARD}>
         <div className="overflow-x-auto">
         <table className={TABLE}>
-          <thead><tr><th className={TH}>Rank</th><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th><th className={`${TH} ${NUM}`}>Starts</th></tr></thead>
+          <thead><tr>
+            <th className={TH}>Rank</th><th className={TH}>Horse</th>
+            {tab === 'points' && (<><th className={`${TH} ${NUM}`}>Points</th><th className={`${TH} ${NUM}`}>Wins</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Starts</th></>)}
+            {tab === 'series' && (<><th className={TH}>Rider</th><th className={`${TH} ${NUM}`}>Total</th><th className={`${TH} ${NUM}`}>Dropped</th></>)}
+            {tab === 'clear' && (<><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th><th className={`${TH} ${NUM}`}>Starts</th></>)}
+          </tr></thead>
           <tbody>
             {view.map((x, i) => {
               const rank = (safePage - 1) * perPage + i + 1;
               return (
-                <tr key={x.horse_id}>
+                <tr key={tab === 'series' ? `${x.horse}-${x.rider}` : x.horse_id}>
                   <td className={rank === 1 && safePage === 1 ? 'rank1' : ''}>#{rank}</td>
-                  <td className={TD}><Link href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white font-semibold">{x.horse}</Link></td>
-                  <td className={`${TD} ${NUM} text-moss`}>{Number(x.clear_pct).toFixed(1)}%</td>
-                  <td className={`${TD} ${NUM}`}>{Number(x.avg_faults).toFixed(2)}</td>
-                  <td className={`${TD} ${NUM}`}>{x.starts}</td>
+                  <td className={TD}>{(tab === 'series' && !x.horse_slug && !x.horse_id)
+                    ? <b>{x.horse}</b>
+                    : <Link href={`/horses/${x.horse_slug || x.horse_id || ''}`} className="text-white font-semibold">{x.horse}</Link>}</td>
+                  {tab === 'points' && (<>
+                    <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{x.total_points ?? 0}</b></td>
+                    <td className={`${TD} ${NUM} text-muted`}>{x.wins ?? 0}</td>
+                    <td className={`${TD} ${NUM} text-moss`}>{x.clear_pct === null || x.clear_pct === undefined ? '–' : `${Number(x.clear_pct).toFixed(1)}%`}</td>
+                    <td className={`${TD} ${NUM} text-muted`}>{x.starts}</td>
+                  </>)}
+                  {tab === 'series' && (<>
+                    <td className={`${TD} text-muted`}>{x.rider}</td>
+                    <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{x.total}</b></td>
+                    <td className={`${TD} ${NUM} text-muted`}>{x.dropped ?? 0}</td>
+                  </>)}
+                  {tab === 'clear' && (<>
+                    <td className={`${TD} ${NUM} text-moss`}>{Number(x.clear_pct).toFixed(1)}%</td>
+                    <td className={`${TD} ${NUM}`}>{Number(x.avg_faults).toFixed(2)}</td>
+                    <td className={`${TD} ${NUM}`}>{x.starts}</td>
+                  </>)}
                 </tr>
               );
             })}
             {!view.length && (
               loading ? (
-                <tr><td colSpan={5} className="px-2 py-4">
+                <tr><td colSpan={6} className="px-2 py-4">
                   <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
-                    {[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}
+                    {[0, 1, 2].map((k) => <span key={k} className="sk h-3.5 w-full" />)}
                   </span>
                 </td></tr>
               ) : (
@@ -96,7 +168,7 @@ export default function Horses() {
           </tbody>
         </table>
         </div>
-        <Pagination page={safePage} pages={pages} setPage={setPage} perPage={perPage} setPerPage={setPerPage} total={filtered.length} />
+        <Pagination page={safePage} pages={pages} setPage={setPage} perPage={perPage} setPerPage={setPerPage} total={list.length} />
       </section>
     </>
   );
