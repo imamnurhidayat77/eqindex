@@ -1,411 +1,308 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { API } from '../lib/api';
-import { CARD, H2, LINK, NUM, SUB, TABLE, TD, TH } from '../lib/tokens';
-import Switch from './Switch';
+import { H2, LINK } from '../lib/tokens';
 
-const TABS = [
-  ['all', 'All'], ['horses', 'Horses'], ['riders', 'Riders'],
-  ['combos', 'Combinations'], ['events', 'Events'],
-];
+const trendStyle = (t) =>
+  t === 'Declining'
+    ? 'bg-redbg text-blood'
+    : t === 'Improving' || t === 'Rising'
+      ? 'bg-greenbg text-moss'
+      : 'bg-line text-muted';
 
-const trendCls = (t) =>
-  t === 'Declining' ? 'text-blood' : t === 'Stable' ? 'text-muted' : 'text-moss';
-const trendArrow = (t) => (t === 'Declining' ? '↓' : t === 'Stable' ? '→' : '↑');
-
-function rankCls(rank) {
-  return rank === 1 ? 'text-gold' : 'text-body';
+function FormBalls({ form }) {
+  if (!form || !form.length) return <span className="text-faint text-xs">No rounds yet</span>;
+  return (
+    <span className="inline-flex items-center gap-1" title="Last 5 rounds (left = most recent)">
+      {form.map((r, i) => (
+        <span
+          key={i}
+          title={`${r.event} — ${r.clear ? 'clear' : `${r.faults ?? '–'} faults`}${r.place ? ` · #${r.place}` : ''}`}
+          className={`inline-block w-3 h-3 rounded-full border ${r.clear
+            ? 'bg-moss border-moss'
+            : 'bg-transparent border-blood'
+            } ${i === 0 ? 'ring-1 ring-white/30' : ''}`}
+        />
+      ))}
+      <span className="text-faint text-[11px] ml-1">last {form.length}</span>
+    </span>
+  );
 }
 
-function Toggle({ on, onFlip, label }) {
-  return <Switch on={on} onFlip={onFlip} label={label} />;
+function ResultPill({ r }) {
+  if (r.place !== null && r.place !== undefined) {
+    const good = Number(r.place) <= 3;
+    return (
+      <span className={`text-[11px] font-bold rounded-md px-2 py-[3px] ${good ? 'bg-greenbg text-moss' : 'bg-card2 text-muted border border-line'}`}>
+        #{r.place}
+      </span>
+    );
+  }
+  return (
+    <span className={`text-[11px] font-bold rounded-md px-2 py-[3px] ${r.clear ? 'bg-greenbg text-moss' : 'bg-redbg text-blood'}`}>
+      {r.clear ? 'Clear' : `${r.faults ?? '–'} flt`}
+    </span>
+  );
 }
 
-export default function WatchlistView({ horses, riders, combos, eventsTop, timeline, insights, recentCount, initialPrefs }) {
+function HeightBars({ bands }) {
+  if (!bands || !bands.length) return null;
+  const max = Math.max(...bands.map((b) => b.rounds), 1);
+  return (
+    <div className="mt-2.5">
+      <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1.5">Height form</div>
+      <div className="space-y-1.5">
+        {bands.map((b) => (
+          <div key={b.label} className="flex items-center gap-2 text-[12px]">
+            <span className="w-[52px] text-muted shrink-0">{b.label}</span>
+            <span className="flex-1 h-1.5 rounded bg-line overflow-hidden">
+              <span
+                className={`block h-full rounded ${b.clear >= 60 ? 'bg-moss' : b.clear >= 35 ? 'bg-gold' : 'bg-blood'}`}
+                style={{ width: `${Math.max(8, (100 * b.rounds) / max)}%` }}
+              />
+            </span>
+            <span className="w-[86px] text-right text-muted tabular-nums shrink-0">
+              {b.clear === null ? '–' : `${b.clear.toFixed(0)}%`} · {b.rounds}r
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AthleteCard({ a, kind, selected, onToggle, onRemove, busy }) {
+  const profileHref = kind === 'horse' ? `/horses/${a.slug || a.id}` : `/riders/${a.slug || a.id}`;
+  return (
+    <article className="bg-card border border-line rounded p-4 flex flex-col gap-2 min-w-0">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <Link href={profileHref} className="text-white font-bold text-[15px] no-underline hover:text-gold transition-colors truncate block">
+            {a.name}
+          </Link>
+          <div className="text-faint text-[12px] mt-0.5">
+            {a.rank ? <>Ranked <b className={a.rank === 1 ? 'text-gold' : 'text-muted'}>#{a.rank}</b> · </> : null}
+            {a.starts} rounds · {Number(a.clear).toFixed(0)}% clear · {Number(a.avg).toFixed(2)} avg flt
+          </div>
+        </div>
+        <span className={`text-[11px] font-bold rounded-md px-2 py-[3px] shrink-0 ${trendStyle(a.trend)}`}>
+          {a.trend}
+        </span>
+      </div>
+
+      <FormBalls form={a.form} />
+
+      {a.outing ? (
+        <div className="text-[12.5px] text-muted">
+          Last outing:{' '}
+          <b className={a.outing.clear ? 'text-moss' : 'text-body'}>
+            {a.outing.clear ? 'Clear' : `${a.outing.faults ?? '–'} faults`}
+          </b>
+          {a.outing.height ? ` · ${(Number(a.outing.height) / 100).toFixed(2)}m` : null}
+          {' · '}{a.outing.event} <span className="text-faint">({a.outing.when})</span>
+        </div>
+      ) : (
+        <div className="text-[12.5px] text-faint">No rounds tracked yet.</div>
+      )}
+
+      {a.partner ? (
+        <div className="text-[12.5px] text-muted">
+          {kind === 'horse' ? 'Best with' : 'Best on'} <b className="text-body">{a.partner.name}</b>{' '}
+          <span className="text-faint">({a.partner.clear.toFixed(0)}% · {a.partner.rounds}r)</span>
+        </div>
+      ) : null}
+
+      <HeightBars bands={a.bands} />
+
+      <div className="flex items-center gap-3 mt-1.5 pt-2.5 border-t border-rowline">
+        <label className="flex items-center gap-1.5 text-[12px] text-muted cursor-pointer">
+          <input
+            type="checkbox"
+            className="w-4 h-4 accent-gold cursor-pointer"
+            checked={selected}
+            onChange={() => onToggle({ watchId: a.watchId, kind, id: a.id, name: a.name })}
+          />
+          Compare
+        </label>
+        <Link className={`${LINK} text-[12px]`} href={profileHref}>View profile →</Link>
+        <span className="flex-1" />
+        <button
+          className="text-sky bg-none border-0 p-0 text-[12px] cursor-pointer disabled:opacity-40"
+          disabled={busy}
+          onClick={() => onRemove(a.watchId)}
+        >
+          Remove
+        </button>
+      </div>
+    </article>
+  );
+}
+
+export default function WatchlistView({ horses, riders, timeline, pulse }) {
   const router = useRouter();
-  const [tab, setTab] = useState('all');
-  const [wq, setWq] = useState('');
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState([]);
+  const [busy, setBusy] = useState(false);
+
   const matchQ = (s) => {
-    const t = wq.trim().toLowerCase();
+    const t = q.trim().toLowerCase();
     if (!t) return true;
     return (s || '').toLowerCase().includes(t);
   };
-  const fHorses = horses.filter((h) => matchQ(`${h.name}`));
-  const fRiders = riders.filter((r) => matchQ(`${r.name}`));
-  const fCombos = combos.filter((c) => matchQ(`${c.horse} ${c.rider}`));
-  const fEvents = eventsTop.filter((e) => matchQ(`${e.event}`));
-  const [sel, setSel] = useState([]); // [{watchId, kind, id, name}]
-  const [busy, setBusy] = useState(false);
-  const [prefs, setPrefs] = useState(() => ({
-    score: true, ranking: true, results: true, benchmark: false,
-    ...(initialPrefs ? {
-      score: !!initialPrefs.score_changes, ranking: !!initialPrefs.ranking_movements,
-      results: !!initialPrefs.new_results, benchmark: !!initialPrefs.benchmark_changes,
-    } : {}),
-  }));
-  const flip = async (k) => {
-    const prev = prefs;
-    const next = { ...prev, [k]: !prev[k] };
-    setPrefs(next);
-    try {
-      const res = await fetch(`${API}/alert-prefs`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          score_changes: next.score, ranking_movements: next.ranking,
-          new_results: next.results, benchmark_changes: next.benchmark,
-        }),
-      });
-      if (!res.ok) setPrefs(prev);
-    } catch { setPrefs(prev); }
-  };
+
+  const fHorses = useMemo(
+    () => (horses || []).filter((h) => matchQ(`${h.name} ${h.partner?.name || ''}`)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [horses, q],
+  );
+  const fRiders = useMemo(
+    () => (riders || []).filter((r) => matchQ(`${r.name} ${r.partner?.name || ''}`)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [riders, q],
+  );
 
   const isSel = (watchId) => sel.some((s) => s.watchId === watchId);
-  const toggleSel = (row) => setSel((s) =>
-    isSel(row.watchId) ? s.filter((x) => x.watchId !== row.watchId) : [...s, row]);
+  const toggleSel = (row) =>
+    setSel((s) => (isSel(row.watchId) ? s.filter((x) => x.watchId !== row.watchId) : [...s, row]));
 
   async function removeIds(ids) {
+    if (!ids.length) return;
     setBusy(true);
-    await Promise.all(ids.map((id) =>
-      fetch(`${API}/watchlist/${id}`, { method: 'DELETE' })));
+    await Promise.all(ids.map((id) => fetch(`${API}/watchlist/${id}`, { method: 'DELETE' })));
     setSel([]);
     router.refresh();
     setBusy(false);
   }
 
-  async function flipVisibility(watchId, current) {
-    setBusy(true);
-    await fetch(`${API}/watchlist/${watchId}`, {
-      method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ is_public: !current }),
-    });
-    router.refresh();
-    setBusy(false);
-  }
-
-  const visBtn = (row) => row.watchId ? (
-    <button disabled={busy} title={row.isPublic ? 'Public — visible to others' : 'Private — only you'}
-      onClick={() => flipVisibility(row.watchId, row.isPublic)}
-      className={`text-[11px] font-bold rounded-md px-2 py-[3px] cursor-pointer border ${row.isPublic ? 'bg-bluebg text-sky border-sky/40' : 'bg-card2 text-faint border-line'}`}>
-      {row.isPublic ? '🌐 Public' : '🔒 Private'}
-    </button>
-  ) : null;
-
-  async function watchBody(body) {
-    setBusy(true);
-    await fetch(`${API}/watchlist`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...body }),
-    });
-    router.refresh();
-    setBusy(false);
-  }
-  const watchCombo = (horseId, riderId) =>
-    watchBody({ entity_type: 'combination', horse_id: horseId, rider_id: riderId });
-  const watchEvent = (eventId) =>
-    watchBody({ entity_type: 'event', entity_id: eventId });
-
-  function exportCsv() {
-    const rows = [['type', 'name', 'wins', 'clear_pct', 'rounds', 'trend']];
-    for (const h of horses) rows.push(['horse', h.name, h.wins, h.clear, h.starts, h.trend]);
-    for (const r of riders) rows.push(['rider', r.name, r.wins, r.clear, r.starts, r.trend]);
-    for (const c of combos) rows.push(['combination', `${c.horse} x ${c.rider}`, c.score, c.clear, c.rounds, '', c.trend]);
-    const csv = rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = 'watchlist.csv';
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-
   const selHorses = sel.filter((s) => s.kind === 'horse');
   const selRiders = sel.filter((s) => s.kind === 'rider');
-  const compareHref = selHorses.length === 2 && !selRiders.length
-    ? `/comparison?type=horse&a=${selHorses[0].id}&b=${selHorses[1].id}`
-    : selRiders.length === 2 && !selHorses.length
-      ? `/comparison?type=rider&a=${selRiders[0].id}&b=${selRiders[1].id}` : null;
-
-  const show = (k) => tab === 'all' || tab === k;
-  const box = 'w-4 h-4 accent-gold cursor-pointer';
-
-  const changePill = (r) => {
-    if (r.place !== null && r.place !== undefined) {
-      const good = r.place <= 3;
-      return <span className={`text-[11px] font-bold rounded-md px-2 py-[3px] ${good ? 'bg-greenbg text-moss' : 'bg-redbg text-blood'}`}>#{r.place}</span>;
-    }
-    return <span className={`text-[11px] font-bold rounded-md px-2 py-[3px] ${r.clear ? 'bg-greenbg text-moss' : 'bg-redbg text-blood'}`}>{r.clear ? 'Clear' : `${r.faults ?? '–'} faults`}</span>;
-  };
+  const compareHref =
+    selHorses.length === 2 && !selRiders.length
+      ? `/comparison?type=horse&a=${selHorses[0].id}&b=${selHorses[1].id}`
+      : selRiders.length === 2 && !selHorses.length
+        ? `/comparison?type=rider&a=${selRiders[0].id}&b=${selRiders[1].id}`
+        : null;
 
   return (
     <>
-      {/* stat cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
-        {[
-          ['TRACKED HORSES', horses.length, '♞', 'text-moss'],
-          ['TRACKED RIDERS', riders.length, '◉', 'text-sky'],
-          ['TRACKED COMBINATIONS', combos.length, '🔗', 'text-gold'],
-          ['RECENT UPDATES', recentCount, '◷', 'text-muted'],
-        ].map(([lbl, n, icon, col]) => (
-          <div key={lbl} className="bg-card border border-line rounded p-4">
-            <div className="flex justify-between items-center">
-              <span className="text-[11px] text-muted tracking-[0.4px] uppercase">{lbl}</span>
-              <span className={`${col} text-sm`}>{icon}</span>
-            </div>
-            <div className="text-[32px] font-extrabold mt-1">{n}</div>
+      {/* stable pulse — what happened while you were away */}
+      <div className="bg-card border border-line rounded p-4 mb-5 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div>
+          <div className="text-[11px] text-muted tracking-[0.4px] uppercase">Last 30 days</div>
+          <div className="text-[15px] font-bold mt-0.5">
+            {pulse.rounds} rounds · <span className="text-moss">{pulse.clears} clears</span>
+            {pulse.podiums ? <> · <span className="text-gold">{pulse.podiums} podiums</span></> : null}
+            {pulse.wins ? <> · <span className="text-gold">{pulse.wins} {pulse.wins === 1 ? 'win' : 'wins'}</span></> : null}
+            {!pulse.rounds ? <span className="text-faint font-normal"> — no tracked rounds yet</span> : null}
           </div>
-        ))}
-      </div>
-
-      {/* tabs */}
-      <div className="flex flex-wrap items-center gap-2 mb-5">
-        <div className="max-w-full overflow-x-auto">
-        <div className="inline-flex gap-1 bg-card border border-line rounded p-1">
-          {TABS.map(([k, lbl]) => (
-            <button key={k} onClick={() => setTab(k)}
-              className={`px-4 py-[7px] rounded-md text-[13px] whitespace-nowrap ${tab === k ? 'bg-card2 text-gold font-semibold' : 'text-muted'}`}>
-              {lbl}
-            </button>
-          ))}
         </div>
-        </div>
+        <div className="flex-1" />
         <input
-          value={wq} onChange={(e) => setWq(e.target.value)} placeholder="Filter watched…"
-          className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Filter stable… (name or partner)"
+          className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none w-full sm:w-[260px]"
         />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-5 items-start">
-        <div className="min-w-0">
-          {show('horses') && !!fHorses.length && (
-            <>
-              <h2 className={H2}>Watched Horses <span className="text-[11px] font-bold bg-greenbg text-moss rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{fHorses.length} horses</span></h2>
-              <section className={CARD}>
-                <div className="overflow-x-auto">
-                <table className={TABLE}>
-                  <thead><tr>
-                    <th className={TH}></th><th className={TH}>Horse Name</th>
-                    <th className={`${TH} ${NUM}`}>Wins</th><th className={`${TH} ${NUM}`}>Current Rank</th>
-                    <th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg Faults</th>
-                    <th className={TH}>Recent Trend</th><th className={TH}>Visibility</th><th className={TH}>Last Update</th>
-                  </tr></thead>
-                  <tbody>
-                    {fHorses.map((h) => (
-                      <tr key={h.watchId}>
-                        <td className={TD}><input type="checkbox" className={box} checked={isSel(h.watchId)} onChange={() => toggleSel({ watchId: h.watchId, kind: 'horse', id: h.id, name: h.name })} /></td>
-                        <td className={TD}><Link href={`/horses/${h.slug || h.id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{h.name}</Link></td>
-                        <td className={`${TD} ${NUM}`}><b className={rankCls(h.rank)}>{h.wins}</b></td>
-                        <td className={`${TD} ${NUM} ${h.rank === 1 ? 'text-gold font-bold' : 'text-muted'}`}>{h.rank ? `#${h.rank}` : '–'}</td>
-                        <td className={`${TD} ${NUM} text-muted`}>{Number(h.clear).toFixed(1)}%</td>
-                        <td className={`${TD} ${NUM} text-muted`}>{Number(h.avg).toFixed(2)}</td>
-                        <td className={`${TD} font-semibold text-[13px] ${trendCls(h.trend)}`}>{trendArrow(h.trend)} {h.trend}</td>
-                        <td className={TD}>{visBtn(h)}</td>
-                        <td className={TD}>
-                          <div className="text-muted text-[13px]">{h.last}</div>
-                          <div className="text-[11px] mt-0.5">
-                            <Link className={LINK} href={`/horses/${h.slug || h.id}`}>View</Link>
-                            <span className="text-faint"> | </span>
-                            <button className="text-sky bg-none border-0 p-0 text-[11px] cursor-pointer" onClick={() => removeIds([h.watchId])}>Remove</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
-              </section>
-            </>
+        <div className="min-w-0 space-y-7">
+          {!!fHorses.length && (
+            <section>
+              <h2 className={H2}>Horses — form watch <span className="text-[11px] font-bold bg-greenbg text-moss rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{fHorses.length}</span></h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                {fHorses.map((h) => (
+                  <AthleteCard
+                    key={h.watchId} a={h} kind="horse"
+                    selected={isSel(h.watchId)} onToggle={toggleSel}
+                    onRemove={(id) => removeIds([id])} busy={busy}
+                  />
+                ))}
+              </div>
+            </section>
           )}
 
-          {show('riders') && !!fRiders.length && (
-            <>
-              <h2 className={H2}>Watched Riders <span className="text-[11px] font-bold bg-bluebg text-sky rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{fRiders.length} riders</span></h2>
-              <section className={CARD}>
-                <div className="overflow-x-auto">
-                <table className={TABLE}>
-                  <thead><tr>
-                    <th className={TH}></th><th className={TH}>Rider Name</th>
-                    <th className={`${TH} ${NUM}`}>Wins</th><th className={`${TH} ${NUM}`}>Rank</th>
-                    <th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Rounds</th>
-                    <th className={TH}>Trend</th><th className={TH}>Visibility</th><th className={TH}>Last Update</th>
-                  </tr></thead>
-                  <tbody>
-                    {fRiders.map((r) => (
-                      <tr key={r.watchId}>
-                        <td className={TD}><input type="checkbox" className={box} checked={isSel(r.watchId)} onChange={() => toggleSel({ watchId: r.watchId, kind: 'rider', id: r.id, name: r.name })} /></td>
-                        <td className={TD}><Link href={`/riders/${r.slug || r.id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{r.name}</Link></td>
-                        <td className={`${TD} ${NUM}`}><b className={rankCls(r.rank)}>{r.wins ?? '–'}</b></td>
-                        <td className={`${TD} ${NUM} ${r.rank === 1 ? 'text-gold font-bold' : 'text-muted'}`}>{r.rank ? `#${r.rank}` : '–'}</td>
-                        <td className={`${TD} ${NUM} text-muted`}>{Number(r.clear).toFixed(0)}%</td>
-                        <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
-                        <td className={`${TD} font-semibold text-[13px] ${trendCls(r.trend)}`}>{trendArrow(r.trend)} {r.trend}</td>
-                        <td className={TD}>{visBtn(r)}</td>
-                        <td className={TD}>
-                          <div className="text-muted text-[13px]">{r.last}</div>
-                          <div className="text-[11px] mt-0.5">
-                            <Link className={LINK} href={`/riders/${r.slug || r.id}`}>View</Link>
-                            <span className="text-faint"> | </span>
-                            <button className="text-sky bg-none border-0 p-0 text-[11px] cursor-pointer" onClick={() => removeIds([r.watchId])}>Remove</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
-              </section>
-            </>
+          {!!fRiders.length && (
+            <section>
+              <h2 className={H2}>Riders — form watch <span className="text-[11px] font-bold bg-bluebg text-sky rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{fRiders.length}</span></h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                {fRiders.map((r) => (
+                  <AthleteCard
+                    key={r.watchId} a={r} kind="rider"
+                    selected={isSel(r.watchId)} onToggle={toggleSel}
+                    onRemove={(id) => removeIds([id])} busy={busy}
+                  />
+                ))}
+              </div>
+            </section>
           )}
 
-          {show('combos') && !!fCombos.length && (
-            <>
-              <h2 className={H2}>Watched Combinations <span className="text-[11px] font-bold bg-goldbg text-gold rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{fCombos.length} combinations</span></h2>
-              <p className={SUB}>Top partnership of each watched horse.</p>
-              <section className={CARD}>
-                <div className="overflow-x-auto">
-                <table className={TABLE}>
-                  <thead><tr>
-                    <th className={TH}>Combination</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Clear %</th>
-                    <th className={`${TH} ${NUM}`}>Avg Faults</th><th className={TH}>Trend</th><th className={TH}></th>
-                  </tr></thead>
-                  <tbody>
-                    {fCombos.map((c) => (
-                      <tr key={c.key}>
-                        <td className={TD}>
-                          <span className="text-white font-semibold">{c.horse} × {c.rider}</span>
-                          {c.watchId && <span className="text-gold text-xs ml-1.5" title="Watched">★</span>}
-                        </td>
-                        <td className={`${TD} ${NUM} text-muted`}>{c.rounds}</td>
-                        <td className={`${TD} ${NUM} text-muted`}>{Number(c.clear).toFixed(0)}%</td>
-                        <td className={`${TD} ${NUM} text-muted`}>{Number(c.avg).toFixed(2)}</td>
-                        <td className={`${TD} font-semibold text-[13px] ${trendCls(c.trend)}`}>{trendArrow(c.trend)} {c.trend}</td>
-                        <td className={TD}>
-                          <span className="mr-2">{visBtn(c)}</span>
-                          {c.watchId ? (
-                            <button className="text-sky bg-none border-0 p-0 text-[11px] cursor-pointer" onClick={() => removeIds([c.watchId])}>Remove</button>
-                          ) : (
-                            <button className="text-gold bg-none border-0 p-0 text-[11px] cursor-pointer" disabled={busy} onClick={() => watchCombo(c.horseId, c.riderId)}>+ Watch</button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
-              </section>
-            </>
-          )}
-
-          {show('events') && !!fEvents.length && (
-            <>
-              <h2 className={H2}>Tracked Events</h2>
-              <p className={SUB}>Events featuring your watched horses and riders.</p>
-              <section className={CARD}>
-                <div className="overflow-x-auto">
-                <table className={TABLE}>
-                  <thead><tr>
-                    <th className={TH}>Event</th><th className={TH}>Date</th>
-                    <th className={`${TH} ${NUM}`}>Tracked Rounds</th><th className={`${TH} ${NUM}`}>Best Place</th><th className={TH}></th>
-                  </tr></thead>
-                  <tbody>
-                    {fEvents.map((e, i) => (
-                      <tr key={i}>
-                        <td className={TD}>
-                          <b>{e.event}</b>
-                          {e.watchId && <span className="text-gold text-xs ml-1.5" title="Watched">★</span>}
-                        </td>
-                        <td className={`${TD} text-muted`}>{e.when}</td>
-                        <td className={`${TD} ${NUM} text-muted`}>{e.rounds}</td>
-                        <td className={`${TD} ${NUM} text-muted`}>{e.best ? `#${e.best}` : '–'}</td>
-                        <td className={TD}>
-                          {e.watchId && <span className="mr-2">{visBtn(e)}</span>}
-                          {e.watchId ? (
-                            <button className="text-sky bg-none border-0 p-0 text-[11px] cursor-pointer" onClick={() => removeIds([e.watchId])}>Remove</button>
-                          ) : e.eventId ? (
-                            <button className="text-gold bg-none border-0 p-0 text-[11px] cursor-pointer" disabled={busy} onClick={() => watchEvent(e.eventId)}>+ Watch</button>
-                          ) : null}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
-              </section>
-            </>
-          )}
-
-          {/* action bar */}
-          <div className="flex flex-wrap gap-2.5 mt-1 mb-2">
-            {compareHref ? (
-              <Link href={compareHref} className="bg-sky text-ink font-semibold rounded px-4 py-2 text-sm no-underline">Compare Selected</Link>
-            ) : (
-              <button disabled title="Select 2 horses or 2 riders to compare" className="bg-sky/40 text-ink/60 font-semibold rounded px-4 py-2 text-sm cursor-not-allowed">Compare Selected</button>
-            )}
-            <Link href="/analytics" className="border border-moss text-moss font-semibold rounded px-4 py-2 text-sm no-underline">View Analytics</Link>
-            <button onClick={exportCsv} className="bg-card2 border border-line text-body rounded px-4 py-2 text-sm">Export Report</button>
-            <button onClick={() => removeIds(sel.map((s) => s.watchId))} disabled={!sel.length || busy}
-              className="border border-blood text-blood rounded px-4 py-2 text-sm disabled:opacity-40">
-              {busy ? 'Removing…' : `Remove Selected${sel.length ? ` (${sel.length})` : ''}`}
-            </button>
-          </div>
-          {!compareHref && !!sel.length && (
-            <p className="text-faint text-xs mb-2">Select exactly 2 horses or 2 riders to enable comparison.</p>
+          {!fHorses.length && !fRiders.length && (
+            <p className="text-faint text-sm">No matches for “{q}”. <button className="text-sky bg-none border-0 p-0 text-sm cursor-pointer" onClick={() => setQ('')}>Clear filter</button></p>
           )}
         </div>
 
-        {/* sidebar */}
+        {/* latest rounds feed */}
         <div className="min-w-0">
-          <h2 className={H2}>Recent Performance Changes</h2>
-          <div className="relative pl-4 mb-6">
+          <h2 className={H2}>Latest rounds</h2>
+          <div className="relative pl-4 mt-2">
             <div className="absolute left-[3px] top-2 bottom-2 w-px bg-line" />
             <div className="space-y-2.5">
-              {timeline.map((r, i) => (
+              {(timeline || []).map((r, i) => (
                 <div key={i} className="relative bg-card border border-line rounded p-3">
-                  <span className="absolute -left-4 top-4 w-[7px] h-[7px] rounded-full bg-moss" />
+                  <span className={`absolute -left-4 top-4 w-[7px] h-[7px] rounded-full ${r.clear ? 'bg-moss' : 'bg-blood'}`} />
                   <div className="flex justify-between gap-2 items-baseline">
-                    <b className="text-[13px]">{r.entity}</b>
+                    <b className="text-[13px] truncate">{r.horse} <span className="text-faint font-normal">× {r.rider}</span></b>
                     <span className="text-[11px] text-faint shrink-0">{r.when}</span>
                   </div>
-                  <div className="flex justify-between gap-2 items-center mt-1">
-                    <span className="text-muted text-xs">{r.clear ? 'Clear round' : `${r.faults ?? '–'} faults`} · {r.cls || r.event}</span>
-                    {changePill(r)}
+                  <div className="text-muted text-xs mt-0.5 truncate">{r.event}{r.cls ? ` · ${r.cls}` : ''}</div>
+                  <div className="flex justify-between gap-2 items-center mt-1.5">
+                    <span className="text-muted text-xs">
+                      {r.clear ? 'Clear round' : `${r.faults ?? '–'} faults`}
+                    </span>
+                    <ResultPill r={r} />
                   </div>
                 </div>
               ))}
-              {!timeline.length && <p className="text-faint text-xs">No rounds tracked yet.</p>}
+              {!(timeline || []).length && <p className="text-faint text-xs">No tracked rounds in the last 30 days.</p>}
             </div>
           </div>
-
-          <h2 className={H2}>Alert Preferences</h2>
-          <section className={CARD}>
-            {[
-              ['score', 'Score changes', 'Get notified when EQ scores shift'],
-              ['ranking', 'Ranking movements', 'Alerts when tracked entities rise or fall'],
-              ['results', 'New competition results', 'Notifications immediately after rounds'],
-              ['benchmark', 'Benchmark changes', 'Summary alerts of regional circuit updates'],
-            ].map(([k, lbl, sub]) => (
-              <div key={k} className="flex justify-between items-center gap-3 py-2.5 border-b border-rowline last:border-0">
-                <div>
-                  <div className="text-[13px] font-semibold">{lbl}</div>
-                  <div className="text-[12px] text-muted">{sub}</div>
-                </div>
-                <Toggle on={!!prefs[k]} onFlip={() => flip(k)} label={lbl} />
-              </div>
-            ))}
-          </section>
         </div>
       </div>
 
-      {/* intelligence */}
-      <h2 className={H2}>Watchlist Intelligence</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-        {insights.map((txt, i) => (
-          <div key={i} className="bg-card2 border border-line border-l-2 border-l-gold rounded p-3.5">
-            <div className="text-gold text-[11px] font-bold mb-1.5">✨ AI INSIGHT</div>
-            <p className="text-muted text-[13px] leading-relaxed">{txt}</p>
-          </div>
-        ))}
-      </div>
+      {/* compare tray */}
+      {(sel.length > 0 || compareHref) && (
+        <div className="sticky bottom-4 mt-6 bg-card2 border border-line rounded px-4 py-3 flex flex-wrap items-center gap-3 shadow-lg">
+          <span className="text-[13px] text-muted">
+            {sel.length ? `${sel.length} selected` : 'Select 2 horses or 2 riders to compare'}
+            {!compareHref && sel.length > 0 ? ' — need exactly 2 of the same kind' : ''}
+          </span>
+          <span className="flex-1" />
+          {!!sel.length && (
+            <button
+              onClick={() => removeIds(sel.map((s) => s.watchId))}
+              disabled={busy}
+              className="border border-blood text-blood rounded px-4 py-2 text-sm disabled:opacity-40"
+            >
+              {busy ? 'Removing…' : 'Remove selected'}
+            </button>
+          )}
+          {compareHref ? (
+            <Link href={compareHref} className="bg-sky text-ink font-semibold rounded px-4 py-2 text-sm no-underline">
+              Compare now →
+            </Link>
+          ) : (
+            <span className="text-faint text-xs">Tick “Compare” on two cards above</span>
+          )}
+          {!!sel.length && (
+            <button onClick={() => setSel([])} className="text-faint bg-none border-0 text-[12px] cursor-pointer">
+              Clear
+            </button>
+          )}
+        </div>
+      )}
     </>
   );
 }
