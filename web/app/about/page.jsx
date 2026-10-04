@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getJSON } from '../../lib/api';
-import { CARD, H1, H2, H3, SUB, TABLE, TABLEWRAP, TD, TH, NUM, LINK, badge, BADGE } from '../../lib/tokens';
+import { CARD, H1, H2, SUB, LINK, badge, BADGE } from '../../lib/tokens';
 import { StatCard, StatGrid } from '../../components/StatCard';
 
 export const revalidate = 30;
@@ -22,9 +22,9 @@ export default async function About() {
 
   return (
     <>
-      <div className="mb-1 text-[12px] text-faint">EQINDEX <span className="text-gold">/</span> ABOUT & METHODOLOGY</div>
+      <div className="mb-1 text-[12px] text-faint">EQINDEX <span className="text-gold">/</span> ABOUT</div>
       <h1 className={H1}>About EQIndex</h1>
-      <p className={SUB}>The evidence engine for New Zealand show jumping — every number traceable to a round.</p>
+      <p className={SUB}>New Zealand show jumping results, rankings and records.</p>
 
       {/* hero stats */}
       <StatGrid cols={5}>
@@ -36,45 +36,8 @@ export default async function About() {
       <section className={CARD}>
         <h2 className={H2}>Mission</h2>
         <p className="text-[15px] leading-relaxed">Equestrian results in New Zealand live scattered across organiser files, timing systems and Facebook posts.
-        EQIndex unifies them into one trusted record and turns them into intelligence riders, owners, coaches, breeders and selectors can act on:
-        who is genuinely best, who is improving, which partnerships click, and where performance happens.</p>
+        EQIndex unifies them into one trusted record of who won, who placed, and where — for riders, owners, coaches, breeders and selectors.</p>
         <p className="text-muted text-sm mt-2">Coverage today: <b className="text-body">{seasons.map((s) => s.replace('-', '/')).join(' · ') || '—'}</b> · {rounds.toLocaleString()} rounds scored.</p>
-      </section>
-
-      <section className={CARD}>
-        <h2 className={H2}>Pipeline: file to intelligence</h2>
-        <div className="grid gap-2.5 md:grid-cols-5 mt-2">
-          {[['1 · Ingest', 'CSV/JSON parsed, staged as raw results.'], ['2 · Identity', 'Names normalised; ambiguous names queue for human review.'], ['3 · Score', 'Points auto-calculated by the database trigger.'], ['4 · Aggregate', 'Rankings, trends, partnerships, series recomputed.'], ['5 · Publish', 'Labelled Provisional or Official with audit trail.']].map(([t, d]) => (
-            <div key={t} className="rounded border border-line bg-card2 p-3">
-              <div className="text-[13px] font-bold text-gold">{t}</div>
-              <p className="text-[12.5px] text-muted mt-1">{d}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className={CARD}>
-        <h2 className={H2}>Scoring methodology</h2>
-        <h3 className={H3}>A · Briefing points (official leaderboard)</h3>
-        <p className="text-muted text-sm mt-1 mb-2">Placing points × class multiplier, rounded, minimum 0. Non-finishers (E/R/W/DQ) score 0.</p>
-        <div className={TABLEWRAP}>
-        <table className={TABLE}>
-          <thead><tr><th className={TH}>Place</th>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((p) => <th key={p} className={`${TH} ${NUM}`}>{p}</th>)}</tr></thead>
-          <tbody>
-            <tr><td className={TD}><b>Base</b></td>{[12, 9, 7, 6, 5, 4, 3, 2, 1, 1].map((v) => <td key={v} className={`${TD} ${NUM}`}>{v}</td>)}</tr>
-          </tbody>
-        </table>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 mt-3">
-          {[['Grand Prix ×2.0', 'Top-tier, usually 1.40m+'], ['Premier ×1.5', 'High grade below GP'], ['Open ×1.25', 'Open entry'], ['Standard ×1.0', 'Regular classes (Young Horse incl.)'], ['Amateur ×0.75', 'Restricted'], ['Pony ×0.75', 'Restricted']].map(([t, d]) => (
-            <div key={t} className="rounded border border-line bg-card2 px-3 py-2 text-[12.5px]"><b className="text-gold">{t}</b> <span className="text-muted">— {d}</span></div>
-          ))}
-        </div>
-        <p className="text-muted text-[13px] mt-3">Worked example: winning a Grand Prix = 12 × 2.0 = <b className="text-white">24 pts</b>; 3rd in a Premier = 7 × 1.5 = <b className="text-white">11 pts</b> (rounded).</p>
-        <h3 className={`${H3} mt-5`}>B · EQ Score (form index, 0–99)</h3>
-        <p className="text-muted text-sm mt-1"><code>45 + clear% × 0.5 − avgFaults × 2.5 + min(starts,20) × 0.3</code>, clamped 0–99. Rewards clears, punishes faults, small experience credit. Used for form, trends and forecasts — <b className="text-white">not</b> the official leaderboard.</p>
-        <h3 className={`${H3} mt-5`}>C · Windows & forecasts</h3>
-        <p className="text-muted text-sm mt-1">Rankings slice All Time / 12M / 3M to the day. Forecasts project one period ahead with starts-weighted least squares and report confidence from sample depth — thin data returns no projection rather than a guess.</p>
       </section>
 
       <section className={CARD}>
@@ -83,26 +46,26 @@ export default async function About() {
           <span className={badge(BADGE.green)}>Official</span><span className="text-muted text-sm">Organiser-published table or result.</span>
         </div>
         <div className="flex flex-wrap gap-2 mt-2">
-          <span className={badge(BADGE.goldfill)}>Provisional</span><span className="text-muted text-sm">EQIndex calculation awaiting official confirmation.</span>
+          <span className={badge(BADGE.goldfill)}>Provisional</span><span className="text-muted text-sm">Awaiting official confirmation.</span>
         </div>
         <div className="flex flex-wrap gap-2 mt-2">
-          <span className={badge(BADGE.blue)}>Independent</span><span className="text-muted text-sm">Our own computation (series, forecasts, benchmarks).</span>
+          <span className={badge(BADGE.blue)}>Independent</span><span className="text-muted text-sm">Compiled by EQIndex (series, forecasts, benchmarks).</span>
         </div>
       </section>
 
       <section className={CARD}>
         <h2 className={H2}>Naming & corrections</h2>
-        <p className="text-muted text-sm">“Kiwi-Spirit” vs “Kiwi Spirit” vs “KIWI SPIRIT” are one horse. Normalisation is deterministic; ambiguous names queue in the <b className="text-white">Naming Review</b> for a human approve/merge/reject decision, and every decision is written to the audit log. Spot an error? <Link className={LINK} href="/contact">Report a correction →</Link></p>
+        <p className="text-muted text-sm">“Kiwi-Spirit” vs “Kiwi Spirit” vs “KIWI SPIRIT” are one horse. Spot an error? <Link className={LINK} href="/contact">Report a correction →</Link></p>
       </section>
 
       <section className={CARD}>
         <h2 className={H2}>Limits & fair use</h2>
-        <p className="text-muted text-sm">Small samples mislead — projections hide below 3 scoring months, and surface splits flag unknown surfaces instead of guessing. Rankings reflect recorded results only; unrecorded schooling rounds don't exist here. Bulk reuse of the database requires written permission (see <Link className={LINK} href="/terms">Terms →</Link>). Programmatic access: <Link className={LINK} href="/contact">Contact →</Link></p>
+        <p className="text-muted text-sm">Rankings reflect recorded results only; unrecorded schooling rounds don't exist here. Bulk reuse of the database requires written permission (see <Link className={LINK} href="/terms">Terms →</Link>). Programmatic access: <Link className={LINK} href="/contact">Contact →</Link></p>
       </section>
 
       <section className={CARD}>
-        <h2 className={H2}>Glossary & formula history</h2>
-        <p className="text-muted text-sm">Terms, height bands and class definitions: <Link className={LINK} href="/glossary">Glossary →</Link> · Points formula v1 (placing × multiplier) effective September 2026. Changes are versioned and announced before they affect published tables.</p>
+        <h2 className={H2}>Glossary</h2>
+        <p className="text-muted text-sm">Terms, height bands and class definitions: <Link className={LINK} href="/glossary">Glossary →</Link></p>
       </section>
     </>
   );

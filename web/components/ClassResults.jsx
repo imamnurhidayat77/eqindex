@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CARD, LINK, NUM, TABLE, TABLEWRAP, TD, TH, badge, BADGE } from '../lib/tokens';
 import { ordinal } from '../lib/eq';
 import { Pagination } from './list-controls';
@@ -17,18 +17,32 @@ function placeCell(r) {
   return <span className="text-muted">{ordinal(r.finish_place)}</span>;
 }
 
-function resultBadge(s) {
-  if (s === 'official') return <span className={badge(BADGE.green)}>Official</span>;
-  if (s === 'complete') return <span className={badge(BADGE.blue)}>Complete</span>;
-  return <span className={badge(BADGE.goldfill)}>Provisional</span>;
-}
-
 export default function ClassResults({ groups }) {
   const [open, setOpen] = useState(groups.length ? groups[0].class_id : null);
   const [cq, setCq] = useState('');
   const [cpage, setCpage] = useState(1);
   const [perPage, setPerPage] = useState(15);
+  const [htab, setHtab] = useState(null); // horse | pony (set once groups known)
   const selectClass = (id) => { setOpen(id); setCq(''); setCpage(1); };
+  const pickTab = (k) => {
+    setHtab(k);
+    const list = k === 'pony' ? groups.filter(isPony) : groups.filter((g) => !isPony(g));
+    setOpen(list.length ? list[0].class_id : null);
+    setCq(''); setCpage(1);
+  };
+  // Follow the expanded class into view (skip initial mount).
+  const openRef = useRef(null);
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) { firstRender.current = false; return; }
+    if (open && openRef.current) openRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [open ]);
+  const isPony = (g) => /pony/i.test(g.name || '');
+  const nPony = groups.filter(isPony).length;
+  const showTabs = nPony > 0 && nPony < groups.length;
+  const activeTab = !showTabs ? 'all' : (htab || (groups.length && isPony(groups.find((g) => g.class_id === open) || groups[0]) ? 'pony' : 'horse'));
+  const visible = activeTab === 'all' ? groups
+    : activeTab === 'pony' ? groups.filter(isPony) : groups.filter((g) => !isPony(g));
   if (!groups.length) {
     return (
       <section className={CARD}>
@@ -42,13 +56,20 @@ export default function ClassResults({ groups }) {
   }
   return (
     <div className="space-y-3 mb-6">
-      {groups.map((g) => {
+      {showTabs && (
+        <div className="inline-flex gap-1 bg-card border border-line rounded p-1">
+          {[['horse', `Horses (${groups.length - nPony})`], ['pony', `Ponies (${nPony})`]].map(([k, lbl]) => (
+            <button key={k} onClick={() => pickTab(k)}
+              className={`px-4 py-[7px] rounded-md text-[13px] whitespace-nowrap cursor-pointer border-0 ${activeTab === k ? 'bg-card2 text-gold font-semibold' : 'bg-transparent text-muted hover:text-white'}`}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+      )}
+      {visible.map((g) => {
         const isOpen = open === g.class_id;
-        const hasR2x = g.rounds.some((r) => r.round2_faults !== null && r.round2_faults !== undefined);
-        const hasJO = g.rounds.some((r) => r.jumpoff_faults !== null && r.jumpoff_faults !== undefined);
-        const prize = g.rounds.some((r) => r.prize_money !== null && r.prize_money !== undefined);
         return (
-          <section key={g.class_id} className={CARD} style={{ marginBottom: 0 }}>
+          <section key={g.class_id} ref={isOpen ? openRef : null} className={`${CARD} scroll-mt-20`} style={{ marginBottom: 0 }}>
             <button onClick={() => selectClass(isOpen ? null : g.class_id)}
               className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 text-left bg-none border-0 p-0 cursor-pointer">
               <span className="text-muted text-xs w-4">{isOpen ? '▾' : '▸'}</span>
@@ -64,7 +85,6 @@ export default function ClassResults({ groups }) {
               )}
               {g.sponsor && <span className="text-[11px] text-gold">· {g.sponsor}</span>}
               <span className="flex-1" />
-              {resultBadge(g.result_status)}
               <span className="text-[12px] text-muted">{g.rounds.length} rounds · {g.clears} clear</span>
             </button>
             {isOpen && (() => {
@@ -75,8 +95,28 @@ export default function ClassResults({ groups }) {
               const pages = Math.max(1, Math.ceil(filtered.length / perPage));
               const safe = Math.min(cpage, pages);
               const view = filtered.slice((safe - 1) * perPage, safe * perPage);
+              const finished = g.rounds.filter((r) => r.status === 'finished');
+              const clears = finished.filter((r) => r.clear_round).length;
+              const clearRate = finished.length ? (100 * clears / finished.length) : 0;
+              const avgF = finished.length
+                ? finished.reduce((t, r) => t + Number(r.total_faults || 0), 0) / finished.length : 0;
+              const bestTime = finished
+                .map((r) => Number(r.time_seconds)).filter((t) => Number.isFinite(t));
               return (
               <div className={`${TABLEWRAP} mt-3`}>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                {[
+                  ['Rounds', String(g.rounds.length)],
+                  ['Clear rate', `${clearRate.toFixed(0)}% (${clears}/${finished.length})`],
+                  ['Avg faults', avgF.toFixed(2)],
+                  ['Best time', bestTime.length ? `${Math.min(...bestTime)}s` : '–'],
+                ].map(([l, v]) => (
+                  <div key={l} className="rounded bg-card2 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-faint">{l}</div>
+                    <div className="text-[15px] font-extrabold text-white">{v}</div>
+                  </div>
+                ))}
+              </div>
               <div className="mb-2">
                 <input
                   value={cq} onChange={(e) => { setCq(e.target.value); setCpage(1); }} placeholder="Filter by rider or horse…"
@@ -86,11 +126,7 @@ export default function ClassResults({ groups }) {
               <table className={TABLE}>
                 <thead><tr>
                   <th className={TH}>Place</th><th className={TH}>Rider</th><th className={TH}>Horse</th>
-                  <th className={`${TH} ${NUM}`}>R1</th><th className={TH}>Time</th>
-                  {hasR2x && <th className={`${TH} ${NUM}`}>R2</th>}
-                  {hasJO && <th className={`${TH} ${NUM}`}>Jump-off</th>}
-                  <th className={`${TH} ${NUM}`}>Points</th>
-                  {prize && <th className={`${TH} ${NUM}`}>Prize</th>}
+                  <th className={`${TH} ${NUM}`}>Faults</th><th className={TH}>Time</th>
                 </tr></thead>
                 <tbody>
                   {view.map((r) => {
@@ -104,13 +140,6 @@ export default function ClassResults({ groups }) {
                           {dead ? '–' : fmt1(r.total_faults)}
                         </td>
                         <td className={`${TD} text-muted`}>{r.time_seconds === null || dead ? '–' : `${r.time_seconds}s`}</td>
-                        {hasR2x && <td className={`${TD} ${NUM} text-muted`}>{dead ? '–' : fmt1(r.round2_faults)}</td>}
-                        {hasJO && <td className={`${TD} ${NUM} text-muted`}>
-                          {dead || (r.jumpoff_faults === null && r.jumpoff_time_seconds === null) ? '–'
-                            : `${fmt1(r.jumpoff_faults)}${r.jumpoff_time_seconds !== null ? ` / ${r.jumpoff_time_seconds}s` : ''}`}
-                        </td>}
-                        <td className={`${TD} ${NUM}`}><b className={Number(r.points) > 0 ? 'text-gold' : 'text-faint'}>{r.points ?? 0}</b></td>
-                        {prize && <td className={`${TD} ${NUM} text-muted`}>{r.prize_money ?? '–'}</td>}
                       </tr>
                     );
                   })}

@@ -8,9 +8,11 @@ import Dropdown from '../../components/Dropdown';
 import { Pagination } from '../../components/list-controls';
 import { TableEmpty } from '../../components/EmptyState';
 import { StatCard, StatGrid } from '../../components/StatCard';
+import { keyOptions } from '../../lib/categories';
 
 export default function SeriesIndex() {
   const [rows, setRows] = useState([]);
+  const [cats, setCats] = useState(null);
   const [q, setQ] = useState('');
   const [seasonF, setSeasonF] = useState('');
   const [page, setPage] = useState(1);
@@ -26,6 +28,7 @@ export default function SeriesIndex() {
       .then((j) => setRows(j.data || []))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
+    fetch(`${API}/categories`).then((r) => r.json()).then((j) => setCats(j.data || [])).catch(() => setCats([]));
   }, []);
 
   const seasons = useMemo(
@@ -58,8 +61,8 @@ export default function SeriesIndex() {
       <p className={SUB}>Season-long points races across the NZ showjumping circuit.</p>
       <div className="mb-4 flex flex-wrap gap-2 items-center">
         <span className="text-[11px] uppercase tracking-wide text-faint font-bold">Rider categories:</span>
-        {[['junior', 'Junior'], ['young-rider', 'Young Rider'], ['under-25', 'Under 25'], ['amateur', 'Amateur'], ['pony', 'Pony'], ['tertiary', 'Tertiary']].map(([k, l]) => (
-          <Link key={k} href={`/series/category/${k}`} className="text-xs rounded-full px-3 py-[6px] border border-line bg-card2 text-muted no-underline hover:text-gold hover:border-gold/50">{l}</Link>
+        {keyOptions(cats).map((o) => (
+          <Link key={o.value} href={`/series/category/${o.value}`} className="text-xs rounded-full px-3 py-[6px] border border-line bg-card2 text-muted no-underline hover:text-gold hover:border-gold/50">{o.label}</Link>
         ))}
       </div>
 

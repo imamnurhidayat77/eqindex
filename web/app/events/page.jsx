@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
 import { CARD, H1, SUB, TABLE, TD, TH } from '../../lib/tokens';
 import { FilterBar, Pagination } from '../../components/list-controls';
@@ -63,7 +63,12 @@ export default function Events() {
 
   const pages = Math.max(1, Math.ceil(filtered.length / perPage));
   const safePage = Math.min(page, pages);
-  const view = filtered.slice((safePage - 1) * perPage, safePage * perPage);
+  const seasonLabel = (s) => (s || '').includes('-') ? (s || '').replace('-', '/') : (s || '—');
+  const ordered = [...filtered].sort((a, b) =>
+    String(b.season || '').localeCompare(String(a.season || '')) ||
+    String(b.date_start || '').localeCompare(String(a.date_start || '')));
+  const view = ordered.slice((safePage - 1) * perPage, safePage * perPage);
+  const seasonCount = (s) => ordered.filter((y) => y.season === s).length;
 
   return (
     <>
@@ -81,14 +86,29 @@ export default function Events() {
         <table className={TABLE}>
           <thead><tr><th className={TH}>Event</th><th className={TH}>Venue</th><th className={TH}>Dates</th><th className={TH}>Season</th><th className={TH}>Classes</th><th className={TH}>Rounds</th></tr></thead>
           <tbody>
-            {view.map((x) => (
-              <tr key={x.id}>
-                <td className={TD}><Link className="text-sky no-underline" href={`/events/${x.slug || x.id}`}>{x.name}</Link></td>
-                <td className={TD}>{x.venue}</td>
-                <td className={TD}>{(x.date_start || '').slice(0, 10)} – {(x.date_end || '').slice(0, 10)}</td>
-                <td className={TD}>{x.season}</td><td className={TD}>{x.class_count}</td><td className={TD}>{x.round_count}</td>
-              </tr>
-            ))}
+            {view.map((x, i) => {
+              const showHeader = i === 0 || view[i - 1].season !== x.season;
+              return (
+                <Fragment key={x.id}>
+                  {showHeader && (
+                    <tr key={`s-${x.season || 'none'}-${i}`}>
+                      <td colSpan={6} className="px-2 pt-3 pb-1.5">
+                        <span className="inline-flex items-center gap-2 rounded-full bg-goldbg px-3 py-1 text-[12px] font-bold text-gold">
+                          Season {seasonLabel(x.season)}
+                        </span>
+                        <span className="ml-2 text-[12px] text-faint">{seasonCount(x.season)} event{seasonCount(x.season) === 1 ? '' : 's'}</span>
+                      </td>
+                    </tr>
+                  )}
+                  <tr key={x.id}>
+                    <td className={TD}><Link className="text-sky no-underline" href={`/events/${x.slug || x.id}`}>{x.name}</Link></td>
+                    <td className={TD}>{x.venue}</td>
+                    <td className={TD}>{(x.date_start || '').slice(0, 10)} – {(x.date_end || '').slice(0, 10)}</td>
+                    <td className={TD}><span className="text-gold font-semibold">{seasonLabel(x.season)}</span></td><td className={TD}>{x.class_count}</td><td className={TD}>{x.round_count}</td>
+                  </tr>
+                </Fragment>
+              );
+            })}
             {!view.length && (
               loading ? (
                 <tr><td colSpan={6} className="px-2 py-4">

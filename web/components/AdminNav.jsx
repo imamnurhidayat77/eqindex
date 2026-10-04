@@ -14,7 +14,10 @@ const GROUPS = [
     ['/admin/riders', '◉', 'Riders'],
     ['/admin/events', '▦', 'Events'],
     ['/admin/classes', '◫', 'Classes'],
+    ['/admin/seasons', '◑', 'Seasons'],
     ['/admin/series', '★', 'Series'],
+    ['/admin/categories', '⛉', 'Categories'],
+    ['/admin/scoring', '✦', 'Scoring'],
   ]},
   { title: 'Curate', items: [
     ['/admin/review', '◐', 'Naming Review', 'review'],

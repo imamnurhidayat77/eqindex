@@ -1,12 +1,10 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { getJSON } from '../../../lib/api';
-import { eqScore, fieldScore, strengthLabel, ordinal } from '../../../lib/eq';
-import { BADGE, CARD, H1, H2, LINK, LIVE, MUT, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
-import { ScoreRing } from '../../../components/charts';
-import MiniTrend from '../../../components/MiniTrend';
+import { ordinal } from '../../../lib/eq';
+import { BADGE, CARD, H1, H2, LINK, LIVE, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
 import ClassResults from '../../../components/ClassResults';
-import { EventDifficultyTable, EventCombosTable } from '../../../components/EventTables';
-import { TableEmpty } from '../../../components/EmptyState';
+import { EventDifficultyTable } from '../../../components/EventTables';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 
 export const revalidate = 30;
@@ -15,7 +13,8 @@ const pct1 = (v) => `${Number(v).toFixed(1)}%`;
 const d = (o) => new Date(o).toLocaleDateString('en-NZ', { month: 'short', year: '2-digit' });
 
 export default async function EventDetail({ params }) {
-  const a = await getJSON(`/events/${params.id}/analytics`);
+  const a = await getJSON(`/events/${params.id}/analytics`).catch(() => null);
+  if (!a?.event) notFound();
   const e = a.event;
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(params.id) && e.slug && e.slug !== params.id) {
     const { redirect } = await import('next/navigation');
@@ -23,25 +22,16 @@ export default async function EventDetail({ params }) {
   }
   const rounds = a.rounds;
   const maxH = Math.max(0, ...rounds.map((r) => Number(r.height_cm) || 0));
-  // Lighter follow-up batch: career map needs only the leaderboard head, and
-  // similar-class lookup is pre-filtered by height at the API.
-  const [arenas, rankAll, simClasses, trends, editions] = await Promise.all([
-    getJSON('/arenas'),
+  // Circuit benchmark from career rankings (for the overview deltas).
+  const [rankAll] = await Promise.all([
     getJSON('/rankings/horses?limit=200'),
-    getJSON(maxH > 0 ? `/classes?limit=60&height_min=${maxH - 5}&height_max=${maxH + 5}` : '/classes?limit=60'),
-    getJSON('/trends/circuit'),
-    getJSON(`/events/compare?name=${encodeURIComponent(e.name)}`).catch(() => ({ data: [] })),
   ]);
-  const pastEditions = (editions.data || []).filter(
-    (x) => x.id !== e.id && (Number(x.class_count || 0) > 0 || Number(x.round_count || 0) > 0)
-  );
-  const allClasses = simClasses;
   const n = rounds.length;
   const clears = rounds.filter((r) => r.clear_round).length;
   const clearPct = n ? 100 * clears / n : 0;
   const avgF = n ? rounds.reduce((s, r) => s + Number(r.total_faults), 0) / n : 0;
-  const score = fieldScore(clearPct, avgF);
-  const strength = strengthLabel(score);
+  // Event toughness from raw clear rate (lower clear = tougher track).
+  const strength = clearPct >= 50 ? 'Open field' : clearPct >= 35 ? 'Competitive field' : 'Elite field';
   const grade = maxH >= 140 ? 'A-Grade Event' : maxH >= 130 ? 'B-Grade Event' : 'Club Event';
   const statuses = (a.classes || []).map((c) => c.result_status).filter(Boolean);
   const eventStatus = !statuses.length ? null
@@ -55,8 +45,6 @@ export default async function EventDetail({ params }) {
   const totC = rankAll.data.reduce((s, h) => s + Number(h.clears), 0);
   const circClear = totS ? 100 * totC / totS : 0;
   const circAvg = totS ? rankAll.data.reduce((s, h) => s + Number(h.avg_faults) * Number(h.starts), 0) / totS : 0;
-  const circScore = fieldScore(circClear, circAvg);
-  const avgPerEvent = 8; // demo circuit scale reference
   const fmtDate = `${d(e.date_start)}–${d(e.date_end)}`;
 
   // height + fault distributions
@@ -72,33 +60,6 @@ export default async function EventDetail({ params }) {
     ['9+ Faults', rounds.filter((r) => Number(r.total_faults) >= 9).length, '#FF1744'],
   ].map(([label, c, color]) => ({ label, p: n ? 100 * c / n : 0, color }));
 
-  // arena section
-  const arena = arenas.data.find((x) => x.arena === e.arena_type) || { clear_pct: clearPct, avg_faults: avgF, rounds: n };
-  const bestArena = [...arenas.data].sort((x, y) => Number(y.clear_pct) - Number(x.clear_pct))[0] || null;
-  const arenaColors = {};
-  [...arenas.data].sort((x, y) => Number(y.clear_pct) - Number(x.clear_pct))
-    .forEach((x, i, arr) => { arenaColors[x.arena] = i === 0 ? '#00C853' : i === arr.length - 1 ? '#FF1744' : '#4C9AFF'; });
-
-  // event micro-rankings from rounds
-  const byHorse = {};
-  for (const r of rounds) {
-    (byHorse[r.horse] ||= { starts: 0, clears: 0, faults: 0 });
-    byHorse[r.horse].starts++; byHorse[r.horse].faults += Number(r.total_faults);
-    if (r.clear_round) byHorse[r.horse].clears++;
-  }
-  const evHorses = Object.entries(byHorse).map(([horse, v]) => ({
-    horse, ...v, clear: 100 * v.clears / v.starts, avg: v.faults / v.starts,
-    eq: eqScore(100 * v.clears / v.starts, v.faults / v.starts, v.starts),
-  })).sort((x, y) => y.eq - x.eq).slice(0, 5);
-  const byRider = {};
-  for (const r of rounds) {
-    (byRider[r.rider] ||= { starts: 0, clears: 0, faults: 0 });
-    byRider[r.rider].starts++; byRider[r.rider].faults += Number(r.total_faults);
-    if (r.clear_round) byRider[r.rider].clears++;
-  }
-  const evRiders = Object.entries(byRider).map(([rider, v]) => ({
-    rider, ...v, eq: eqScore(100 * v.clears / v.starts, v.faults / v.starts, v.starts),
-  })).sort((x, y) => y.eq - x.eq).slice(0, 5);
   // Top lists derived from rounds (saves 3 aggregate queries in the API).
   const grades = (r) => [(r.finish_place ?? 9999), Number(r.total_faults), (r.time_seconds ?? 9999)];
   const cmpR = (x, y) => grades(x)[0] - grades(y)[0] || grades(x)[1] - grades(y)[1] || grades(x)[2] - grades(y)[2];
@@ -119,20 +80,6 @@ export default async function EventDetail({ params }) {
     ...g, horses_ridden: g.horses.size,
     clear_pct: 100 * g.clears / g.starts, avg_faults: g.faults / g.starts,
   })).sort((x, y) => y.clear_pct - x.clear_pct || x.avg_faults - y.avg_faults).slice(0, 5);
-  const pAgg = {};
-  for (const r of rounds) {
-    const k = `${r.horse_id}||${r.rider_id}`;
-    const g = (pAgg[k] ||= { horse: r.horse, rider: r.rider, rounds: 0, clears: 0, faults: 0, best: null });
-    g.rounds++; g.faults += Number(r.total_faults);
-    if (r.clear_round) g.clears++;
-    if (r.finish_place != null) g.best = g.best === null ? r.finish_place : Math.min(g.best, r.finish_place);
-  }
-  const allParts = Object.values(pAgg).map((p) => ({
-    ...p, clear_pct: 100 * p.clears / p.rounds, avg_faults: p.faults / p.rounds, best_place: p.best,
-  })).sort((x, y) => y.clear_pct - x.clear_pct || x.avg_faults - y.avg_faults);
-  const evParts = allParts.slice(0, 3)
-    .map((p) => ({ ...p, match: eqScore(p.clear_pct, p.avg_faults, p.rounds) }));
-
   // per-class result groups (accordion), sorted by placing, nulls last
   const byClass = {};
   for (const r of rounds) {
@@ -151,24 +98,6 @@ export default async function EventDetail({ params }) {
     const rs = [...g.rounds].sort((x, y) => (x.finish_place ?? 9999) - (y.finish_place ?? 9999));
     return { ...g, rounds: rs, clears: rs.filter((r) => r.clear_round).length };
   }).sort((x, y) => (classOrder[x.class_id] ?? 999) - (classOrder[y.class_id] ?? 999));
-
-  // insights
-  const sim = allClasses.data.filter((c) => c.event !== e.name && c.avg_faults !== null
-    && Math.abs(Number(c.height_cm) - (maxH || 130)) <= 5);
-  const simClear = sim.length ? sim.reduce((s, c) => s + Number(c.clear_pct), 0) / sim.length : circClear;
-  const career = Object.fromEntries(rankAll.data.map((h) => [h.horse, Number(h.starts)]));
-  const exp = rounds.filter((r) => (career[r.horse] || 0) >= 10);
-  const nov = rounds.filter((r) => (career[r.horse] || 0) < 10);
-  const expAvg = exp.length ? exp.reduce((s, r) => s + Number(r.total_faults), 0) / exp.length : 0;
-  const novAvg = nov.length ? nov.reduce((s, r) => s + Number(r.total_faults), 0) / nov.length : 0;
-  const insights = [
-    `This event had ${clearPct < simClear ? 'higher' : 'lower'} difficulty than similar ${maxH}cm competitions — clear rate was ${Math.abs(clearPct - simClear).toFixed(1)}% ${clearPct < simClear ? 'below' : 'above'} regional average.`,
-    `Clear rate sits ${Math.abs(clearPct - circClear).toFixed(1)}% ${clearPct < circClear ? 'below' : 'above'} the circuit average of ${circClear.toFixed(1)}%, suggesting course design was ${clearPct < circClear ? 'more technical' : 'more inviting'}.`,
-    `Horses with 10+ career starts averaged ${expAvg.toFixed(1)} faults vs ${novAvg.toFixed(1)} for less experienced competitors.`,
-  ];
-
-  const months = trends.data.map((x) => ({ label: `${x.month} ${new Date(x.m).getFullYear().toString().slice(2)}`, v: x.starts }));
-  const diffm = trends.data.map((x) => ({ label: `${x.month} ${new Date(x.m).getFullYear().toString().slice(2)}`, v: Number(x.avg_faults) }));
 
   return (
     <>
@@ -193,7 +122,6 @@ export default async function EventDetail({ params }) {
           {eventStatus === 'provisional' && <span className={badge(BADGE.goldfill)}>Provisional</span>}
         </div>
         <div className="flex gap-5 items-center">
-          <ScoreRing score={score} />
           <div>
             <div className="text-[22px] font-extrabold">{e.name}</div>
             <div className="text-muted text-xs mt-1.5">
@@ -230,24 +158,24 @@ export default async function EventDetail({ params }) {
           ['Riders Entered', null, ridersN],
           ['Clear Rate', `${(clearPct - circClear) >= 0 ? '+' : ''}${(clearPct - circClear).toFixed(1)}% vs avg`, `${clearPct.toFixed(0)}%`],
           ['Avg Faults', `${(avgF - circAvg) >= 0 ? '+' : ''}${(avgF - circAvg).toFixed(1)} penalty`, avgF.toFixed(1)],
-          ['Field Strength', `${strength} field`, score],
+          ['Clear Rounds', `${n} rounds`, clears],
         ].map(([lbl, delta, big]) => (
           <StatCard key={lbl} label={lbl} delta={delta} value={big} />
         ))}
       </StatGrid>
 
+      <h2 className={H2}>Class Results</h2>
+      <p className={SUB}>Every round of this event, grouped by class — expand to inspect placings, faults and times.</p>
+      <ClassResults groups={groups} />
+
       <h2 className={H2}>Class Difficulty Analysis</h2>
-      <p className={SUB}>Lower clear round percentage and higher average faults indicate more challenging courses.</p>
+      <p className={SUB}>Clear rate and average faults per class.</p>
       <section className={CARD}>
         <EventDifficultyTable rows={a.classes} />
       </section>
 
-      <h2 className={H2}>Class Results</h2>
-      <p className={SUB}>Every round of this event, grouped by class — expand to inspect placings, faults and points.</p>
-      <ClassResults groups={groups} />
-
       <h2 className={H2}>Competition Performance Analytics</h2>
-      <p className={SUB}>Real-time physical metric tracking across rounds</p>
+      <p className={SUB}>Clear rates and faults across rounds</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <section className={CARD}>
           <h2 className={H2}>Clear Round Distribution by Height</h2>
@@ -293,7 +221,7 @@ export default async function EventDetail({ params }) {
       </section>
 
       <h2 className={H2}>Top Performing Riders</h2>
-      <p className={SUB}>Leading national showjumping athletes calculated by circuit performance index.</p>
+      <p className={SUB}>Leading national showjumping athletes.</p>
       <section className={CARD}>
         <div className={TABLEWRAP}>
         <table className={TABLE}>
@@ -314,178 +242,6 @@ export default async function EventDetail({ params }) {
         </div>
       </section>
 
-      <h2 className={H2}>Best Horse-Rider Combinations</h2>
-      <p className={SUB}>Consolidated team index evaluating the strongest competitive partnerships.</p>
-      <section className={CARD}>
-        <EventCombosTable rows={allParts} />
-      </section>
-
-      <h2 className={H2}>Arena Intelligence</h2>
-      <p className={SUB}>Underlying arena texture physical impact analysis.</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <section className={CARD}>
-          <div className="flex items-center justify-between mb-2">
-            <h2 className={H2}>Active Arena Profile: {e.arena_type}</h2>
-            <span className={badge(BADGE.gold)}>Highly Technical</span>
-          </div>
-          <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Average Faults<br /><span className="text-xs">Regional penalty index</span></span><span className="font-semibold">{Number(arena.avg_faults).toFixed(2)}</span></div>
-          <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Clear Round Rate<br /><span className="text-xs">vs {bestArena ? bestArena.arena : 'circuit'} surfaces</span></span><span className="font-semibold text-moss">{pct1(arena.clear_pct)}</span></div>
-          <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Total Rounds<br /><span className="text-xs">{arena.rounds >= 200 ? 'Above 200-round threshold' : 'Growing sample'}</span></span><span className="font-semibold">{arena.rounds} Rounds</span></div>
-          <div className="flex justify-between py-[9px] border-b border-rowline last:border-0 text-sm"><span className="text-muted">Top Horse Surface Match<br /><span className="text-xs">Trajectory compatibility</span></span><span className="font-semibold">{arena.top_horse || '—'}</span></div>
-        </section>
-        <section className={CARD}>
-          <h2 className={H2}>Comparative Surface Index</h2>
-          {arenas.data.map((x) => (
-            <div className="my-3" key={x.arena}>
-              <div className="flex justify-between text-[13px] mb-[5px]"><span className="text-muted">{x.arena}{x.arena === e.arena_type ? ` (${e.region || 'NZ'})` : ''}</span><span className="font-semibold">{pct1(x.clear_pct).replace('.0%', '%')} Clear · {Number(x.avg_faults).toFixed(1)} Avg Faults</span></div>
-              <div className="bg-line rounded h-2"><div className="h-2 rounded" style={{ width: `${x.clear_pct}%`, background: arenaColors[x.arena] }} /></div>
-            </div>
-          ))}
-        </section>
-      </div>
-
-      {(a.weather || []).length > 0 && (
-        <>
-          <h2 className={H2}>Measured Weather</h2>
-          <p className={SUB}>Service-measured conditions at {e.venue}. Daily aggregates are labelled estimates — rain at the venue is not automatically poor footing.</p>
-          <section className={CARD}>
-            <div className={TABLEWRAP}>
-            <table className={TABLE}>
-              <thead><tr><th className={TH}>Date</th><th className={`${TH} ${NUM}`}>Temp</th><th className={`${TH} ${NUM}`}>Rain</th><th className={`${TH} ${NUM}`}>Wind</th><th className={`${TH} ${NUM}`}>Humidity</th><th className={TH}>Classification</th><th className={TH}>Basis</th></tr></thead>
-              <tbody>
-                {a.weather.map((w) => (
-                  <tr key={w.date}>
-                    <td className={TD}>{(w.date || '').slice(0, 10)}</td>
-                    <td className={`${TD} ${NUM}`}>{w.temp_c === null ? '–' : `${Number(w.temp_c).toFixed(1)}°C`}</td>
-                    <td className={`${TD} ${NUM}`}>{w.rainfall_mm === null ? '–' : `${Number(w.rainfall_mm).toFixed(1)}mm`}</td>
-                    <td className={`${TD} ${NUM}`}>{w.wind_kph === null ? '–' : `${Number(w.wind_kph).toFixed(0)}kph`}</td>
-                    <td className={`${TD} ${NUM}`}>{w.humidity_pct === null ? '–' : `${w.humidity_pct}%`}</td>
-                    <td className={TD}><span className={badge(w.classification && w.classification !== 'dry' ? BADGE.goldfill : BADGE.green)}>{w.classification || '–'}</span></td>
-                    <td className={TD}>{w.is_estimate ? <span className="text-faint text-[12px]">Daily estimate · {w.source}</span> : <span className="text-moss text-[12px]">Pinned hour · {w.source}</span>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </section>
-        </>
-      )}
-
-      <h2 className={H2}>Event Benchmarking</h2>
-      <p className={SUB}>{e.name} vs National, Regional, A-Grade Average.</p>
-      <StatGrid cols={3}>
-        <StatCard
-          label="Clear Round Rate"
-          delta={clearPct < circClear ? 'Harder Course' : 'Softer Course'}
-          tone="blood"
-          value={`${clearPct.toFixed(0)}%`}
-          sub={`${circClear.toFixed(0)}% Avg`}
-        />
-        <StatCard
-          label="Average Faults"
-          delta={avgF > circAvg ? 'Higher Penalties' : 'Lower Penalties'}
-          tone="blood"
-          value={avgF.toFixed(1)}
-          sub={`${circAvg.toFixed(1)} Avg`}
-        />
-        <StatCard
-          label="Field Strength"
-          delta={score >= circScore ? 'Elite Field' : 'Open Field'}
-          tone="mint"
-          value={strength}
-          sub={strengthLabel(circScore)}
-        />
-      </StatGrid>
-
-      <h2 className={H2}>Historical Event Trends</h2>
-      <p className={SUB}>Longitudinal metrics across showjumping seasons.</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <section className={CARD}>
-          <h2 className={H2}>Participation Volume Trend</h2>
-          <MiniTrend points={months} color="#FFD700" />
-        </section>
-        <section className={CARD}>
-          <h2 className={H2}>Historical Course Difficulty Index</h2>
-          <MiniTrend points={diffm} color="#FF1744" />
-        </section>
-      </div>
-
-      <h2 className={H2}>Event Rankings</h2>
-      <p className={SUB}>Segmented micro rankings calculated on current {e.name} metrics.</p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-        <div className="bg-card border border-line rounded p-4">
-          <div className="text-[13px] font-bold mb-2">Best Horses (EQ Score)</div>
-          {evHorses.map((x, i) => <div key={x.horse} className="flex justify-between text-[13px] py-1"><span>#{i + 1} {x.horse}</span><span className="text-muted">EQ {x.eq}</span></div>)}
-        </div>
-        <div className="bg-card border border-line rounded p-4">
-          <div className="text-[13px] font-bold mb-2">Best Riders (Performance)</div>
-          {evRiders.map((x, i) => <div key={x.rider} className="flex justify-between text-[13px] py-1"><span>#{i + 1} {x.rider}</span><span className="text-muted">Index {x.eq}</span></div>)}
-        </div>
-        <div className="bg-card border border-line rounded p-4">
-          <div className="text-[13px] font-bold mb-2">Best Partnerships</div>
-          {evParts.map((x, i) => <div key={`${x.horse}-${x.rider}`} className="flex justify-between text-[13px] py-1"><span>#{i + 1} {x.horse} + {x.rider.split(' ')[0]}</span><span className="text-muted">{x.match} Match</span></div>)}
-        </div>
-      </div>
-
-      <h2 className={H2}>EQIndex Intelligence Insights</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-        {insights.map((t, i) => (
-          <div className="bg-card border border-line rounded p-4" key={i}>
-            <span className={badge(BADGE.red)}>⚠ ACTIVE SIGNAL</span>
-            <p className="text-[13px] mt-2 mb-0">{t}</p>
-          </div>
-        ))}
-      </div>
-
-      <h2 className={H2}>Past Editions</h2>
-      <p className={SUB}>Same event family across seasons — year-on-year.</p>
-      <section className={CARD}>
-        <div className={TABLEWRAP}>
-        <table className={TABLE}>
-          <thead><tr><th className={TH}>Edition</th><th className={TH}>Dates</th><th className={`${TH} ${NUM}`}>Classes</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Avg Faults</th></tr></thead>
-          <tbody>
-            <tr>
-              <td className={TD}><b>{e.name} (this edition)</b></td>
-              <td className={`${TD} text-muted`}>{(e.date_start || '').slice(0, 10)}</td>
-              <td className={`${TD} ${NUM} text-muted`}>{a.classes.length}</td>
-              <td className={`${TD} ${NUM} text-muted`}>{n}</td>
-              <td className={`${TD} ${NUM} text-muted`}>{avgF.toFixed(2)}</td>
-            </tr>
-            {pastEditions.map((x) => (
-              <tr key={x.id}>
-                <td className={TD}><Link className={LINK} href={`/events/${x.slug || x.id}`}>{x.name}</Link></td>
-                <td className={`${TD} text-muted`}>{(x.date_start || '').slice(0, 10)}</td>
-                <td className={`${TD} ${NUM} text-muted`}>{x.class_count}</td>
-                <td className={`${TD} ${NUM} text-muted`}>{x.round_count}</td>
-                <td className={`${TD} ${NUM} text-muted`}>{x.avg_faults === null ? '–' : Number(x.avg_faults).toFixed(2)}</td>
-              </tr>
-            ))}
-            {!pastEditions.length && (
-              <TableEmpty
-                icon="🗓"
-                title="No other editions recorded"
-                hint="Once this event returns for another season, year-on-year editions will appear here."
-              />
-            )}
-          </tbody>
-        </table>
-        </div>
-      </section>
-
-      <h2 className={H2}>Interactive Tools & Actions</h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        {[
-          ['Compare This Event', 'Contrast with another regional arena', '/comparison'],
-          ['View Horses Entered', 'Isolate individual equine metrics', '/horses'],
-          ['View Riders Entered', 'Evaluate athlete index ratings', '/riders'],
-          ['Explore Class Rankings', 'Detailed class difficulty index', '/analytics'],
-        ].map(([t, d, href]) => (
-          <Link key={t} href={href} className="bg-card border border-line rounded p-4 no-underline hover:border-gold">
-            <div className="text-[13px] font-bold text-body">{t}</div>
-            <div className="text-xs text-muted mt-1">{d}</div>
-          </Link>
-        ))}
-      </div>
     </>
   );
 }

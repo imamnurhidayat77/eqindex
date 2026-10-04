@@ -189,9 +189,12 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
       );
     }
     if (fld.options) {
+      // options: plain strings (value = label) or { value, label } pairs
+      // (e.g. master-key dropdowns from lib/categories.js).
+      const norm = (o) => (typeof o === 'string' ? { value: o, label: o } : o);
       return (
         <Dropdown ariaLabel={fld.label} value={form[fld.k] ?? ''} placeholder="—" block
-          options={[{ value: '', label: '—' }, ...fld.options.map((o) => ({ value: o, label: o }))]}
+          options={[{ value: '', label: '—' }, ...fld.options.map(norm)]}
           onSelect={(o) => setForm({ ...form, [fld.k]: o.value })} />
       );
     }

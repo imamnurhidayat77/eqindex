@@ -7,6 +7,8 @@ const mountPublicRoutes = require('./routes/public');
 const mountUserRoutes = require('./routes/user');
 const mountAuthRoutes = require('./routes/auth');
 const mountAdminRoutes = require('./routes/admin');
+const mountScoringRoutes = require('./routes/scoring');
+const mountCategoryRoutes = require('./routes/categories');
 
 // Mount order mirrors the original index.js registration order.
 // No two route files share a path prefix, so relative order across files
@@ -22,6 +24,8 @@ function createApp() {
   mountUserRoutes(app);
   mountAuthRoutes(app);
   mountAdminRoutes(app);
+  mountScoringRoutes(app);
+  mountCategoryRoutes(app);
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
     console.error('[api]', err.message);

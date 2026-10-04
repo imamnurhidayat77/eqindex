@@ -1,36 +1,81 @@
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import { getJSON } from '../../../lib/api';
-import { eqScore, consistencyPts } from '../../../lib/eq';
-import { projectForm, recommendHeight } from '../../../lib/forecast';
 import { statusBadge } from '../../../lib/tokens';
 import WatchButton from '../../../components/WatchButton';
-import VisibilityToggle from '../../../components/VisibilityToggle';
-import TrainingPanel from '../../../components/TrainingPanel';
 import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
-import HealthPanel from '../../../components/HealthPanel';
 import HistoryTable from '../../../components/HistoryTable';
-import { EmptyState } from '../../../components/EmptyState';
 import { StatCard, StatGrid } from '../../../components/StatCard';
-import { EQMonthlyChart, MiniTrend } from '../../../components/horse-profile-charts';
 
 export const revalidate = 30;
 
 const fmtDate = (d) => (d || '').slice(0, 10);
 const num = (v, d = 0) => (v === null || v === undefined || v === '' ? d : Number(v));
 
+const initials = (name) => String(name || '').trim().split(/\s+/)
+  .slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join('') || '–';
+
+// Real medal: ribbon straps + medallion, tinted by division colour.
+// Elite gets a gold outer ring + glow. No text — division comes from tooltip.
+const shade = (hex, amt) => {
+  const n = String(hex || '#888888').replace('#', '');
+  const full = n.length === 3 ? n.split('').map((c) => c + c).join('') : n;
+  const num = parseInt(full, 16) || 0x888888;
+  const cl = (v) => Math.max(0, Math.min(255, v));
+  const r = cl((num >> 16) + amt), g = cl(((num >> 8) & 255) + amt), b = cl((num & 255) + amt);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+};
+const MedalIcon = ({ color, elite, label, detail }) => {
+  const c = color || '#888888';
+  return (
+    <span className="group relative inline-block leading-none cursor-default">
+      <svg width="24" height="32" viewBox="0 0 24 32" aria-hidden="true">
+        <polygon points="7,0 11.5,0 10,12 5.5,12" fill={shade(c, -45)} />
+        <polygon points="13,0 17.5,0 19,12 14.5,12" fill={shade(c, -45)} />
+        <polygon points="11.5,0 13,0 12.6,12 11.9,12" fill={shade(c, -70)} />
+        <circle cx="12" cy="13.5" r="2" fill="none" stroke={elite ? '#FFD700' : shade(c, -40)} strokeWidth="1.6" />
+        {elite && <circle cx="12" cy="23.5" r="8.6" fill="none" stroke="#FFD700" strokeWidth="1.6" />}
+        <circle cx="12" cy="23.5" r="7.5" fill={c} />
+        <circle cx="12" cy="23.5" r="5" fill={shade(c, 35)} opacity="0.55" />
+        <circle cx="10" cy="21.5" r="1.6" fill="#ffffff" opacity="0.5" />
+      </svg>
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-card2 px-2.5 py-1.5 text-center opacity-0 transition-opacity duration-100 group-hover:opacity-100">
+        <span className="block text-[12px] font-bold text-white">{elite ? `Elite ${label} Medal` : `${label} Medal`}</span>
+        <span className="block text-[10px] text-muted">{detail}</span>
+      </span>
+    </span>
+  );
+};
+
+// v0.3 fallback divisions when no active scoring version is published.
+const DEFAULT_DIVS = [
+  { key: 'development', label: 'Development', min: null, max: 100, color: '#A0A0A0' },
+  { key: 'copper', label: 'Copper', min: 100, max: 120, color: '#B87333' },
+  { key: 'bronze', label: 'Bronze', min: 120, max: 130, color: '#CD7F32' },
+  { key: 'silver', label: 'Silver', min: 130, max: 145, color: '#C0C0C0' },
+  { key: 'gold', label: 'Gold', min: 145, max: null, color: '#FFD700' },
+];
+const divisionFor = (heightCm, divs) => {
+  if (heightCm === null || heightCm === undefined || heightCm === '' || Number.isNaN(Number(heightCm))) return null;
+  const hgt = Number(heightCm);
+  return (divs || []).find((d) =>
+    (d.min === null || d.min === undefined || hgt >= d.min) &&
+    (d.max === null || d.max === undefined || hgt < d.max)) || null;
+};
+
 export default async function HorseProfile({ params, searchParams }) {
   const hBand = (searchParams && searchParams.h) || '';
-  const [p, timeline, trend, heights, splits, peers, ei] = await Promise.all([
-    getJSON(`/horses/${params.id}`),
-    getJSON(`/horses/${params.id}/timeline`).catch(() => ({ data: [] })),
-    getJSON(`/horses/${params.id}/trend`).catch(() => ({ data: [] })),
+  const [p, heights, splits, ptBoard, scoring] = await Promise.all([
+    getJSON(`/horses/${params.id}`).catch(() => null),
     getJSON('/height-stats?limit=200').catch(() => ({ data: [] })),
     getJSON(`/horses/${params.id}/splits`).catch(() => ({ data: [] })),
-    getJSON(`/peers?horse_id=${params.id}`).catch(() => null),
-    getJSON(`/horses/${params.id}/rating`).catch(() => null),
+    getJSON('/rankings/horses?limit=200&metric=points').catch(() => ({ data: [] })),
+    getJSON('/scoring/active').catch(() => null),
   ]);
-  const { data: h, stats: s, history = [], partnerships = [] } = p;
+  const divisions = scoring?.data?.params?.divisions?.length ? scoring.data.params.divisions : DEFAULT_DIVS;
+  if (!p?.data) notFound();
+  const { data: h, stats: s, history = [] } = p;
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(params.id) && h.slug && h.slug !== params.id) {
     const { redirect } = await import('next/navigation');
     redirect(`/horses/${h.slug}`);
@@ -42,8 +87,8 @@ export default async function HorseProfile({ params, searchParams }) {
   const wins = num(s?.wins ?? history.filter((r) => Number(r.finish_place) === 1).length);
   const top10 = history.filter((r) => Number(r.finish_place) >= 1 && Number(r.finish_place) <= 10).length;
   const eventsEntered = new Set(history.map((r) => r.event_id || r.event_name)).size;
-  const eq = eqScore(clearPct, avgFaults, starts);
-  const consistency = consistencyPts(s?.faults_stddev) ?? Math.round(clearPct);
+  const ptRow = (ptBoard.data || []).find((x) => x.horse_id === h.id || x.horse_id === params.id);
+  const horsePoints = ptRow ? Number(ptRow.total_points) : null;
 
   const chrono = [...history].reverse();
   const sparkFaults = chrono.map((r) => num(r.total_faults));
@@ -59,47 +104,54 @@ export default async function HorseProfile({ params, searchParams }) {
     { label: 'Avg Faults', delta: '-18%', value: avgFaults.toFixed(2), data: sparkFaults, color: '#00C853', good: true },
     { label: 'Wins', delta: '+2', value: String(wins), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) === 1).length), color: '#FFD700' },
     { label: 'Top 10 Finishes', delta: '+4', value: String(top10), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) <= 10 && Number(x.finish_place) >= 1).length), color: '#FFD700' },
-    { label: 'Consistency', delta: '+5.1%', value: String(consistency), data: sparkClear, color: '#FFD700' },
+    { label: 'Points', delta: '', value: horsePoints === null ? '–' : String(horsePoints), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
   ];
 
-  const monthly = (trend.data || []).map((m) => ({
-    month: m.month,
-    eq: Math.min(99, eqScore(m.clear_pct, m.avg_faults, m.starts)),
-    clear: num(m.clear_pct),
-    faults: num(m.avg_faults),
-    starts: num(m.starts),
-    baseline: 62,
-  }));
-  const forecast = projectForm(monthly);
-
-  const parts = [...partnerships].sort((a, b) => num(b.rounds_together) - num(a.rounds_together));
-  const [best, alt] = parts;
-  const partScore = (x) => (x ? Math.min(100, eqScore(x.clear_pct, x.avg_faults, x.rounds_together) + 18) : 0);
+  const bandHistory = history.filter((r) => {
+    if (!hBand) return true;
+    const cm = num(r.height_cm, 0);
+    if (!cm) return false;
+    const [lo, hi] = hBand.split('-');
+    return cm >= Number(lo) && (!hi || cm <= Number(hi));
+  });
+  const divFilter = (searchParams && searchParams.div) || '';
+  const divOf = (r) => divisionFor(r.height_cm, divisions)?.key || '';
+  const divSummary = divisions
+    .map((d) => {
+      const rs = history.filter((r) => divOf(r) === d.key);
+      const clears = rs.filter((r) => r.clear_round).length;
+      const faults = rs.reduce((t, r) => t + num(r.total_faults), 0);
+      return { ...d, rounds: rs.length, clears, faults, pct: rs.length ? (100 * clears) / rs.length : 0 };
+    })
+    .filter((d) => d.rounds > 0);
+  const earnedBadges = divSummary
+    .map((d) => ({ ...d, elite: d.clears >= 10 && d.faults <= 12 }))
+    .filter((d) => d.clears >= 3 || d.elite);
+  const divTotals = divSummary.reduce(
+    (t, d) => ({ rounds: t.rounds + d.rounds, clears: t.clears + d.clears }),
+    { rounds: 0, clears: 0 });
+  const divsPresent = divisions.filter((d) => bandHistory.some((r) => divOf(r) === d.key));
+  const roundHistory = divFilter ? bandHistory.filter((r) => divOf(r) === divFilter) : bandHistory;
+  const divHref = (key) => {
+    const p = new URLSearchParams();
+    if (hBand) p.set('h', hBand);
+    if (key) p.set('div', key);
+    const s = p.toString();
+    return `/horses/${params.id}${s ? `?${s}` : ''}`;
+  };
 
   const myHeights = (heights.data || []).filter((x) => x.horse_id === params.id);
   const bestH = [...myHeights].sort((a, b) => num(b.clear_pct) - num(a.clear_pct) || num(b.starts) - num(a.starts))[0];
   const bestHLabel = bestH ? `${(num(bestH.height_cm) / 100).toFixed(2)}m` : '1.30m';
   const bestHRate = bestH ? `${num(bestH.clear_pct).toFixed(0)}% Clear Rate` : '—';
-  const heightRec = recommendHeight(myHeights.map((x) => ({
-    label: `${(num(x.height_cm) / 100).toFixed(2)}m`, cm: num(x.height_cm),
-    rounds: num(x.starts), clear: num(x.clear_pct),
-  })));
-
+  const ageYears = h.age ?? (h.year_of_birth ? new Date().getFullYear() - Number(h.year_of_birth) : null);
   const registry = [
-    ['Age', h.age ? `${h.age} Years` : '—'],
+    ['Age', ageYears !== null && ageYears !== undefined ? `${ageYears} Years${h.year_of_birth && !h.age ? ` (b. ${h.year_of_birth})` : ''}` : '—'],
     ['Breed', h.breed || '—'],
     ['Gender', h.gender || '—'],
     ['Sire', h.sire || '—'],
     ['Dam', h.dam || '—'],
     ['Breeder', h.breeder || '—'],
-    ['Owner', h.owner_name || 'Private'],
-    ['Region', h.region || 'NZ Circuit'],
-  ];
-
-  const insights = [
-    { title: 'Development trajectory', body: `${h.name} shows consistent improvement across the current season, with clear round rate ${clearPct >= 50 ? 'up' : 'at'} ${num(clearPct).toFixed(0)}% across ${starts} analysed rounds.` },
-    { title: 'Partnership edge', body: best ? `Best results achieved with ${best.rider} in ${bestHLabel} classes — partnership score in top 15% nationally.` : 'No partnership data yet — add competition rounds to unlock synergy scoring.' },
-    { title: 'Fault trend', body: monthly.length > 1 && monthly[monthly.length - 1].faults < monthly[0].faults ? `Fault trend is declining — average faults reduced from ${monthly[0].faults.toFixed(1)} to ${monthly[monthly.length - 1].faults.toFixed(1)} over the last ${monthly.length} months.` : 'Fault trend is stable — average faults holding across recent rounds.' },
   ];
 
   return (
@@ -110,11 +162,6 @@ export default async function HorseProfile({ params, searchParams }) {
         <span className="mx-1.5">/</span>
         <span className="text-gold">{h.name} Profile</span>
       </div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[26px] font-extrabold tracking-tight">360° Equine Intelligence</h1>
-        <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ Elite Standard</span>
-      </div>
-
       {/* hero */}
       <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
         <section className="rounded border border-line bg-card p-5">
@@ -122,23 +169,24 @@ export default async function HorseProfile({ params, searchParams }) {
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Equine Subject</div>
               <div className="mt-1 text-[30px] font-extrabold leading-none break-words">{h.name}</div>
-              <div className="mt-2"><VisibilityToggle kind="horse" id={h.id || params.id} ownerUserId={h.owner_id} initial={h.visibility} /></div>
+              {!!earnedBadges.length && (
+                <div className="mt-2.5 flex flex-wrap gap-2" role="img" aria-label={`Division medals: ${earnedBadges.map((d) => d.label).join(', ')}`}>
+                  {earnedBadges.map((d) => (
+                    <MedalIcon key={d.key} color={d.color} elite={d.elite} label={d.label}
+                      detail={d.elite
+                        ? `${d.clears} clears · ${d.faults.toFixed(0)} faults`
+                        : `${d.clears} clears`} />
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="flex flex-col items-center">
+            <div className="flex flex-col items-end gap-2.5 shrink-0">
               <div className="text-center">
-                <div className="text-[26px] font-extrabold leading-none tabular-nums">{ei?.data?.rating ?? eq}</div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">EQIndex Rating</div>
-                {ei?.data?.provisional ? <div className="mt-1 text-[10px] font-bold text-faint border border-line rounded px-1.5 py-px" title="<15 rounds — shrunk toward mean">PROVISIONAL</div> : null}
+                <div className="text-[26px] font-extrabold leading-none tabular-nums">{horsePoints === null ? '–' : horsePoints}</div>
+                <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Points</div>
               </div>
+              <WatchButton entityType="horse" entityId={params.id} />
             </div>
-          </div>
-          <div className="mt-4 rounded bg-card2 p-3 text-[12.5px] italic leading-relaxed text-muted">
-            “{h.name} has established a {clearPct >= 60 ? 'phenomenal' : 'developing'} pedigree rating. Demonstrates {consistency >= 70 ? 'absolute composure' : 'growing composure'} at Grand Prix heights with a highly responsive stride rhythm.”
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-[#2A2500] px-2.5 py-1 text-[11px] font-bold text-gold">Advanced Performance</span>
-            <span className="rounded-md border border-mint/40 bg-mint/10 px-2.5 py-1 text-[11px] font-bold text-mint">Grand Prix Grade</span>
-            <span className="ml-auto"><WatchButton entityType="horse" entityId={params.id} /></span>
           </div>
         </section>
 
@@ -148,52 +196,14 @@ export default async function HorseProfile({ params, searchParams }) {
             {registry.map(([k, v]) => (
               <div key={k} className="flex items-center justify-between border-b border-line/60 py-[9px] text-[13px] last:border-0">
                 <dt className="text-muted">{k}</dt>
-                <dd className="font-semibold text-slate-100">{v}</dd>
+                <dd className="font-semibold text-slate-100">{k === 'Breeder' && v !== '—'
+                  ? <Link href={`/breeders/${encodeURIComponent(v)}`} className="text-sky hover:text-white">{v}</Link>
+                  : v}</dd>
               </div>
             ))}
           </dl>
         </section>
       </div>
-
-      {/* EI rating breakdown — transparent per-round components */}
-      {ei?.data && (
-        <>
-          <h2 className="text-[15px] font-bold">EQIndex Rating Breakdown</h2>
-          <p className="mb-3 mt-0.5 text-[12.5px] text-muted">
-            {ei.data.rating} overall (raw {ei.data.raw_avg} → shrunk {ei.data.shrunk_avg} over {ei.data.starts} rounds
-            {Number(ei.data.age_adj) ? `, age ${Number(ei.data.age_adj) > 0 ? '+' : ''}${ei.data.age_adj}` : ''}).
-            Base = placing + clear − faults; weighted by height, difficulty, field, size, handicap &amp; recency.
-          </p>
-          <section className="mb-6 overflow-x-auto rounded border border-line bg-card">
-            <table className="w-full min-w-[980px] border-collapse text-[13px]">
-              <thead>
-                <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
-                  {['Date', 'Class', 'Place', 'Base', 'Height', 'Diffic.', 'Field', 'Size', 'Handicap', 'Recency', 'Weighted'].map((c, i) => (
-                    <th key={c} className={`border-b border-line px-3 py-2.5 font-semibold ${i >= 3 ? 'text-right' : ''}`}>{c}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(ei.rounds || []).map((r, i) => (
-                  <tr key={i} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
-                    <td className="whitespace-nowrap px-3 py-2.5 text-muted">{fmtDate(r.class_date)}</td>
-                    <td className="px-3 py-2.5 text-slate-200">{r.class_name}</td>
-                    <td className="px-3 py-2.5 text-muted">{r.finish_place ?? '–'}</td>
-                    <td className="px-3 py-2.5 text-right font-semibold">{r.base_pts}</td>
-                    <td className="px-3 py-2.5 text-right text-muted">×{r.height_mult}</td>
-                    <td className="px-3 py-2.5 text-right text-muted">×{r.di_mult}</td>
-                    <td className="px-3 py-2.5 text-right text-muted">×{r.field_mult}</td>
-                    <td className="px-3 py-2.5 text-right text-muted">×{r.size_mod}</td>
-                    <td className="px-3 py-2.5 text-right text-muted">×{r.handicap}</td>
-                    <td className="px-3 py-2.5 text-right text-muted">×{r.recency_w}</td>
-                    <td className="px-3 py-2.5 text-right font-bold text-gold">{r.weighted}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        </>
-      )}
 
       {/* metrics */}
       <h2 className="text-[15px] font-bold">Circuit Metrics Summary</h2>
@@ -224,154 +234,118 @@ export default async function HorseProfile({ params, searchParams }) {
       </div>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Historical performance records from the NZ Showjumping Circuit.</p>
       <section className="mb-6 rounded border border-line bg-card p-4">
-        <HistoryTable rows={history.filter((r) => {
-          if (!hBand) return true;
-          const cm = num(r.height_cm, 0);
-          if (!cm) return false;
-          const [lo, hi] = hBand.split('-');
-          return cm >= Number(lo) && (!hi || cm <= Number(hi));
-        })} mode="horse" />
+        <HistoryTable rows={bandHistory} mode="horse" />
       </section>
 
-      {/* trends */}
-      <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="text-[15px] font-bold">Performance Trends</h2>
-          <p className="mt-0.5 text-[12.5px] text-muted">Temporal analysis of score metrics and performance markers.</p>
-        </div>
-        <div className="flex gap-2">
-          <span className="rounded border border-line bg-card2 px-2.5 py-1.5 text-[12px] text-muted">Season 2026</span>
-          <span className="rounded border border-line bg-card2 px-2.5 py-1.5 text-[12px] text-muted">All Height Classes</span>
-        </div>
-      </div>
-      <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <section className="rounded border border-line bg-card p-4">
-          <div className="mb-1 flex items-center justify-between">
-            <h3 className="text-[13px] font-bold">EQ Score Monthly Index</h3>
-            <div className="flex items-center gap-3 text-[11px] text-muted">
-              <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-gold" />{h.name}</span>
-              <span><span className="mr-1 inline-block h-2 w-2 rounded-full bg-[#2A2A2A]" />Circuit Baseline</span>
+      {/* division summary — rounds, clears and clear rate per division */}
+      {!!divSummary.length && (
+        <>
+          <h2 className="text-[15px] font-bold">Division Summary</h2>
+          <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rounds and clears per division across the full record.</p>
+          <section className="mb-6 rounded border border-line bg-card p-4">
+            <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[13px]">
+              <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
+                <th className="border-b border-line px-3 py-2.5 font-semibold"></th>
+                {divSummary.map((d) => (
+                  <th key={d.key} className="border-b border-line px-3 py-2.5 font-semibold text-right">
+                    <span className="inline-flex items-center gap-1.5 justify-end">
+                      <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: d.color || '#888' }} />
+                      {d.label}
+                    </span>
+                  </th>
+                ))}
+                <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Total</th>
+              </tr></thead>
+              <tbody>
+                <tr className="border-b border-line/50 hover:bg-white/[0.02]">
+                  <td className="px-3 py-2.5 text-muted">Rounds</td>
+                  {divSummary.map((d) => (
+                    <td key={d.key} className="px-3 py-2.5 text-right text-muted">{d.rounds}</td>
+                  ))}
+                  <td className="px-3 py-2.5 text-right"><b>{divTotals.rounds}</b></td>
+                </tr>
+                <tr className="border-b border-line/50 hover:bg-white/[0.02]">
+                  <td className="px-3 py-2.5 text-muted">Clear</td>
+                  {divSummary.map((d) => (
+                    <td key={d.key} className="px-3 py-2.5 text-right text-muted">{d.clears}</td>
+                  ))}
+                  <td className="px-3 py-2.5 text-right"><b>{divTotals.clears}</b></td>
+                </tr>
+                <tr className="hover:bg-white/[0.02]">
+                  <td className="px-3 py-2.5 text-muted">Clear %</td>
+                  {divSummary.map((d) => (
+                    <td key={d.key} className="px-3 py-2.5 text-right font-bold text-moss">{d.pct.toFixed(1)}%</td>
+                  ))}
+                  <td className="px-3 py-2.5 text-right font-bold text-gold">
+                    {divTotals.rounds ? `${((100 * divTotals.clears) / divTotals.rounds).toFixed(1)}%` : '–'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
             </div>
-          </div>
-          <EQMonthlyChart rows={monthly} />
-          <div className="mt-1 flex gap-6 text-[11px] text-faint">
-            {(monthly.map((m) => m.month)).join(' · ') || 'No trend data'}
-          </div>
-        </section>
-        <div className="grid gap-4">
-          <section className="rounded border border-line bg-card p-4">
-            <h3 className="text-[13px] font-bold">Clear Round Trend</h3>
-            <MiniTrend rows={monthly.map((m) => ({ label: m.month, v: m.clear }))} color="#00C853" />
-            <p className="mt-1 text-[12px] text-muted">Steadily climbing clear round percentage, now at {Math.round(clearPct)}%.</p>
           </section>
-          <section className="rounded border border-line bg-card p-4">
-            <h3 className="text-[13px] font-bold">Average Fault Trend (Lower is Better)</h3>
-            <MiniTrend rows={monthly.map((m) => ({ label: m.month, v: m.faults }))} color="#00C853" />
-            <p className="mt-1 text-[12px] text-muted">Significant reduction in jump &amp; time penalties over last {Math.max(monthly.length, 1)} months.</p>
-          </section>
-        </div>
-      </div>
+        </>
+      )}
 
-      {/* form forecast */}
-      <h2 className="text-[15px] font-bold">Form Forecast</h2>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">One-period projection from weighted monthly trend. Transparent model, no black box.</p>
-      <section className="mb-6 rounded border border-line bg-card p-5">
-        {forecast ? (
-          <>
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className={statusBadge(forecast.direction === 'up' ? 'Improving' : forecast.direction === 'down' ? 'Declining' : 'Stable')}>
-                {forecast.direction === 'up' ? '↑ Form rising' : forecast.direction === 'down' ? '↓ Form dipping' : '→ Form flat'}
-              </span>
-              <span className={statusBadge(forecast.confidence === 'High' ? 'Active' : 'Stable')}>{forecast.confidence} confidence</span>
-              <span className="text-[12px] text-faint">{forecast.periods} periods · {forecast.starts} rounds · slope {forecast.slope > 0 ? '+' : ''}{forecast.slope} EQ/mo</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {[
-                ['Projected EQ', String(forecast.eq)],
-                ['Projected Clear', `${forecast.clear}%`],
-                ['Projected Faults', forecast.faults.toFixed(2)],
-              ].map(([l, v]) => (
-                <div key={l} className="rounded bg-card2 p-3 text-center">
-                  <div className="text-[10px] uppercase tracking-wide text-faint">{l}</div>
-                  <div className="mt-1 text-[22px] font-extrabold text-gold">{v}</div>
-                </div>
-              ))}
-            </div>
-            {heightRec && (
-              <p className="mt-3 text-[13px] text-muted">
-                Recommended next class: <b className="text-white">{heightRec.optimal.label}</b>
-                {heightRec.stretch ? <> — ready to stretch to <b className="text-gold">{heightRec.stretch.label}</b> on current form.</> : '.'}
-              </p>
+      {/* round record — simple per-round log: division, place, clear star, rider initials */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-[15px] font-bold">Round Record</h2>
+        {divsPresent.length > 1 && (
+          <span className="flex items-center gap-1.5">
+            {[['', 'All'], ...divsPresent.map((d) => [d.key, d.label])].map(([v, l]) => (
+              <Link key={v || 'all'} href={divHref(v)}
+                className={`text-[11px] rounded-full px-2 py-0.5 border no-underline ${divFilter === v ? 'bg-goldbg border-gold text-gold font-bold' : 'border-line text-muted'}`}>{l}</Link>
+            ))}
+          </span>
+        )}
+      </div>
+      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Every round entered — division by height, placing, clear star and rider.</p>
+      <section className="mb-6 rounded border border-line bg-card p-4">
+        <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[13px]">
+          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
+            <th className="border-b border-line px-3 py-2.5 font-semibold">Division</th>
+            <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Place</th>
+            <th className="border-b border-line px-3 py-2.5 font-semibold text-center">Clear</th>
+            <th className="border-b border-line px-3 py-2.5 font-semibold">Rider</th>
+          </tr></thead>
+          <tbody>
+            {roundHistory.map((r) => {
+              const div = divisionFor(r.height_cm, divisions);
+              return (
+                <tr key={r.id} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
+                  <td className="whitespace-nowrap px-3 py-2.5">
+                    {div ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: div.color || '#888' }} />
+                        <b>{div.label}</b>
+                        <span className="text-[11px] text-faint">{r.height_cm ? `${(num(r.height_cm) / 100).toFixed(2)}m` : ''}</span>
+                      </span>
+                    ) : <span className="text-faint">—</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-semibold">{r.finish_place ?? '–'}</td>
+                  <td className="px-3 py-2.5 text-center text-[16px] leading-none">
+                    {r.clear_round
+                      ? <span className="text-gold" title="Clear round">★</span>
+                      : <span className="text-faint" title="Not clear">☆</span>}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5">
+                    <Link href={`/riders/${r.rider_slug || r.rider_id}`} title={r.rider}
+                      className="inline-flex items-center justify-center min-w-9 h-7 px-1.5 rounded-full border border-line bg-card2 text-[12px] font-bold text-white no-underline hover:border-gold/60 hover:text-gold">
+                      {initials(r.rider)}
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
+            {!roundHistory.length && (
+              <tr><td colSpan={4} className="px-3 py-6 text-center text-muted text-[13px]">No rounds recorded yet.</td></tr>
             )}
-          </>
-        ) : (
-          <p className="text-[13px] text-muted">Not enough monthly signal yet ({monthly.length} periods) — projections unlock at 3+ scoring months.</p>
-        )}
-        <p className="mt-2 text-[11px] text-faint">Method: starts-weighted least-squares on monthly EQ; clamped 0–99. Confidence reflects sample depth, not certainty.</p>
+          </tbody>
+        </table>
+        </div>
       </section>
-
-      {/* partnerships */}
-      <h2 className="mb-3 text-[15px] font-bold">Rider Partnerships</h2>
-      <div className="mb-6 grid gap-4 md:grid-cols-2">
-        {best ? (
-          <section className="rounded border border-gold/50 bg-card p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-[12px] font-bold">🏅 Best Partnership</span>
-              <span className="rounded-full bg-mint/15 px-2.5 py-0.5 text-[11px] font-bold text-mint">Elite Synergy</span>
-            </div>
-            <div className="flex items-center justify-between rounded bg-card2 px-4 py-3">
-              <div><div className="font-bold"><Link href={`/riders/${best.rider_slug || best.rider_id}`} className="text-white hover:text-gold">{best.rider}</Link></div><div className="text-[12px] text-muted">Primary Showjumping Rider</div></div>
-              <div className="text-[18px] font-extrabold text-gold">{partScore(best)}/100</div>
-            </div>
-            <dl className="mt-2 text-[13px]">
-              {[['Rounds Together', `${best.rounds_together} Rounds`], ['Clear Rate Together', `${num(best.clear_pct).toFixed(0)}%`, true], ['Average Faults', num(best.avg_faults).toFixed(2)], ['Best Result', best.best_place ? `${best.best_place === 1 ? '1st' : `${best.best_place}th`} Grand Prix (${bestHLabel})` : '—']].map(([k, v, green]) => (
-                <div key={k} className="flex justify-between border-b border-line/50 py-2 last:border-0">
-                  <dt className="text-muted">{k}</dt>
-                  <dd className={`font-semibold ${green ? 'text-mint' : ''}`}>{v}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        ) : (
-          <section className="rounded border border-line bg-card p-5">
-            <EmptyState
-              icon="🤝"
-              title="No partnership data yet"
-              hint="Partnerships appear once this horse logs competition rounds."
-              compact
-            />
-          </section>
-        )}
-        {alt ? (
-          <section className="rounded border border-line bg-card p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="text-[12px] font-bold text-muted">♾ Alternate Partnership</span>
-              <span className="rounded-full bg-card2 border border-line px-2.5 py-0.5 text-[11px] font-bold text-muted">Active Reserve</span>
-            </div>
-            <div className="flex items-center justify-between rounded bg-card2 px-4 py-3">
-              <div><div className="font-bold">{alt.rider}</div><div className="text-[12px] text-muted">Secondary Class Rider</div></div>
-              <div className="text-[18px] font-extrabold text-muted">{partScore(alt)}/100</div>
-            </div>
-            <dl className="mt-2 text-[13px]">
-              {[['Rounds Together', `${alt.rounds_together} Rounds`], ['Clear Rate Together', `${num(alt.clear_pct).toFixed(0)}%`], ['Average Faults', num(alt.avg_faults).toFixed(2)], ['Best Result', alt.best_place ? `${alt.best_place === 1 ? '1st' : `${alt.best_place}th`} Open GP (${bestHLabel})` : '—']].map(([k, v]) => (
-                <div key={k} className="flex justify-between border-b border-line/50 py-2 last:border-0">
-                  <dt className="text-muted">{k}</dt>
-                  <dd className="font-semibold">{v}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-        ) : (
-          <section className="rounded border border-dashed border-line bg-card p-5">
-            <EmptyState
-              icon="♾"
-              title="Single-rider combination"
-              hint="An alternate partnership unlocks after rounds with a second rider."
-              compact
-            />
-          </section>
-        )}
-      </div>
 
       {/* where performs best */}
       <h2 className="mb-3 text-[15px] font-bold">Where {h.name} Performs Best</h2>
@@ -391,116 +365,6 @@ export default async function HorseProfile({ params, searchParams }) {
 
       <SurfaceSplits rows={splits.data} subject={h.name} />
 
-      {/* timeline */}
-      <h2 className="mb-3 text-[15px] font-bold">Development Timeline</h2>
-      <section className="mb-6 rounded border border-line bg-card p-5">
-        <ol className="relative space-y-5 border-l border-line pl-6">
-          {(timeline.data || []).slice(0, 8).map((t, i) => (
-            <li key={i} className="relative">
-              <span className={`absolute -left-[29px] top-1 h-2 w-2 rounded-full ${t.kind === 'competition' ? 'bg-gold' : t.kind === 'training' ? 'bg-info' : 'bg-mint'}`} />
-              <div className="rounded bg-card2 px-4 py-3">
-                <div className="flex gap-4 text-[13px]">
-                  <span className="w-20 shrink-0 font-bold text-gold">{fmtDate(t.date)}</span>
-                  <div>
-                    <div className="font-semibold capitalize">{t.kind === 'competition' ? t.summary.split(':')[0] : t.kind}</div>
-                    <div className="text-muted">{t.summary}</div>
-                  </div>
-                </div>
-              </div>
-            </li>
-          ))}
-          {!(timeline.data || []).length && <li className="text-muted">No timeline entries yet.</li>}
-        </ol>
-      </section>
-
-      {/* training + health (interactive panels, styled to match) */}
-      <h2 className="mb-3 text-[15px] font-bold">Training &amp; Fitness Log</h2>
-      <TrainingPanel horseId={params.id} riders={[]} compact />
-
-      <h2 className="mb-3 mt-6 text-[15px] font-bold">Health &amp; Wellbeing Log</h2>
-      <HealthPanel horseId={params.id} compact />
-
-      {/* insights */}
-      <h2 className="mb-3 mt-6 text-[15px] font-bold">EQIndex Intelligence Insights</h2>
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
-        {insights.map((c) => (
-          <div key={c.title} className="rounded border border-line bg-card p-4">
-            <div className="mb-2 flex items-center justify-between text-[11px] font-bold">
-              <span>✨</span><span className="text-gold">ACTIVE SIGNAL</span>
-            </div>
-            <p className="text-[12.5px] leading-relaxed text-muted">{c.body}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* age-group benchmark — PRD §9: comparison with horses of similar age */}
-      <h2 className="mb-3 text-[15px] font-bold">Age-Group Benchmark{peers ? <span className="ml-2 text-[11px] font-bold text-faint">AGES {peers.band[0]}–{peers.band[1]}</span> : null}</h2>
-      <section className="rounded border border-line bg-card p-4 mb-6">
-        {!peers ? (
-          <p className="text-[13px] text-faint">Age unknown for this horse — peer comparison unavailable.</p>
-        ) : (() => {
-          const rank = peers.peers.findIndex((x) => x.horse_id === p.data.id) + 1;
-          const mx = Math.max(clearPct, num(peers.avg_clear_pct), 1);
-          return (
-            <>
-              <p className="text-[13px] text-muted mb-3">
-                Ranked <b className="text-white">#{rank || '–'} of {peers.peer_count}</b> among {peers.band[0]}–{peers.band[1]}-year-olds
-                (peer average <b className="text-white">{num(peers.avg_clear_pct).toFixed(1)}%</b> clear, <b className="text-white">{num(peers.avg_faults).toFixed(2)}</b> avg faults).
-              </p>
-              <div className="space-y-2 mb-3">
-                {[{ l: `${p.data.name} (you)`, v: clearPct, c: '#E8B44A' }, { l: 'Peer average', v: num(peers.avg_clear_pct), c: '#3a4356' }].map((b) => (
-                  <div key={b.l} className="flex items-center gap-2 text-[12px]">
-                    <span className="w-[130px] truncate text-muted">{b.l}</span>
-                    <span className="flex-1 h-2 rounded bg-barbg/60 overflow-hidden">
-                      <span className="block h-full rounded" style={{ width: `${Math.min(100, (b.v / mx) * 100)}%`, background: b.c }} />
-                    </span>
-                    <span className="w-[52px] text-right text-white font-semibold">{b.v.toFixed(1)}%</span>
-                  </div>
-                ))}
-              </div>
-              <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-[13px]">
-                <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
-                  <th className="border-b border-line px-2 py-2 font-semibold">Peer</th>
-                  <th className="border-b border-line px-2 py-2 font-semibold text-right">Age</th>
-                  <th className="border-b border-line px-2 py-2 font-semibold text-right">Clear %</th>
-                  <th className="border-b border-line px-2 py-2 font-semibold text-right">Avg</th>
-                </tr></thead>
-                <tbody>
-                  {peers.peers.slice(0, 6).map((x) => (
-                    <tr key={x.horse_id}>
-                      <td className="px-2 py-2 border-b border-rowline">
-                        {x.horse_id === p.data.id
-                          ? <b className="text-gold">{x.horse} (you)</b>
-                          : <Link href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white font-semibold no-underline hover:text-gold">{x.horse}</Link>}
-                      </td>
-                      <td className="px-2 py-2 border-b border-rowline text-right text-muted">{x.age}</td>
-                      <td className="px-2 py-2 border-b border-rowline text-right text-moss">{x.clear_pct === null ? '–' : `${Number(x.clear_pct).toFixed(0)}%`}</td>
-                      <td className="px-2 py-2 border-b border-rowline text-right text-muted">{x.avg_faults === null ? '–' : Number(x.avg_faults).toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            </>
-          );
-        })()}
-      </section>
-
-      {/* benchmarking */}
-      <h2 className="mb-3 text-[15px] font-bold">Benchmarking Tools</h2>
-      <div className="grid gap-4 md:grid-cols-3">
-        {[
-          ['Compare With Another Horse', 'Contrast metrics side-by-side', `/comparison?type=horse&a=${params.id}`],
-          ['Compare Rider Partnerships', 'Isolate synergy metrics', '/comparison'],
-          ['View Category Benchmark', 'Compare to national class', '/analytics'],
-        ].map(([t, d, href]) => (
-          <Link key={t} href={href} className="group flex items-center justify-between rounded border border-line bg-card p-4 transition hover:border-gold/50">
-            <div><div className="text-[13.5px] font-bold text-white">{t}</div><div className="mt-0.5 text-[12px] text-muted">{d}</div></div>
-            <span className="text-gold transition group-hover:translate-x-0.5">→</span>
-          </Link>
-        ))}
-      </div>
     </div>
   );
 }

@@ -4,7 +4,6 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, BarChart, Bar, Cell,
 } from 'recharts';
-import { eqScore } from '../lib/eq';
 
 const tip = { backgroundColor: '#1C2330', border: '1px solid #2A2A2A', borderRadius: 8, fontSize: 12 };
 
@@ -40,27 +39,23 @@ export function MiniSpark({ data, color = '#FFD700', w = 76, h = 30 }) {
   );
 }
 
-export function TrendPanel({ monthly, horseName, eq }) {
+export function TrendPanel({ monthly, horseName }) {
   const [mode, setMode] = useState('monthly');
   const [hidden, setHidden] = useState({});
   let rows = monthly.map((x) => ({
     label: x.month,
     clear: Number(x.clear_pct),
-    dev: Math.min(100, eqScore(x.clear_pct, x.avg_faults, x.starts)),
   }));
   if (mode === 'season' && monthly.length) {
     const byS = {};
     monthly.forEach((x) => {
       const s = seasonOf(x.m);
-      (byS[s] ||= { label: s.replace('-', '/'), cw: 0, cs: 0, dw: 0, ds: 0 });
+      (byS[s] ||= { label: s.replace('-', '/'), cw: 0, cs: 0 });
       byS[s].cw += Number(x.clear_pct) * Number(x.starts);
       byS[s].cs += Number(x.starts);
-      const dev = Math.min(100, eqScore(x.clear_pct, x.avg_faults, x.starts));
-      byS[s].dw += dev * Number(x.starts);
-      byS[s].ds += Number(x.starts);
     });
     rows = Object.values(byS).map((g) => ({
-      label: g.label, clear: g.cs ? g.cw / g.cs : 0, dev: g.ds ? g.dw / g.ds : 0,
+      label: g.label, clear: g.cs ? g.cw / g.cs : 0,
     }));
   }
   const toggle = (k) => setHidden((h) => ({ ...h, [k]: !h[k] }));
@@ -74,7 +69,6 @@ export function TrendPanel({ monthly, horseName, eq }) {
       </div>
       <div className="flex gap-4 text-xs text-muted mb-2">
         <span><span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: '#FFD700' }} />Clear Round %</span>
-        <span><span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ background: '#00C853' }} />EQ Development</span>
         <span style={{ marginLeft: 'auto' }}>Click metric to isolate</span>
       </div>
       <ResponsiveContainer width="100%" height={230}>
@@ -85,10 +79,8 @@ export function TrendPanel({ monthly, horseName, eq }) {
           <Tooltip contentStyle={tip} labelStyle={{ color: '#fff' }} />
           <Legend onClick={(e) => toggle(e.dataKey)} wrapperStyle={{ cursor: 'pointer', fontSize: 12 }} />
           {!hidden.clear && <Line type="monotone" dataKey="clear" name={`${horseName} clear %`} stroke="#FFD700" strokeWidth={2} dot={{ r: 2 }} />}
-          {!hidden.dev && <Line type="monotone" dataKey="dev" name="EQ Development" stroke="#00C853" strokeWidth={2} dot={{ r: 2 }} />}
         </LineChart>
       </ResponsiveContainer>
-      <p className="text-muted text-xs">Featured EQ Score: <b className="text-gold">{eq}</b></p>
     </>
   );
 }

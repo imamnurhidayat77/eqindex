@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
 import { useAuth } from '../../components/auth';
-import { eqScore } from '../../lib/eq';
 import { recommendHeight } from '../../lib/forecast';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, LINK, LIVE, badge, BADGE } from '../../lib/tokens';
 import { TableRowsSk } from '../../components/Skeletons';
@@ -159,13 +158,13 @@ export default function MyStable() {
       worst: pairs.reduce((a, b) => num(b.clear_pct) < num(a.clear_pct) ? b : a),
     } : null;
     return {
-      ...r, eq: eqScore(clear, avg, starts), clear, avg, starts,
+      ...r, clear, avg, starts,
       wins: num(st.wins), trend, tCls, arrow, best, last,
       horses: num(st.horses_ridden ?? new Set(hist.map((x) => x.horse_id)).size),
       workload: { shows: days.length, last30, minGap, overloaded, latest: days[0] || null },
       bandArr, heightRec, matrix, hist,
     };
-  }).sort((a, b) => b.eq - a.eq), [roster, detail]);
+  }).sort((a, b) => b.clear - a.clear || b.starts - a.starts), [roster, detail]);
 
   const sugg = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -204,7 +203,7 @@ export default function MyStable() {
     </>);
   }
 
-  const avgEq = athletes.length ? Math.round(athletes.reduce((s, a) => s + a.eq, 0) / athletes.length) : 0;
+  const avgClear = athletes.length ? Math.round(athletes.reduce((s, a) => s + a.clear, 0) / athletes.length) : 0;
   const totalWins = athletes.reduce((s, a) => s + a.wins, 0);
   const attention = athletes.filter((a) => a.trend === 'Declining');
 
@@ -223,7 +222,7 @@ export default function MyStable() {
       <StatGrid cols={4}>
         {[
           ['Athletes', String(athletes.length), false],
-          ['Avg EQ', String(avgEq), false],
+          ['Avg Clear %', `${avgClear}%`, false],
           ['Combined Wins', String(totalWins), false],
           ['Needs Attention', String(attention.length), !!attention.length],
         ].map(([l, v, alert]) => (
@@ -256,8 +255,7 @@ export default function MyStable() {
         <div className={TABLEWRAP}>
         <table className={TABLE}>
           <thead><tr>
-            <th className={TH}>Athlete</th><th className={`${TH} ${NUM}`}>EQ</th>
-            <th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th>
+            <th className={TH}>Athlete</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th>
             <th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Wins</th>
             <th className={TH}>Trend</th><th className={TH}>Workload</th><th className={TH}>Best Horse</th><th className={TH}>Last Round</th><th className={TH}></th>
           </tr></thead>
@@ -270,8 +268,7 @@ export default function MyStable() {
                   <Link href={`/riders/${a.slug || a.id}`} className="text-white font-semibold no-underline hover:text-gold">{a.name || a.rider}</Link>
                   {a.workload.overloaded && <span className="ml-1.5 text-[10px] font-bold text-blood" title=">6 rounds/30d or shows <7d apart">⚠ LOAD</span>}
                 </td>
-                <td className={`${TD} ${NUM}`}><b className="text-gold">{a.eq}</b></td>
-                <td className={`${TD} ${NUM} text-muted`}>{a.clear.toFixed(0)}%</td>
+                <td className={`${TD} ${NUM}`}><b className="text-gold">{a.clear.toFixed(0)}%</b></td>
                 <td className={`${TD} ${NUM} text-muted`}>{a.avg.toFixed(2)}</td>
                 <td className={`${TD} ${NUM} text-muted`}>{a.starts}</td>
                 <td className={`${TD} ${NUM} text-muted`}>{a.wins}</td>

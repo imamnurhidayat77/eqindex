@@ -2,7 +2,7 @@
 // Never caches admin/auth/user-scoped routes; logged-in traffic always bypasses.
 const CACHE_TTL = 60 * 1000;
 const cacheStore = new Map();
-const CACHEABLE = [/^\/rankings\//, /^\/classes$/, /^\/trends\//, /^\/stats\//, /^\/arenas$/, /^\/events(\/|$)/, /^\/venues/, /^\/series/, /^\/peers/, /^\/news\//, /^\/(horses|riders)\/[^/]+$/];
+const CACHEABLE = [/^\/rankings\//, /^\/classes$/, /^\/trends\//, /^\/stats\//, /^\/arenas$/, /^\/events(\/|$)/, /^\/venues/, /^\/series/, /^\/peers/, /^\/news\//, /^\/categories$/, /^\/(horses|riders)\/[^/]+$/];
 
 function mountCache(app) {
   app.use((req, res, next) => {

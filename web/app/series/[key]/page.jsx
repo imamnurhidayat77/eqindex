@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { getJSON } from '../../../lib/api';
-import { eqScore } from '../../../lib/eq';
 import { SeriesMatrixTable } from '../../../components/SeriesTables';
 import { EmptyState } from '../../../components/EmptyState';
 
@@ -33,9 +32,7 @@ export default async function SeriesPage({ params }) {
 
   const horseMap = {};
   for (const h of rankH.data || []) {
-    horseMap[norm(h.horse)] = {
-      id: h.horse_id, eq: eqScore(h.clear_pct, h.avg_faults, h.starts),
-    };
+    horseMap[norm(h.horse)] = { id: h.horse_id };
   }
   const riderMap = {};
   for (const r of rankR.data || []) {

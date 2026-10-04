@@ -6,6 +6,7 @@ const { audit } = require('../lib/audit');
 const { needRole } = require('../lib/auth');
 const { bustCache, bustPublic } = require('../middleware/cache');
 const { bustVisibility, excludedClassTypes } = require('../lib/filters');
+const { canonCategoryKey, masterCategoryKeys, bustCategoryKeys } = require('../lib/categories');
 
 module.exports = function mountAdminRoutes(app) {
   // ---- Rank snapshots: capture today's points ranks (idempotent per day) ----
@@ -165,7 +166,8 @@ module.exports = function mountAdminRoutes(app) {
     'venue', 'venue_country', 'arena_type', 'event_name', 'date_start', 'date_end'];
   // Optional enrichment columns (fill-if-null only — never overwrites curated data).
   const GENDERS = ['Mare', 'Gelding', 'Stallion', 'Filly', 'Colt', 'Mare/Other', 'Unknown'];
-  const RIDER_CATS = ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Tertiary', 'Open'];
+  // Rider category vocabulary comes from the rider_categories master table
+  // (see lib/categories.js) — never a hardcoded list here.
   const canon = (v, list) => {
     const t = String(v || '').trim().toLowerCase();
     if (!t) return null;
@@ -384,7 +386,7 @@ module.exports = function mountAdminRoutes(app) {
         };
         const rEn = {
           region: g(ci.rider_region) || null,
-          series_category: canon(g(ci.series_category), RIDER_CATS),
+          series_category: canonCategoryKey(g(ci.series_category), await masterCategoryKeys(pool)),
           nationality: g(ci.nationality) || null,
         };
         for (const k of ['venue', 'venue_country', 'region', 'arena_type']) {
@@ -469,8 +471,12 @@ module.exports = function mountAdminRoutes(app) {
            status === 'finished' && tot === 0, hcm, status, g(ci.notes) || null, r2f, r2t, jof, jot, prize]);
         okCount++;
         bump(rEvId, rowEv.name, 'ok');
+        // NOTE: ins.rows[0].points is the BEFORE-trigger placeholder (the
+        // AFTER trigger recalculates the whole class afterwards), so re-read
+        // the stored value for an honest preview.
+        const stored = await client.query('SELECT points FROM round_results WHERE id = $1', [ins.rows[0].id]);
         out.push({ line: li + 1, ok: true, errors: [], preview: {
-          event: rowEv.name, rider, horse, class: cls, place, points: ins.rows[0].points,
+          event: rowEv.name, rider, horse, class: cls, place, points: stored.rows[0]?.points ?? 0,
           new_horse: newHorse, new_rider: newRider, new_class: newClass,
         }});
       }
@@ -569,7 +575,7 @@ module.exports = function mountAdminRoutes(app) {
     const q = String(req.query.q || '').trim();
     const like = `%${q}%`;
     const { rows } = await pool.query(
-      `SELECT c.id, c.name, c.class_date, c.height_cm, c.class_type, c.is_active,
+      `SELECT c.id, c.name, c.class_date, c.height_cm, c.class_type, c.is_active, c.rider_category,
          e.name AS event_name, e.season,
          (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.class_id = c.id) AS round_count
        FROM classes c JOIN events e ON e.id = c.event_id
@@ -580,7 +586,7 @@ module.exports = function mountAdminRoutes(app) {
     res.json({ data: rows });
   }));
 
-  const CLASS_FIELDS = ['class_type', 'height_cm', 'is_active'];
+  const CLASS_FIELDS = ['class_type', 'height_cm', 'is_active', 'rider_category'];
 
   app.get('/admin/visibility', needRole('ADMIN'), asyncH(async (req, res) => {
     const excluded = await excludedClassTypes();
@@ -721,7 +727,7 @@ module.exports = function mountAdminRoutes(app) {
     .toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
   const HORSE_FIELDS = ['name', 'breed', 'gender', 'sire', 'dam', 'damsire', 'breeder', 'year_of_birth', 'color', 'height', 'country', 'image_url', 'visibility'];
   const RIDER_FIELDS = ['name', 'region', 'series_category', 'nationality', 'bio', 'image_url', 'first_name', 'last_name', 'visibility'];
-  const EVENT_FIELDS = ['name', 'venue', 'region', 'date_start', 'date_end', 'arena_type', 'event_type', 'status', 'description', 'image_url', 'is_active', 'tier'];
+  const EVENT_FIELDS = ['name', 'venue', 'region', 'date_start', 'date_end', 'arena_type', 'event_type', 'status', 'description', 'image_url', 'is_active', 'tier', 'event_kind'];
 
   function patcher(table, fields, label) {
     return asyncH(async (req, res) => {
@@ -741,6 +747,11 @@ module.exports = function mountAdminRoutes(app) {
           if (f === 'year_of_birth' && v !== null) {
             v = parseInt(v, 10);
             if (!(v >= 1980 && v <= 2100)) return res.status(400).json({ error: 'year_of_birth out of range' });
+          }
+          if ((f === 'series_category' || f === 'rider_category') && v !== null) {
+            const key = canonCategoryKey(v, await masterCategoryKeys(pool));
+            if (!key) return res.status(400).json({ error: `${f} must be a master category key (see Admin → Categories)` });
+            v = key;
           }
           if ((f === 'date_start' || f === 'date_end') && v !== null && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
             return res.status(400).json({ error: `${f} must be YYYY-MM-DD` });
@@ -851,6 +862,31 @@ module.exports = function mountAdminRoutes(app) {
     const { rowCount } = await pool.query('DELETE FROM sessions WHERE user_id = $1', [req.params.id]);
     audit(req, 'user.revoke_sessions', 'user', req.params.id, { count: rowCount });
     res.json({ ok: true, revoked: rowCount });
+  }));
+
+  // ---- Seasons master (events.season FK lands here — new seasons must
+  // exist before imports/classes referencing them, or writes fail) ----
+  app.post('/admin/seasons', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { key, label, date_start, date_end, make_current } = req.body || {};
+    if (!key || !/^\d{4}-\d{4}$/.test(String(key))) {
+      return res.status(400).json({ error: 'key must look like 2026-2027' });
+    }
+    if (!date_start || !date_end) return res.status(400).json({ error: 'need {key, date_start, date_end}' });
+    const { rows } = await pool.query(
+      `INSERT INTO seasons (key, label, date_start, date_end, is_current)
+       VALUES ($1, $2, $3, $4, COALESCE($5, FALSE))
+       ON CONFLICT (key) DO UPDATE SET label = COALESCE(EXCLUDED.label, seasons.label),
+         date_start = EXCLUDED.date_start, date_end = EXCLUDED.date_end,
+         is_current = COALESCE(EXCLUDED.is_current, seasons.is_current)
+       RETURNING *`,
+      [String(key), label ? String(label).slice(0, 20) : String(key).replace('-', '/'),
+        date_start, date_end, make_current === true]);
+    if (make_current === true) {
+      await pool.query(`UPDATE seasons SET is_current = (key = $1)`, [String(key)]);
+      rows[0].is_current = true;
+    }
+    audit(req, 'seasons.upsert', 'seasons', String(key), { make_current: !!make_current });
+    res.status(201).json({ data: rows[0] });
   }));
 
   // ---- Series management ----

@@ -1,42 +1,48 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { getJSON } from '../../../../lib/api';
 import { CARD, H1, SUB, LINK } from '../../../../lib/tokens';
 import { CategoryTable } from '../../../../components/SeriesTables';
 import { EmptyState } from '../../../../components/EmptyState';
+import { keyOptions, resolveKey } from '../../../../lib/categories';
 
 export const revalidate = 30;
 
-const CATS = {
-  junior: 'Junior Rider',
-  'young-rider': 'Young Rider',
-  'under-25': 'Under 25',
-  amateur: 'Amateur Rider',
-  pony: 'Pony Rider',
-  tertiary: 'Tertiary Rider',
-};
-const TO_DB = { junior: 'Junior', 'young-rider': 'Young Rider', 'under-25': 'Under 25', amateur: 'Amateur', pony: 'Pony', tertiary: 'Tertiary' };
+// URL slug = master category key (Admin → Categories). The one renamed slug
+// keeps working via redirect so bookmarks survive the key migration.
+const LEGACY_SLUGS = { 'young-rider': 'young' };
 
 const DESCRIPTIONS = {
+  pro: 'Open-class riders at the sharp end of the circuit.',
+  young: 'Transitional youth division below senior open.',
   junior: 'Riders competing in junior divisions.',
-  'young-rider': 'Transitional youth division below senior open.',
-  'under-25': 'Riders aged under 25.',
   amateur: 'Non-professional riders.',
   pony: 'Pony-mounted riders across heights.',
-  tertiary: 'Tertiary student riders.',
 };
 
 export default async function SeriesCategory({ params }) {
-  const cat = params.cat;
-  const label = CATS[cat];
-  if (!label) {
+  const slug = params.cat;
+  if (LEGACY_SLUGS[slug]) redirect(`/series/category/${LEGACY_SLUGS[slug]}`);
+  let master = null;
+  try { master = (await getJSON('/categories')).data || null; } catch { /* fallback list */ }
+  const key = resolveKey(master, slug);
+  const opts = keyOptions(master);
+  if (!key) {
     return (
       <>
         <h1 className={H1}>Unknown series</h1>
-        <p className={SUB}>Valid categories: {Object.keys(CATS).join(', ')}.</p>
+        <p className={SUB}>Valid categories: {opts.map((o) => o.value).join(', ')}.</p>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {opts.map((o) => (
+            <Link key={o.value} href={`/series/category/${o.value}`}
+              className="text-xs rounded-full px-3 py-[6px] border border-line bg-card2 text-muted no-underline">{o.label}</Link>
+          ))}
+        </div>
       </>
     );
   }
-  const r = await getJSON(`/rankings/riders?limit=100&metric=points&series=${encodeURIComponent(TO_DB[cat])}`).catch(() => ({ data: [] }));
+  const label = opts.find((o) => o.value === key)?.label || key;
+  const r = await getJSON(`/rankings/riders?limit=100&metric=points&series=${encodeURIComponent(key)}`).catch(() => ({ data: [] }));
   const rows = (r.data || []).map((x, i) => ({ ...x, _rank: i + 1 }));
   return (
     <>
@@ -46,11 +52,11 @@ export default async function SeriesCategory({ params }) {
         <span className="text-gold">{label}</span>
       </div>
       <h1 className={H1}>{label} Series</h1>
-      <p className={SUB}>{DESCRIPTIONS[cat]} Ranked by briefing points.</p>
+      <p className={SUB}>{DESCRIPTIONS[key] || 'Riders in this master category.'} Ranked by points.</p>
       <div className="mb-4 flex flex-wrap gap-2">
-        {Object.entries(CATS).map(([k, l]) => (
-          <Link key={k} href={`/series/category/${k}`}
-            className={`text-xs rounded-full px-3 py-[6px] border no-underline ${k === cat ? 'bg-goldbg border-gold text-gold font-bold' : 'bg-card2 border-line text-muted'}`}>{l}</Link>
+        {opts.map((o) => (
+          <Link key={o.value} href={`/series/category/${o.value}`}
+            className={`text-xs rounded-full px-3 py-[6px] border no-underline ${o.value === key ? 'bg-goldbg border-gold text-gold font-bold' : 'bg-card2 border-line text-muted'}`}>{o.label}</Link>
         ))}
       </div>
       <section className={CARD}>
@@ -65,7 +71,7 @@ export default async function SeriesCategory({ params }) {
           />
         )}
       </section>
-      <p className="text-[12px] text-faint">Riders without a category compete as Open. <Link className={LINK} href="/rankings">National leaderboard →</Link></p>
+      <p className="text-[12px] text-faint">Riders without a category compete unranked here. <Link className={LINK} href="/rankings">National leaderboard →</Link></p>
     </>
   );
 }

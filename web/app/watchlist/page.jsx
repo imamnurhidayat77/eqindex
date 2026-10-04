@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getJSON, getPrivateJSON } from '../../lib/api';
 import { CARD, H1, LINK, LIVE, SUB } from '../../lib/tokens';
-import { eqScore, trendBadge } from '../../lib/eq';
+import { trendBadge } from '../../lib/eq';
 import WatchlistView from '../../components/WatchlistView';
 
 export const dynamic = 'force-dynamic';
@@ -80,13 +80,12 @@ export default async function Watchlist() {
       getJSON(`/rankings/riders?limit=200&min_starts=0${season ? `&season=${season}` : ''}`),
     ]);
   } catch { /* shell */ }
-  const withEq = (rows) => rows
-    .map((x) => ({ ...x, eq: eqScore(x.clear_pct, x.avg_faults, x.starts) }))
-    .sort((a, b) => b.eq - a.eq);
+  const byClear = (rows) => [...rows]
+    .sort((a, b) => Number(b.clear_pct) - Number(a.clear_pct) || Number(b.starts) - Number(a.starts));
   const horseRank = {};
-  withEq(rankH.data).forEach((x, i) => { horseRank[x.horse_id] = i + 1; });
+  byClear(rankH.data).forEach((x, i) => { horseRank[x.horse_id] = i + 1; });
   const riderRank = {};
-  withEq(rankR.data).forEach((x, i) => { riderRank[x.rider_id] = i + 1; });
+  byClear(rankR.data).forEach((x, i) => { riderRank[x.rider_id] = i + 1; });
 
   const totalRounds = rankH.data.reduce((s, h) => s + Number(h.starts), 0);
   const totalClears = rankH.data.reduce((s, h) => s + Number(h.clears), 0);
@@ -106,7 +105,7 @@ export default async function Watchlist() {
       const p = (d.partnerships || [])[0] || null;
       return {
         kind: 'horse', watchId: w.id, id: w.entity_id, slug: w.slug || d.data?.slug, isPublic: !!w.is_public, name: d.data?.name || w.name,
-        eq: eqScore(clear, avg, starts), clear, avg, starts, wins: st.wins ?? 0,
+        clear, avg, starts, wins: st.wins ?? 0,
         rank: horseRank[w.entity_id] ?? null, trend,
         last: fmtRel(lastOf(d), now),
         partner: p ? { name: p.rider, id: p.rider_id } : null,
@@ -114,7 +113,7 @@ export default async function Watchlist() {
       };
     })
     .filter(Boolean)
-    .sort((a, b) => b.eq - a.eq);
+    .sort((a, b) => b.clear - a.clear || b.starts - a.starts);
 
   const riders = riderItems
     .map((w) => {
@@ -128,14 +127,14 @@ export default async function Watchlist() {
       const p = (d.partnerships || [])[0] || null;
       return {
         kind: 'rider', watchId: w.id, id: w.entity_id, slug: w.slug || d.data?.slug, isPublic: !!w.is_public, name: d.data?.name || w.name,
-        eq: eqScore(clear, avg, starts), clear, avg, starts, wins: st.wins ?? 0,
+        clear, avg, starts, wins: st.wins ?? 0,
         rank: riderRank[w.entity_id] ?? null, trend,
         last: fmtRel(lastOf(d), now),
         partner: p ? { name: p.horse, id: p.horse_id } : null,
       };
     })
     .filter(Boolean)
-    .sort((a, b) => b.eq - a.eq);
+    .sort((a, b) => b.clear - a.clear || b.starts - a.starts);
 
   // Watched combinations = explicit combo watches + top partnership of each
   // watched horse. Pair trend from the pair's own recent rounds.
@@ -150,7 +149,6 @@ export default async function Watchlist() {
     return {
       key: `${horseId}:${p.rider_id}`, horse: horseName, horseId,
       rider: p.rider, riderId: p.rider_id,
-      score: eqScore(p.clear_pct, p.avg_faults, p.rounds_together),
       rounds: Number(p.rounds_together), clear: pairClear,
       avg: Number(p.avg_faults), trend,
       watchId: watchItem ? watchItem.id : null,
@@ -172,7 +170,7 @@ export default async function Watchlist() {
     if (!p) continue;
     combos.push(comboRow(w.horse_id, d.data?.name || w.name?.split(' × ')[0] || '–', p, w));
   }
-  combos.sort((a, b) => b.score - a.score);
+  combos.sort((a, b) => b.clear - a.clear || b.rounds - a.rounds);
 
   // Events involving tracked entities + global recent timeline.
   const evMap = {};

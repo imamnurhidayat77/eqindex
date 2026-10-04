@@ -14,6 +14,8 @@ const COMMANDS = [
   ['Manage Events', '/admin/events', '▦', 'Details & on/off'],
   ['Classes', '/admin/classes', '◫', 'Per-class tracking switches'],
   ['Series', '/admin/series', '★', 'Qual rules & labelling'],
+  ['Categories', '/admin/categories', '⛉', 'Rider category titles & matching'],
+  ['Scoring', '/admin/scoring', '✦', 'Rules versions & preview'],
   ['Naming Review', '/admin/review', '◐', 'Resolve ambiguous names'],
   ['Rider Claims', '/admin/claims', '✔', 'Approve ownership'],
   ['Corrections', '/admin/corrections', '✉', 'Triage public reports'],

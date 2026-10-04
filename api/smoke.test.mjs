@@ -291,3 +291,27 @@ test('class visibility admin is gated', async () => {
   });
   assert.equal(bad.status, 401); // gate first (no session)
 });
+
+test('categories master is the category vocabulary', async () => {
+  const c = await get('/categories');
+  assert.ok(Array.isArray(c.data) && c.data.length > 0);
+  for (const b of c.data) assert.ok(b.key && b.label, 'bucket needs key + label');
+  const keys = c.data.map((b) => b.key);
+  for (const k of ['pro', 'young', 'junior', 'amateur', 'pony']) assert.ok(keys.includes(k), `missing bucket ${k}`);
+});
+
+test('scoring defaults served; recompute is gated', async () => {
+  const d = await get('/scoring/defaults');
+  assert.ok(Array.isArray(d.data.divisions) && d.data.divisions.length > 0);
+  assert.ok(Array.isArray(d.data.points.placing) && d.data.points.placing.length === 5);
+  const act = await fetch(`${BASE}/scoring/active`);
+  assert.ok([200, 404].includes(act.status));
+  if (act.status === 200) {
+    const j = await act.json();
+    assert.ok(j.data.params && j.data.version != null && j.data.season, 'active carries params + provenance');
+  }
+  const bad = await fetch(`${BASE}/admin/scoring/recompute`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ season: '2026-2027' }),
+  });
+  assert.equal(bad.status, 401); // gate first (no session)
+});

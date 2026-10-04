@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
 import { CARD, H1, NUM, SUB, TABLE, TD, TH } from '../../lib/tokens';
-import { eqScore } from '../../lib/eq';
 import { FilterBar, Pagination } from '../../components/list-controls';
 import { TableEmpty } from '../../components/EmptyState';
 import { heightParams } from '../../lib/heights';
@@ -17,6 +16,7 @@ export default function Riders() {
   useEffect(() => { setF((prev) => ({ ...prev, season: gSeason })); }, [gSeason]);
   const [rows, setRows] = useState([]);
   const [opts, setOpts] = useState({ seasons: [], regions: [], arenas: [] });
+  const [cats, setCats] = useState(null);
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(25);
   const [loading, setLoading] = useState(true);
@@ -30,17 +30,21 @@ export default function Riders() {
   }, []);
 
   useEffect(() => {
+    fetch(`${API}/categories`).then((r) => r.json()).then((j) => setCats(j.data || [])).catch(() => setCats([]));
+  }, []);
+
+  useEffect(() => {
     setLoading(true);
     const p = new URLSearchParams({ limit: '200', min_starts: f.minStarts, ...heightParams(f.height) });
     if (f.season) p.set('season', f.season);
     if (f.region) p.set('region', f.region);
     if (f.arena) p.set('arena', f.arena);
     if (f.category) p.set('series', f.category);
-    fetch(`${API}/rankings/riders?${p}`)
+    fetch(`${API}/rankings/riders?${p}&metric=points`)
       .then((r) => r.json())
       .then((j) => {
-        setRows(((j.data || []).map((x) => ({ ...x, eq: eqScore(x.clear_pct, x.avg_faults, x.starts) })))
-          .sort((a, b) => b.eq - a.eq));
+        setRows(((j.data || []).map((x) => ({ ...x })))
+          .sort((a, b) => Number(b.total_points) - Number(a.total_points)));
         setPage(1);
       })
       .catch(() => setRows([]))
@@ -63,11 +67,11 @@ export default function Riders() {
     <>
       <h1 className={H1}>Riders</h1>
       <p className={SUB}>Every ranked rider on the NZ circuit.</p>
-      <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} showCategory />
+      <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} categories={cats} showCategory />
       <section className={CARD}>
         <div className="overflow-x-auto">
         <table className={TABLE}>
-          <thead><tr><th className={TH}>Rank</th><th className={TH}>Rider</th><th className={`${TH} ${NUM}`}>Score</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th><th className={`${TH} ${NUM}`}>Starts</th></tr></thead>
+          <thead><tr><th className={TH}>Rank</th><th className={TH}>Rider</th><th className={`${TH} ${NUM}`}>Points</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th><th className={`${TH} ${NUM}`}>Starts</th></tr></thead>
           <tbody>
             {view.map((x, i) => {
               const rank = (safePage - 1) * perPage + i + 1;
@@ -75,7 +79,7 @@ export default function Riders() {
                 <tr key={x.rider_id}>
                   <td className={rank === 1 && safePage === 1 ? 'rank1' : ''}>#{rank}</td>
                   <td className={TD}><Link href={`/riders/${x.rider_slug || x.rider_id}`} className="text-white font-semibold">{x.rider}</Link></td>
-                  <td className={`${TD} ${NUM}`}><b>{x.eq}</b></td>
+                  <td className={`${TD} ${NUM}`}><b>{Number(x.total_points)}</b></td>
                   <td className={`${TD} ${NUM} text-moss`}>{Number(x.clear_pct).toFixed(1)}%</td>
                   <td className={`${TD} ${NUM}`}>{Number(x.avg_faults).toFixed(2)}</td>
                   <td className={`${TD} ${NUM}`}>{x.starts}</td>

@@ -15,11 +15,8 @@ const trendCls = (t) =>
   t === 'Declining' ? 'text-blood' : t === 'Stable' ? 'text-muted' : 'text-moss';
 const trendArrow = (t) => (t === 'Declining' ? '↓' : t === 'Stable' ? '→' : '↑');
 
-function eqCls(eq, rank) {
-  if (rank === 1) return 'text-gold';
-  if (eq >= 85) return 'text-moss';
-  if (eq >= 80) return 'text-sky';
-  return 'text-body';
+function rankCls(rank) {
+  return rank === 1 ? 'text-gold' : 'text-body';
 }
 
 function Toggle({ on, onFlip, label }) {
@@ -110,9 +107,9 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
     watchBody({ entity_type: 'event', entity_id: eventId });
 
   function exportCsv() {
-    const rows = [['type', 'name', 'eq_score', 'clear_pct', 'rounds', 'wins', 'trend']];
-    for (const h of horses) rows.push(['horse', h.name, h.eq, h.clear, h.starts, h.wins, h.trend]);
-    for (const r of riders) rows.push(['rider', r.name, r.eq, r.clear, r.starts, r.wins, r.trend]);
+    const rows = [['type', 'name', 'wins', 'clear_pct', 'rounds', 'trend']];
+    for (const h of horses) rows.push(['horse', h.name, h.wins, h.clear, h.starts, h.trend]);
+    for (const r of riders) rows.push(['rider', r.name, r.wins, r.clear, r.starts, r.trend]);
     for (const c of combos) rows.push(['combination', `${c.horse} x ${c.rider}`, c.score, c.clear, c.rounds, '', c.trend]);
     const csv = rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
@@ -188,7 +185,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                 <table className={TABLE}>
                   <thead><tr>
                     <th className={TH}></th><th className={TH}>Horse Name</th>
-                    <th className={`${TH} ${NUM}`}>EQ Score</th><th className={`${TH} ${NUM}`}>Current Rank</th>
+                    <th className={`${TH} ${NUM}`}>Wins</th><th className={`${TH} ${NUM}`}>Current Rank</th>
                     <th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg Faults</th>
                     <th className={TH}>Recent Trend</th><th className={TH}>Visibility</th><th className={TH}>Last Update</th>
                   </tr></thead>
@@ -197,7 +194,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                       <tr key={h.watchId}>
                         <td className={TD}><input type="checkbox" className={box} checked={isSel(h.watchId)} onChange={() => toggleSel({ watchId: h.watchId, kind: 'horse', id: h.id, name: h.name })} /></td>
                         <td className={TD}><Link href={`/horses/${h.slug || h.id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{h.name}</Link></td>
-                        <td className={`${TD} ${NUM}`}><b className={eqCls(h.eq, h.rank)}>{h.eq}</b></td>
+                        <td className={`${TD} ${NUM}`}><b className={rankCls(h.rank)}>{h.wins}</b></td>
                         <td className={`${TD} ${NUM} ${h.rank === 1 ? 'text-gold font-bold' : 'text-muted'}`}>{h.rank ? `#${h.rank}` : '–'}</td>
                         <td className={`${TD} ${NUM} text-muted`}>{Number(h.clear).toFixed(1)}%</td>
                         <td className={`${TD} ${NUM} text-muted`}>{Number(h.avg).toFixed(2)}</td>
@@ -228,7 +225,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                 <table className={TABLE}>
                   <thead><tr>
                     <th className={TH}></th><th className={TH}>Rider Name</th>
-                    <th className={`${TH} ${NUM}`}>Performance Score</th><th className={`${TH} ${NUM}`}>Rank</th>
+                    <th className={`${TH} ${NUM}`}>Wins</th><th className={`${TH} ${NUM}`}>Rank</th>
                     <th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Rounds</th>
                     <th className={TH}>Trend</th><th className={TH}>Visibility</th><th className={TH}>Last Update</th>
                   </tr></thead>
@@ -237,7 +234,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                       <tr key={r.watchId}>
                         <td className={TD}><input type="checkbox" className={box} checked={isSel(r.watchId)} onChange={() => toggleSel({ watchId: r.watchId, kind: 'rider', id: r.id, name: r.name })} /></td>
                         <td className={TD}><Link href={`/riders/${r.slug || r.id}`} className="text-white font-semibold no-underline hover:text-gold transition-colors">{r.name}</Link></td>
-                        <td className={`${TD} ${NUM}`}><b className={eqCls(r.eq, r.rank)}>{r.eq}</b></td>
+                        <td className={`${TD} ${NUM}`}><b className={rankCls(r.rank)}>{r.wins ?? '–'}</b></td>
                         <td className={`${TD} ${NUM} ${r.rank === 1 ? 'text-gold font-bold' : 'text-muted'}`}>{r.rank ? `#${r.rank}` : '–'}</td>
                         <td className={`${TD} ${NUM} text-muted`}>{Number(r.clear).toFixed(0)}%</td>
                         <td className={`${TD} ${NUM} text-muted`}>{r.starts}</td>
@@ -268,8 +265,7 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                 <div className="overflow-x-auto">
                 <table className={TABLE}>
                   <thead><tr>
-                    <th className={TH}>Combination</th><th className={`${TH} ${NUM}`}>Partnership Score</th>
-                    <th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Clear %</th>
+                    <th className={TH}>Combination</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={`${TH} ${NUM}`}>Clear %</th>
                     <th className={`${TH} ${NUM}`}>Avg Faults</th><th className={TH}>Trend</th><th className={TH}></th>
                   </tr></thead>
                   <tbody>
@@ -279,7 +275,6 @@ export default function WatchlistView({ horses, riders, combos, eventsTop, timel
                           <span className="text-white font-semibold">{c.horse} × {c.rider}</span>
                           {c.watchId && <span className="text-gold text-xs ml-1.5" title="Watched">★</span>}
                         </td>
-                        <td className={`${TD} ${NUM}`}><b className={c.score >= 85 ? 'text-gold' : 'text-sky'}>{c.score}</b></td>
                         <td className={`${TD} ${NUM} text-muted`}>{c.rounds}</td>
                         <td className={`${TD} ${NUM} text-muted`}>{Number(c.clear).toFixed(0)}%</td>
                         <td className={`${TD} ${NUM} text-muted`}>{Number(c.avg).toFixed(2)}</td>

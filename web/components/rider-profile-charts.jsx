@@ -7,9 +7,9 @@ import {
 
 const tip = { backgroundColor: '#1C2330', border: '1px solid #2A2A2A', borderRadius: 8, fontSize: 12 };
 
-export function RiderSeasonChart({ monthly, season, riderName, eq }) {
+export function RiderSeasonChart({ monthly, season, riderName }) {
   const [mode, setMode] = useState('monthly');
-  const rows = mode === 'monthly' ? monthly : season;
+  const rows = (mode === 'monthly' ? monthly : season).map((m) => ({ ...m, clear: Number(m.clear ?? m.eq) }));
   return (
     <div>
       <div className="mb-2 flex justify-end gap-1 rounded bg-card2 p-1 text-[12px] w-fit ml-auto">
@@ -29,10 +29,9 @@ export function RiderSeasonChart({ monthly, season, riderName, eq }) {
           <XAxis dataKey="label" tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} />
           <YAxis domain={[0, 100]} tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} />
           <Tooltip contentStyle={tip} labelStyle={{ color: '#fff' }} />
-          <Line type="monotone" dataKey="eq" name={`${riderName} (Current)`} stroke="#FFD700" strokeWidth={2} dot={{ r: 2.5, fill: '#FFD700' }} />
+          <Line type="monotone" dataKey="clear" name={`${riderName} clear %`} stroke="#FFD700" strokeWidth={2} dot={{ r: 2.5, fill: '#FFD700' }} />
         </LineChart>
       </ResponsiveContainer>
-      <p className="mt-1 text-[12px] text-muted">{riderName} (Current) · Rider EQ Score: <b className="text-gold">{eq}</b></p>
     </div>
   );
 }

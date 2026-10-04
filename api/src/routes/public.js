@@ -6,6 +6,57 @@ const { roundFiltersVis, visSql } = require('../lib/filters');
 const { EMAIL_RE, throttled, ownOrAdmin } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { resolveId } = require('../lib/resolve');
+const { canonCategoryKey, masterCategoryKeys } = require('../lib/categories');
+const { seriesCountFor } = require('./scoring');
+
+// Active ESNZ series config (mode='esnz' version), cached 60s.
+let esnzCache = { t: 0, cfg: null };
+async function loadEsnzSeries() {
+  if (Date.now() - esnzCache.t < 60 * 1000 && esnzCache.cfg !== undefined) return esnzCache.cfg;
+  let cfg = null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT params->'esnz'->'series' AS series FROM scoring_versions
+       WHERE status = 'active' AND (params->>'mode') = 'esnz' ORDER BY season DESC LIMIT 1`);
+    cfg = rows[0]?.series || null;
+  } catch { /* no esnz version */ }
+  esnzCache = { t: Date.now(), cfg };
+  return cfg;
+}
+
+// Weekend categories: dedicated table first (own admin menu), scoring
+// version params as fallback, v0.3 defaults last. Cached 60s.
+let catsCache = { t: 0, cats: null };
+async function loadWeekendCats() {
+  const now = Date.now();
+  if (now - catsCache.t < 60 * 1000 && catsCache.cats) return catsCache.cats;
+  let cats = null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT key, title, label, name_contains, class_types, exclude_name
+       FROM rider_categories WHERE is_active ORDER BY sort, key`);
+    if (rows.length) {
+      cats = rows.map((r) => ({
+        key: r.key, title: r.title, label: r.label,
+        nameContains: r.name_contains || [], classTypes: r.class_types || [],
+        excludeName: r.exclude_name || [],
+      }));
+    }
+  } catch { /* pre-migration: fall through */ }
+  if (!cats) {
+    const { activeRules } = require('./scoring');
+    const rules = await activeRules().catch(() => null);
+    cats = (rules && rules.categories) || [
+      { key: 'pro', title: 'Best Pro Rider', label: 'Pro Rider', nameContains: [], classTypes: ['Grand Prix', 'Premier', 'Open'], excludeName: ['pony', 'junior', 'young rider', 'amateur', 'pro am'] },
+      { key: 'young', title: 'Best Young Rider', label: 'Young Rider', nameContains: ['young rider'], classTypes: [], excludeName: [] },
+      { key: 'junior', title: 'Best Junior Rider', label: 'Junior Rider', nameContains: ['junior'], classTypes: [], excludeName: [] },
+      { key: 'amateur', title: 'Best Amateur', label: 'Amateur', nameContains: ['amateur', 'pro am'], classTypes: ['Amateur'], excludeName: [] },
+      { key: 'pony', title: 'Best Pony Rider', label: 'Pony Rider', nameContains: ['pony'], classTypes: [], excludeName: [] },
+    ];
+  }
+  catsCache = { t: now, cats };
+  return cats;
+}
 
 module.exports = function mountPublicRoutes(app) {
   app.get('/health', asyncH(async (req, res) => {
@@ -81,7 +132,8 @@ module.exports = function mountPublicRoutes(app) {
 
   app.get('/rankings/riders', asyncH(async (req, res) => {
     const { limit, minStarts } = paging(req);
-    const cat = req.query.series || '';
+    // Series filter accepts master keys; legacy labels resolve too (old URLs).
+    const cat = canonCategoryKey(req.query.series, await masterCategoryKeys(pool)) || '';
     if (req.query.metric === 'eqindex' || req.query.metric === 'ei') {
       const minS = req.query.min_starts ? minStarts : 3;
       const hMin = numOrNull(req.query.height_min), hMax = numOrNull(req.query.height_max);
@@ -142,6 +194,104 @@ module.exports = function mountPublicRoutes(app) {
       [...catParams, limit]
     );
     res.json({ data: rows });
+  }));
+
+  // ---- Breeders: directory + profile (breeder is a free-text column on
+  // horses; spelling variants are canonicalised into breeder_aliases).
+  // Stats count visible rounds only (class_id_visible, migration 032).
+  app.get('/breeders', asyncH(async (req, res) => {
+    const { limit } = paging(req, 100, 500);
+    const conds = [`h.breeder IS NOT NULL AND h.breeder <> ''`], params = [];
+    if (req.query.q && String(req.query.q).trim()) {
+      params.push(`%${String(req.query.q).trim()}%`);
+      conds.push(`h.breeder ILIKE $${params.length}`);
+    }
+    params.push(limit);
+    const { rows } = await pool.query(
+      `SELECT h.breeder AS breeder,
+          COUNT(DISTINCT h.id)::INT AS horses,
+          COUNT(rr.id)::INT AS starts,
+          COALESCE(SUM(rr.clear_round::INT), 0)::INT AS clears,
+          ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
+          ROUND(AVG(rr.total_faults), 2) AS avg_faults,
+          COUNT(*) FILTER (WHERE rr.finish_place = 1)::INT AS wins,
+          COALESCE(SUM(rr.points), 0)::INT AS total_points
+        FROM horses h
+        LEFT JOIN round_results rr
+          ON rr.horse_id = h.id AND class_id_visible(rr.class_id)
+        WHERE ${conds.join(' AND ')}
+        GROUP BY h.breeder
+        ORDER BY horses DESC, starts DESC LIMIT $${params.length}`,
+      params
+    );
+    res.json({ data: rows });
+  }));
+
+  app.get('/breeders/:name', asyncH(async (req, res) => {
+    const name = decodeURIComponent(req.params.name);
+    const agg = await pool.query(
+      `SELECT h.breeder AS breeder,
+          COUNT(DISTINCT h.id)::INT AS horses,
+          COUNT(rr.id)::INT AS starts,
+          COALESCE(SUM(rr.clear_round::INT), 0)::INT AS clears,
+          ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
+          ROUND(AVG(rr.total_faults), 2) AS avg_faults,
+          COUNT(*) FILTER (WHERE rr.finish_place = 1)::INT AS wins,
+          COALESCE(SUM(rr.points), 0)::INT AS total_points
+        FROM horses h
+        LEFT JOIN round_results rr
+          ON rr.horse_id = h.id AND class_id_visible(rr.class_id)
+        WHERE h.breeder = $1
+        GROUP BY h.breeder`,
+      [name]
+    );
+    if (!agg.rows.length) return res.status(404).json({ error: 'breeder not found' });
+    const horses = await pool.query(
+      `SELECT h.id AS horse_id, h.name AS horse, h.slug AS horse_slug,
+          h.sire, h.dam, h.year_of_birth,
+          COUNT(rr.id)::INT AS starts,
+          COUNT(*) FILTER (WHERE rr.finish_place = 1)::INT AS wins,
+          COALESCE(SUM(rr.points), 0)::INT AS total_points
+        FROM horses h
+        LEFT JOIN round_results rr
+          ON rr.horse_id = h.id AND class_id_visible(rr.class_id)
+        WHERE h.breeder = $1
+        GROUP BY h.id, h.name, h.slug, h.sire, h.dam, h.year_of_birth
+        ORDER BY total_points DESC, starts DESC`,
+      [name]
+    );
+    const sires = await pool.query(
+      `SELECT h.sire AS sire,
+          COUNT(DISTINCT h.id)::INT AS horses,
+          COUNT(rr.id)::INT AS starts,
+          COUNT(*) FILTER (WHERE rr.finish_place = 1)::INT AS wins,
+          COALESCE(SUM(rr.points), 0)::INT AS total_points,
+          ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct
+        FROM horses h
+        LEFT JOIN round_results rr
+          ON rr.horse_id = h.id AND class_id_visible(rr.class_id)
+        WHERE h.breeder = $1 AND h.sire IS NOT NULL AND h.sire <> ''
+        GROUP BY h.sire
+        ORDER BY total_points DESC, starts DESC`,
+      [name]
+    );
+    const heights = await pool.query(
+      `SELECT COALESCE(rr.height_cm, c.height_cm)::INT AS height_cm,
+          COUNT(*)::INT AS starts,
+          SUM(rr.clear_round::INT)::INT AS clears,
+          ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
+          COUNT(*) FILTER (WHERE rr.finish_place = 1)::INT AS wins,
+          COALESCE(SUM(rr.points), 0)::INT AS total_points
+        FROM round_results rr
+        JOIN horses h ON h.id = rr.horse_id
+        JOIN classes c ON c.id = rr.class_id
+        WHERE h.breeder = $1 AND class_id_visible(rr.class_id)
+          AND COALESCE(rr.height_cm, c.height_cm) IS NOT NULL
+        GROUP BY 1
+        ORDER BY 1`,
+      [name]
+    );
+    res.json({ data: agg.rows[0], horses: horses.rows, sires: sires.rows, heights: heights.rows });
   }));
 
   // ---- Events (PRD §7.3, §7.7) ----
@@ -610,52 +760,145 @@ module.exports = function mountPublicRoutes(app) {
   }));
 
   // ---- Weekend best (opening-page NEWS): top performance of the latest
-  // results weekend per rider category. Categories derive from the CLASS
-  // (riders carry no category yet): Pony/Junior/Young Rider by class name,
-  // Amateur by type-or-name, Pro = Grand Prix/Premier/Open. Window = latest
-  // class date with results minus 6 days (robust to sparse imports).
-  // Names flow through the privacy wrapper like every other response.
+  // results weekend, grouped by rider category (default) or scoring division
+  // (?by=division). Categories come from the dedicated Categories table
+  // (Admin menu); divisions come from the live scoring rules (active version,
+  // else built-in v0.3 defaults). Window = latest class date with results
+  // minus 6 days (robust to sparse imports). Names flow through the privacy
+  // wrapper like every response.
   app.get('/news/weekend', asyncH(async (req, res) => {
     const vis = await visSql();
+    const by = req.query.by === 'division' ? 'division' : 'category';
+    const cats = by === 'division' ? [] : await loadWeekendCats();
     const { rows } = await pool.query(
       `WITH mx AS (
          SELECT MAX(c.class_date)::DATE AS d1
          FROM round_results rr JOIN classes c ON c.id = rr.class_id
        ),
-       win AS (SELECT (SELECT d1 FROM mx) - 6 AS d0, (SELECT d1 FROM mx) AS d1),
-       rounds AS (
-         SELECT rr.horse_id, rr.rider_id, rr.finish_place, rr.total_faults,
-           c.id AS class_id, c.name AS class_name, c.class_type, c.class_date,
-           COALESCE(rr.height_cm, c.height_cm) AS h,
-           e.id AS event_id, e.name AS event_name, e.slug AS event_slug,
-           h.name AS horse, h.slug AS horse_slug, r.name AS rider, r.slug AS rider_slug,
-           CASE
-             WHEN c.name ILIKE '%pony%' THEN 'Pony'
-             WHEN c.name ILIKE '%junior%' THEN 'Junior'
-             WHEN c.name ILIKE '%young rider%' THEN 'Young Rider'
-             WHEN c.class_type = 'Amateur' OR c.name ILIKE '%amateur%' OR c.name ILIKE '%pro am%' THEN 'Amateur'
-             WHEN c.class_type IN ('Grand Prix', 'Premier', 'Open') THEN 'Pro'
-             ELSE NULL END AS cat
-         FROM round_results rr
-         JOIN classes c ON c.id = rr.class_id
-         JOIN events e ON e.id = rr.event_id
-         JOIN horses h ON h.id = rr.horse_id
-         JOIN riders r ON r.id = rr.rider_id, win w
-         WHERE c.class_date BETWEEN w.d0 AND w.d1 AND ${vis}
-       )
-       SELECT DISTINCT ON (cat) cat, horse, rider, horse_id, rider_id,
-         horse_slug, rider_slug, class_name, class_id,
-         event_name, event_id, event_slug,
-         h AS height_cm, finish_place, total_faults
-       FROM rounds WHERE cat IS NOT NULL
-       ORDER BY cat, h DESC NULLS LAST, finish_place ASC NULLS LAST, total_faults ASC NULLS LAST`,
+       win AS (SELECT (SELECT d1 FROM mx) - 6 AS d0, (SELECT d1 FROM mx) AS d1)
+        SELECT rr.horse_id, rr.rider_id, rr.finish_place, rr.total_faults,
+          c.id AS class_id, c.name AS class_name, c.class_type, c.class_date,
+          c.rider_category AS class_cat, c.is_world_cup,
+          COALESCE(rr.height_cm, c.height_cm) AS h,
+         e.id AS event_id, e.name AS event_name, e.slug AS event_slug,
+         h.name AS horse, h.slug AS horse_slug,
+         r.name AS rider, r.slug AS rider_slug, r.series_category AS rider_cat,
+         (SELECT COUNT(*)::INT FROM round_results rr2 WHERE rr2.class_id = c.id) AS field_size
+       FROM round_results rr
+       JOIN classes c ON c.id = rr.class_id
+       JOIN events e ON e.id = rr.event_id
+       JOIN horses h ON h.id = rr.horse_id
+       JOIN riders r ON r.id = rr.rider_id, win w
+       WHERE c.class_date BETWEEN w.d0 AND w.d1 AND ${vis}`,
     );
-    const order = { Pro: 0, 'Young Rider': 1, Junior: 2, Amateur: 3, Pony: 4 };
-    rows.sort((a, b) => (order[a.cat] ?? 9) - (order[b.cat] ?? 9));
+    // Category priority: rider's own category > the class's category field >
+    // fuzzy class-name match (last resort — class names have no standard).
+    // Own/field values match master keys first (exact, case-insensitive);
+    // legacy label values keep resolving via the old substring guessing.
+    const norm = (s) => String(s || '').toLowerCase().trim();
+    const keyForLabel = (value) => {
+      const v = norm(value);
+      if (!v) return null;
+      const byKey = cats.find((c) => norm(c.key) === v);
+      if (byKey) return byKey.key;
+      return (cats.find((c) => norm(c.label) === v || norm(c.key) === v
+        || norm(c.label).includes(v) || v.includes(norm(c.label))) || {}).key || null;
+    };
+    // Top per bucket: highest height, then best placing, then fewest faults.
+    const better = (a, b) =>
+      ((b.h ?? -1) - (a.h ?? -1)) ||
+      ((a.finish_place ?? 99) - (b.finish_place ?? 99)) ||
+      (Number(a.total_faults ?? 99) - Number(b.total_faults ?? 99));
+
+    // ---- Division mode: best performance in each scoring division ----
+    if (by === 'division') {
+      const { divisionFor } = require('../scoring/calc');
+      const { DEFAULTS } = require('../scoring/defaults');
+      const { activeRules } = require('./scoring');
+      const rules = (await activeRules().catch(() => null)) || DEFAULTS;
+      const divMeta = (key) => {
+        if (key === 'world_cup') {
+          return { key, label: 'World Cup', color: rules.worldCup?.color || '#8E7CFF' };
+        }
+        const d = (rules.divisions || []).find((x) => x.key === key);
+        return d ? { key: d.key, label: d.label, color: d.color } : null;
+      };
+      const best = new Map();
+      for (const r of rows) {
+        const key = divisionFor(r.h, r.is_world_cup, rules);
+        if (!key) continue;
+        const meta = divMeta(key);
+        if (!meta) continue;
+        const cur = best.get(key);
+        if (!cur || better(r, cur) < 0) best.set(key, { ...r, ...meta });
+      }
+      const divs = (rules.divisions || []).map((d) => ({ key: d.key, label: d.label, color: d.color }));
+      if ([...best.keys()].includes('world_cup') && !divs.some((d) => d.key === 'world_cup')) {
+        divs.push({ key: 'world_cup', label: 'World Cup', color: rules.worldCup?.color || '#8E7CFF' });
+      }
+      const order = Object.fromEntries(divs.map((d, i) => [d.key, i]));
+      const data = [...best.entries()]
+        .sort((a, b) => (order[a[0]] ?? 9) - (order[b[0]] ?? 9))
+        .map(([, v]) => ({
+          key: v.key, title: v.label, label: v.label, color: v.color,
+          horse: v.horse, rider: v.rider, horse_id: v.horse_id, rider_id: v.rider_id,
+          horse_slug: v.horse_slug, rider_slug: v.rider_slug,
+          class_name: v.class_name, class_id: v.class_id,
+          event_name: v.event_name, event_id: v.event_id, event_slug: v.event_slug,
+          height_cm: v.h, finish_place: v.finish_place, total_faults: v.total_faults,
+        }));
+      const { rows: wrows } = await pool.query(
+        `SELECT (MAX(c.class_date)::DATE - 6) AS d0, MAX(c.class_date)::DATE AS d1
+         FROM round_results rr JOIN classes c ON c.id = rr.class_id`);
+      return res.json({ window: wrows[0] || null, by, divisions: divs, data });
+    }
+
+    // ---- Category mode (default) ----
+    // One rider holds at most one bucket: a rider without their own category
+    // can otherwise top two buckets from two different classes (e.g. an open
+    // win + a Young Rider series win). The rider's bucket is the bucket of
+    // their single best round (own-category rounds already resolve there by
+    // the priority below, so setting the rider's category fixes it properly).
+    const viaRank = (r) => (r.via === 'rider' ? 0 : 1);
+    // Bucket resolution — curated sources only, no guessing:
+    // 1. the rider's own category (Admin → Riders), 2. the class's explicit
+    // rider_category field (Admin → Classes). Rounds with neither are
+    // skipped: the bucket stays empty rather than showing a guessed winner.
+    const byRider = new Map();
+    for (const r of rows) {
+      const ownKey = keyForLabel(r.rider_cat);
+      const fieldKey = ownKey ? null : keyForLabel(r.class_cat);
+      const m = ownKey ? cats.find((c) => c.key === ownKey)
+        : fieldKey ? cats.find((c) => c.key === fieldKey)
+        : null;
+      if (!m) continue;
+      const cat = { ...m, via: ownKey ? 'rider' : 'class-field' };
+      const arr = byRider.get(r.rider_id) || [];
+      arr.push({ ...r, key: cat.key, title: cat.title, label: cat.label, via: cat.via });
+      byRider.set(r.rider_id, arr);
+    }
+    const best = new Map();
+    for (const rounds of byRider.values()) {
+      rounds.sort((a, b) => better(a, b) || (viaRank(a) - viaRank(b)));
+      const r = rounds[0];
+      const cur = best.get(r.key);
+      if (!cur || better(r, cur) < 0) best.set(r.key, r);
+    }
+    const order = Object.fromEntries(cats.map((c, i) => [c.key, i]));
+    const data = [...best.entries()]
+      .sort((a, b) => (order[a[0]] ?? 9) - (order[b[0]] ?? 9))
+      .map(([, v]) => ({
+        key: v.key, title: v.title, label: v.label,
+        horse: v.horse, rider: v.rider, horse_id: v.horse_id, rider_id: v.rider_id,
+        horse_slug: v.horse_slug, rider_slug: v.rider_slug,
+        class_name: v.class_name, class_id: v.class_id,
+        event_name: v.event_name, event_id: v.event_id, event_slug: v.event_slug,
+        height_cm: v.h, finish_place: v.finish_place, total_faults: v.total_faults,
+      }));
     const { rows: wrows } = await pool.query(
       `SELECT (MAX(c.class_date)::DATE - 6) AS d0, MAX(c.class_date)::DATE AS d1
        FROM round_results rr JOIN classes c ON c.id = rr.class_id`);
-    res.json({ window: wrows[0] || null, data: rows });
+    res.json({ window: wrows[0] || null, by, data });
   }));
 
   // ---- Trends (monthly aggregates for charts) ----
@@ -943,6 +1186,15 @@ module.exports = function mountPublicRoutes(app) {
     res.json({ data: rows });
   }));
 
+  // ---- Seasons master (single source of truth for season keys/labels) ----
+  app.get('/seasons', asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT key, label, date_start, date_end, is_current,
+        (SELECT COUNT(*)::INT FROM events e WHERE e.season = seasons.key) AS events
+       FROM seasons ORDER BY key DESC`);
+    res.json({ data: rows });
+  }));
+
   // ---- Series engine (spec v2 S5): matrix, completed/remaining, drops, recalc ----
   app.get('/series/:key/detail', asyncH(async (req, res) => {
     const key = req.params.key;
@@ -950,6 +1202,12 @@ module.exports = function mountPublicRoutes(app) {
     let standings, events, source;
     if (info && info.auto_calc) {
       const vis = await visSql();
+      // ESNZ series config (bestOf/sliding/sources) from the active esnz
+      // version; falls back to series_info.best_of when unconfigured.
+      // (60s cache — brief staleness after activation is acceptable.)
+      const seriesCfg = await loadEsnzSeries();
+      const cfg = (seriesCfg || {})[key] || {};
+      const keys = Array.isArray(cfg.sources) && cfg.sources.length ? cfg.sources : [key];
       const { rows } = await pool.query(
         `SELECT r.name AS rider, h.name AS horse, e.name AS event, e.id AS event_id,
            MIN(c.class_date) AS event_date, SUM(rr.points)::INT AS pts, COUNT(*)::INT AS rounds
@@ -958,8 +1216,8 @@ module.exports = function mountPublicRoutes(app) {
          JOIN events e ON e.id = rr.event_id
          JOIN riders r ON r.id = rr.rider_id
          JOIN horses h ON h.id = rr.horse_id
-         WHERE c.series_key = $1 AND ${vis}
-         GROUP BY r.name, h.name, e.name, e.id`, [key]);
+         WHERE c.series_key = ANY($1) AND ${vis}
+         GROUP BY r.name, h.name, e.name, e.id`, [keys]);
       const byCombo = {};
       for (const row of rows) {
         const k = `${row.rider}||${row.horse}`;
@@ -967,7 +1225,14 @@ module.exports = function mountPublicRoutes(app) {
         byCombo[k].events[row.event] = (byCombo[k].events[row.event] || 0) + row.pts;
         byCombo[k].rounds += row.rounds;
       }
-      const n = info.best_of || null;
+      const n = (() => {
+        if (cfg && (cfg.bestOf || cfg.sliding || cfg.seasonTotal)) {
+          if (cfg.seasonTotal) return null; // breeder: count everything
+          const held = new Set(rows.map((r) => r.event_id)).size;
+          return seriesCountFor(cfg, held);
+        }
+        return info.best_of || null;
+      })();
       standings = Object.values(byCombo).map((c) => {
         const scores = Object.values(c.events).sort((a, b) => b - a);
         const counted = n ? scores.slice(0, n) : scores;

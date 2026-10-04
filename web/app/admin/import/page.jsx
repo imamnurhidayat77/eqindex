@@ -11,7 +11,7 @@ const FIELD_DOCS = [
   ['class_type', 'Grand Prix | Premier | Open | Standard | Young Horse | Amateur | Pony (default Standard)'],
   ['format', 'Two-phase | Jump-off | Speed | Power & Speed (optional)'],
   ['breed / age / gender / sire / dam / breeder / country', 'Optional horse enrichment — fills blanks only, never overwrites.'],
-  ['rider_region / series_category / nationality', 'Optional rider enrichment — fills blanks only.'],
+  ['rider_region / series_category / nationality', 'Optional rider enrichment — fills blanks only. series_category takes a master key (see Admin → Categories).'],
   ['venue / venue_country / region / arena_type', 'Optional event enrichment — fills blanks only.'],
   ['event_name / date_start / date_end', 'Optional per-row event — one file can span multiple events. Rows without it use the target above.'],
   ['class_date', 'YYYY-MM-DD'],
@@ -30,7 +30,7 @@ Grand Prix,Grand Prix,2026-03-01,Sophie Bennett,Kiwi Spirit,1,0,65.2,0,140,,fini
 Grand Prix,Grand Prix,2026-03-01,James Wilson,Ocean Star,2,4,67.0,0,140,,finished,,,,,,,,,,,,,,,Canterbury Autumn Show,2026-03-01,2026-03-02`;
 
 const SAMPLE_JSON = [
-  { class_name: 'Grand Prix', class_type: 'Grand Prix', class_date: '2026-03-01', rider_name: 'Sophie Bennett', horse_name: 'Kiwi Spirit', placing: 1, faults: 0, time: 65.2, time_faults: 0, height_cm: 140, status: 'finished', breed: 'Warmblood', age: 12, gender: 'Mare', country: 'NZL', rider_region: "Hawke's Bay", series_category: 'Open', nationality: 'NZL', venue: 'Canterbury Showgrounds', venue_country: 'NZL', region: 'Canterbury', arena_type: 'Outdoor Turf', event_name: 'Canterbury Autumn Show', date_start: '2026-03-01', date_end: '2026-03-02' },
+  { class_name: 'Grand Prix', class_type: 'Grand Prix', class_date: '2026-03-01', rider_name: 'Sophie Bennett', horse_name: 'Kiwi Spirit', placing: 1, faults: 0, time: 65.2, time_faults: 0, height_cm: 140, status: 'finished', breed: 'Warmblood', age: 12, gender: 'Mare', country: 'NZL', rider_region: "Hawke's Bay", series_category: 'pro', nationality: 'NZL', venue: 'Canterbury Showgrounds', venue_country: 'NZL', region: 'Canterbury', arena_type: 'Outdoor Turf', event_name: 'Canterbury Autumn Show', date_start: '2026-03-01', date_end: '2026-03-02' },
   { class_name: 'Grand Prix', class_type: 'Grand Prix', class_date: '2026-03-01', rider_name: 'James Wilson', horse_name: 'Ocean Star', placing: 2, faults: 4, time: 67.0, time_faults: 0, height_cm: 140, status: 'finished', event_name: 'Canterbury Autumn Show', date_start: '2026-03-01', date_end: '2026-03-02' },
 ];
 

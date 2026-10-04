@@ -24,6 +24,7 @@ export const NAV_GROUPS = [
   { label: 'Explore', items: [
     { href: '/horses', label: 'Horses', match: (p) => p.startsWith('/horses') },
     { href: '/riders', label: 'Riders', match: (p) => p.startsWith('/riders') },
+    { href: '/breeders', label: 'Breeders', match: (p) => p.startsWith('/breeders') },
     { href: '/events', label: 'Events', match: (p) => p.startsWith('/events') },
     { href: '/series', label: 'Series', match: (p) => p.startsWith('/series') },
   ]},

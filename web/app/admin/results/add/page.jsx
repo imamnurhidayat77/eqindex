@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { API } from '../../../../lib/api';
-import { briefPoints } from '../../../../lib/eq';
+import { rulePoints, pointsLine } from '../../../../lib/scoring';
 import { CARD, H1, SUB, INP, BTN_PRIMARY, badge, BADGE } from '../../../../lib/tokens';
 import Dropdown from '../../../../components/Dropdown';
 
@@ -34,6 +34,11 @@ export default function AddResult() {
   const [horse, setHorse] = useState({ id: '', name: '' });
   const [rider, setRider] = useState({ id: '', name: '' });
   const [f, setF] = useState({ placing: '', jump_faults: '', time_faults: '', time_seconds: '', status: 'finished', notes: '' });
+  const [rules, setRules] = useState(null);
+  useEffect(() => {
+    fetch(`${API}/scoring/active`).then((r) => r.json()).then((j) => setRules(j.data?.params || null))
+      .catch(() => fetch(`${API}/scoring/defaults`).then((r) => r.json()).then((j) => setRules(j.data || null)).catch(() => {}));
+  }, []);
   const [err, setErr] = useState('');
   const [saved, setSaved] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -50,7 +55,9 @@ export default function AddResult() {
     setClassId(''); setNewClass('');
   }, [eventId]);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  const previewPts = briefPoints(f.placing, (classes.find((c) => c.id === classId) || {}).class_type || 'Standard');
+  // Placing-only preview under live rules (clear/double unknown until saved —
+  // the trigger computes the final figure; placing points never depend on them).
+  const previewPts = rulePoints({ place: f.placing, clear: false, doubleClear: false, finished: f.status === 'finished' }, rules);
   const canSave = eventId && (classId || newClass.trim()) && (horse.id || horse.name.trim()) && (rider.id || rider.name.trim());
 
   async function save() {
@@ -145,7 +152,7 @@ export default function AddResult() {
         </div>
         <div className="flex items-center gap-3 mt-4">
           <button className={BTN_PRIMARY} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save result'}</button>
-          <span className="text-[13px] text-muted">Preview: <b className="text-gold">≈ {previewPts} pts</b></span>
+          <span className="text-[13px] text-muted">Preview: <b className="text-gold">≈ {previewPts} pts</b>{rules && <span title={pointsLine(rules)}> · {pointsLine(rules)}</span>}</span>
         </div>
       </section>
     </>

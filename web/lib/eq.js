@@ -76,11 +76,6 @@ export function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
-// Briefing §5 points preview (mirrors SQL brief_points): base × multiplier.
-export function briefPoints(place, classType = 'Standard') {
-  const p = Number(place);
-  if (!p || p < 1 || p > 10) return 0;
-  const base = [12, 9, 7, 6, 5, 4, 3, 2, 1, 1][p - 1];
-  const mult = { 'Grand Prix': 2.0, Premier: 1.5, Open: 1.25, Amateur: 0.75, Pony: 0.75 }[classType] ?? 1.0;
-  return Math.max(0, Math.round(base * mult));
-}
+// NOTE: per-round points live in lib/scoring.js rulePoints (reads live rules).
+// The old Briefing §5 base × multiplier helper was removed with the full
+// cutover (migration 039) — do not reintroduce hardcoded tables here.

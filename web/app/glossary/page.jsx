@@ -1,23 +1,20 @@
 import Link from 'next/link';
-import { CARD, H1, H2, SUB, TABLE, TABLEWRAP, TD, TH, LINK } from '../../lib/tokens';
+import { CARD, H1, H2, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
+import { getRules, rulesTag } from '../../lib/scoring';
 
 const TERMS = [
-  ['Grand Prix', 'Top-tier class, usually 1.40m+. Points multiplier ×2.0.'],
-  ['Premier', 'High-grade class below Grand Prix. Multiplier ×1.5.'],
-  ['Open', 'Open-entry class at any height. Multiplier ×1.25.'],
-  ['Standard', 'Regular class. Multiplier ×1.0.'],
-  ['Young Horse', 'Age-restricted development classes (4–7yo). Multiplier ×1.0.'],
-  ['Amateur / Pony', 'Restricted classes. Multiplier ×0.75.'],
+  ['Grand Prix', 'Top-tier class, usually 1.40m+.'],
+  ['Premier', 'High-grade class below Grand Prix.'],
+  ['Open', 'Open-entry class at any height.'],
+  ['Standard', 'Regular class.'],
+  ['Young Horse', 'Age-restricted development classes (4–7yo).'],
+  ['Amateur / Pony', 'Restricted classes.'],
   ['Clear round', 'No jumping or time faults in the round.'],
   ['Faults', 'Jumping faults (rails, refusals) plus time faults make total faults.'],
   ['Jump-off', 'Timed decider round for equal top scores.'],
   ['Two Phase', 'Format where the second phase runs immediately after a clear first phase.'],
   ['Elimination (E)', 'Excluded from placings, 0 points. Shown as E.'],
   ['Retirement (R) / Withdrawal (W) / Disqualification (DQ)', 'Non-finish states, 0 points.'],
-  ['EQ Score', '0–99 form index from clear rate, faults and volume. Legacy display; rankings now default to EQIndex Rating.'],
-  ['EQIndex Rating', '0–2000 ability rating centred at 1000. Per-round points (placing + clear − faults) weighted by height, class difficulty, field strength, field size, handicap (proven level vs class) and recency, shrunk toward the mean. Min 3 rounds to rank; under 15 rounds is Provisional.'],
-  ['Handicap', 'Proven-level adjustment: a horse jumping below its proven max is discounted (expected), above it is bonused — up to ±30%.'],
-  ['Recency', 'Rounds decay ~37% per year (×0.63^(days/365)); recent form counts more.'],
   ['Win rate', 'Wins ÷ starts × 100 over the selected window.'],
 ];
 
@@ -28,16 +25,21 @@ const HEIGHTS = [
   ['Grand Prix', '1.40m+'],
 ];
 
-export default function Glossary() {
+export default async function Glossary() {
+  const rules = await getRules().catch(() => null);
+  const ptsDef = rules
+    ? `Most points wins (${rulesTag(rules.meta)}).`
+    : 'Most points wins.';
   return (
     <>
       <h1 className={H1}>Glossary</h1>
-      <p className={SUB}>Class types, formats, faults rules and metric definitions. Full formula: <Link className={LINK} href="/about">About →</Link></p>
+      <p className={SUB}>Class types, formats and faults rules.</p>
       <section className={CARD}>
         <h2 className={H2}>Terms</h2>
         <div className={TABLEWRAP}>
         <table className={TABLE}>
           <tbody>
+            <tr><td className={TD}><b>Points</b></td><td className={`${TD} text-muted`}>{ptsDef}</td></tr>
             {TERMS.map(([t, d]) => (
               <tr key={t}><td className={TD}><b>{t}</b></td><td className={`${TD} text-muted`}>{d}</td></tr>
             ))}

@@ -1,10 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { API } from '../../lib/api';
-import { eqScore } from '../../lib/eq';
-import { matchupEdge } from '../../lib/forecast';
-import { statusBadge } from '../../lib/tokens';
-import { ScoreRing } from '../../components/charts';
 import Dropdown from '../../components/Dropdown';
 
 const MODES = [['horse', 'Horse vs Horse'], ['rider', 'Rider vs Rider'], ['combination', 'Combination'], ['event', 'Event vs Event']];
@@ -12,13 +8,7 @@ const MODES = [['horse', 'Horse vs Horse'], ['rider', 'Rider vs Rider'], ['combi
 const idOf = (t, x) => (t === 'event' ? x.id : t === 'combination' ? `${x.horse_id}:${x.rider_id}` : t === 'horse' ? x.horse_id : x.rider_id);
 const nameOf = (t, x) => (t === 'event' ? `${x.name} · ${(x.season || '').replace('-', '/')}` : t === 'combination' ? `${x.horse} + ${x.rider}` : t === 'horse' ? x.horse : x.rider);
 const startsOf = (t, x) => Number(t === 'event' ? (x.rounds ?? x.round_count) : t === 'combination' ? x.rounds_together : x.starts);
-const eqOf = (t, x) => (t === 'event' ? null : eqScore(x.clear_pct, x.avg_faults, startsOf(t, x)));
-
-function tier(eq) {
-  if (eq >= 75) return ['ELITE', 'border border-gold text-gold'];
-  if (eq >= 60) return ['STRONG', 'border border-sky text-sky'];
-  return ['DEVELOPING', 'bg-line text-muted'];
-}
+const clearOf = (t, x) => (t === 'event' ? null : Number(x.clear_pct));
 
 export default function Comparison() {
   const [type, setType] = useState('horse');
@@ -57,7 +47,7 @@ export default function Comparison() {
 
   const Picker = ({ side, id, setId }) => {
     const cur = byId[id];
-    const eq = cur && type !== 'event' ? eqOf(type, cur) : null;
+    const clear = cur && type !== 'event' ? clearOf(type, cur) : null;
     return (
       <div>
         <div className="text-[11px] uppercase tracking-wide text-muted mb-2">
@@ -70,7 +60,7 @@ export default function Comparison() {
               value: idOf(type, x),
               label: type === 'event'
                 ? `${nameOf(type, x)} — ${x.round_count ?? '?'} rounds`
-                : `${nameOf(type, x)} — EQ ${eqOf(type, x)}`,
+                : `${nameOf(type, x)} — ${Number(x.clear_pct).toFixed(0)}% clear`,
             }))}
             onSelect={(o) => setId(o.value)} />
         </div>
@@ -88,8 +78,8 @@ export default function Comparison() {
         {cur && (
           <div className="bg-card2 border border-line rounded px-4 py-3 flex flex-wrap justify-between items-center gap-2">
             <b className="min-w-0 break-words">{nameOf(type, cur)}</b>
-            {eq !== null
-              ? <span className="text-gold text-sm">EQ {eq}</span>
+            {clear !== null
+              ? <span className="text-gold text-sm">{clear.toFixed(0)}% clear</span>
               : <span className="text-muted text-sm">{cur.round_count ?? '?'} rounds · {cur.venue || ''}</span>}
           </div>
         )}
@@ -115,13 +105,10 @@ export default function Comparison() {
     setErr(res.ok ? 'Saved to Elite.' : res.status === 401 ? 'Log in to save comparisons.' : 'Save failed');
   }
 
-  const R = result ? (type === 'event' ? {
+  const R = result ? {
     a: { ...result.a, label: nameOf(type, result.a) },
     b: { ...result.b, label: nameOf(type, result.b) },
-  } : {
-    a: { ...result.a, eq: eqScore(result.a.clear_pct, result.a.avg_faults, startsOf(type, result.a)), label: nameOf(type, result.a) },
-    b: { ...result.b, eq: eqScore(result.b.clear_pct, result.b.avg_faults, startsOf(type, result.b)), label: nameOf(type, result.b) },
-  }) : null;
+  } : null;
   const numDiff = (a, b, suffix = '') => {
     const d = Number(b) - Number(a);
     const v = Number.isInteger(d) ? String(d) : d.toFixed(2);
@@ -208,22 +195,8 @@ export default function Comparison() {
 
       {R && type !== 'event' && (
         <>
-          <h2 className="text-[17px] font-bold mb-0.5">Performance Overview Matchup</h2>
-          <p className="text-muted text-sm mb-[18px]">Direct scoring index contrast and high-level wins tally</p>
-          <section className="bg-card border border-line rounded px-5 py-[18px] mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-center">
-              {[['A', R.a, '#FFD700'], ['VS', null, null], ['B', R.b, '#4C9AFF']].map(([side, x, color]) => {
-                if (!x) return <div key={side} className="text-center text-muted text-xs w-10 h-10 rounded-full bg-card2 inline-flex items-center justify-center mx-auto">VS</div>;
-                const [t, cls] = tier(x.eq);
-                return (
-                  <div key={side} className="text-center">
-                    <div className="font-bold">{x.label} <span className={`inline-block text-[11px] font-bold rounded-md px-2 py-[3px] ${cls}`}>{t}</span></div>
-                    <div className="flex justify-center mt-2"><ScoreRing score={x.eq} color={color} /></div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+          <h2 className="text-[17px] font-bold mb-0.5">Head-to-Head Overview</h2>
+          <p className="text-muted text-sm mb-[18px]">Head-to-head clear rate, faults and wins tally</p>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
             {[
@@ -242,25 +215,6 @@ export default function Comparison() {
               </div>
             ))}
           </div>
-
-          {(() => {
-            const edge = matchupEdge(R.a.eq, R.b.eq, startsOf(type, R.a), startsOf(type, R.b));
-            const favName = edge.favored === 'A' ? R.a.label : edge.favored === 'B' ? R.b.label : null;
-            return (
-              <section className="bg-card border border-line rounded px-5 py-[18px] mb-6">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <span className="text-[11px] font-bold uppercase tracking-wide text-faint">🔮 Matchup prediction</span>
-                  <span className={statusBadge(edge.favored === 'Even' ? 'Stable' : edge.confidence === 'High' ? 'Active' : 'Improving')}>
-                    {edge.line}
-                  </span>
-                  <span className="text-[12px] text-muted">
-                    {favName ? `${favName} profiles stronger on EQ over comparable volume.` : 'Profiles grade within noise — no reliable edge.'} {edge.confidence} confidence.
-                  </span>
-                </div>
-                <p className="mt-1.5 text-[11px] text-faint">Method: EQ gap + minimum sample depth. Gaps under 3 EQ are noise, not signal.</p>
-              </section>
-            );
-          })()}
 
           <h2 className="text-[17px] font-bold mb-0.5">Performance Metrics Comparison</h2>
           <p className="text-muted text-sm mb-[18px]">Comprehensive metric evaluation and raw data delta analysis</p>

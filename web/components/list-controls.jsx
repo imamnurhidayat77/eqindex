@@ -1,13 +1,16 @@
 'use client';
 
 import { HEIGHT_BANDS, heightParams } from '../lib/heights';
+import { keyOptions, FALLBACK_CATS } from '../lib/categories';
 import Dropdown from './Dropdown';
 
 export { HEIGHT_BANDS, heightParams };
 
-export const SERIES_CATS = ['Junior', 'Young Rider', 'Under 25', 'Amateur', 'Pony', 'Tertiary', 'Open'];
+// Legacy export kept for any stray importer; new code passes `categories`
+// (master rows) into FilterBar instead.
+export const SERIES_CATS = FALLBACK_CATS.map((c) => c.key);
 
-export function FilterBar({ f, set, seasons, regions, arenas, showHeight = true, showMinStarts = true, showCategory = false }) {
+export function FilterBar({ f, set, seasons, regions, arenas, categories = null, showHeight = true, showMinStarts = true, showCategory = false }) {
   const upd = (k) => (e) => set({ ...f, [k]: e.target.value });
   const pick = (k) => (o) => set({ ...f, [k]: o.value });
   const clear = () => set({ q: '', season: '', region: '', arena: '', height: '', minStarts: '1', category: '' });
@@ -50,7 +53,7 @@ export function FilterBar({ f, set, seasons, regions, arenas, showHeight = true,
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
           Category
           <Dropdown ariaLabel="Category" value={f.category || ''} placeholder="All categories"
-            options={[{ value: '', label: 'All categories' }, ...SERIES_CATS.map((c) => ({ value: c, label: c }))]}
+            options={[{ value: '', label: 'All categories' }, ...keyOptions(categories)]}
             onSelect={pick('category')} />
         </label>
       )}

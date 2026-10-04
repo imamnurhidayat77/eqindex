@@ -37,28 +37,35 @@ module.exports = function mountUserRoutes(app) {
       if (!horse_id || !rider_id) {
         return res.status(400).json({ error: 'combination needs {horse_id, rider_id}' });
       }
+      const hid = await resolveId('horses', horse_id, res);
+      if (!hid) return;
+      const rid = await resolveId('riders', rider_id, res);
+      if (!rid) return;
       const ok = await pool.query(
         `SELECT (SELECT 1 FROM horses WHERE id = $1) AS h,
-                (SELECT 1 FROM riders WHERE id = $2) AS r`, [horse_id, rider_id]);
+                (SELECT 1 FROM riders WHERE id = $2) AS r`, [hid, rid]);
       if (!ok.rows[0].h || !ok.rows[0].r) return res.status(404).json({ error: 'horse or rider not found' });
       const pair = await pool.query(
-        'SELECT 1 FROM partnership_stats WHERE horse_id = $1 AND rider_id = $2', [horse_id, rider_id]);
+        'SELECT 1 FROM partnership_stats WHERE horse_id = $1 AND rider_id = $2', [hid, rid]);
       if (!pair.rows.length) return res.status(404).json({ error: 'pair has no rounds together' });
       const { rows } = await pool.query(
         `INSERT INTO watchlist_items (user_id, entity_type, horse_id, rider_id, note)
          VALUES ($1,'combination',$2,$3,$4)
          ON CONFLICT DO NOTHING RETURNING *`,
-        [uid, horse_id, rider_id, note || null]
+        [uid, hid, rid, note || null]
       );
       const row = rows[0] || (await pool.query(
         `SELECT * FROM watchlist_items WHERE user_id = $1 AND entity_type = 'combination'
-         AND horse_id = $2 AND rider_id = $3`, [uid, horse_id, rider_id])).rows[0];
-      audit(req, 'watchlist.add', 'combination', row.id, { horse_id, rider_id });
+         AND horse_id = $2 AND rider_id = $3`, [uid, hid, rid])).rows[0];
+      audit(req, 'watchlist.add', 'combination', row.id, { horse_id: hid, rider_id: rid });
       return res.status(201).json({ data: row });
     }
     if (!entity_id) return res.status(400).json({ error: 'need entity_id' });
     const table = entity_type === 'horse' ? 'horses' : entity_type === 'rider' ? 'riders' : 'events';
-    const exists = await pool.query(`SELECT 1 FROM ${table} WHERE id = $1`, [entity_id]);
+    // Accept slugs too (profile pages route by slug) — resolve to UUID first.
+    const resolved = await resolveId(table, entity_id, res);
+    if (!resolved) return;
+    const exists = await pool.query(`SELECT 1 FROM ${table} WHERE id = $1`, [resolved]);
     if (!exists.rows.length) return res.status(404).json({ error: `${entity_type} not found` });
     const { rows } = await pool.query(
       `INSERT INTO watchlist_items (user_id, entity_type, entity_id, note, is_public)
@@ -66,9 +73,9 @@ module.exports = function mountUserRoutes(app) {
        ON CONFLICT (user_id, entity_type, entity_id)
        WHERE entity_type IN ('horse','rider','event')
        DO UPDATE SET note = EXCLUDED.note, is_public = EXCLUDED.is_public RETURNING *`,
-      [uid, entity_type, entity_id, note || null, pub]
+      [uid, entity_type, resolved, note || null, pub]
     );
-    audit(req, 'watchlist.add', entity_type, rows[0].id, { entity_id });
+    audit(req, 'watchlist.add', entity_type, rows[0].id, { entity_id: resolved });
     res.status(201).json({ data: rows[0] });
   }));
 

@@ -31,7 +31,9 @@ export function projectForm(monthly) {
     return null; // honest: not enough signal to project
   }
   const ws = pts.map((m) => Number(m.starts));
-  const eqR = wlinreg(pts.map((m) => Number(m.eq)), ws);
+  // Trend value: per-period EQ where provided, else clear rate (0–100 scale).
+  const trendVals = pts.map((m) => Number(m.eq ?? m.clear));
+  const eqR = wlinreg(trendVals, ws);
   const clR = wlinreg(pts.map((m) => Number(m.clear)), ws);
   const faR = wlinreg(pts.map((m) => Number(m.faults)), ws);
   const nx = pts.length; // one period ahead
@@ -78,7 +80,8 @@ export function suggestPartners({ riddenIds = [], riderBestCm = null, horses = [
     .map((h) => {
       const dist = riderBestCm && h.bestCm
         ? Math.abs(Number(h.bestCm) - Number(riderBestCm)) : 30;
-      const fit = Math.round(Number(h.eq) - dist * 0.8);
+      const base = Number(h.clear ?? h.eq);
+      const fit = Math.round(base - dist * 0.8);
       return { ...h, heightGap: Math.round(dist), fit };
     })
     .sort((a, b) => b.fit - a.fit)

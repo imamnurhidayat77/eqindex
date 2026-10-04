@@ -5,6 +5,11 @@ import { useAdminApi } from '../../../components/useAdminApi';
 import { TableEmpty } from '../../../components/EmptyState';
 import { Pagination } from '../../../components/list-controls';
 import { LabeledSwitch } from '../../../components/Switch';
+import Dropdown from '../../../components/Dropdown';
+import { keyOptions, FALLBACK_CATS } from '../../../lib/categories';
+
+// Class rider-category options come from the rider_categories master table
+// (Admin → Categories). Stored values are master keys; '' = open/unrestricted.
 
 // Per-class on/off switches. Switched-off classes stay in the DB (audit trail,
 // profiles keep raw history) but are excluded from rankings, trends and every
@@ -18,6 +23,13 @@ export default function AdminClasses() {
   const [perPage, setPerPage] = useState(15);
   const [busyId, setBusyId] = useState(null);
   const call = useAdminApi();
+  const [cats, setCats] = useState(null);
+  useEffect(() => {
+    let live = true;
+    call('/admin/categories').then((d) => { if (live) setCats(d || []); }).catch(() => { if (live) setCats([]); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function load(query) {
     setLoading(true); setErr('');
@@ -32,7 +44,6 @@ export default function AdminClasses() {
     const t = setTimeout(() => load(q), q ? 300 : 0);
     return () => clearTimeout(t);
   }, [q]);
-
   async function flip(r) {
     setBusyId(r.id);
     try {
@@ -44,6 +55,16 @@ export default function AdminClasses() {
     setBusyId(null);
   }
 
+  async function setCategory(r, v) {
+    setBusyId(r.id);
+    try {
+      const updated = await call(`/admin/classes/${r.id}`, {
+        method: 'PATCH', body: JSON.stringify({ rider_category: v || null }),
+      });
+      setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, rider_category: updated?.rider_category ?? null } : x)));
+    } catch (e) { setErr(e.message); }
+    setBusyId(null);
+  }
   const pages = Math.max(1, Math.ceil(rows.length / perPage));
   const safePage = Math.min(page, pages);
   const view = rows.slice((safePage - 1) * perPage, safePage * perPage);
@@ -67,7 +88,7 @@ export default function AdminClasses() {
           <thead><tr>
             <th className={TH}>Class</th><th className={TH}>Event</th><th className={TH}>Date</th>
             <th className={TH}>Type</th><th className={`${TH} ${NUM}`}>Ht</th>
-            <th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Tracked</th>
+            <th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Category</th><th className={TH}>Tracked</th>
           </tr></thead>
           <tbody>
             {view.map((r) => {
@@ -80,6 +101,11 @@ export default function AdminClasses() {
                   <td className={TD}>{r.class_type || '—'}</td>
                   <td className={`${TD} ${NUM} text-muted`}>{r.height_cm ? `${r.height_cm}cm` : '—'}</td>
                   <td className={`${TD} ${NUM} text-muted`}>{r.round_count}</td>
+                  <td className={TD}>
+                    <Dropdown ariaLabel={`Category for ${r.name}`} value={r.rider_category || ''} size="sm"
+                      options={[{ value: '', label: 'Open' }, ...keyOptions(cats === null ? FALLBACK_CATS : cats, r.rider_category)]}
+                      onSelect={(o) => { if ((o.value || null) !== (r.rider_category || null)) setCategory(r, o.value); }} />
+                  </td>
                   <td className={TD}>
                     <LabeledSwitch
                       on={on}
@@ -95,7 +121,7 @@ export default function AdminClasses() {
             {!view.length && !loading && (
               <TableEmpty icon="📋" title={q ? 'No classes match this search' : 'No classes recorded yet'} hint={q ? 'Try a different class or event name.' : 'Classes appear here once results are imported.'} />
             )}
-            {loading && <tr><td colSpan={7} className="px-2 py-4">
+            {loading && <tr><td colSpan={8} className="px-2 py-4">
               <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
                 {[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}
               </span>

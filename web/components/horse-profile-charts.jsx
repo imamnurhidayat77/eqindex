@@ -9,7 +9,7 @@ const tip = { backgroundColor: '#1C2330', border: '1px solid #2A2A2A', borderRad
 export function EQMonthlyChart({ rows }) {
   const data = (rows || []).map((r) => ({
     label: r.month,
-    EQ: Number(r.eq),
+    Clear: Number(r.clear ?? r.eq),
     Circuit: Number(r.baseline ?? 62),
   }));
   return (
@@ -19,7 +19,7 @@ export function EQMonthlyChart({ rows }) {
         <XAxis dataKey="label" tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} />
         <YAxis domain={[0, 100]} tick={{ fill: '#666666', fontSize: 10 }} axisLine={false} tickLine={false} />
         <Tooltip contentStyle={tip} labelStyle={{ color: '#fff' }} />
-        <Line type="monotone" dataKey="EQ" stroke="#FFD700" strokeWidth={2} dot={{ r: 2.5, fill: '#FFD700' }} />
+        <Line type="monotone" dataKey="Clear" stroke="#FFD700" strokeWidth={2} dot={{ r: 2.5, fill: '#FFD700' }} />
         <Line type="monotone" dataKey="Circuit" stroke="#2A2A2A" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
       </LineChart>
     </ResponsiveContainer>

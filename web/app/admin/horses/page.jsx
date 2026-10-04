@@ -5,7 +5,7 @@ export default function ManageHorses() {
   return (
     <ManageTable
       title="Manage horses" sub="Edit profile fields, fix names, remove duplicates. Horses with rounds cannot be deleted."
-      base="horses" profile={(r) => `/horses/${r.slug || r.id}`}
+      base="horses" profile={(r) => { const id = r.slug || r.id; return id ? `/horses/${id}` : null; }}
       columns={[
         { k: 'name', label: 'Horse' }, { k: 'breed', label: 'Breed' },
         { k: 'sire', label: 'Sire' }, { k: 'starts', label: 'Starts', num: true },

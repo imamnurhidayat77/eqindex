@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
 import { CARD, H1, NUM, SUB, TABLE, TD, TH } from '../../lib/tokens';
-import { eqScore } from '../../lib/eq';
 import { FilterBar, Pagination } from '../../components/list-controls';
 import { TableEmpty } from '../../components/EmptyState';
 import { heightParams } from '../../lib/heights';
@@ -31,15 +30,18 @@ export default function Horses() {
 
   useEffect(() => {
     setLoading(true);
-    const p = new URLSearchParams({ limit: '200', min_starts: f.minStarts, ...heightParams(f.height) });
+    // Default ranking (clear%): lists EVERY horse with starts, including
+    // newly imported non-series classes. metric=points only scores series
+    // classes (scope=series_only), so new imports sit at 0 pts and fall
+    // outside limit=200 — they looked "empty"/missing.
+    const p = new URLSearchParams({ limit: '500', min_starts: f.minStarts, ...heightParams(f.height) });
     if (f.season) p.set('season', f.season);
     if (f.region) p.set('region', f.region);
     if (f.arena) p.set('arena', f.arena);
     fetch(`${API}/rankings/horses?${p}`)
       .then((r) => r.json())
       .then((j) => {
-        setRows(((j.data || []).map((x) => ({ ...x, eq: eqScore(x.clear_pct, x.avg_faults, x.starts) })))
-          .sort((a, b) => b.eq - a.eq));
+        setRows((j.data || []).map((x) => ({ ...x })));
         setPage(1);
       })
       .catch(() => setRows([]))
@@ -66,7 +68,7 @@ export default function Horses() {
       <section className={CARD}>
         <div className="overflow-x-auto">
         <table className={TABLE}>
-          <thead><tr><th className={TH}>Rank</th><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>EQ Score</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th><th className={`${TH} ${NUM}`}>Starts</th></tr></thead>
+          <thead><tr><th className={TH}>Rank</th><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th><th className={`${TH} ${NUM}`}>Starts</th></tr></thead>
           <tbody>
             {view.map((x, i) => {
               const rank = (safePage - 1) * perPage + i + 1;
@@ -74,7 +76,6 @@ export default function Horses() {
                 <tr key={x.horse_id}>
                   <td className={rank === 1 && safePage === 1 ? 'rank1' : ''}>#{rank}</td>
                   <td className={TD}><Link href={`/horses/${x.horse_slug || x.horse_id}`} className="text-white font-semibold">{x.horse}</Link></td>
-                  <td className={`${TD} ${NUM}`}><b>{x.eq}</b></td>
                   <td className={`${TD} ${NUM} text-moss`}>{Number(x.clear_pct).toFixed(1)}%</td>
                   <td className={`${TD} ${NUM}`}>{Number(x.avg_faults).toFixed(2)}</td>
                   <td className={`${TD} ${NUM}`}>{x.starts}</td>
@@ -83,7 +84,7 @@ export default function Horses() {
             })}
             {!view.length && (
               loading ? (
-                <tr><td colSpan={6} className="px-2 py-4">
+                <tr><td colSpan={5} className="px-2 py-4">
                   <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
                     {[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}
                   </span>
