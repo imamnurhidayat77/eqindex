@@ -48,6 +48,9 @@ export default function SeriesIndex() {
   const safePage = Math.min(page, pages);
   const view = filtered.slice((safePage - 1) * perPage, safePage * perPage);
   const totalEntries = filtered.reduce((s, x) => s + Number(x.entries || 0), 0);
+  // Distinct events across series — per-series counts double-count the same
+  // shows (e.g. Rotorua + Feilding appear under every series they host).
+  const distinctEvents = new Set(filtered.flatMap((x) => x.event_names || [])).size;
 
   return (
     <>
@@ -71,7 +74,7 @@ export default function SeriesIndex() {
           ['Series Tracked', String(filtered.length)],
           ['Total Entries', String(totalEntries)],
           ['Seasons', String(seasons.length)],
-          ['Events', String(filtered.reduce((s, x) => s + Number(x.events || 0), 0))],
+          ['Events', String(distinctEvents)],
         ].map(([l, v]) => (
           <StatCard key={l} label={l} value={v} />
         ))}

@@ -51,7 +51,7 @@ export default function Horses() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Points tab: official ESNZ series points (strict scope — non-series horses score 0).
+  // Points tab: series points (strict scope — non-series horses score 0).
   // Points are sums, not rates — no thin-sample problem, so the starts guard
   // does NOT apply here (it would hide genuine series leaders with few starts).
   // Clear tab: factual clear-rate stat (info only, min 5 starts).
@@ -71,7 +71,7 @@ export default function Horses() {
       .finally(() => setLoading(false));
   }, [tab, f.season, f.region, f.arena, f.height, f.minStarts]);
 
-  // Series tab: official best-N standings per series (exactly as ESNZ publishes).
+  // Series tab: best-N standings per series.
   useEffect(() => {
     if (tab !== 'series' || !seriesKey) return;
     setLoading(true);
@@ -113,7 +113,7 @@ export default function Horses() {
   return (
     <>
       <h1 className={H1}>Horses</h1>
-      <p className={SUB}>Official ESNZ series points — every ranked horse on the NZ circuit.</p>
+      <p className={SUB}>Series points — every ranked horse on the NZ circuit.</p>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <div className="flex gap-1 bg-card2 border border-line rounded p-1 overflow-x-auto w-fit">
           {TABS.map(([k, lbl]) => (
@@ -142,7 +142,7 @@ export default function Horses() {
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
             <input value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="Horse or rider…"
               className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 200 }} /></label>
-          <span className="ml-auto text-[12px] text-faint">Best-N counting, exactly as ESNZ publishes · all seasons</span>
+          <span className="ml-auto text-[12px] text-faint">Best-N counting · all seasons</span>
         </div>
       ) : (
         <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} showMinStarts={tab !== 'points'} />

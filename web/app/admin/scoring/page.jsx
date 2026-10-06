@@ -46,7 +46,7 @@ function EsnzSummary({ ez, divisions }) {
   const series = ez.series || {};
   return (
     <div className="mt-2.5 rounded border border-line bg-card2/40 p-3.5 text-muted">
-      <div className="mb-2"><span className="inline-flex items-center rounded-full bg-goldbg px-2 py-[3px] text-[11px] font-bold text-gold">ESNZ OFFICIAL · {ez.scope === 'all_classes' ? 'all classes score' : 'series classes only'}</span></div>
+      <div className="mb-2"><span className="inline-flex items-center rounded-full bg-goldbg px-2 py-[3px] text-[11px] font-bold text-gold">SERIES SCORING · {ez.scope === 'all_classes' ? 'all classes score' : 'series classes only'}</span></div>
       <div className={row}><span>Divisions</span><span className="text-body text-right">{(divisions || []).map((d) => d.label).join(' · ') || '—'}</span></div>
       <div className={row}><span>Grand Prix scale</span><span className="text-body text-right">{(ez.scales?.grand_prix || []).join(' / ')}</span></div>
       <div className={row}><span>Premier scale</span><span className="text-body text-right">{(ez.scales?.premier || []).join(' / ')}</span></div>
@@ -57,7 +57,7 @@ function EsnzSummary({ ez, divisions }) {
   );
 }
 
-// ---- ESNZ draft editor (no raw JSON) ----
+// ---- Series draft editor (no raw JSON) ----
 const parsePairs = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean).map((x) => {
   const [a, b] = x.split(':').map((y) => y.trim());
   return [a, b];
@@ -203,7 +203,7 @@ const csvGet = (arr) => (arr || []).join(', ');
 const csvSet = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
 // Shared divisions editor (height bands) — used by both modes.
-// Divisions are display/award bands; points always follow the ESNZ engine.
+// Divisions are display/award bands; points always follow the series engine.
 function DivisionsEditor({ draft, set }) {
   return (
     <Sec title="Divisions" hint="Height bands in cm (empty = open-ended). Colour shows on stars and tables.">
@@ -383,7 +383,7 @@ export default function AdminScoring() {
   return (
     <>
       <h1 className={H1}>Scoring rules</h1>
-      <p className={SUB}>Every scoring number lives here — ESNZ official scales, rules and per-series setup, plus display divisions. Edit drafts, preview against the real season, then activate. Active versions lock; clone to change.</p>
+      <p className={SUB}>Every scoring number lives here — series scales, rules and per-series setup, plus display divisions. Edit drafts, preview against the real season, then activate. Active versions lock; clone to change.</p>
       {err && <section className={CARD}><p className="text-blood text-sm">{err}</p></section>}
       {notice && <section className={CARD}><p className="text-moss text-sm">{notice}</p></section>}
       {/* live banner: exactly which rules the public site uses right now */}
@@ -471,8 +471,8 @@ export default function AdminScoring() {
                 ) : (
                   <>
                     <div className="flex gap-1 bg-card2 border border-line rounded p-1 mb-3 overflow-x-auto items-center">
-                      <span className="text-[11px] uppercase tracking-wide text-faint font-bold px-2">ESNZ official</span>
-                      <span className="ml-auto text-[11px] text-faint pr-2">Annex 11 · every number editable · points always follow ESNZ</span>
+                      <span className="text-[11px] uppercase tracking-wide text-faint font-bold px-2">Series rules</span>
+                      <span className="ml-auto text-[11px] text-faint pr-2">Series scales · every number editable · points follow series scales</span>
                     </div>
                     <div className="flex gap-1 bg-card2 border border-line rounded p-1 mb-3 overflow-x-auto">
                       {TABS.map(([k, lbl]) => (
@@ -500,7 +500,7 @@ export default function AdminScoring() {
                 <section className={CARD}>
                   {preview.mode === 'esnz' ? (
                     <>
-                      <h2 className="text-[15px] font-bold mb-1">Preview — ESNZ series under this draft ({preview.scope === 'all_classes' ? 'all classes score' : 'series classes only'})</h2>
+                      <h2 className="text-[15px] font-bold mb-1">Preview — series under this draft ({preview.scope === 'all_classes' ? 'all classes score' : 'series classes only'})</h2>
                       <p className="text-muted text-[13px] mb-3">
                         {preview.rounds} season rounds rescored · {preview.scoringRounds} in series classes.
                       </p>

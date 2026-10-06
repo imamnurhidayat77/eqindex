@@ -15,14 +15,14 @@ export async function getRules() {
   return null;
 }
 
-// One-line formula summary — ESNZ mode shows official scales, internal
+// One-line formula summary — series mode shows series scales, internal
 // mode shows the placing-points breakdown, e.g. "clear 10 · double 5 · placing 5/4/3/2/1 · cap 20".
 export function pointsLine(params) {
   if ((params?.mode || 'eqindex') === 'esnz') {
     const ez = params.esnz || {};
     const gp = (ez.scales?.grand_prix || []).join('/');
     const pr = (ez.scales?.premier || []).join('/');
-    return `ESNZ official · GP ${gp || '–'} · Premier ${pr || '–'} · ${ez.scope === 'all_classes' ? 'all classes' : 'series classes only'}`;
+    return `Series scales · GP ${gp || '–'} · Premier ${pr || '–'} · ${ez.scope === 'all_classes' ? 'all classes' : 'series classes only'}`;
   }
   const P = params?.points || {};
   const placing = Array.isArray(P.placing) ? P.placing.join('/') : '–';

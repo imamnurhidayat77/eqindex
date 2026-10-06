@@ -19,7 +19,7 @@ export default function AdminSeries() {
       ]}
       fields={[
         { k: 'display_name', label: 'Display name' },
-        { k: 'official_source', label: 'Official source', placeholder: 'e.g. ESNZ' },
+        { k: 'official_source', label: 'Official source', placeholder: 'e.g. series rulebook' },
         { k: 'description', label: 'Description' },
         { k: 'qual_rules', label: 'Qualification rules', type: 'textarea', placeholder: 'How points qualify, dropped scores, finals…' },
         { k: 'is_official', label: 'Official (organiser-published) — off means EQIndex-calculated independent', bool: true },

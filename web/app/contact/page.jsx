@@ -32,7 +32,7 @@ export default function Contact() {
       <p className={SUB}>Organisers, riders, and data corrections.</p>
       <section className={CARD}>
         <p>To submit show results, request data corrections, or discuss data
-        partnerships (ESNZ, timing providers):</p>
+        partnerships (show organisers, timing providers):</p>
         <p><b>hello@eqindex.example.nz</b></p>
         <p className={MUT}>Result files accepted: CSV and Excel exports from common
         timing systems. Series and calendar gaps can also be flagged for review.</p>

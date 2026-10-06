@@ -16,7 +16,7 @@ export default function ManageEvents() {
         { k: 'name', label: 'Name' }, { k: 'venue', label: 'Venue' },
         { k: 'region', label: 'Region' }, { k: 'date_start', label: 'Start (YYYY-MM-DD)' },
         { k: 'date_end', label: 'End (YYYY-MM-DD)' }, { k: 'arena_type', label: 'Arena type' },
-        { k: 'event_kind', label: 'Kind — ESNZ multipliers (recompute scoring after changing)', options: ['regular', 'national_championship', 'series_final', 'islands', 'hoy', 'national_young_horse'] },
+        { k: 'event_kind', label: 'Kind — series multipliers (recompute scoring after changing)', options: ['regular', 'national_championship', 'series_final', 'islands', 'hoy', 'national_young_horse'] },
         { k: 'tier', label: 'Tier', options: ['Grand Prix', 'Premier', 'No Series'] },
         { k: 'event_type', label: 'Type', options: ['Show', 'Championship', 'League', 'Training'] },
         { k: 'status', label: 'Status', options: ['Upcoming', 'Live', 'Completed', 'Cancelled'] },

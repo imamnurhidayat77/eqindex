@@ -758,7 +758,8 @@ module.exports = function mountPublicRoutes(app) {
           COUNT(DISTINCT c.event_id)::INT AS events,
           COUNT(rr.id)::INT AS starts,
           COUNT(DISTINCT (rr.horse_id, rr.rider_id))::INT AS entries,
-          ARRAY_AGG(DISTINCT e.season) FILTER (WHERE e.season IS NOT NULL) AS seasons
+          ARRAY_AGG(DISTINCT e.season) FILTER (WHERE e.season IS NOT NULL) AS seasons,
+          ARRAY_REMOVE(ARRAY_AGG(DISTINCT e.name) FILTER (WHERE e.name IS NOT NULL), NULL) AS event_names
         FROM classes c
         LEFT JOIN round_results rr ON rr.class_id = c.id AND class_id_visible(rr.class_id)
         LEFT JOIN events e ON e.id = c.event_id
@@ -772,6 +773,7 @@ module.exports = function mountPublicRoutes(app) {
         COALESCE(l.starts, 0) AS starts,
         COALESCE(l.entries, 0) AS entries,
         COALESCE(l.seasons, '{}') AS seasons,
+        COALESCE(l.event_names, '{}') AS event_names,
         (i.auto_calc IS NOT FALSE) AS auto_calc
       FROM keys k
       LEFT JOIN series_info i ON i.series_key = k.series_key

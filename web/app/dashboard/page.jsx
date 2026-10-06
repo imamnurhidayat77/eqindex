@@ -46,7 +46,7 @@ export default async function Dashboard({ searchParams }) {
     getJSON(`/events?limit=100&has_data=1${Q ? '&' + qs : ''}`),
     getJSON('/events?limit=20&upcoming=1'),
     getJSON(`/trends/circuit${Q}`),
-    // Points leaders — all-time ESNZ series points (series classes only),
+    // Points leaders — all-time series points (series classes only),
     // independent of the slice filters above.
     getJSON('/rankings/horses?limit=5&metric=points').catch(() => ({ data: [] })),
     getJSON('/rankings/riders?limit=4&metric=points').catch(() => ({ data: [] })),
@@ -183,7 +183,7 @@ export default async function Dashboard({ searchParams }) {
           {showHorses && (
             <>
               <h2 className={H2}>Top Horses</h2>
-              <p className={SUB}>All-time ESNZ series points · series classes only · ignores slice filters</p>
+              <p className={SUB}>All-time series points · series classes only · ignores slice filters</p>
               <section className={CARD}>
                 <div className={TABLEWRAP}>
                 <table className={TABLE}>
@@ -213,7 +213,7 @@ export default async function Dashboard({ searchParams }) {
           {showRiders && (
             <>
               <h2 className={H2}>Top Riders</h2>
-              <p className={SUB}>All-time ESNZ series points across all partnerships · ignores slice filters</p>
+              <p className={SUB}>All-time series points across all partnerships · ignores slice filters</p>
               <section className={CARD}>
                 <div className={TABLEWRAP}>
                 <table className={TABLE}>
@@ -242,7 +242,7 @@ export default async function Dashboard({ searchParams }) {
           {(seriesLeaders.data || []).length > 0 && (
             <>
               <h2 className={H2}>Series Leaders</h2>
-              <p className={SUB}>Current leader of each official ESNZ series · <Link className={LINK} href="/series">All series →</Link></p>
+              <p className={SUB}>Current leader of each series · <Link className={LINK} href="/series">All series →</Link></p>
               <section className={CARD}>
                 <div className={TABLEWRAP}>
                 <table className={TABLE}>
