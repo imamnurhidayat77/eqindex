@@ -43,19 +43,10 @@ export default async function SeriesPage({ params }) {
   }));
 
   const leader = table[0] || null;
-  const totalPts = table.reduce((x, r) => x + num(r.total), 0);
-  const gap = leader && table[1] ? num(leader.total) - num(table[1].total) : 0;
   const doneEv = events.filter((e) => e.completed === true);
   const openEv = events.filter((e) => e.completed === false);
   const unkEv = events.filter((e) => e.completed === null || e.completed === undefined);
   const evLabels = events.map((e) => e.event);
-
-  const insights = [];
-  if (leader) {
-    insights.push(`${leader.rider} leads ${name} on ${leader.horse} with ${leader.total} points${gap ? ` — ${gap} clear of second` : ''}.`);
-    if (leader.dropped) insights.push(`Best-of-${(info?.best_of || '?')} applied: ${leader.dropped} lowest score${leader.dropped === 1 ? '' : 's'} dropped (${leader.dropped_pts} pts).`);
-    insights.push(`${doneEv.length} of ${events.length} qualifying events completed${openEv.length ? `, ${openEv.length} remaining` : ''}.`);
-  }
 
   return (
     <div className="text-[14px] text-slate-100">
@@ -122,20 +113,6 @@ export default async function SeriesPage({ params }) {
           />
         )}
       </section>
-
-      {!!insights.length && (
-        <>
-          <h2 className="mb-3 text-[15px] font-bold">Series Intelligence</h2>
-          <div className="mb-6 grid gap-4 md:grid-cols-3">
-            {insights.map((t, i) => (
-              <div key={i} className="rounded border border-line bg-card p-4">
-                <div className="mb-2 text-[11px] font-bold text-gold">ACTIVE SIGNAL</div>
-                <p className="text-[12.5px] leading-relaxed text-muted">{t}</p>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
 
       <h2 className="mb-3 text-[15px] font-bold">Series Tools</h2>
       <div className="grid gap-4 md:grid-cols-3">
