@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import './globals.css';
-import Navbar, { NavSearch, NavSeason } from '../components/Navbar';
+import Navbar, { NavSearch } from '../components/Navbar';
 import RouteProgress from '../components/RouteProgress';
 import { SeasonProvider } from '../components/global';
 import { AuthProvider } from '../components/auth';
@@ -33,7 +33,6 @@ export default function RootLayout({ children }) {
             <Navbar />
             <div className="flex-1" />
             <NavSearch />
-            <NavSeason />
             <UserMenu />
           </div>
         </header>

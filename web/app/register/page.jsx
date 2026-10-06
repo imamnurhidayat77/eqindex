@@ -24,7 +24,7 @@ export default function Register() {
   // NOTE: no prefetch — logged-out prefetch would only warm the login redirect.
   // Already authenticated: forward instead of stranding on a dead-end card.
   useEffect(() => {
-    if (!loading && user && !done) router.replace('/dashboard');
+    if (!loading && user && !done) router.replace('/');
   }, [loading, user, done, router]);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const pwScore = form.password.length >= 12 ? 3 : form.password.length >= 8 ? 2 : form.password.length > 0 ? 1 : 0;
@@ -38,7 +38,7 @@ export default function Register() {
       await register({ name: form.name.trim(), email: form.email.trim(), password: form.password, role: form.role });
       setDone(true);
       // Full page load so the heavy destination streams with its skeleton.
-      window.location.assign('/dashboard');
+      window.location.assign('/');
     } catch (ex) { setErr(ex.message); setBusy(false); }
   }
   if (done) {
@@ -63,7 +63,7 @@ export default function Register() {
             You are logged in as <b className="text-body">{user.name}</b> ({user.email}).
             Taking you to your workspace…
           </p>
-          <p className="mb-5"><Link className={LINK} href="/dashboard">Continue →</Link></p>
+          <p className="mb-5"><Link className={LINK} href="/">Continue →</Link></p>
           <button
             onClick={async () => { if (busyOut) return; setBusyOut(true); try { await logout(); } finally { setBusyOut(false); router.refresh(); } }}
             disabled={busyOut}

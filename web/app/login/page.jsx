@@ -7,7 +7,7 @@ import { INP, BTN_PRIMARY, LINK } from '../../lib/tokens';
 
 function safeNext(v) {
   return v && v.startsWith('/') && !v.startsWith('//') && v !== '/login' && v !== '/register'
-    ? v : '/dashboard';
+    ? v : '/';
 }
 
 function LoginForm() {
@@ -38,9 +38,9 @@ function LoginForm() {
     try {
       await login(email.trim(), password);
       setDone(true);
-      // Full page load (not router.push): /dashboard is heavy (~4s SSR) and
-      // streams progressively with its own skeleton — perceived as faster
-      // than staring at this card waiting for an SPA transition to commit.
+      // Full page load (not router.push) so the destination's SSR streams
+      // progressively with its own skeleton — perceived as faster than
+      // staring at this card waiting for an SPA transition to commit.
       window.location.assign(next);
     }
     catch (ex) { setErr(ex.message); setBusy(false); }

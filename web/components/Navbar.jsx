@@ -16,34 +16,25 @@ function useLandingHidden() {
   return !user;
 }
 
+// Flat interest-group tabs. Rankings / Compare / Analytics / My Stable are
+// hidden from the nav — routes still live and linkable.
 export const NAV = [
-  { href: '/dashboard', label: 'Dashboard', match: (p) => p.startsWith('/dashboard') },
-]; // NOTE: Analytics hidden for now — route still live at /analytics
-
-export const NAV_GROUPS = [
-  { label: 'Explore', items: [
-    { href: '/horses', label: 'Horses', match: (p) => p.startsWith('/horses') },
-    { href: '/riders', label: 'Riders', match: (p) => p.startsWith('/riders') },
-    { href: '/breeders', label: 'Breeders', match: (p) => p.startsWith('/breeders') },
-    { href: '/events', label: 'Events', match: (p) => p.startsWith('/events') },
-    { href: '/series', label: 'Series', match: (p) => p.startsWith('/series') },
-  ]},
-  // NOTE: Intelligence (Rankings, Compare) hidden for now — routes still live.
-  { label: 'Workspace', items: [
-    { href: '/watchlist', label: 'Watchlist', match: (p) => p.startsWith('/watchlist') },
-    { href: '/my-stable', label: 'My Stable', match: (p) => p.startsWith('/my-stable') },
-  ]},
+  { href: '/', label: 'Home', match: (p) => p === '/' },
+  { href: '/events', label: 'Events', match: (p) => p.startsWith('/events') },
+  { href: '/series', label: 'Series', match: (p) => p.startsWith('/series') },
+  { href: '/riders', label: 'Riders', match: (p) => p.startsWith('/riders') },
+  { href: '/horses', label: 'Horses', match: (p) => p.startsWith('/horses') },
+  { href: '/stallions', label: 'Stallions', match: (p) => p.startsWith('/stallions') },
+  { href: '/breeders', label: 'Breeders', match: (p) => p.startsWith('/breeders') },
+  // Watchlists — the old /dashboard URL redirects here.
+  { href: '/watchlist', label: 'Watchlist', match: (p) => p.startsWith('/watchlist') || p.startsWith('/dashboard') },
 ];
 
 export default function Navbar() {
   const pathname = usePathname() || '/';
-  const router = useRouter();
   const hidden = useLandingHidden();
-  const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const [drop, setDrop] = useState(null); // open desktop dropdown label
   if (hidden) return null;
-  const isAdmin = user?.role === 'ADMIN';
   const linkCls = (active) =>
     `no-underline text-sm px-0.5 pt-5 pb-[18px] transition-colors hover:text-white ${
       active ? 'text-white border-b-2 border-gold' : 'text-muted'
@@ -56,38 +47,6 @@ export default function Navbar() {
             {item.label}
           </Link>
         ))}
-        {NAV_GROUPS.map((g) => {
-          const active = g.items.some((i) => i.match(pathname));
-          return (
-            <span key={g.label} className="relative" onMouseLeave={() => setDrop(null)}>
-              <button onClick={() => setDrop((d) => (d === g.label ? null : g.label))}
-                onMouseEnter={() => setDrop(g.label)}
-                className={`bg-none cursor-pointer flex items-center gap-1 no-underline text-sm px-0.5 pt-5 pb-[18px] transition-colors hover:text-white border-0 border-b-2 ${active ? 'text-white border-gold' : 'text-muted border-transparent'}`}>
-                {g.label} <span className="text-[10px]">▾</span>
-              </button>
-              {drop === g.label && (
-                <span className="absolute left-0 top-full pt-1 z-30 block">
-                  <span className="block min-w-[160px] rounded border border-line bg-card2 py-1 shadow-xl">
-                    {g.items.map((item) => (
-                      <Link key={item.href} href={item.href} onClick={() => setDrop(null)}
-                        className={`block px-3.5 py-2 text-[13px] no-underline hover:bg-white/5 ${item.match(pathname) ? 'text-gold font-bold' : 'text-muted hover:text-white'}`}>
-                        {item.label}
-                      </Link>
-                    ))}
-                  </span>
-                </span>
-              )}
-            </span>
-          );
-        })}
-        {isAdmin && (
-          <Link href="/admin" title="Admin Console"
-            className={`no-underline text-sm px-0.5 pt-5 pb-[18px] transition-colors hover:text-white flex items-center gap-1 ${
-              pathname.startsWith('/admin') ? 'text-gold border-b-2 border-gold' : 'text-gold/70'
-            }`}>
-            <span className="text-[11px]" aria-hidden="true">⛨</span> Admin
-          </Link>
-        )}
       </nav>
       <button
         className="md:hidden bg-card border border-line rounded text-body w-8 h-8"
@@ -113,37 +72,6 @@ export default function Navbar() {
               </Link>
             );
           })}
-          {NAV_GROUPS.map((g) => (
-            <span key={g.label}>
-              <span className="block text-[10px] uppercase tracking-wide text-faint font-bold pt-3 pb-1">{g.label}</span>
-              {g.items.map((item) => {
-                const active = item.match(pathname);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setOpen(false)}
-                    className={`block no-underline text-sm py-2.5 border-b border-line/50 last:border-0 pl-3 ${
-                      active ? 'text-gold font-bold' : 'text-muted'
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </span>
-          ))}
-          {isAdmin && (
-            <Link
-              href="/admin"
-              onClick={() => setOpen(false)}
-              className={`no-underline text-sm py-2.5 ${
-                pathname.startsWith('/admin') ? 'text-gold font-bold' : 'text-gold/70'
-              }`}
-            >
-              ⛨ Admin Console
-            </Link>
-          )}
         </div>
       )}
     </>

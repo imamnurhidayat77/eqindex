@@ -10,7 +10,7 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 function safeNext(v) {
   return v && v.startsWith('/') && !v.startsWith('//') && v !== '/login' && v !== '/register'
-    ? v : '/dashboard';
+    ? v : '/';
 }
 
 export async function middleware(req) {
@@ -35,7 +35,7 @@ export async function middleware(req) {
 
   const loginUrl = new URL('/login', req.url);
   const dest = `${pathname}${search}`;
-  loginUrl.searchParams.set('next', dest.startsWith('/') && !dest.startsWith('//') ? dest : '/dashboard');
+  loginUrl.searchParams.set('next', dest.startsWith('/') && !dest.startsWith('//') ? dest : '/');
 
   const token = req.cookies.get('eq_session')?.value;
   if (!token) return NextResponse.redirect(loginUrl);

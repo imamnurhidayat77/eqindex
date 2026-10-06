@@ -295,6 +295,88 @@ module.exports = function mountPublicRoutes(app) {
     res.json({ data: agg.rows[0], horses: horses.rows, sires: sires.rows, heights: heights.rows });
   }));
 
+  // ---- Stallions: directory + profile (sire is a free-text column on
+  // horses). Stats count visible rounds only (class_id_visible, migration 032).
+  app.get('/stallions', asyncH(async (req, res) => {
+    const { limit } = paging(req, 100, 500);
+    const conds = [`h.sire IS NOT NULL AND h.sire <> ''`], params = [];
+    if (req.query.q && String(req.query.q).trim()) {
+      params.push(`%${String(req.query.q).trim()}%`);
+      conds.push(`h.sire ILIKE $${params.length}`);
+    }
+    params.push(limit);
+    const { rows } = await pool.query(
+      `SELECT h.sire AS stallion,
+          COUNT(DISTINCT h.id)::INT AS offspring,
+          COUNT(rr.id)::INT AS starts,
+          COALESCE(SUM(rr.clear_round::INT), 0)::INT AS clears,
+          ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
+          ROUND(AVG(rr.total_faults), 2) AS avg_faults,
+          COUNT(*) FILTER (WHERE rr.finish_place = 1)::INT AS wins,
+          COALESCE(SUM(rr.points), 0)::INT AS total_points
+        FROM horses h
+        LEFT JOIN round_results rr
+          ON rr.horse_id = h.id AND class_id_visible(rr.class_id)
+        WHERE ${conds.join(' AND ')}
+        GROUP BY h.sire
+        ORDER BY offspring DESC, starts DESC LIMIT $${params.length}`,
+      params
+    );
+    res.json({ data: rows });
+  }));
+
+  app.get('/stallions/:name', asyncH(async (req, res) => {
+    const name = decodeURIComponent(req.params.name);
+    const agg = await pool.query(
+      `SELECT h.sire AS stallion,
+          COUNT(DISTINCT h.id)::INT AS offspring,
+          COUNT(rr.id)::INT AS starts,
+          COALESCE(SUM(rr.clear_round::INT), 0)::INT AS clears,
+          ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
+          ROUND(AVG(rr.total_faults), 2) AS avg_faults,
+          COUNT(*) FILTER (WHERE rr.finish_place = 1)::INT AS wins,
+          COALESCE(SUM(rr.points), 0)::INT AS total_points
+        FROM horses h
+        LEFT JOIN round_results rr
+          ON rr.horse_id = h.id AND class_id_visible(rr.class_id)
+        WHERE h.sire = $1
+        GROUP BY h.sire`,
+      [name]
+    );
+    if (!agg.rows.length) return res.status(404).json({ error: 'stallion not found' });
+    const horses = await pool.query(
+      `SELECT h.id AS horse_id, h.name AS horse, h.slug AS horse_slug,
+          h.dam, h.breeder, h.year_of_birth,
+          COUNT(rr.id)::INT AS starts,
+          COUNT(*) FILTER (WHERE rr.finish_place = 1)::INT AS wins,
+          COALESCE(SUM(rr.points), 0)::INT AS total_points
+        FROM horses h
+        LEFT JOIN round_results rr
+          ON rr.horse_id = h.id AND class_id_visible(rr.class_id)
+        WHERE h.sire = $1
+        GROUP BY h.id, h.name, h.slug, h.dam, h.breeder, h.year_of_birth
+        ORDER BY total_points DESC, starts DESC`,
+      [name]
+    );
+    const heights = await pool.query(
+      `SELECT COALESCE(rr.height_cm, c.height_cm)::INT AS height_cm,
+          COUNT(*)::INT AS starts,
+          SUM(rr.clear_round::INT)::INT AS clears,
+          ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
+          COUNT(*) FILTER (WHERE rr.finish_place = 1)::INT AS wins,
+          COALESCE(SUM(rr.points), 0)::INT AS total_points
+        FROM round_results rr
+        JOIN horses h ON h.id = rr.horse_id
+        JOIN classes c ON c.id = rr.class_id
+        WHERE h.sire = $1 AND class_id_visible(rr.class_id)
+          AND COALESCE(rr.height_cm, c.height_cm) IS NOT NULL
+        GROUP BY 1
+        ORDER BY 1`,
+      [name]
+    );
+    res.json({ data: agg.rows[0], horses: horses.rows, heights: heights.rows });
+  }));
+
   // ---- Events (PRD §7.3, §7.7) ----
   app.get('/events', asyncH(async (req, res) => {
     const { limit } = paging(req);
