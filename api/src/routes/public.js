@@ -1399,6 +1399,18 @@ module.exports = function mountPublicRoutes(app) {
         ORDER BY g.eligible DESC NULLS LAST, m.rank LIMIT $1`, [limit]);
     res.json({ data: rows, metric: 'modelb' });
   }));
+  app.get('/rankings/modelb/combinations', asyncH(async (req, res) => {
+    const { limit } = paging(req, 100, 500);
+    const { rows } = await pool.query(
+      `SELECT m.horse_id, m.horse, h.slug AS horse_slug,
+          m.rider_id, m.rider, r.slug AS rider_slug,
+          m.best12, m.rounds, m.avg_round, m.best_round, m.rank
+        FROM modelb_standings m
+        JOIN horses h ON h.id = m.horse_id
+        JOIN riders r ON r.id = m.rider_id
+        ORDER BY m.rank LIMIT $1`, [limit]);
+    res.json({ data: rows, metric: 'modelb' });
+  }));
 
   // ---- Seasons master (single source of truth for season keys/labels) ----
   app.get('/seasons', asyncH(async (req, res) => {

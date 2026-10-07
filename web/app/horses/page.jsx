@@ -159,7 +159,7 @@ export default function Horses() {
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
             <input value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="Horse…"
               className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 200 }} /></label>
-          <span className="ml-auto text-[12px] text-faint">Model B best-12 · min 10 rounds to rank</span>
+          <span className="ml-auto text-[12px] text-faint">Model B best-12 · min 10 rounds to rank · <Link href="/standings" className="text-sky no-underline hover:underline">Combination standings →</Link></span>
         </div>
       ) : (
         <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} showMinStarts={tab !== 'points'} />
