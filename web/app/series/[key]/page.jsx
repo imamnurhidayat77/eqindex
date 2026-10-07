@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getJSON } from '../../../lib/api';
-import { SeriesMatrixTable } from '../../../components/SeriesTables';
+import { SeriesStandingsTable } from '../../../components/SeriesTables';
 import { EmptyState } from '../../../components/EmptyState';
 
 export const revalidate = 30;
@@ -27,7 +27,7 @@ export default async function SeriesPage({ params }) {
       </div>
     );
   }
-  const { info, standings, events, rounds } = d.data;
+  const { info, standings, events } = d.data;
   const name = info?.display_name || standings[0]?.series_name || key;
 
   const horseMap = {};
@@ -43,7 +43,6 @@ export default async function SeriesPage({ params }) {
   }));
 
   const leader = table[0] || null;
-  const evLabels = (rounds && rounds.length ? rounds : events.map((e) => e.event));
 
   return (
     <div className="text-[14px] text-slate-100">
@@ -57,10 +56,10 @@ export default async function SeriesPage({ params }) {
         <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ Points Race</span>
       </div>
 
-      <h2 className="text-[15px] font-bold">Points Matrix</h2>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Points from each qualifying event per combination.</p>
+      <h2 className="text-[15px] font-bold">Standings</h2>
+      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Best-round totals per combination — click a row for the round breakdown.</p>
       <section className="mb-6 rounded border border-line bg-card p-4">
-        <SeriesMatrixTable table={table} evLabels={evLabels} hasDropped={table.some((r) => r.dropped)} />
+        <SeriesStandingsTable table={table} />
         {!table.length && (
           <EmptyState
             icon="🏆"
