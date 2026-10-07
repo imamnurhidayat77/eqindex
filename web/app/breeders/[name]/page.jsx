@@ -14,6 +14,8 @@ const DEFAULT_DIVS = [
   { key: 'bronze', label: 'Bronze', min: 120, max: 130, color: '#CD7F32' },
   { key: 'silver', label: 'Silver', min: 130, max: 145, color: '#C0C0C0' },
   { key: 'gold', label: 'Gold', min: 145, max: null, color: '#FFD700' },
+  // World Cup is class-based, never height-matched — keep last.
+  { key: 'world_cup', label: 'World Cup', min: null, max: null, color: '#8E7CFF' },
 ];
 const divisionFor = (heightCm, divs) => {
   if (heightCm === null || heightCm === undefined || heightCm === '' || Number.isNaN(Number(heightCm))) return null;

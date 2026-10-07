@@ -23,6 +23,7 @@ const FIELD_DOCS = [
   ['notes', 'Free text, e.g. Withdrawn'],
   ['series_key', 'Links the class into a series engine race, e.g. demo-premier-2526'],
   ['series_key', 'Links the class into a series engine race, e.g. demo-premier-2526'],
+  ['is_world_cup', 'true|false — World Cup class, counts toward the WC division instead of height bands'],
 ];
 
 const SAMPLE_CSV = `class_name,class_type,class_date,rider_name,horse_name,placing,faults,time,time_faults,height_cm,format,status,breed,age,gender,sire,dam,breeder,country,rider_region,series_category,nationality,venue,venue_country,region,arena_type,event_name,date_start,date_end

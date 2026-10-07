@@ -8,6 +8,7 @@ const TERMS = [
   ['Open', 'Open-entry class at any height.'],
   ['Standard', 'Regular class.'],
   ['Young Horse', 'Age-restricted development classes (4–7yo).'],
+  ['World Cup', 'FEI World Cup qualifier classes — ranked in their own division, not by height.'],
   ['Amateur / Pony', 'Restricted classes.'],
   ['Clear round', 'No jumping or time faults in the round.'],
   ['Faults', 'Jumping faults (rails, refusals) plus time faults make total faults.'],

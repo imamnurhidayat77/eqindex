@@ -162,7 +162,7 @@ module.exports = function mountAdminRoutes(app) {
     'breed', 'age', 'gender', 'sire', 'dam', 'damsire', 'breeder', 'country', 'color', 'year_of_birth',
     'arena_name', 'arena_type', 'surface', 'start_time',
     'round2_faults', 'round2_time', 'jumpoff_faults', 'jumpoff_time', 'prize',
-    'start_order', 'nominated',
+    'start_order', 'nominated', 'is_world_cup',
     'region', 'rider_region', 'series_category', 'rider_series', 'nationality', 'rider_nationality',
     'venue', 'venue_country', 'arena_type', 'event_name', 'date_start', 'date_end'];
   // Optional enrichment columns (fill-if-null only — never overwrites curated data).
@@ -238,6 +238,7 @@ module.exports = function mountAdminRoutes(app) {
       r2f: col('round2_faults'), r2t: col('round2_time'),
       jof: col('jumpoff_faults'), jot: col('jumpoff_time'), prize: col('prize', 'prize_money'),
       start_order: col('start_order'), nominated: col('nominated'),
+      wc: col('is_world_cup', 'world_cup', 'wc'),
       breed: col('breed'), age: col('age'), gender: col('gender'), sire: col('sire'), dam: col('dam'),
       breeder: col('breeder'), country: col('country'),
       region: col('region'), rider_region: col('rider_region'),
@@ -378,6 +379,15 @@ module.exports = function mountAdminRoutes(app) {
           else if (['false', '0', 'no', 'n'].includes(nomRaw)) nominated = false;
           else errs.push('nominated must be true|false');
         }
+        // World Cup class flag (Charles sheet WC column): counts toward the
+        // World Cup division instead of height bands. Blank = false.
+        let worldCup = null;
+        const wcRaw = g(ci.wc).toLowerCase();
+        if (wcRaw) {
+          if (['true', '1', 'yes', 'y', 'world cup', 'wc'].includes(wcRaw)) worldCup = true;
+          else if (['false', '0', 'no', 'n'].includes(wcRaw)) worldCup = false;
+          else errs.push('is_world_cup must be true|false');
+        }
         if (errs.length) { out.push({ line: li + 1, ok: false, errors: errs }); continue; }
 
         // per-row event (multi-event files) or the request target
@@ -439,7 +449,7 @@ module.exports = function mountAdminRoutes(app) {
           enriched += await fillNull('riders', rRow.id, rEn);
         }
         const seriesKey = g(ci.series) || null;
-        let cRow = (await client.query('SELECT id, series_key, is_active FROM classes WHERE event_id = $1 AND name = $2 AND COALESCE(class_date::TEXT,\'\') = COALESCE($3,\'\')', [rEvId, cls, cdate])).rows[0];
+        let cRow = (await client.query('SELECT id, series_key, is_active, is_world_cup FROM classes WHERE event_id = $1 AND name = $2 AND COALESCE(class_date::TEXT,\'\') = COALESCE($3,\'\')', [rEvId, cls, cdate])).rows[0];
         const newClass = !cRow;
         if (cRow && cRow.is_active === false) {
           out.push({ line: li + 1, ok: false, errors: [`class "${cls}" is switched off — enable it in Admin → Classes`] });
@@ -448,12 +458,16 @@ module.exports = function mountAdminRoutes(app) {
         }
         if (!cRow) {
           cRow = (await client.query(
-            'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, format, series_key, arena_name, arena_type, surface, start_time, source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,\'MANUAL\') RETURNING id',
-            [rEvId, cls, cdate || null, hcm, ctype, fmt, seriesKey, cArenaName, cArenaType, cSurface, cStart])).rows[0];
+            'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, format, series_key, arena_name, arena_type, surface, start_time, is_world_cup, source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,\'MANUAL\') RETURNING id',
+            [rEvId, cls, cdate || null, hcm, ctype, fmt, seriesKey, cArenaName, cArenaType, cSurface, cStart, worldCup === true])).rows[0];
         } else {
           if (seriesKey && !cRow.series_key) {
             await client.query('UPDATE classes SET series_key = $2 WHERE id = $1', [cRow.id, seriesKey]);
             cRow.series_key = seriesKey;
+          }
+          if (worldCup === true && !cRow.is_world_cup) {
+            await client.query('UPDATE classes SET is_world_cup = true WHERE id = $1', [cRow.id]);
+            cRow.is_world_cup = true;
           }
           const fills = [];
           if (cArenaName) fills.push(['arena_name', cArenaName]);
@@ -590,7 +604,7 @@ module.exports = function mountAdminRoutes(app) {
     const q = String(req.query.q || '').trim();
     const like = `%${q}%`;
     const { rows } = await pool.query(
-      `SELECT c.id, c.name, c.class_date, c.height_cm, c.class_type, c.is_active, c.rider_category,
+      `SELECT c.id, c.name, c.class_date, c.height_cm, c.class_type, c.is_active, c.rider_category, c.is_world_cup,
          e.name AS event_name, e.season,
          (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.class_id = c.id) AS round_count
        FROM classes c JOIN events e ON e.id = c.event_id
@@ -601,7 +615,7 @@ module.exports = function mountAdminRoutes(app) {
     res.json({ data: rows });
   }));
 
-  const CLASS_FIELDS = ['class_type', 'height_cm', 'is_active', 'rider_category'];
+  const CLASS_FIELDS = ['class_type', 'height_cm', 'is_active', 'rider_category', 'is_world_cup'];
 
   app.get('/admin/visibility', needRole('ADMIN'), asyncH(async (req, res) => {
     const excluded = await excludedClassTypes();

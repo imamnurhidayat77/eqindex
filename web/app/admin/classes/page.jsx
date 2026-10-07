@@ -55,6 +55,16 @@ export default function AdminClasses() {
     setBusyId(null);
   }
 
+  async function flipWC(r) {
+    setBusyId(r.id);
+    try {
+      const updated = await call(`/admin/classes/${r.id}`, {
+        method: 'PATCH', body: JSON.stringify({ is_world_cup: !(r.is_world_cup ?? false) }),
+      });
+      setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, ...(updated || {}), is_world_cup: updated?.is_world_cup ?? !(r.is_world_cup ?? false) } : x)));
+    } catch (e) { setErr(e.message); }
+    setBusyId(null);
+  }
   async function setCategory(r, v) {
     setBusyId(r.id);
     try {
@@ -88,7 +98,7 @@ export default function AdminClasses() {
           <thead><tr>
             <th className={TH}>Class</th><th className={TH}>Event</th><th className={TH}>Date</th>
             <th className={TH}>Type</th><th className={`${TH} ${NUM}`}>Ht</th>
-            <th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Category</th><th className={TH}>Tracked</th>
+            <th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Category</th><th className={TH}>Tracked</th><th className={TH}>WC</th>
           </tr></thead>
           <tbody>
             {view.map((r) => {
@@ -115,13 +125,22 @@ export default function AdminClasses() {
                       size="sm"
                     />
                   </td>
+                  <td className={TD}>
+                    <LabeledSwitch
+                      on={!!r.is_world_cup}
+                      onFlip={() => flipWC(r)}
+                      label={`${r.name} World Cup class`}
+                      disabled={busyId === r.id}
+                      size="sm"
+                    />
+                  </td>
                 </tr>
               );
             })}
             {!view.length && !loading && (
               <TableEmpty icon="📋" title={q ? 'No classes match this search' : 'No classes recorded yet'} hint={q ? 'Try a different class or event name.' : 'Classes appear here once results are imported.'} />
             )}
-            {loading && <tr><td colSpan={8} className="px-2 py-4">
+            {loading && <tr><td colSpan={9} className="px-2 py-4">
               <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
                 {[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}
               </span>

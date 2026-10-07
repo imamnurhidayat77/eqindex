@@ -472,7 +472,7 @@ module.exports = function mountPublicRoutes(app) {
     if (!horse.rows.length) return res.status(404).json({ error: 'horse not found' });
     const stats = await pool.query('SELECT * FROM horse_stats WHERE horse_id = $1', [req.params.id]);
     const history = await pool.query(
-      `SELECT rr.*, c.name AS class_name, e.name AS event_name, c.class_date, r.name AS rider, r.slug AS rider_slug
+      `SELECT rr.*, c.name AS class_name, e.name AS event_name, c.class_date, c.is_world_cup, r.name AS rider, r.slug AS rider_slug
        FROM round_results rr
        JOIN classes c ON c.id = rr.class_id
        JOIN events e ON e.id = rr.event_id
@@ -542,7 +542,7 @@ module.exports = function mountPublicRoutes(app) {
     if (!rider.rows.length) return res.status(404).json({ error: 'rider not found' });
     const stats = await pool.query('SELECT * FROM rider_stats WHERE rider_id = $1', [req.params.id]);
     const history = await pool.query(
-      `SELECT rr.*, c.name AS class_name, e.name AS event_name, c.class_date, h.name AS horse, h.slug AS horse_slug
+      `SELECT rr.*, c.name AS class_name, e.name AS event_name, c.class_date, c.is_world_cup, h.name AS horse, h.slug AS horse_slug
        FROM round_results rr
        JOIN classes c ON c.id = rr.class_id
        JOIN events e ON e.id = rr.event_id

@@ -59,6 +59,8 @@ const DEFAULT_DIVS = [
   { key: 'bronze', label: 'Bronze', min: 120, max: 130, color: '#CD7F32' },
   { key: 'silver', label: 'Silver', min: 130, max: 145, color: '#C0C0C0' },
   { key: 'gold', label: 'Gold', min: 145, max: null, color: '#FFD700' },
+  // World Cup is class-based, never height-matched — keep last.
+  { key: 'world_cup', label: 'World Cup', min: null, max: null, color: '#8E7CFF' },
 ];
 const divisionFor = (heightCm, divs) => {
   if (heightCm === null || heightCm === undefined || heightCm === '' || Number.isNaN(Number(heightCm))) return null;
@@ -214,7 +216,8 @@ export default async function RiderProfile({ params, searchParams }) {
 
   // ---- divisions (same engine as horse profile) ----
   const divFilter = (searchParams && searchParams.div) || '';
-  const divOf = (x) => divisionFor(x.height_cm, divisions)?.key || '';
+  // World Cup flag wins over height bands (Charles sheet WC column).
+  const divOf = (x) => (x.is_world_cup ? 'world_cup' : divisionFor(x.height_cm, divisions)?.key || '');
   const divSummary = divisions
     .map((d) => {
       const rs = history.filter((x) => divOf(x) === d.key);
@@ -493,7 +496,7 @@ export default async function RiderProfile({ params, searchParams }) {
           </tr></thead>
           <tbody>
             {roundHistory.map((x) => {
-              const div = divisionFor(x.height_cm, divisions);
+              const div = divisions.find((d) => d.key === divOf(x)) || null;
               return (
                 <tr key={x.id} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
                   <td className="whitespace-nowrap px-3 py-2.5">
