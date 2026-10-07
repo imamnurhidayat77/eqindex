@@ -901,6 +901,7 @@ module.exports = function mountPublicRoutes(app) {
       FROM keys k
       LEFT JOIN series_info i ON i.series_key = k.series_key
       LEFT JOIN live l ON l.series_key = k.series_key
+      WHERE COALESCE(l.classes, 0) > 0
       ORDER BY l.starts DESC NULLS LAST, k.series_key`
     );
     res.json({ data: rows });
@@ -1492,6 +1493,7 @@ module.exports = function mountPublicRoutes(app) {
          GROUP BY h.breeder, e.name, e.id`, [excl])
       : await pool.query(
         `SELECT r.name AS rider, h.name AS horse, e.name AS event, e.id AS event_id,
+           c.id AS class_id, c.name AS class_name,
            MIN(c.class_date) AS event_date, SUM(rr.points)::INT AS pts, COUNT(*)::INT AS rounds
          FROM round_results rr
          JOIN classes c ON c.id = rr.class_id
@@ -1499,19 +1501,23 @@ module.exports = function mountPublicRoutes(app) {
          JOIN riders r ON r.id = rr.rider_id
          JOIN horses h ON h.id = rr.horse_id
          WHERE c.series_key = ANY($1) AND ${vis}
-         GROUP BY r.name, h.name, e.name, e.id`, [keys]);
+         GROUP BY r.name, h.name, e.name, e.id, c.id, c.name`, [keys]);
+      // Charles rule: the best-N limit applies to competition ROUNDS, so
+      // each class is its own score (first round + jump-off are never split).
+      const roundLabel = (row) => `${row.event} — ${row.class_name}`;
       const byCombo = {};
       for (const row of rows) {
         const k = isBreeder ? `breeder||${row.breeder}` : `${row.rider}||${row.horse}`;
         (byCombo[k] ||= (isBreeder ? { breeder: row.breeder, events: {}, rounds: 0 }
           : { rider: row.rider, horse: row.horse, events: {}, rounds: 0 }));
-        byCombo[k].events[row.event] = (byCombo[k].events[row.event] || 0) + row.pts;
+        const rk = isBreeder ? row.event : roundLabel(row);
+        byCombo[k].events[rk] = (byCombo[k].events[rk] || 0) + row.pts;
         byCombo[k].rounds += row.rounds;
       }
       const n = (() => {
         if (cfg && (cfg.bestOf || cfg.sliding || cfg.seasonTotal)) {
           if (cfg.seasonTotal) return null; // breeder: count everything
-          const held = new Set(rows.map((r) => r.event_id)).size;
+          const held = new Set(rows.map((r) => r.class_id)).size;
           return seriesCountFor(cfg, held);
         }
         return info.best_of || null;
@@ -1533,6 +1539,18 @@ module.exports = function mountPublicRoutes(app) {
       events = Object.values(evMap)
         .map((e) => ({ ...e, completed: (e.date || '') < today }))
         .sort((a, b) => (a.date || '') < (b.date || '') ? -1 : 1);
+      // Matrix columns: one per competition round (Charles: the limit
+      // applies to rounds, not events). Breeder mode keeps event columns.
+      const roundSeen = new Map();
+      for (const row of rows) {
+        const lbl = isBreeder ? row.event : roundLabel(row);
+        if (!roundSeen.has(lbl) || String(row.event_date || '') < String(roundSeen.get(lbl) || '')) {
+          roundSeen.set(lbl, row.event_date || null);
+        }
+      }
+      var roundLabels = [...roundSeen.entries()]
+        .sort((a, b) => String(a[1] || '') < String(b[1] || '') ? -1 : 1)
+        .map(([lbl]) => lbl);
       source = 'independent';
     } else {
       const { rows } = await pool.query(
@@ -1551,6 +1569,6 @@ module.exports = function mountPublicRoutes(app) {
     const lastCalc = info?.calculated_at
       || (await pool.query('SELECT MAX(imported_at) AS m FROM series_standings WHERE series_key = $1', [key])).rows[0]?.m
       || null;
-    res.json({ data: { key, info, standings, events, source, last_calculated: lastCalc } });
+    res.json({ data: { key, info, standings, events, rounds: typeof roundLabels !== 'undefined' ? roundLabels : [], source, last_calculated: lastCalc } });
   }));
 };

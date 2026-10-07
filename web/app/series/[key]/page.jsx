@@ -27,7 +27,7 @@ export default async function SeriesPage({ params }) {
       </div>
     );
   }
-  const { info, standings, events } = d.data;
+  const { info, standings, events, rounds } = d.data;
   const name = info?.display_name || standings[0]?.series_name || key;
 
   const horseMap = {};
@@ -43,7 +43,7 @@ export default async function SeriesPage({ params }) {
   }));
 
   const leader = table[0] || null;
-  const evLabels = events.map((e) => e.event);
+  const evLabels = (rounds && rounds.length ? rounds : events.map((e) => e.event));
 
   return (
     <div className="text-[14px] text-slate-100">

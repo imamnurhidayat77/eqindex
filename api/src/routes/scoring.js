@@ -187,6 +187,7 @@ async function previewEsnz(rules, season) {
       [season, rules]);
     const { rows } = await client.query(
       `SELECT c.series_key, r.name AS rider, h.name AS horse, e.name AS event,
+          c.name AS class_name,
           e.event_kind, SUM(rr.points)::INT AS pts, COUNT(*)::INT AS rounds
        FROM round_results rr
        JOIN classes c ON c.id = rr.class_id
@@ -194,19 +195,21 @@ async function previewEsnz(rules, season) {
        JOIN riders r ON r.id = rr.rider_id
        JOIN horses h ON h.id = rr.horse_id
        WHERE e.season = $1 AND rr.points_version = -1
-       GROUP BY c.series_key, r.name, h.name, e.name, e.event_kind`,
+       GROUP BY c.series_key, r.name, h.name, e.name, c.name, e.event_kind`,
       [season]);
     const rescored = rows.reduce((s, r) => s + Number(r.rounds), 0);
     const scored = rows.filter((r) => Number(r.pts) > 0);
     await client.query('ROLLBACK');
-    // aggregate per series-key: best event totals per combo, then best-N
+    // aggregate per series-key: best ROUND totals per combo, then best-N
+    // (Charles: the limit applies to competition rounds, not events).
     const bySeries = {};
     for (const r of scored) {
       if (!r.series_key) continue;
       const k = `${r.rider}||${r.horse}`;
       ((bySeries[r.series_key] ||= {})[k] ||= { rider: r.rider, horse: r.horse, events: {} });
       const combo = bySeries[r.series_key][k];
-      combo.events[r.event] = (combo.events[r.event] || 0) + Number(r.pts);
+      const rk = `${r.event} — ${r.class_name}`;
+      combo.events[rk] = (combo.events[rk] || 0) + Number(r.pts);
     }
     const tables = {};
     for (const [key, combos] of Object.entries(bySeries)) {

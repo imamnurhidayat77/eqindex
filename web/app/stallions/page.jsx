@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
 import { CARD, H1, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
@@ -72,7 +73,7 @@ export default function Stallions() {
               return (
                 <tr key={x.stallion}>
                   <td className={rank === 1 && safePage === 1 ? 'text-gold font-bold' : 'text-muted'}>#{rank}</td>
-                  <td className={TD}><b>{x.stallion}</b></td>
+                  <td className={TD}><Link href={`/stallions/${encodeURIComponent(x.stallion)}`} className="text-white font-semibold">{x.stallion}</Link></td>
                   <td className={`${TD} ${NUM} text-muted`}>{x.offspring}</td>
                   <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{x.total_points}</b></td>
                   <td className={`${TD} ${NUM} text-muted`}>{x.avg_per_offspring}</td>
