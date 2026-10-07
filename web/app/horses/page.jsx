@@ -10,7 +10,7 @@ import { useSeason } from '../../components/global';
 import Dropdown from '../../components/Dropdown';
 
 const DEF = { q: '', season: '', region: '', arena: '', height: '', minStarts: '5' };
-const TABS = [['rating', 'Rating'], ['points', 'Points'], ['series', 'Series'], ['clear', 'Clear %']];
+const TABS = [['rating', 'Rating'], ['series', 'Series'], ['clear', 'Clear %']];
 const AGE_GROUPS = [['', 'All ages'], ['5', '5YO'], ['6', '6YO'], ['7', '7YO'], ['8', '8YO'], ['9+', '9 & over']];
 // NZ age: season starting year minus birth year (birthday 1 Aug).
 const horseAge = (yob, season) => {
@@ -51,10 +51,7 @@ export default function Horses() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Rating tab: Model B best-12 (global, no slice filters).
-  // Points tab: series points (strict scope — non-series horses score 0).
-  // Points are sums, not rates — no thin-sample problem, so the starts guard
-  // does NOT apply here (it would hide genuine series leaders with few starts).
+  // Rating tab: best-12 (global, no slice filters).
   // Clear tab: factual clear-rate stat (info only, min 5 starts).
   useEffect(() => {
     if (tab === 'series') return;
@@ -68,9 +65,7 @@ export default function Horses() {
       return;
     }
     setLoading(true);
-    const minStarts = tab === 'points' ? '0' : f.minStarts;
-    const p = new URLSearchParams({ limit: '500', min_starts: minStarts, ...heightParams(f.height) });
-    if (tab === 'points') p.set('metric', 'points');
+    const p = new URLSearchParams({ limit: '500', min_starts: f.minStarts, ...heightParams(f.height) });
     if (f.season) p.set('season', f.season);
     if (f.region) p.set('region', f.region);
     if (f.arena) p.set('arena', f.arena);
@@ -123,7 +118,7 @@ export default function Horses() {
   return (
     <>
       <h1 className={H1}>Horses</h1>
-      <p className={SUB}>{tab === 'rating' ? 'Form rating — every ranked horse on the NZ circuit.' : 'Series points — every ranked horse on the NZ circuit.'}</p>
+      <p className={SUB}>{tab === 'rating' ? 'Form rating — every ranked horse on the NZ circuit.' : tab === 'series' ? 'Best-of series standings per series.' : 'Clear-rate statistics across the circuit.'}</p>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <div className="flex gap-1 bg-card2 border border-line rounded p-1 overflow-x-auto w-fit">
           {TABS.map(([k, lbl]) => (
@@ -162,7 +157,7 @@ export default function Horses() {
           <span className="ml-auto text-[12px] text-faint">Best-12 · min 10 rounds to rank · <Link href="/standings" className="text-sky no-underline hover:underline">Combination standings →</Link></span>
         </div>
       ) : (
-        <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} showMinStarts={tab !== 'points'} />
+        <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} showMinStarts />
       )}
       <section className={CARD}>
         <div className="overflow-x-auto">
@@ -170,7 +165,6 @@ export default function Horses() {
           <thead><tr>
             <th className={TH}>Rank</th><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Age</th>
             {tab === 'rating' && (<><th className={`${TH} ${NUM}`}>Rating</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Form</th></>)}
-            {tab === 'points' && (<><th className={`${TH} ${NUM}`}>Points</th><th className={`${TH} ${NUM}`}>Wins</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Starts</th></>)}
             {tab === 'series' && (<><th className={TH}>Rider</th><th className={`${TH} ${NUM}`}>Total</th><th className={`${TH} ${NUM}`}>Dropped</th></>)}
             {tab === 'clear' && (<><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th><th className={`${TH} ${NUM}`}>Starts</th></>)}
           </tr></thead>
@@ -190,12 +184,6 @@ export default function Horses() {
                     <td className={`${TD} ${NUM} text-muted`}>{x.rounds}</td>
                     <td className={`${TD} text-muted text-[12px]`}>{x.eligible ? (x.form_score === null ? '' : `form ${Number(x.form_score).toFixed(1)}`) : 'building form'}</td>
                   </>)}
-                  {tab === 'points' && (<>
-                    <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{x.total_points ?? 0}</b></td>
-                    <td className={`${TD} ${NUM} text-muted`}>{x.wins ?? 0}</td>
-                    <td className={`${TD} ${NUM} text-moss`}>{x.clear_pct === null || x.clear_pct === undefined ? '–' : `${Number(x.clear_pct).toFixed(1)}%`}</td>
-                    <td className={`${TD} ${NUM} text-muted`}>{x.starts}</td>
-                  </>)}
                   {tab === 'series' && (<>
                     <td className={`${TD} text-muted`}>{x.rider}</td>
                     <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{x.total}</b></td>
@@ -211,7 +199,7 @@ export default function Horses() {
             })}
             {!view.length && (
               loading ? (
-                <tr><td colSpan={tab === 'series' ? 5 : tab === 'rating' ? 6 : 7} className="px-2 py-4">
+                <tr><td colSpan={tab === 'series' ? 5 : 6} className="px-2 py-4">
                   <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
                     {[0, 1, 2].map((k) => <span key={k} className="sk h-3.5 w-full" />)}
                   </span>
