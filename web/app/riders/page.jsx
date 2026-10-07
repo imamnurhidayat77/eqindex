@@ -91,7 +91,7 @@ export default function Riders() {
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
             <input value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="Rider…"
               className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 200 }} /></label>
-          <span className="ml-auto text-[12px] text-faint">Model B best-12 · all horses · all seasons</span>
+          <span className="ml-auto text-[12px] text-faint">Model B best-12 · min 20 rounds to rank</span>
         </div>
       ) : (
       <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} categories={cats} showCategory />
@@ -109,10 +109,10 @@ export default function Riders() {
               const rank = (safePage - 1) * perPage + i + 1;
               return (
                 <tr key={x.rider_id}>
-                  <td className={rank === 1 && safePage === 1 ? 'rank1' : ''}>#{rank}</td>
+                  <td className={rank === 1 && safePage === 1 ? 'rank1' : ''}>{tab === 'rating' && !x.eligible ? '–' : `#${rank}`}</td>
                   <td className={TD}><Link href={`/riders/${x.rider_slug || x.rider_id}`} className="text-white font-semibold">{x.rider}</Link></td>
                   {tab === 'rating' ? (<>
-                    <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{Number(x.best12).toFixed(1)}</b></td>
+                    <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 && x.eligible ? 'text-gold' : ''}>{Number(x.best12).toFixed(1)}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{x.horses_ridden}</td>
                     <td className={`${TD} ${NUM} text-muted`}>{x.rounds}</td>
                     <td className={`${TD} text-muted text-[12px]`}>{x.eligible ? (x.form_score === null ? '' : `form ${Number(x.form_score).toFixed(1)}`) : 'building form'}</td>

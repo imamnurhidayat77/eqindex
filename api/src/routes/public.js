@@ -1383,7 +1383,7 @@ module.exports = function mountPublicRoutes(app) {
         FROM modelb_horse m
         JOIN horses h ON h.id = m.horse_id
         LEFT JOIN modelb_rank_horse g ON g.horse_id = m.horse_id
-        ORDER BY m.rank LIMIT $1`, [limit]);
+        ORDER BY g.eligible DESC NULLS LAST, m.rank LIMIT $1`, [limit]);
     res.json({ data: rows, metric: 'modelb' });
   }));
   app.get('/rankings/modelb/riders', asyncH(async (req, res) => {
@@ -1396,7 +1396,7 @@ module.exports = function mountPublicRoutes(app) {
         FROM modelb_rider m
         JOIN riders r ON r.id = m.rider_id
         LEFT JOIN modelb_rank_rider g ON g.rider_id = m.rider_id
-        ORDER BY m.rank LIMIT $1`, [limit]);
+        ORDER BY g.eligible DESC NULLS LAST, m.rank LIMIT $1`, [limit]);
     res.json({ data: rows, metric: 'modelb' });
   }));
 

@@ -125,8 +125,13 @@ export default async function RiderProfile({ params, searchParams }) {
   const riderPoints = ptRow ? Number(ptRow.total_points) : null;
   const mbRow = (mbBoard.data || []).find((x) => x.rider_id === r.id || x.rider_id === params.id);
   const riderRating = mbRow ? Number(mbRow.best12) : null;
-  const formRank = fg?.data?.rank ?? mbRow?.rank ?? null;
-  const formEligible = fg?.data?.eligible ?? mbRow?.eligible ?? null;
+  // Rank only counts once the 20-round form window is full — never fall back
+  // to the ungated best-12 order.
+  const formRank = fg?.data?.rank ?? null;
+  const formEligible = fg?.data?.eligible ?? null;
+  const formMin = fg?.data?.window?.min_n ?? 20;
+  const formRounds = mbRow ? Number(mbRow.rounds) || 0 : 0;
+  const roundsNeeded = !formEligible && riderRating !== null ? Math.max(0, formMin - formRounds) : 0;
 
   // ---- ranks (by clear rate) ----
   const ranked = (allRiders.data || [])
@@ -323,6 +328,9 @@ export default async function RiderProfile({ params, searchParams }) {
             <div className="text-center">
               <div className="text-[26px] font-extrabold leading-none tabular-nums text-gold">{riderRating === null ? '–' : riderRating.toFixed(1)}</div>
               <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Rating{formRank ? ` · #${formRank}` : ''}</div>
+              {!!roundsNeeded && (
+                <div className="mt-1 text-[10px] text-faint">{roundsNeeded} more round{roundsNeeded === 1 ? '' : 's'} to rank</div>
+              )}
             </div>
             <div className="text-center">
               <div className="text-[26px] font-extrabold leading-none tabular-nums">{riderPoints === null ? '–' : riderPoints}</div>

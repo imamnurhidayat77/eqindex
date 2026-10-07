@@ -93,8 +93,13 @@ export default async function HorseProfile({ params, searchParams }) {
   const horsePoints = ptRow ? Number(ptRow.total_points) : null;
   const mbRow = (mbBoard.data || []).find((x) => x.horse_id === h.id || x.horse_id === params.id);
   const horseRating = mbRow ? Number(mbRow.best12) : null;
-  const formRank = fg?.data?.rank ?? mbRow?.rank ?? null;
-  const formEligible = fg?.data?.eligible ?? mbRow?.eligible ?? null;
+  // Rank only counts once the 10-round form window is full — never fall back
+  // to the ungated best-12 order.
+  const formRank = fg?.data?.rank ?? null;
+  const formEligible = fg?.data?.eligible ?? null;
+  const formMin = fg?.data?.window?.min_n ?? 10;
+  const formRounds = mbRow ? Number(mbRow.rounds) || 0 : 0;
+  const roundsNeeded = !formEligible && horseRating !== null ? Math.max(0, formMin - formRounds) : 0;
 
   const chrono = [...history].reverse();
   const sparkFaults = chrono.map((r) => num(r.total_faults));
@@ -190,6 +195,9 @@ export default async function HorseProfile({ params, searchParams }) {
               <div className="text-center">
                 <div className="text-[26px] font-extrabold leading-none tabular-nums text-gold">{horseRating === null ? '–' : horseRating.toFixed(1)}</div>
                 <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Rating{formRank ? ` · #${formRank}` : ''}</div>
+                {!!roundsNeeded && (
+                  <div className="mt-1 text-[10px] text-faint">{roundsNeeded} more round{roundsNeeded === 1 ? '' : 's'} to rank</div>
+                )}
               </div>
               <div className="text-center">
                 <div className="text-[26px] font-extrabold leading-none tabular-nums">{horsePoints === null ? '–' : horsePoints}</div>
