@@ -68,11 +68,10 @@ const divisionFor = (heightCm, divs) => {
 
 export default async function HorseProfile({ params, searchParams }) {
   const hBand = (searchParams && searchParams.h) || '';
-  const [p, heights, splits, ptBoard, mbBoard, fg, scoring] = await Promise.all([
+  const [p, heights, splits, mbBoard, fg, scoring] = await Promise.all([
     getJSON(`/horses/${params.id}`).catch(() => null),
     getJSON('/height-stats?limit=200').catch(() => ({ data: [] })),
     getJSON(`/horses/${params.id}/splits`).catch(() => ({ data: [] })),
-    getJSON('/rankings/horses?limit=200&metric=points').catch(() => ({ data: [] })),
     getJSON('/rankings/modelb/horses?limit=500').catch(() => ({ data: [] })),
     getJSON(`/formguide/horse/${params.id}`).catch(() => null),
     getJSON('/scoring/active').catch(() => null),
@@ -91,8 +90,6 @@ export default async function HorseProfile({ params, searchParams }) {
   const wins = num(s?.wins ?? history.filter((r) => Number(r.finish_place) === 1).length);
   const top10 = history.filter((r) => Number(r.finish_place) >= 1 && Number(r.finish_place) <= 10).length;
   const eventsEntered = new Set(history.map((r) => r.event_id || r.event_name)).size;
-  const ptRow = (ptBoard.data || []).find((x) => x.horse_id === h.id || x.horse_id === params.id);
-  const horsePoints = ptRow ? Number(ptRow.total_points) : null;
   const mbRow = (mbBoard.data || []).find((x) => x.horse_id === h.id || x.horse_id === params.id);
   const horseRating = mbRow ? Number(mbRow.best12) : null;
   // Rank only counts once the 10-round form window is full — never fall back
@@ -117,7 +114,6 @@ export default async function HorseProfile({ params, searchParams }) {
     { label: 'Avg Faults', delta: '-18%', value: avgFaults.toFixed(2), data: sparkFaults, color: '#00C853', good: true },
     { label: 'Wins', delta: '+2', value: String(wins), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) === 1).length), color: '#FFD700' },
     { label: 'Top 10 Finishes', delta: '+4', value: String(top10), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) <= 10 && Number(x.finish_place) >= 1).length), color: '#FFD700' },
-    { label: 'Points', delta: '', value: horsePoints === null ? '–' : String(horsePoints), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
   ];
 
   const bandHistory = history.filter((r) => {
@@ -201,10 +197,6 @@ export default async function HorseProfile({ params, searchParams }) {
                 {!!roundsNeeded && (
                   <div className="mt-1 text-[10px] text-faint">needs {roundsNeeded} more round{roundsNeeded === 1 ? '' : 's'} to rank</div>
                 )}
-              </div>
-              <div className="text-center">
-                <div className="text-[26px] font-extrabold leading-none tabular-nums">{horsePoints === null ? '–' : horsePoints}</div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Points</div>
               </div>
               <WatchButton entityType="horse" entityId={params.id} />
             </div>

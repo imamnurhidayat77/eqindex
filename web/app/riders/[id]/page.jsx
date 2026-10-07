@@ -95,14 +95,13 @@ function groupBest(rows, keyFn, labelFn) {
 }
 
 export default async function RiderProfile({ params, searchParams }) {
-  const [p, allRiders, events, allHorses, heightStats, splits, ptBoard, mbBoard, fg, scoring] = await Promise.all([
+  const [p, allRiders, events, allHorses, heightStats, splits, mbBoard, fg, scoring] = await Promise.all([
     getJSON(`/riders/${params.id}`).catch(() => null),
     getJSON('/rankings/riders?limit=100').catch(() => ({ data: [] })),
     getJSON('/events?limit=100&has_data=1').catch(() => ({ data: [] })),
     getJSON('/rankings/horses?limit=100').catch(() => ({ data: [] })),
     getJSON('/height-stats?limit=200').catch(() => ({ data: [] })),
     getJSON(`/riders/${params.id}/splits`).catch(() => ({ data: [] })),
-    getJSON('/rankings/riders?limit=200&metric=points').catch(() => ({ data: [] })),
     getJSON('/rankings/modelb/riders?limit=500').catch(() => ({ data: [] })),
     getJSON(`/formguide/rider/${params.id}`).catch(() => null),
     getJSON('/scoring/active').catch(() => null),
@@ -123,8 +122,6 @@ export default async function RiderProfile({ params, searchParams }) {
   const top10 = history.filter((x) => Number(x.finish_place) >= 1 && Number(x.finish_place) <= 10).length;
   const horsesRidden = num(s?.horses_ridden ?? new Set(history.map((x) => x.horse_id || x.horse)).size);
   const eventsEntered = new Set(history.map((x) => x.event_id || x.event_name)).size;
-  const ptRow = (ptBoard.data || []).find((x) => x.rider_id === r.id || x.rider_id === params.id);
-  const riderPoints = ptRow ? Number(ptRow.total_points) : null;
   const mbRow = (mbBoard.data || []).find((x) => x.rider_id === r.id || x.rider_id === params.id);
   const riderRating = mbRow ? Number(mbRow.best12) : null;
   // Rank only counts once the 20-round form window is full — never fall back
@@ -207,7 +204,6 @@ export default async function RiderProfile({ params, searchParams }) {
     { label: 'Avg Faults', value: avgFaults.toFixed(2), data: sparkFaults, color: '#00C853' },
     { label: 'Wins', value: String(wins), data: chrono.map((_, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) === 1).length), color: '#FFD700' },
     { label: 'Top 10 Finishes', value: String(top10), data: chrono.map((_, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) <= 10 && Number(x.finish_place) >= 1).length), color: '#FFD700' },
-    { label: 'Points', value: riderPoints === null ? '–' : String(riderPoints), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
   ];
 
   // ---- partnerships ----
@@ -334,10 +330,6 @@ export default async function RiderProfile({ params, searchParams }) {
               {!!roundsNeeded && (
                 <div className="mt-1 text-[10px] text-faint">needs {roundsNeeded} more round{roundsNeeded === 1 ? '' : 's'} to rank</div>
               )}
-            </div>
-            <div className="text-center">
-              <div className="text-[26px] font-extrabold leading-none tabular-nums">{riderPoints === null ? '–' : riderPoints}</div>
-              <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Points</div>
             </div>
           </div>
         </section>
