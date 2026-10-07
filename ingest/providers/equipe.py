@@ -186,6 +186,12 @@ def main():
                     continue
                 p1, p2 = phase_results(s)
                 status = status_of(s, p1)
+                # start number -> start_order (series nomination rule needs
+                # it); non-numeric stays None = rule not applied.
+                try:
+                    start_order = int(str(s.get("start_no") or "").strip())
+                except (ValueError, TypeError):
+                    start_order = None
                 if status != "finished":
                     # eliminated/retired/withdrawn: no placing, pens stay 0
                     # (repo convention), times nulled (999 never stored)
@@ -202,6 +208,7 @@ def main():
                         "height_cm": height,
                         "status": status,
                         "series_key": series,
+                        "start_order": start_order,
                     }
                 else:
                     rec = {
@@ -218,6 +225,7 @@ def main():
                         "height_cm": height,
                         "status": status,
                         "series_key": series,
+                        "start_order": start_order,
                         "prize": s.get("prize"),
                     }
                     if p2.get("fence_faults") is not None or p2.get("time") is not None:

@@ -50,6 +50,10 @@ function validateParams(p) {
   if (!p.bestTen || !(Number(p.bestTen.n) > 0)) return 'bestTen.n must be > 0';
   // categories are optional here — managed from the dedicated Categories menu.
   if (p.categories !== undefined && !Array.isArray(p.categories)) return 'categories must be an array';
+  if (p.modelb !== undefined) {
+    const e = validateModelb(p.modelb);
+    if (e) return e;
+  }
   return null;
 }
 
@@ -79,6 +83,9 @@ function validateEsnz(p, ez) {
   }
   if (ez.zeroFaultThreshold !== null && ez.zeroFaultThreshold !== undefined
     && !(Number(ez.zeroFaultThreshold) > 0)) return 'esnz.zeroFaultThreshold must be > 0 or null';
+  if (ez.nominationRule !== undefined && typeof ez.nominationRule !== 'boolean') {
+    return 'esnz.nominationRule must be a boolean';
+  }
   const yh = ez.youngHorse || {};
   for (const k of ['firstClear', 'doubleClearTotal']) {
     if (!Number.isFinite(Number(yh[k]))) return `esnz.youngHorse.${k} must be a number`;
@@ -106,6 +113,50 @@ function validateEsnz(p, ez) {
       }
     }
     if (cfg.sources !== undefined && !Array.isArray(cfg.sources)) return `esnz.series.${key}.sources must be an array`;
+  }
+  if (p.modelb !== undefined) {
+    const e = validateModelb(p.modelb);
+    if (e) return e;
+  }
+  return null;
+}
+// Model B weights (Charles calculator): mode-independent, lives beside
+// esnz/eqindex blocks. DB functions read the active version via modelb_cfg().
+function validateModelb(mb) {
+  if (!mb || typeof mb !== 'object') return 'modelb must be an object';
+  const num = (v) => Number.isFinite(Number(v));
+  if (!Array.isArray(mb.heightBase) || !mb.heightBase.length
+    || !mb.heightBase.every((r) => Array.isArray(r) && r.length === 2 && r.every(Number.isFinite)))
+    return 'modelb.heightBase must be [[cm, pts], ...]';
+  for (const k of ['fromCm', 'base', 'perCm']) {
+    if (!num((mb.lowHeight || {})[k])) return `modelb.lowHeight.${k} must be a number`;
+  }
+  if (!mb.faults || typeof mb.faults !== 'object') return 'modelb.faults must be an object';
+  for (const [k, v] of Object.entries(mb.faults)) {
+    if (!/^\d+$/.test(k) && k !== 'over16') return 'modelb.faults keys must be fault counts or over16';
+    if (!num(v)) return `modelb.faults.${k} must be a number`;
+  }
+  for (const k of ['elimMult', 'placeK', 'placeExp', 'fieldMinBonus', 'fieldBase', 'fieldFull', 'diffK', 'dcBonus', 'bestN']) {
+    if (!num(mb[k])) return `modelb.${k} must be a number`;
+  }
+  for (const k of ['HOY', 'Finals', 'PremierTiers']) {
+    if (!Array.isArray((mb.eventProfiles || {})[k])) return `modelb.eventProfiles.${k} must be an array`;
+  }
+  for (const k of ['HOY', 'Finals', 'Premier', 'Other']) {
+    if (!num((mb.eventMult || {})[k])) return `modelb.eventMult.${k} must be a number`;
+  }
+  if (!mb.classTypeMult || typeof mb.classTypeMult !== 'object') return 'modelb.classTypeMult must be an object';
+  for (const [k, v] of Object.entries(mb.classTypeMult)) {
+    if (!num(v)) return `modelb.classTypeMult.${k} must be a number`;
+  }
+  for (const k of ['horse', 'rider']) {
+    const w = (mb.rankWindows || {})[k] || {};
+    for (const f of ['last', 'drop', 'min']) {
+      if (!(Number(w[f]) >= 0) || !Number.isInteger(Number(w[f]))) {
+        return `modelb.rankWindows.${k}.${f} must be a non-negative integer`;
+      }
+    }
+    if (Number(w.drop) > Number(w.last)) return `modelb.rankWindows.${k}.drop cannot exceed last`;
   }
   return null;
 }
@@ -321,6 +372,49 @@ module.exports = function mountScoringRoutes(app) {
       bustRulesCache();
       audit(req, 'scoring.activate', 'scoring', req.params.id, { season, version, recomputed });
       res.json({ ok: true, recomputed });
+    } catch (e) {
+      await pool.query('ROLLBACK');
+      throw e;
+    }
+  }));
+
+  // ---- EQIndex rating (Model B): single live config, no versions UI ----
+  // GET returns the full active version row (params included).
+  // PUT {modelb} clones the active version with replaced modelb weights and
+  // activates it in one step. Series points are untouched (no recompute:
+  // rating views read live), each save is a new audited version.
+  app.get('/admin/rating/active', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT * FROM scoring_versions WHERE status = 'active' ORDER BY season DESC LIMIT 1`);
+    if (!rows.length) return res.status(404).json({ error: 'no active version — activate one on the Scoring page first' });
+    res.json({ data: rows[0] });
+  }));
+
+  app.put('/admin/rating/active', needRole('ADMIN'), asyncH(async (req, res) => {
+    const cur = await pool.query(
+      `SELECT * FROM scoring_versions WHERE status = 'active' ORDER BY season DESC LIMIT 1`);
+    if (!cur.rows.length) return res.status(404).json({ error: 'no active version — activate one on the Scoring page first' });
+    const active = cur.rows[0];
+    const { modelb } = req.body || {};
+    if (!modelb || typeof modelb !== 'object') return res.status(400).json({ error: 'need {modelb}' });
+    const params = { ...active.params, modelb };
+    const err = validateParams(params);
+    if (err) return res.status(400).json({ error: err });
+    const max = await pool.query(
+      'SELECT COALESCE(MAX(version), 0) + 1 AS v FROM scoring_versions WHERE season = $1', [active.season]);
+    await pool.query('BEGIN');
+    try {
+      await pool.query(`UPDATE scoring_versions SET status = 'archived' WHERE id = $1`, [active.id]);
+      const { rows } = await pool.query(
+        `INSERT INTO scoring_versions (season, version, status, label, params, created_by)
+         VALUES ($1, $2, 'active', $3, $4, $5) RETURNING *`,
+        [active.season, max.rows[0].v, `rating update (from v${active.version})`,
+         params, req.authUser.id]);
+      await pool.query(`UPDATE scoring_versions SET activated_at = NOW() WHERE id = $1`, [rows[0].id]);
+      await pool.query('COMMIT');
+      bustRulesCache();
+      audit(req, 'rating.update', 'scoring', rows[0].id, { season: active.season, version: rows[0].version });
+      res.json({ data: rows[0] });
     } catch (e) {
       await pool.query('ROLLBACK');
       throw e;

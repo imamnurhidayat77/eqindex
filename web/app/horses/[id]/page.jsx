@@ -66,11 +66,13 @@ const divisionFor = (heightCm, divs) => {
 
 export default async function HorseProfile({ params, searchParams }) {
   const hBand = (searchParams && searchParams.h) || '';
-  const [p, heights, splits, ptBoard, scoring] = await Promise.all([
+  const [p, heights, splits, ptBoard, mbBoard, fg, scoring] = await Promise.all([
     getJSON(`/horses/${params.id}`).catch(() => null),
     getJSON('/height-stats?limit=200').catch(() => ({ data: [] })),
     getJSON(`/horses/${params.id}/splits`).catch(() => ({ data: [] })),
     getJSON('/rankings/horses?limit=200&metric=points').catch(() => ({ data: [] })),
+    getJSON('/rankings/modelb/horses?limit=500').catch(() => ({ data: [] })),
+    getJSON(`/formguide/horse/${params.id}`).catch(() => null),
     getJSON('/scoring/active').catch(() => null),
   ]);
   const divisions = scoring?.data?.params?.divisions?.length ? scoring.data.params.divisions : DEFAULT_DIVS;
@@ -89,6 +91,10 @@ export default async function HorseProfile({ params, searchParams }) {
   const eventsEntered = new Set(history.map((r) => r.event_id || r.event_name)).size;
   const ptRow = (ptBoard.data || []).find((x) => x.horse_id === h.id || x.horse_id === params.id);
   const horsePoints = ptRow ? Number(ptRow.total_points) : null;
+  const mbRow = (mbBoard.data || []).find((x) => x.horse_id === h.id || x.horse_id === params.id);
+  const horseRating = mbRow ? Number(mbRow.best12) : null;
+  const formRank = fg?.data?.rank ?? mbRow?.rank ?? null;
+  const formEligible = fg?.data?.eligible ?? mbRow?.eligible ?? null;
 
   const chrono = [...history].reverse();
   const sparkFaults = chrono.map((r) => num(r.total_faults));
@@ -182,6 +188,10 @@ export default async function HorseProfile({ params, searchParams }) {
             </div>
             <div className="flex flex-col items-end gap-2.5 shrink-0">
               <div className="text-center">
+                <div className="text-[26px] font-extrabold leading-none tabular-nums text-gold">{horseRating === null ? '–' : horseRating.toFixed(1)}</div>
+                <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Rating{formRank ? ` · #${formRank}` : ''}</div>
+              </div>
+              <div className="text-center">
                 <div className="text-[26px] font-extrabold leading-none tabular-nums">{horsePoints === null ? '–' : horsePoints}</div>
                 <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Points</div>
               </div>
@@ -223,8 +233,7 @@ export default async function HorseProfile({ params, searchParams }) {
 
       {/* competition */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-[15px] font-bold">Competition Performance</h2>
-        <span className="flex items-center gap-1.5">
+        <h2 className="text-[15px] font-bold">Competition Performance</h2>        <span className="flex items-center gap-1.5">
           <ExportCsv rows={history} filename={`${h.name}-record.csv`} />
           {[['', 'All'], ['110-120', '1.10–1.20'], ['120-130', '1.20–1.30'], ['130-140', '1.30–1.40'], ['140-', '1.40m+']].map(([v, l]) => {
             const href = `/horses/${params.id}${v ? `?h=${v}` : ''}`;
@@ -236,6 +245,44 @@ export default async function HorseProfile({ params, searchParams }) {
       <section className="mb-6 rounded border border-line bg-card p-4">
         <HistoryTable rows={bandHistory} mode="horse" />
       </section>
+
+      {/* form guide — last-N rounds, drop-D worst (Charles sheet) */}
+      {fg?.data && (
+        <>
+          <h2 className="text-[15px] font-bold">Form Guide</h2>
+          <p className="mb-3 mt-0.5 text-[12.5px] text-muted">
+            {fg.data.eligible
+              ? `Ranked #${fg.data.rank} on ${fg.data.kept} counting rounds (best ${fg.data.window.last_n} minus ${fg.data.window.drop_n} drops).`
+              : `Building form — needs ${fg.data.window.min_n} rounds to rank (has ${fg.data.rounds}).`}
+          </p>
+          <section className="mb-6 rounded border border-line bg-card p-4">
+            <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[13px]">
+              <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
+                <th className="border-b border-line px-3 py-2.5 font-semibold">Date</th>
+                <th className="border-b border-line px-3 py-2.5 font-semibold">Event</th>
+                <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Ht</th>
+                <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Pl</th>
+                <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Flt</th>
+                <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Score</th>
+              </tr></thead>
+              <tbody>
+                {(fg.data.rounds_detail || []).map((r) => (
+                  <tr key={r.round_id} className={`border-b border-line/50 last:border-0 ${r.dropped ? 'opacity-45' : ''}`}>
+                    <td className="px-3 py-2 text-muted">{fmtDate(r.class_date)}</td>
+                    <td className="px-3 py-2">{r.event_name}</td>
+                    <td className="px-3 py-2 text-right text-muted">{r.height_cm ? `${(Number(r.height_cm) / 100).toFixed(2)}m` : '—'}</td>
+                    <td className="px-3 py-2 text-right">{r.finish_place ?? '—'}</td>
+                    <td className="px-3 py-2 text-right">{r.status !== 'finished' ? r.status.slice(0, 1).toUpperCase() : Number(r.total_faults)}</td>
+                    <td className="px-3 py-2 text-right font-bold tabular-nums">{r.dropped ? <s>{Number(r.modelb).toFixed(1)}</s> : Number(r.modelb).toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          </section>
+        </>
+      )}
 
       {/* division summary — rounds, clears and clear rate per division */}
       {!!divSummary.length && (

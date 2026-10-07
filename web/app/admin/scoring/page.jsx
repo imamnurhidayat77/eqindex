@@ -4,6 +4,7 @@ import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
 import Modal, { ConfirmDialog } from '../../../components/Modal';
+import { Sec, Fld, Num, Txt, Check, csvGet, csvSet, parsePairs, fmtSliding, parseSliding, fmtMult, parseMult, fmtOverride, parseOverride, MODELB_DEFAULTS, ModelBSummary } from '../../../components/ScoringForms';
 
 const stBadge = (s) => s === 'active' ? badge(BADGE.green) : s === 'draft' ? badge(BADGE.goldfill) : badge(BADGE.gray);
 
@@ -15,7 +16,10 @@ const EVENT_KINDS = ['regular', 'national_championship', 'series_final', 'island
 // Read-only summary of a rules params object (defaults or any version).
 function RulesSummary({ p }) {
   if (!p) return null;
-  if ((p.mode || 'eqindex') === 'esnz') return <EsnzSummary ez={p.esnz || {}} divisions={p.divisions} />;
+  if ((p.mode || 'eqindex') === 'esnz') return (<>
+    <EsnzSummary ez={p.esnz || {}} divisions={p.divisions} />
+    {p.modelb && <ModelBSummary mb={p.modelb} />}
+  </>);
   const divs = p.divisions || [];
   const pts = p.points || {};
   const bt = p.bestTen || {};
@@ -50,24 +54,14 @@ function EsnzSummary({ ez, divisions }) {
       <div className={row}><span>Divisions</span><span className="text-body text-right">{(divisions || []).map((d) => d.label).join(' · ') || '—'}</span></div>
       <div className={row}><span>Grand Prix scale</span><span className="text-body text-right">{(ez.scales?.grand_prix || []).join(' / ')}</span></div>
       <div className={row}><span>Premier scale</span><span className="text-body text-right">{(ez.scales?.premier || []).join(' / ')}</span></div>
-      <div className={row}><span>Rules</span><span className="text-body text-right">top {ez.placesCounted} · zero at {ez.zeroFaultThreshold ?? 'off'} faults · equal share {ez.shareEqualPlacings === false ? 'off' : 'on'}</span></div>
+      <div className={row}><span>Rules</span><span className="text-body text-right">top {ez.placesCounted} · zero at {ez.zeroFaultThreshold ?? 'off'} faults · equal share {ez.shareEqualPlacings === false ? 'off' : 'on'} · nomination {ez.nominationRule === false ? 'off' : 'on'}</span></div>
       <div className={row}><span>Young-horse clear</span><span className="text-body text-right">{ez.youngHorse?.enabled === false ? 'off' : `${ez.youngHorse?.firstClear}/${ez.youngHorse?.doubleClearTotal} on ${(ez.youngHorse?.seriesKeys || []).join(', ') || '—'}`}</span></div>
       <div className={row}><span>Series configured</span><span className="text-body text-right">{Object.keys(series).length}</span></div>
     </div>
   );
 }
 
-// ---- Series draft editor (no raw JSON) ----
-const parsePairs = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean).map((x) => {
-  const [a, b] = x.split(':').map((y) => y.trim());
-  return [a, b];
-});
-const fmtSliding = (sl) => (sl || []).map(([h, c]) => `${h}:${c}`).join(', ');
-const parseSliding = (s) => parsePairs(s).map(([h, c]) => [Number(h), Number(c)]).filter(([h, c]) => Number.isFinite(h) && Number.isFinite(c));
-const fmtMult = (arr) => (arr || []).map((m) => `${(m.eventKinds || []).join('+')}:${m.mult}`).join(', ');
-const parseMult = (s) => parsePairs(s).map(([k, m]) => ({ eventKinds: k.split('+').map((x) => x.trim()).filter(Boolean), mult: Number(m) })).filter((m) => m.eventKinds.length && Number.isFinite(m.mult));
-const fmtOverride = (arr) => (arr || []).map((o) => `${(o.eventKinds || []).join('+')}:${o.scale}`).join(', ');
-const parseOverride = (s) => parsePairs(s).map(([k, sc]) => ({ eventKinds: k.split('+').map((x) => x.trim()).filter(Boolean), scale: (sc || '').trim() })).filter((o) => o.eventKinds.length && o.scale);
+// ---- Series draft editor (no raw JSON; formatters live in ScoringForms) ----
 
 function EsnzSections({ draft, setDraft, tab }) {
   const set = (fn) => setDraft((prev) => {
@@ -109,6 +103,8 @@ function EsnzSections({ draft, setDraft, tab }) {
           <Fld label="Zero at faults ≥"><Num value={ez.zeroFaultThreshold} min={1} width={72} onChange={(v) => set((n) => { n.zeroFaultThreshold = v; })} /></Fld>
           <span className="pb-1"><Check value={ez.shareEqualPlacings !== false} label="Equal placings share points (half-up rounding)"
             onChange={(v) => set((n) => { n.shareEqualPlacings = v; })} /></span>
+          <span className="pb-1"><Check value={ez.nominationRule !== false} label="First-horse nomination (series points only for the nominated horse)"
+            onChange={(v) => set((n) => { n.nominationRule = v; })} /></span>
         </div>
         <div className="text-[11.5px] text-faint mt-2">Event kinds for overrides/multipliers: {EVENT_KINDS.join(', ')}</div>
       </Sec>)}
@@ -173,34 +169,6 @@ function AddSeriesKey({ set }) {
     </div>
   );
 }
-
-// ---- structured draft editor (no raw JSON) ----
-const Sec = ({ title, hint, children }) => (
-  <div className="rounded border border-line bg-card2/50 p-3.5 mb-3">
-    <div className="text-[13px] font-bold">{title}</div>
-    {hint && <div className="text-[12px] text-muted mt-0.5 mb-2">{hint}</div>}
-    {children}
-  </div>
-);
-const Fld = ({ label, children }) => (
-  <label className="text-[12px] text-muted flex flex-col gap-1">{label}{children}</label>
-);
-const Num = ({ value, onChange, min, step = 1, width = 88 }) => (
-  <input className={INP} type="number" min={min} step={step} style={{ width, textAlign: 'center', paddingLeft: 6, paddingRight: 6 }}
-    value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} />
-);
-const Txt = ({ value, onChange, placeholder, width }) => (
-  <input className={INP} value={value ?? ''} onChange={(e) => onChange(e.target.value)}
-    placeholder={placeholder} style={width ? { width } : { width: '100%' }} />
-);
-const Check = ({ value, onChange, label }) => (
-  <label className="text-[12px] text-muted flex items-center gap-2 cursor-pointer">
-    <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} className="accent-gold w-4 h-4" />
-    {label}
-  </label>
-);
-const csvGet = (arr) => (arr || []).join(', ');
-const csvSet = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
 // Shared divisions editor (height bands) — used by both modes.
 // Divisions are display/award bands; points always follow the series engine.
@@ -292,6 +260,7 @@ export default function AdminScoring() {
       youngHorse: { enabled: true, seriesKeys: ['young-horse-series'], firstClear: 4, doubleClearTotal: 6 },
       majorKinds: [...EVENT_KINDS.slice(1)], series: {},
     },
+    modelb: JSON.parse(JSON.stringify(MODELB_DEFAULTS)),
   };
   async function create() {
     if (!sel) return;

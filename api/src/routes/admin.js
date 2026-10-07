@@ -162,6 +162,7 @@ module.exports = function mountAdminRoutes(app) {
     'breed', 'age', 'gender', 'sire', 'dam', 'damsire', 'breeder', 'country', 'color', 'year_of_birth',
     'arena_name', 'arena_type', 'surface', 'start_time',
     'round2_faults', 'round2_time', 'jumpoff_faults', 'jumpoff_time', 'prize',
+    'start_order', 'nominated',
     'region', 'rider_region', 'series_category', 'rider_series', 'nationality', 'rider_nationality',
     'venue', 'venue_country', 'arena_type', 'event_name', 'date_start', 'date_end'];
   // Optional enrichment columns (fill-if-null only — never overwrites curated data).
@@ -236,6 +237,7 @@ module.exports = function mountAdminRoutes(app) {
       start_time: col('start_time', 'time_started'),
       r2f: col('round2_faults'), r2t: col('round2_time'),
       jof: col('jumpoff_faults'), jot: col('jumpoff_time'), prize: col('prize', 'prize_money'),
+      start_order: col('start_order'), nominated: col('nominated'),
       breed: col('breed'), age: col('age'), gender: col('gender'), sire: col('sire'), dam: col('dam'),
       breeder: col('breeder'), country: col('country'),
       region: col('region'), rider_region: col('rider_region'),
@@ -365,6 +367,17 @@ module.exports = function mountAdminRoutes(app) {
         }
         const cdate = g(ci.cdate) || null;
         if (cdate && !/^\d{4}-\d{2}-\d{2}$/.test(cdate)) errs.push('class_date must be YYYY-MM-DD');
+        const startOrder = g(ci.start_order) === '' ? null : parseInt(g(ci.start_order), 10);
+        if (g(ci.start_order) !== '' && !(startOrder >= 1)) errs.push('start_order must be a positive integer');
+        // Manual nomination lock (Charles rule): true = nominated, false =
+        // not. Blank = automatic (first horse into the ring by start_order).
+        let nominated = null;
+        const nomRaw = g(ci.nominated).toLowerCase();
+        if (nomRaw) {
+          if (['true', '1', 'yes', 'y'].includes(nomRaw)) nominated = true;
+          else if (['false', '0', 'no', 'n'].includes(nomRaw)) nominated = false;
+          else errs.push('nominated must be true|false');
+        }
         if (errs.length) { out.push({ line: li + 1, ok: false, errors: errs }); continue; }
 
         // per-row event (multi-event files) or the request target
@@ -465,10 +478,12 @@ module.exports = function mountAdminRoutes(app) {
         const ins = await client.query(
           `INSERT INTO round_results (event_id, class_id, horse_id, rider_id, jump_faults, time_faults,
             total_faults, time_seconds, finish_place, clear_round, height_cm, status, notes, source, points,
-            round2_faults, round2_time_seconds, jumpoff_faults, jumpoff_time_seconds, prize_money)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'MANUAL',0,$14,$15,$16,$17,$18) RETURNING id, points`,
+            round2_faults, round2_time_seconds, jumpoff_faults, jumpoff_time_seconds, prize_money,
+            start_order, nominated_manual)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'MANUAL',0,$14,$15,$16,$17,$18,$19,$20) RETURNING id, points`,
           [rEvId, cRow.id, hRow.id, rRow.id, faults ?? 0, tf ?? 0, tot, tsec, place,
-           status === 'finished' && tot === 0, hcm, status, g(ci.notes) || null, r2f, r2t, jof, jot, prize]);
+           status === 'finished' && tot === 0, hcm, status, g(ci.notes) || null, r2f, r2t, jof, jot, prize,
+           startOrder, nominated]);
         okCount++;
         bump(rEvId, rowEv.name, 'ok');
         // NOTE: ins.rows[0].points is the BEFORE-trigger placeholder (the

@@ -27,6 +27,7 @@ const GROUPS = [
     ['★', 'Series', 'Qual rules & official labelling', '/admin/series', false],
     ['⛉', 'Categories', 'Rider category titles & matching', '/admin/categories', false],
     ['✦', 'Scoring', 'Rules versions, preview & activate', '/admin/scoring', false],
+    ['◎', 'Rating', 'Model B weights per version', '/admin/rating', false],
     ['◐', 'Naming review', 'Ambiguous names awaiting decision', '/admin/review', 'pendingReview'],
     ['✔', 'Rider claims', 'Ownership claims awaiting approval', '/admin/claims', 'pendingClaims'],
     ['✉', 'Corrections inbox', 'Public reports awaiting triage', '/admin/corrections', false],

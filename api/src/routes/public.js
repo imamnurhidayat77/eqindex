@@ -1335,6 +1335,71 @@ module.exports = function mountPublicRoutes(app) {
     res.json({ data: rows });
   }));
 
+  // ---- Model B form guide (Charles sheet): last-N rounds, drop-D worst,
+  // min-M to rank. Windows come from params.modelb.rankWindows.
+  async function formGuide(col, id) {
+    const kind = col === 'horse_id' ? 'horse' : 'rider';
+    const w = (await pool.query('SELECT * FROM modelb_window($1)', [kind])).rows[0];
+    const rounds = (await pool.query(
+      `SELECT round_id, horse, rider, class_date, class_name, event_name,
+          event_kind, tier, height_cm, finish_place, total_faults,
+          clear_round, status, division, modelb
+        FROM modelb_form WHERE ${col} = $1
+        ORDER BY class_date DESC NULLS LAST, round_id LIMIT $2`,
+      [id, w.last_n]
+    )).rows;
+    const sorted = [...rounds].sort((a, b) => Number(a.modelb) - Number(b.modelb));
+    const dropIds = new Set(sorted.slice(0, w.drop_n).map((r) => r.round_id));
+    const kept = rounds.filter((r) => !dropIds.has(r.round_id));
+    const score = kept.reduce((s, r) => s + Number(r.modelb), 0);
+    return {
+      window: w, rounds: rounds.length, kept: kept.length,
+      eligible: rounds.length >= w.min_n,
+      rank_score: Math.round(score * 10) / 10,
+      rounds_detail: rounds.map((r) => ({ ...r, dropped: dropIds.has(r.round_id) })),
+    };
+  }
+  app.get('/formguide/horse/:id', asyncH(async (req, res) => {
+    req.params.id = await resolveId('horses', req.params.id, res);
+    if (!req.params.id) return;
+    const rank = (await pool.query(
+      'SELECT * FROM modelb_rank_horse WHERE horse_id = $1', [req.params.id])).rows[0] || null;
+    res.json({ data: { ...(await formGuide('horse_id', req.params.id)), rank: rank?.rank ?? null } });
+  }));
+  app.get('/formguide/rider/:id', asyncH(async (req, res) => {
+    req.params.id = await resolveId('riders', req.params.id, res);
+    if (!req.params.id) return;
+    const rank = (await pool.query(
+      'SELECT * FROM modelb_rank_rider WHERE rider_id = $1', [req.params.id])).rows[0] || null;
+    res.json({ data: { ...(await formGuide('rider_id', req.params.id)), rank: rank?.rank ?? null } });
+  }));
+  app.get('/rankings/modelb/horses', asyncH(async (req, res) => {
+    const { limit } = paging(req, 100, 500);
+    const { rows } = await pool.query(
+      `SELECT m.horse_id, m.horse, h.slug AS horse_slug, h.year_of_birth,
+          m.best12, m.rounds,
+          m.avg_round, m.best_round, m.rank,
+          g.eligible, g.rank_score AS form_score
+        FROM modelb_horse m
+        JOIN horses h ON h.id = m.horse_id
+        LEFT JOIN modelb_rank_horse g ON g.horse_id = m.horse_id
+        ORDER BY m.rank LIMIT $1`, [limit]);
+    res.json({ data: rows, metric: 'modelb' });
+  }));
+  app.get('/rankings/modelb/riders', asyncH(async (req, res) => {
+    const { limit } = paging(req, 100, 500);
+    const { rows } = await pool.query(
+      `SELECT m.rider_id, m.rider, r.slug AS rider_slug,
+          m.best12, m.rounds,
+          m.horses_ridden, m.avg_round, m.best_round, m.rank,
+          g.eligible, g.rank_score AS form_score
+        FROM modelb_rider m
+        JOIN riders r ON r.id = m.rider_id
+        LEFT JOIN modelb_rank_rider g ON g.rider_id = m.rider_id
+        ORDER BY m.rank LIMIT $1`, [limit]);
+    res.json({ data: rows, metric: 'modelb' });
+  }));
+
   // ---- Seasons master (single source of truth for season keys/labels) ----
   app.get('/seasons', asyncH(async (req, res) => {
     const { rows } = await pool.query(

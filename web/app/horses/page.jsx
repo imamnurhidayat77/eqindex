@@ -10,7 +10,7 @@ import { useSeason } from '../../components/global';
 import Dropdown from '../../components/Dropdown';
 
 const DEF = { q: '', season: '', region: '', arena: '', height: '', minStarts: '5' };
-const TABS = [['points', 'Points'], ['series', 'Series'], ['clear', 'Clear %']];
+const TABS = [['rating', 'Rating'], ['points', 'Points'], ['series', 'Series'], ['clear', 'Clear %']];
 const AGE_GROUPS = [['', 'All ages'], ['5', '5YO'], ['6', '6YO'], ['7', '7YO'], ['8', '8YO'], ['9+', '9 & over']];
 // NZ age: season starting year minus birth year (birthday 1 Aug).
 const horseAge = (yob, season) => {
@@ -23,7 +23,7 @@ const horseAge = (yob, season) => {
 };
 
 export default function Horses() {
-  const [tab, setTab] = useState('points');
+  const [tab, setTab] = useState('rating');
   const [f, setF] = useState(DEF);
   const { season: gSeason } = useSeason();
   useEffect(() => { setF((prev) => ({ ...prev, season: gSeason })); }, [gSeason]);
@@ -51,12 +51,22 @@ export default function Horses() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Rating tab: Model B best-12 (global, no slice filters).
   // Points tab: series points (strict scope — non-series horses score 0).
   // Points are sums, not rates — no thin-sample problem, so the starts guard
   // does NOT apply here (it would hide genuine series leaders with few starts).
   // Clear tab: factual clear-rate stat (info only, min 5 starts).
   useEffect(() => {
     if (tab === 'series') return;
+    if (tab === 'rating') {
+      setLoading(true);
+      fetch(`${API}/rankings/modelb/horses?limit=500`)
+        .then((r) => r.json())
+        .then((j) => { setRows(j.data || []); setPage(1); })
+        .catch(() => setRows([]))
+        .finally(() => setLoading(false));
+      return;
+    }
     setLoading(true);
     const minStarts = tab === 'points' ? '0' : f.minStarts;
     const p = new URLSearchParams({ limit: '500', min_starts: minStarts, ...heightParams(f.height) });
@@ -113,7 +123,7 @@ export default function Horses() {
   return (
     <>
       <h1 className={H1}>Horses</h1>
-      <p className={SUB}>Series points — every ranked horse on the NZ circuit.</p>
+      <p className={SUB}>{tab === 'rating' ? 'Model B rating — every ranked horse on the NZ circuit.' : 'Series points — every ranked horse on the NZ circuit.'}</p>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <div className="flex gap-1 bg-card2 border border-line rounded p-1 overflow-x-auto w-fit">
           {TABS.map(([k, lbl]) => (
@@ -144,6 +154,13 @@ export default function Horses() {
               className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 200 }} /></label>
           <span className="ml-auto text-[12px] text-faint">Best-N counting · all seasons</span>
         </div>
+      ) : tab === 'rating' ? (
+        <div className="mb-3 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
+            <input value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="Horse…"
+              className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 200 }} /></label>
+          <span className="ml-auto text-[12px] text-faint">Model B best-12 · all classes · all seasons</span>
+        </div>
       ) : (
         <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} showMinStarts={tab !== 'points'} />
       )}
@@ -152,6 +169,7 @@ export default function Horses() {
         <table className={TABLE}>
           <thead><tr>
             <th className={TH}>Rank</th><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Age</th>
+            {tab === 'rating' && (<><th className={`${TH} ${NUM}`}>Rating</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Form</th></>)}
             {tab === 'points' && (<><th className={`${TH} ${NUM}`}>Points</th><th className={`${TH} ${NUM}`}>Wins</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Starts</th></>)}
             {tab === 'series' && (<><th className={TH}>Rider</th><th className={`${TH} ${NUM}`}>Total</th><th className={`${TH} ${NUM}`}>Dropped</th></>)}
             {tab === 'clear' && (<><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th><th className={`${TH} ${NUM}`}>Starts</th></>)}
@@ -167,6 +185,11 @@ export default function Horses() {
                     ? <b>{x.horse}</b>
                     : <Link href={`/horses/${x.horse_slug || x.horse_id || ''}`} className="text-white font-semibold">{x.horse}</Link>}</td>
                   <td className={`${TD} ${NUM} text-muted`}>{age === null ? '–' : age}</td>
+                  {tab === 'rating' && (<>
+                    <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{Number(x.best12).toFixed(1)}</b></td>
+                    <td className={`${TD} ${NUM} text-muted`}>{x.rounds}</td>
+                    <td className={`${TD} text-muted text-[12px]`}>{x.eligible ? (x.form_score === null ? '' : `form ${Number(x.form_score).toFixed(1)}`) : 'building form'}</td>
+                  </>)}
                   {tab === 'points' && (<>
                     <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{x.total_points ?? 0}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{x.wins ?? 0}</td>
@@ -188,7 +211,7 @@ export default function Horses() {
             })}
             {!view.length && (
               loading ? (
-                <tr><td colSpan={tab === 'series' ? 5 : 7} className="px-2 py-4">
+                <tr><td colSpan={tab === 'series' ? 5 : tab === 'rating' ? 6 : 7} className="px-2 py-4">
                   <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
                     {[0, 1, 2].map((k) => <span key={k} className="sk h-3.5 w-full" />)}
                   </span>
