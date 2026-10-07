@@ -5,7 +5,6 @@ import { API } from '../../lib/api';
 import { H1, SUB } from '../../lib/tokens';
 import { useSeason } from '../../components/global';
 import Dropdown from '../../components/Dropdown';
-import { keyOptions } from '../../lib/categories';
 
 // Age-based horse series vs rider/class series (per Charles sketch).
 const isHorseSeries = (k) => /yo-series|young-horse/.test(k || '');
@@ -29,7 +28,6 @@ function SeriesBox({ x }) {
 
 export default function SeriesIndex() {
   const [rows, setRows] = useState([]);
-  const [cats, setCats] = useState(null);
   const [q, setQ] = useState('');
   const [seasonF, setSeasonF] = useState('');
   const [loading, setLoading] = useState(true);
@@ -43,7 +41,6 @@ export default function SeriesIndex() {
       .then((j) => setRows(j.data || []))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-    fetch(`${API}/categories`).then((r) => r.json()).then((j) => setCats(j.data || [])).catch(() => setCats([]));
   }, []);
 
   const seasons = useMemo(
@@ -71,12 +68,6 @@ export default function SeriesIndex() {
         <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ National Circuit</span>
       </div>
       <p className={SUB}>Season-long points races across the NZ showjumping circuit.</p>
-      <div className="mb-4 flex flex-wrap gap-2 items-center">
-        <span className="text-[11px] uppercase tracking-wide text-faint font-bold">Rider categories:</span>
-        {keyOptions(cats).map((o) => (
-          <Link key={o.value} href={`/series/category/${o.value}`} className="text-xs rounded-full px-3 py-[6px] border border-line bg-card2 text-muted no-underline hover:text-gold hover:border-gold/50">{o.label}</Link>
-        ))}
-      </div>
 
       <div className="mb-5 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
