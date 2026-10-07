@@ -10,7 +10,8 @@ import { useSeason } from '../../components/global';
 
 const DEF = { q: '', season: '', region: '', arena: '', height: '', minStarts: '5' };
 const TABS = [['rating', 'Rating'], ['clear', 'Clear %']];
-const AGE_GROUPS = [['', 'All ages'], ['5', '5YO'], ['6', '6YO'], ['7', '7YO'], ['8', '8YO'], ['9+', '9 & over']];
+const AGE_GROUPS = [['', 'All ages'], ['5', '5YO'], ['6', '6YO'], ['7', '7YO'], ['8', '8YO'],
+  ['9', '9YO'], ['10', '10YO'], ['11', '11YO'], ['12', '12YO'], ['13', '13YO'], ['14+', '14 & over']];
 // NZ age: season starting year minus birth year (birthday 1 Aug).
 const horseAge = (yob, season) => {
   if (yob === null || yob === undefined || yob === '') return null;
@@ -72,7 +73,7 @@ export default function Horses() {
       out = out.filter((x) => {
         const a = horseAge(x.year_of_birth, f.season);
         if (a === null) return false;
-        return ageGroup === '9+' ? a >= 9 : a === Number(ageGroup);
+        return ageGroup === '14+' ? a >= 14 : a === Number(ageGroup);
       });
     }
     const q = f.q.trim().toLowerCase();

@@ -297,32 +297,73 @@ module.exports = function mountPublicRoutes(app) {
 
   // ---- Stallions: directory + profile (sire is a free-text column on
   // horses). Stats count visible rounds only (class_id_visible, migration 032).
+  // Charles offspring-rankings spec: total + average (internal v0.3 per-round
+  // scoring — ESNZ series points would leave most sires at zero), clear rate
+  // overall + by height, % offspring reaching 1.30m+, best result.
   app.get('/stallions', asyncH(async (req, res) => {
     const { limit } = paging(req, 100, 500);
+    const minOff = Math.max(1, parseInt(req.query.min_offspring, 10) || 2);
+    const sort = req.query.sort === 'avg' ? 'avg' : 'total';
     const conds = [`h.sire IS NOT NULL AND h.sire <> ''`], params = [];
     if (req.query.q && String(req.query.q).trim()) {
       params.push(`%${String(req.query.q).trim()}%`);
       conds.push(`h.sire ILIKE $${params.length}`);
     }
-    params.push(limit);
+    params.push(minOff, limit);
+    const n = params.length;
     const { rows } = await pool.query(
-      `SELECT h.sire AS stallion,
-          COUNT(DISTINCT h.id)::INT AS offspring,
-          COUNT(rr.id)::INT AS starts,
-          COALESCE(SUM(rr.clear_round::INT), 0)::INT AS clears,
-          ROUND(100.0 * AVG(rr.clear_round::INT), 1) AS clear_pct,
-          ROUND(AVG(rr.total_faults), 2) AS avg_faults,
-          COUNT(*) FILTER (WHERE rr.finish_place = 1)::INT AS wins,
-          COALESCE(SUM(rr.points), 0)::INT AS total_points
-        FROM horses h
-        LEFT JOIN round_results rr
-          ON rr.horse_id = h.id AND class_id_visible(rr.class_id)
-        WHERE ${conds.join(' AND ')}
-        GROUP BY h.sire
-        ORDER BY offspring DESC, starts DESC LIMIT $${params.length}`,
+      `WITH per_round AS (
+         SELECT h.sire, h.id AS horse_id, h.name AS horse,
+           LEAST(
+             (CASE WHEN rr.status = 'finished' AND rr.clear_round THEN 10 ELSE 0 END) +
+             (CASE WHEN rr.status = 'finished' AND rr.clear_round
+               AND (COALESCE(rr.jumpoff_faults, -1) = 0 OR COALESCE(rr.round2_faults, -1) = 0) THEN 5 ELSE 0 END) +
+             (CASE WHEN rr.status = 'finished' AND rr.finish_place BETWEEN 1 AND 5
+               THEN (ARRAY[5,4,3,2,1])[rr.finish_place] ELSE 0 END), 20) AS pts,
+           (rr.clear_round)::INT AS is_clear,
+           rr.finish_place AS place,
+           COALESCE(rr.height_cm, c.height_cm)::INT AS h
+         FROM horses h
+         LEFT JOIN round_results rr
+           ON rr.horse_id = h.id AND class_id_visible(rr.class_id)
+         LEFT JOIN classes c ON c.id = rr.class_id
+         WHERE ${conds.join(' AND ')}
+       ),
+       per_horse AS (
+         SELECT sire, horse_id, horse,
+           COUNT(*) FILTER (WHERE pts IS NOT NULL)::INT AS rounds,
+           SUM(pts)::INT AS pts,
+           COUNT(*) FILTER (WHERE is_clear = 1)::INT AS clears,
+           MIN(place) FILTER (WHERE place IS NOT NULL)::INT AS best_place,
+           MAX(h)::INT AS max_h,
+           COUNT(*) FILTER (WHERE h IS NOT NULL AND h < 120)::INT AS r_u120,
+           COUNT(*) FILTER (WHERE is_clear = 1 AND h IS NOT NULL AND h < 120)::INT AS c_u120,
+           COUNT(*) FILTER (WHERE h >= 120 AND h < 130)::INT AS r_120,
+           COUNT(*) FILTER (WHERE is_clear = 1 AND h >= 120 AND h < 130)::INT AS c_120,
+           COUNT(*) FILTER (WHERE h >= 130)::INT AS r_a130,
+           COUNT(*) FILTER (WHERE is_clear = 1 AND h >= 130)::INT AS c_a130
+         FROM per_round
+         GROUP BY sire, horse_id, horse
+       )
+       SELECT sire AS stallion,
+          COUNT(*)::INT AS offspring,
+          SUM(rounds)::INT AS starts,
+          SUM(clears)::INT AS clears,
+          ROUND(100.0 * SUM(clears) / NULLIF(SUM(rounds), 0), 1) AS clear_pct,
+          SUM(pts)::INT AS total_points,
+          ROUND(SUM(pts)::NUMERIC / NULLIF(COUNT(*), 0), 1) AS avg_per_offspring,
+          ROUND(100.0 * SUM(c_u120) / NULLIF(SUM(r_u120), 0), 1) AS clear_u120,
+          ROUND(100.0 * SUM(c_120) / NULLIF(SUM(r_120), 0), 1) AS clear_120,
+          ROUND(100.0 * SUM(c_a130) / NULLIF(SUM(r_a130), 0), 1) AS clear_a130,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE max_h >= 130) / NULLIF(COUNT(*), 0), 1) AS pct_reaching_130,
+          MIN(best_place) AS best_place,
+          (ARRAY_AGG(horse ORDER BY pts DESC NULLS LAST, best_place ASC NULLS LAST))[1] AS best_horse
+        FROM (SELECT * FROM per_horse WHERE rounds > 0) ph
+        GROUP BY sire HAVING COUNT(*) >= $${n - 1}
+        ORDER BY ${sort === 'avg' ? 'avg_per_offspring DESC, total_points' : 'total_points DESC, avg_per_offspring'} DESC LIMIT $${n}`,
       params
     );
-    res.json({ data: rows });
+    res.json({ data: rows, sort, min_offspring: minOff });
   }));
 
   app.get('/stallions/:name', asyncH(async (req, res) => {

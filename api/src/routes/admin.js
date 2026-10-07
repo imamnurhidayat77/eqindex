@@ -399,10 +399,19 @@ module.exports = function mountAdminRoutes(app) {
 
         // identity (mirrors ingest/normalize.py)
         const rn = normName(rider), hn = normName(horse);
+        // sire spelling: resolve known variants to canonical (sire_aliases,
+        // migration 046) so one sire never splits into two rankings again.
+        let sireName = cleanName(g(ci.sire));
+        if (sireName) {
+          const hit = await client.query(
+            'SELECT canonical_name FROM sire_aliases WHERE normalized_alias = $1',
+            [normName(sireName)]);
+          if (hit.rows.length) sireName = hit.rows[0].canonical_name;
+        }
         // optional enrichment (fill-if-null only — curated values always win)
         const hEn = {
           breed: g(ci.breed) || null, age: cleanAge(g(ci.age)),
-          gender: canon(g(ci.gender), GENDERS), sire: cleanName(g(ci.sire)), dam: cleanName(g(ci.dam)),
+          gender: canon(g(ci.gender), GENDERS), sire: sireName, dam: cleanName(g(ci.dam)),
           damsire: cleanName(g(ci.damsire)), breeder: cleanName(g(ci.breeder)),
           country: g(ci.country) || null, color: g(ci.color) || null,
           year_of_birth: cleanYob(g(ci.yob)),
