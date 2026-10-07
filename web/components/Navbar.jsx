@@ -22,6 +22,7 @@ export const NAV = [
   { href: '/', label: 'Home', match: (p) => p === '/' },
   { href: '/events', label: 'Events', match: (p) => p.startsWith('/events') },
   { href: '/series', label: 'Series', match: (p) => p.startsWith('/series') },
+  { href: '/standings', label: 'Standings', match: (p) => p.startsWith('/standings') },
   { href: '/riders', label: 'Riders', match: (p) => p.startsWith('/riders') },
   { href: '/horses', label: 'Horses', match: (p) => p.startsWith('/horses') },
   { href: '/stallions', label: 'Stallions', match: (p) => p.startsWith('/stallions') },

@@ -38,12 +38,12 @@ export default function Standings() {
   return (
     <>
       <h1 className={H1}>Standings</h1>
-      <p className={SUB}>Model B best-12 per combination — every horse × rider pair on the NZ circuit.</p>
+      <p className={SUB}>Best-12 per combination — every horse × rider pair on the NZ circuit.</p>
       <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Horse or rider…"
             className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 220 }} /></label>
-        <span className="ml-auto text-[12px] text-faint">Model B best-12 · all classes · all seasons</span>
+        <span className="ml-auto text-[12px] text-faint">Best-12 · all classes · all seasons</span>
       </div>
       <section className={CARD}>
         <div className={TABLEWRAP}>
