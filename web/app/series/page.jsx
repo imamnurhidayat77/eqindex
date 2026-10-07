@@ -2,21 +2,36 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
-import { CARD, H1, LINK, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
+import { H1, SUB } from '../../lib/tokens';
 import { useSeason } from '../../components/global';
 import Dropdown from '../../components/Dropdown';
-import { Pagination } from '../../components/list-controls';
-import { TableEmpty } from '../../components/EmptyState';
-import { StatCard, StatGrid } from '../../components/StatCard';
 import { keyOptions } from '../../lib/categories';
+
+// Age-based horse series vs rider/class series (per Charles sketch).
+const isHorseSeries = (k) => /yo-series|young-horse/.test(k || '');
+
+function SeriesBox({ x }) {
+  return (
+    <Link
+      href={`/series/${x.series_key}`}
+      className="group flex items-center justify-between rounded border border-line bg-card p-4 no-underline transition hover:border-gold/50"
+    >
+      <div className="min-w-0">
+        <div className="text-[15px] font-bold text-white group-hover:text-gold leading-tight">{x.series_name}</div>
+        <div className="mt-1 text-[12px] text-muted">
+          {x.entries} entries · {x.events} events · {x.classes} classes
+        </div>
+      </div>
+      <span className="text-gold transition group-hover:translate-x-0.5 shrink-0 ml-3">→</span>
+    </Link>
+  );
+}
 
 export default function SeriesIndex() {
   const [rows, setRows] = useState([]);
   const [cats, setCats] = useState(null);
   const [q, setQ] = useState('');
   const [seasonF, setSeasonF] = useState('');
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(12);
   const [loading, setLoading] = useState(true);
   const { season: gSeason } = useSeason();
   useEffect(() => { setSeasonF(gSeason); }, [gSeason]);
@@ -43,14 +58,8 @@ export default function SeriesIndex() {
       (!s || (x.series_name || '').toLowerCase().includes(s) || (x.series_key || '').toLowerCase().includes(s)));
   }, [rows, q, seasonF]);
 
-  useEffect(() => { setPage(1); }, [q, seasonF]);
-  const pages = Math.max(1, Math.ceil(filtered.length / perPage));
-  const safePage = Math.min(page, pages);
-  const view = filtered.slice((safePage - 1) * perPage, safePage * perPage);
-  const totalEntries = filtered.reduce((s, x) => s + Number(x.entries || 0), 0);
-  // Distinct events across series — per-series counts double-count the same
-  // shows (e.g. Rotorua + Feilding appear under every series they host).
-  const distinctEvents = new Set(filtered.flatMap((x) => x.event_names || [])).size;
+  const classSeries = filtered.filter((x) => !isHorseSeries(x.series_key));
+  const horseSeries = filtered.filter((x) => isHorseSeries(x.series_key));
 
   return (
     <>
@@ -58,7 +67,7 @@ export default function SeriesIndex() {
         <span className="text-muted">Circuit</span><span className="mx-1.5">/</span><span className="text-gold">Series</span>
       </div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[26px] font-extrabold tracking-tight">Series Intelligence</h1>
+        <h1 className="text-[26px] font-extrabold tracking-tight">Series</h1>
         <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ National Circuit</span>
       </div>
       <p className={SUB}>Season-long points races across the NZ showjumping circuit.</p>
@@ -69,18 +78,7 @@ export default function SeriesIndex() {
         ))}
       </div>
 
-      <StatGrid cols={4}>
-        {[
-          ['Series Tracked', String(filtered.length)],
-          ['Total Entries', String(totalEntries)],
-          ['Seasons', String(seasons.length)],
-          ['Events', String(distinctEvents)],
-        ].map(([l, v]) => (
-          <StatCard key={l} label={l} value={v} />
-        ))}
-      </StatGrid>
-
-      <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
+      <div className="mb-5 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
           Search
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Series…"
@@ -96,37 +94,33 @@ export default function SeriesIndex() {
         {(q || seasonF) && <button onClick={() => { setQ(''); setSeasonF(''); }} className="rounded px-2 py-2 text-[13px] text-sky hover:underline">Reset</button>}
       </div>
 
-      <section className={CARD}>
-        <div className={TABLEWRAP}>
-        <table className={TABLE}>
-          <thead><tr><th className={TH}>Series</th><th className={TH}>Seasons</th><th className={`${TH} ${NUM}`}>Events</th><th className={`${TH} ${NUM}`}>Classes</th><th className={`${TH} ${NUM}`}>Entries</th><th className={TH}></th></tr></thead>
-          <tbody>
-            {view.map((x) => (
-              <tr key={x.series_key}>
-                <td className={TD}><Link className={LINK} href={`/series/${x.series_key}`}><b>{x.series_name}</b></Link></td>
-                <td className={TD}>{(x.seasons || []).map((s) => s.replace('-', '/')).join(', ') || '—'}</td>
-                <td className={`${TD} ${NUM}`}>{x.events}</td>
-                <td className={`${TD} ${NUM}`}>{x.classes}</td>
-                <td className={`${TD} ${NUM}`}>{x.entries}</td>
-                <td className={`${TD} ${NUM}`}><Link className={LINK} href={`/series/${x.series_key}`}>Standings →</Link></td>
-              </tr>
-            ))}
-            {!view.length && (
-              loading ? (
-                <tr><td colSpan={6} className="px-2 py-4">
-                  <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
-                    {[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}
-                  </span>
-                </td></tr>
-              ) : (
-                <TableEmpty icon="🏆" title="No series match these filters" hint="Try a different season or search — or reset the filters." />
-              )
-            )}
-          </tbody>
-        </table>
-        </div>
-        <Pagination page={safePage} pages={pages} setPage={setPage} perPage={perPage} setPerPage={setPerPage} total={filtered.length} />
-      </section>
+      {loading ? (
+        <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
+          {[0, 1, 2].map((i) => <span key={i} className="sk h-12 w-full" />)}
+        </span>
+      ) : (
+        <>
+          {!!classSeries.length && (
+            <>
+              <h2 className="mb-3 text-[15px] font-bold">Class Series</h2>
+              <div className="grid gap-4 md:grid-cols-3 mb-6">
+                {classSeries.map((x) => <SeriesBox key={x.series_key} x={x} />)}
+              </div>
+            </>
+          )}
+          {!!horseSeries.length && (
+            <>
+              <h2 className="mb-3 text-[15px] font-bold">Horse Series</h2>
+              <div className="grid gap-4 md:grid-cols-3 mb-6">
+                {horseSeries.map((x) => <SeriesBox key={x.series_key} x={x} />)}
+              </div>
+            </>
+          )}
+          {!classSeries.length && !horseSeries.length && (
+            <p className="text-muted text-sm">No series match these filters — try a different season or search.</p>
+          )}
+        </>
+      )}
     </>
   );
 }
