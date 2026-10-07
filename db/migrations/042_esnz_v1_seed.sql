@@ -4,7 +4,7 @@
 -- Flip to 'all_classes' to score every class on its show-tier scale.
 
 INSERT INTO scoring_versions (season, version, status, label, params)
-SELECT '2026-2027', 3, 'draft', 'ESNZ 2026-27 official (Annex 11 v19.0)',
+SELECT '2026-2027', 3, 'draft', '2026-27 series rules (Annex 11 v19.0)',
 jsonb_build_object('mode', 'esnz', 'esnz',
 '{
   "scope": "series_only",
