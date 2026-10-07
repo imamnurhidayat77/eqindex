@@ -101,7 +101,7 @@ export default async function HorseProfile({ params, searchParams }) {
   const formEligible = fg?.data?.eligible ?? null;
   const formMin = fg?.data?.window?.min_n ?? 10;
   const formRounds = mbRow ? Number(mbRow.rounds) || 0 : 0;
-  const roundsNeeded = !formEligible && horseRating !== null ? Math.max(0, formMin - formRounds) : 0;
+  const roundsNeeded = fg?.data && !formEligible && horseRating !== null ? Math.max(0, formMin - formRounds) : 0;
 
   const chrono = [...history].reverse();
   const sparkFaults = chrono.map((r) => num(r.total_faults));
@@ -196,7 +196,7 @@ export default async function HorseProfile({ params, searchParams }) {
             </div>
             <div className="flex flex-col items-end gap-2.5 shrink-0">
               <div className="text-center">
-                <div className="text-[26px] font-extrabold leading-none tabular-nums text-gold">{horseRating === null ? '–' : horseRating.toFixed(1)}</div>
+                <div className="text-[26px] font-extrabold leading-none tabular-nums text-gold">{horseRating === null || !formEligible ? '–' : horseRating.toFixed(1)}</div>
                 <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Rating{formRank ? ` · #${formRank}` : ''}</div>
                 {!!roundsNeeded && (
                   <div className="mt-1 text-[10px] text-faint">{roundsNeeded} more round{roundsNeeded === 1 ? '' : 's'} to rank</div>

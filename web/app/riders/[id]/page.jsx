@@ -133,7 +133,7 @@ export default async function RiderProfile({ params, searchParams }) {
   const formEligible = fg?.data?.eligible ?? null;
   const formMin = fg?.data?.window?.min_n ?? 20;
   const formRounds = mbRow ? Number(mbRow.rounds) || 0 : 0;
-  const roundsNeeded = !formEligible && riderRating !== null ? Math.max(0, formMin - formRounds) : 0;
+  const roundsNeeded = fg?.data && !formEligible && riderRating !== null ? Math.max(0, formMin - formRounds) : 0;
 
   // ---- ranks (by clear rate) ----
   const ranked = (allRiders.data || [])
@@ -329,7 +329,7 @@ export default async function RiderProfile({ params, searchParams }) {
               <div className="mt-2"><WatchButton entityType="rider" entityId={params.id} /></div>
             </div>
             <div className="text-center">
-              <div className="text-[26px] font-extrabold leading-none tabular-nums text-gold">{riderRating === null ? '–' : riderRating.toFixed(1)}</div>
+              <div className="text-[26px] font-extrabold leading-none tabular-nums text-gold">{riderRating === null || !formEligible ? '–' : riderRating.toFixed(1)}</div>
               <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Rating{formRank ? ` · #${formRank}` : ''}</div>
               {!!roundsNeeded && (
                 <div className="mt-1 text-[10px] text-faint">{roundsNeeded} more round{roundsNeeded === 1 ? '' : 's'} to rank</div>

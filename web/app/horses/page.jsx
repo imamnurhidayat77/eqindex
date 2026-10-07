@@ -186,7 +186,7 @@ export default function Horses() {
                     : <Link href={`/horses/${x.horse_slug || x.horse_id || ''}`} className="text-white font-semibold">{x.horse}</Link>}</td>
                   <td className={`${TD} ${NUM} text-muted`}>{age === null ? '–' : age}</td>
                   {tab === 'rating' && (<>
-                    <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 && x.eligible ? 'text-gold' : ''}>{Number(x.best12).toFixed(1)}</b></td>
+                    <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 && x.eligible ? 'text-gold' : ''}>{x.eligible ? Number(x.best12).toFixed(1) : '–'}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{x.rounds}</td>
                     <td className={`${TD} text-muted text-[12px]`}>{x.eligible ? (x.form_score === null ? '' : `form ${Number(x.form_score).toFixed(1)}`) : 'building form'}</td>
                   </>)}
