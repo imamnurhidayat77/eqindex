@@ -332,7 +332,7 @@ export default async function RiderProfile({ params, searchParams }) {
               <div className="text-[26px] font-extrabold leading-none tabular-nums text-gold">{riderRating === null || !formEligible ? '–' : riderRating.toFixed(1)}</div>
               <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Rating{formRank ? ` · #${formRank}` : ''}</div>
               {!!roundsNeeded && (
-                <div className="mt-1 text-[10px] text-faint">{roundsNeeded} more round{roundsNeeded === 1 ? '' : 's'} to rank</div>
+                <div className="mt-1 text-[10px] text-faint">needs {roundsNeeded} more round{roundsNeeded === 1 ? '' : 's'} to rank</div>
               )}
             </div>
             <div className="text-center">

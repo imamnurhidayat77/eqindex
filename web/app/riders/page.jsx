@@ -59,7 +59,7 @@ export default function Riders() {
                   <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 && x.eligible ? 'text-gold' : ''}>{x.eligible ? Number(x.best12).toFixed(1) : '–'}</b></td>
                   <td className={`${TD} ${NUM} text-muted`}>{x.horses_ridden}</td>
                   <td className={`${TD} ${NUM} text-muted`}>{x.rounds}</td>
-                  <td className={`${TD} text-muted text-[12px]`}>{x.eligible ? (x.form_score === null ? '' : `form ${Number(x.form_score).toFixed(1)}`) : 'building form'}</td>
+                  <td className={`${TD} text-muted text-[12px]`}>{x.eligible ? (x.form_score === null ? '' : `form ${Number(x.form_score).toFixed(1)}`) : `needs ${Math.max(1, 20 - Number(x.rounds || 0))} more rounds to rank`}</td>
                 </tr>
               );
             })}
