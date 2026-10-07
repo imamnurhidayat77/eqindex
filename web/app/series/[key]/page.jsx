@@ -27,7 +27,7 @@ export default async function SeriesPage({ params }) {
       </div>
     );
   }
-  const { info, standings, events, last_calculated } = d.data;
+  const { info, standings, events } = d.data;
   const name = info?.display_name || standings[0]?.series_name || key;
 
   const horseMap = {};
@@ -43,9 +43,6 @@ export default async function SeriesPage({ params }) {
   }));
 
   const leader = table[0] || null;
-  const doneEv = events.filter((e) => e.completed === true);
-  const openEv = events.filter((e) => e.completed === false);
-  const unkEv = events.filter((e) => e.completed === null || e.completed === undefined);
   const evLabels = events.map((e) => e.event);
 
   return (
@@ -58,46 +55,6 @@ export default async function SeriesPage({ params }) {
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <h1 className="text-[26px] font-extrabold tracking-tight">{name}</h1>
         <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ Points Race</span>
-      </div>
-
-      <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <section className="rounded border border-line bg-card p-5">
-          <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Series Leader</div>
-          {leader ? (
-            <>
-              <div className="mt-1 text-[24px] font-extrabold leading-tight">{leader.rider} <span className="text-muted font-semibold">× {leader.horse}</span></div>
-              <div className="mt-3 flex flex-wrap items-end gap-x-8 gap-y-2">
-                <div><span className="text-[30px] font-extrabold text-gold">{leader.total}</span> <span className="text-muted text-[13px]">points</span></div>
-                <div className="pb-1 text-[13px] text-muted">
-                  {Object.keys(leader.events || {}).length} scoring events · Rank #{leader.rank}
-                  {leader.dropped ? ` · ${leader.dropped} dropped` : ''}
-                </div>
-              </div>
-              {info?.qual_rules && (
-                <div className="mt-4 rounded bg-card2 p-3 text-[12.5px] leading-relaxed text-muted">
-                  <b className="text-white">Qualification:</b> {info.qual_rules}
-                </div>
-              )}
-            </>
-          ) : <p className="mt-2 text-muted">No standings published yet.</p>}
-        </section>
-        <section className="rounded border border-line bg-card p-5">
-          <h2 className="mb-2 text-[15px] font-bold">Series Registry</h2>
-          <dl>
-            {[
-              ['Events completed', `${doneEv.length}${unkEv.length ? ` (+${unkEv.length} undated)` : ''} / ${events.length}`],
-              ['Events remaining', String(openEv.length)],
-              ['Best-of rule', info?.best_of ? `Best ${info.best_of}` : 'All count'],
-              ['Entries', String(table.length)],
-              ['Last calculated', last_calculated ? String(last_calculated).slice(0, 16).replace('T', ' ') : '—'],
-            ].map(([k, v]) => (
-              <div key={k} className="flex items-center justify-between border-b border-line/60 py-[9px] text-[13px] last:border-0">
-                <dt className="text-muted">{k}</dt>
-                <dd className="font-semibold text-slate-100">{v}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
       </div>
 
       <h2 className="text-[15px] font-bold">Points Matrix</h2>
