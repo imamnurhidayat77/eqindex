@@ -357,7 +357,8 @@ module.exports = function mountPublicRoutes(app) {
           ROUND(100.0 * SUM(c_a130) / NULLIF(SUM(r_a130), 0), 1) AS clear_a130,
           ROUND(100.0 * COUNT(*) FILTER (WHERE max_h >= 130) / NULLIF(COUNT(*), 0), 1) AS pct_reaching_130,
           MIN(best_place) AS best_place,
-          (ARRAY_AGG(horse ORDER BY pts DESC NULLS LAST, best_place ASC NULLS LAST))[1] AS best_horse
+          (ARRAY_AGG(horse ORDER BY pts DESC NULLS LAST, best_place ASC NULLS LAST))[1] AS best_horse,
+          (ARRAY_AGG(horse_id ORDER BY pts DESC NULLS LAST, best_place ASC NULLS LAST))[1] AS best_horse_id
         FROM (SELECT * FROM per_horse WHERE rounds > 0) ph
         GROUP BY sire HAVING COUNT(*) >= $${n - 1}
         ORDER BY ${sort === 'avg' ? 'avg_per_offspring DESC, total_points' : 'total_points DESC, avg_per_offspring'} DESC LIMIT $${n}`,
@@ -1383,7 +1384,7 @@ module.exports = function mountPublicRoutes(app) {
     const kind = col === 'horse_id' ? 'horse' : 'rider';
     const w = (await pool.query('SELECT * FROM modelb_window($1)', [kind])).rows[0];
     const rounds = (await pool.query(
-      `SELECT round_id, horse, rider, class_date, class_name, event_name,
+      `SELECT round_id, horse_id, horse, rider_id, rider, class_date, class_name, event_name,
           event_kind, tier, height_cm, finish_place, total_faults,
           clear_round, status, division, modelb
         FROM modelb_form WHERE ${col} = $1
@@ -1494,7 +1495,9 @@ module.exports = function mountPublicRoutes(app) {
       : await pool.query(
         `SELECT r.name AS rider, h.name AS horse, e.name AS event, e.id AS event_id,
            c.id AS class_id, c.name AS class_name,
-           MIN(c.class_date) AS event_date, SUM(rr.points)::INT AS pts, COUNT(*)::INT AS rounds
+           MIN(c.class_date) AS event_date, SUM(rr.points)::INT AS pts, COUNT(*)::INT AS rounds,
+           MIN(r.id::TEXT)::UUID AS rider_id, MIN(r.slug) AS rider_slug,
+           MIN(h.id::TEXT)::UUID AS horse_id, MIN(h.slug) AS horse_slug
          FROM round_results rr
          JOIN classes c ON c.id = rr.class_id
          JOIN events e ON e.id = rr.event_id
@@ -1509,7 +1512,10 @@ module.exports = function mountPublicRoutes(app) {
       for (const row of rows) {
         const k = isBreeder ? `breeder||${row.breeder}` : `${row.rider}||${row.horse}`;
         (byCombo[k] ||= (isBreeder ? { breeder: row.breeder, events: {}, rounds: 0 }
-          : { rider: row.rider, horse: row.horse, events: {}, rounds: 0 }));
+          : { rider: row.rider, horse: row.horse,
+              rider_id: row.rider_id, rider_slug: row.rider_slug,
+              horse_id: row.horse_id, horse_slug: row.horse_slug,
+              events: {}, rounds: 0 }));
         const rk = isBreeder ? row.event : roundLabel(row);
         byCombo[k].events[rk] = (byCombo[k].events[rk] || 0) + row.pts;
         byCombo[k].rounds += row.rounds;

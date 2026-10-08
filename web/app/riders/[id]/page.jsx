@@ -399,7 +399,7 @@ export default async function RiderProfile({ params, searchParams }) {
                 {(fg.data.rounds_detail || []).map((r) => (
                   <tr key={r.round_id} className={`border-b border-line/50 last:border-0 ${r.dropped ? 'opacity-45' : ''}`}>
                     <td className="px-3 py-2 text-muted">{fmtDate(r.class_date)}</td>
-                    <td className="px-3 py-2">{r.horse}</td>
+                    <td className="px-3 py-2">{r.horse_id ? <Link href={`/horses/${r.horse_id}`} className="text-white hover:text-gold">{r.horse}</Link> : r.horse}</td>
                     <td className="px-3 py-2">{r.event_name}</td>
                     <td className="px-3 py-2 text-right text-muted">{r.height_cm ? `${(Number(r.height_cm) / 100).toFixed(2)}m` : '—'}</td>
                     <td className="px-3 py-2 text-right">{r.finish_place ?? '—'}</td>

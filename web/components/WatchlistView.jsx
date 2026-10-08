@@ -254,7 +254,7 @@ export default function WatchlistView({ horses, riders, timeline, pulse }) {
                 <div key={i} className="relative bg-card border border-line rounded p-3">
                   <span className={`absolute -left-4 top-4 w-[7px] h-[7px] rounded-full ${r.clear ? 'bg-moss' : 'bg-blood'}`} />
                   <div className="flex justify-between gap-2 items-baseline">
-                    <b className="text-[13px] truncate">{r.horse} <span className="text-faint font-normal">× {r.rider}</span></b>
+                    <b className="text-[13px] truncate">{r.horse_id ? <Link href={`/horses/${r.horse_id}`} className="text-white hover:text-gold">{r.horse}</Link> : r.horse} <span className="text-faint font-normal">× {r.rider_id ? <Link href={`/riders/${r.rider_id}`} className="hover:text-gold">{r.rider}</Link> : r.rider}</span></b>
                     <span className="text-[11px] text-faint shrink-0">{r.when}</span>
                   </div>
                   <div className="text-muted text-xs mt-0.5 truncate">{r.event}{r.cls ? ` · ${r.cls}` : ''}</div>

@@ -193,7 +193,7 @@ export default async function Watchlist() {
 
   // Feed: latest rounds from everything watched (past 30d), up to 12.
   const timeline = (updates.data || []).slice(0, 12).map((r) => ({
-    horse: r.horse, rider: r.rider,
+    horse: r.horse, rider: r.rider, horse_id: r.horse_id, rider_id: r.rider_id,
     entity: r.horse, event: r.event, cls: r.class_name, date: r.date,
     clear: !!r.clear, faults: r.faults === null ? null : Number(r.faults),
     place: r.place, when: fmtRel(r.date, now),

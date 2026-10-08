@@ -82,7 +82,7 @@ export default function Stallions() {
                   <td className={`${TD} ${NUM} text-muted`}>{pct(x.clear_120)}</td>
                   <td className={`${TD} ${NUM} text-muted`}>{pct(x.clear_a130)}</td>
                   <td className={`${TD} ${NUM} text-muted`}>{pct(x.pct_reaching_130)}</td>
-                  <td className={TD}>{x.best_place ? <span>#{x.best_place} <span className="text-muted text-[12px]">{x.best_horse}</span></span> : <span className="text-faint">—</span>}</td>
+                  <td className={TD}>{x.best_place ? <span>#{x.best_place} {x.best_horse_id ? <Link href={`/horses/${x.best_horse_id}`} className="text-muted text-[12px] hover:text-gold">{x.best_horse}</Link> : <span className="text-muted text-[12px]">{x.best_horse}</span>}</span> : <span className="text-faint">—</span>}</td>
                 </tr>
               );
             })}

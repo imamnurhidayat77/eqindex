@@ -67,7 +67,7 @@ export default async function EventDetail({ params }) {
   }).slice(0, 5);
   const rAgg = {};
   for (const r of rounds) {
-    const g = (rAgg[r.rider_id] ||= { rider_id: r.rider_id, rider: r.rider, starts: 0, clears: 0, faults: 0, horses: new Set() });
+    const g = (rAgg[r.rider_id] ||= { rider_id: r.rider_id, rider: r.rider, rider_slug: r.rider_slug, starts: 0, clears: 0, faults: 0, horses: new Set() });
     g.starts++; g.faults += Number(r.total_faults);
     if (r.clear_round) g.clears++;
     g.horses.add(r.horse_id);
@@ -200,8 +200,8 @@ export default async function EventDetail({ params }) {
             {topHorses.map((h, i) => (
               <tr key={h.horse_id}>
                 <td className={i === 0 ? 'text-gold font-bold' : ''}>#{i + 1}</td>
-                <td className={TD}><b>{h.horse}</b></td>
-                <td className={TD}>{h.rider}</td>
+                <td className={TD}><Link href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold">{h.horse}</Link></td>
+                <td className={TD}>{h.rider_slug || h.rider_id ? <Link className={LINK} href={`/riders/${h.rider_slug || h.rider_id}`}>{h.rider}</Link> : h.rider}</td>
                 <td className={TD}>{h.height_cm ? `${(Number(h.height_cm) / 100).toFixed(2)}m` : '–'}</td>
                 <td className={`${TD} ${NUM} ${Number(h.jump_faults) === 0 ? 'text-moss' : 'text-blood'}`}>{h.jump_faults}</td>
                 <td className={TD}>{h.time_seconds === null ? '–' : `${h.time_seconds}s`}</td>
@@ -223,7 +223,7 @@ export default async function EventDetail({ params }) {
             {topRiders.map((r, i) => (
               <tr key={r.rider_id}>
                 <td className={i === 0 ? 'text-gold font-bold' : ''}>#{i + 1}</td>
-                <td className={TD}><b>{r.rider}</b></td>
+                  <td className={TD}><Link href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white font-semibold">{r.rider}</Link></td>
                 <td className={TD}>{r.horses_ridden} Horse{r.horses_ridden === 1 ? '' : 's'}</td>
                 <td className={TD}>{r.starts} Round{r.starts === 1 ? '' : 's'}</td>
                 <td className={`${TD} ${NUM} text-moss`}>{pct1(r.clear_pct)}</td>

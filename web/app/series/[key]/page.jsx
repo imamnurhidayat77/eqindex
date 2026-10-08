@@ -5,15 +5,12 @@ import { EmptyState } from '../../../components/EmptyState';
 
 export const revalidate = 30;
 
-const norm = (s) => (s || '').trim().toLowerCase();
 const num = (v, d = 0) => (v === null || v === undefined || v === '' ? d : Number(v));
 
 export default async function SeriesPage({ params }) {
   const key = decodeURIComponent(params.key);
-  const [d, rankH, rankR] = await Promise.all([
+  const [d] = await Promise.all([
     getJSON(`/series/${key}/detail`).catch(() => null),
-    getJSON('/rankings/horses?limit=200').catch(() => ({ data: [] })),
-    getJSON('/rankings/riders?limit=200').catch(() => ({ data: [] })),
   ]);
   if (!d) {
     return (
@@ -30,16 +27,10 @@ export default async function SeriesPage({ params }) {
   const { info, standings, events } = d.data;
   const name = info?.display_name || standings[0]?.series_name || key;
 
-  const horseMap = {};
-  for (const h of rankH.data || []) {
-    horseMap[norm(h.horse)] = { id: h.horse_id };
-  }
-  const riderMap = {};
-  for (const r of rankR.data || []) {
-    riderMap[norm(r.rider)] = { id: r.rider_id };
-  }
   const table = (standings || []).map((r) => ({
-    ...r, h: horseMap[norm(r.horse)] || null, rd: riderMap[norm(r.rider)] || null,
+    ...r,
+    h: r.horse_id ? { id: r.horse_id, horse_slug: r.horse_slug } : null,
+    rd: r.rider_id ? { id: r.rider_id, rider_slug: r.rider_slug } : null,
   }));
 
   const leader = table[0] || null;

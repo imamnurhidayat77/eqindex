@@ -307,7 +307,7 @@ export default function MyStable() {
             {attention.map((a) => (
               <div key={a.id} className="rounded border border-blood/40 bg-card p-4">
                 <div className="flex justify-between items-center">
-                  <b>{a.name || a.rider}</b>
+                  <b><Link className="text-white no-underline hover:text-gold" href={`/riders/${a.slug || a.id}`}>{a.name || a.rider}</Link></b>
                   <span className={badge(BADGE.red)}>↓ Declining</span>
                 </div>
                 <p className="text-muted text-[13px] mt-1.5">Recent form {a.arrow} — review last rounds with <Link className={LINK} href={`/riders/${a.slug || a.id}`}>full history →</Link></p>
