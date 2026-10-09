@@ -10,11 +10,7 @@ import { StatCard, StatGrid } from '../../../components/StatCard';
 
 export const revalidate = 30;
 
-const fmtDate = (d) => (d || '').slice(0, 10);
 const num = (v, d = 0) => (v === null || v === undefined || v === '' ? d : Number(v));
-
-const initials = (name) => String(name || '').trim().split(/\s+/)
-  .slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join('') || '–';
 
 // Real medal: ribbon straps + medallion, tinted by division colour.
 // Elite gets a gold outer ring + glow. No text — division comes from tooltip.
@@ -123,7 +119,6 @@ export default async function HorseProfile({ params, searchParams }) {
     const [lo, hi] = hBand.split('-');
     return cm >= Number(lo) && (!hi || cm <= Number(hi));
   });
-  const divFilter = (searchParams && searchParams.div) || '';
   // World Cup flag wins over height bands (Charles sheet WC column).
   const divOf = (r) => (r.is_world_cup ? 'world_cup' : divisionFor(r.height_cm, divisions)?.key || '');
   const divSummary = divisions
@@ -140,15 +135,7 @@ export default async function HorseProfile({ params, searchParams }) {
   const divTotals = divSummary.reduce(
     (t, d) => ({ rounds: t.rounds + d.rounds, clears: t.clears + d.clears }),
     { rounds: 0, clears: 0 });
-  const divsPresent = divisions.filter((d) => bandHistory.some((r) => divOf(r) === d.key));
-  const roundHistory = divFilter ? bandHistory.filter((r) => divOf(r) === divFilter) : bandHistory;
-  const divHref = (key) => {
-    const p = new URLSearchParams();
-    if (hBand) p.set('h', hBand);
-    if (key) p.set('div', key);
-    const s = p.toString();
-    return `/horses/${params.id}${s ? `?${s}` : ''}`;
-  };
+
 
   const myHeights = (heights.data || []).filter((x) => x.horse_id === params.id);
   const bestH = [...myHeights].sort((a, b) => num(b.clear_pct) - num(a.clear_pct) || num(b.starts) - num(a.starts))[0];
@@ -249,44 +236,6 @@ export default async function HorseProfile({ params, searchParams }) {
         <HistoryTable rows={bandHistory} mode="horse" />
       </section>
 
-      {/* form guide — last-N rounds, drop-D worst (Charles sheet) */}
-      {fg?.data && (
-        <>
-          <h2 className="text-[15px] font-bold">Form Guide</h2>
-          <p className="mb-3 mt-0.5 text-[12.5px] text-muted">
-            {fg.data.eligible
-              ? `Ranked #${fg.data.rank} on ${fg.data.kept} counting rounds (best ${fg.data.window.last_n} minus ${fg.data.window.drop_n} drops).`
-              : `Building form — needs ${fg.data.window.min_n} rounds to rank (has ${fg.data.rounds}).`}
-          </p>
-          <section className="mb-6 rounded border border-line bg-card p-4">
-            <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-[13px]">
-              <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
-                <th className="border-b border-line px-3 py-2.5 font-semibold">Date</th>
-                <th className="border-b border-line px-3 py-2.5 font-semibold">Event</th>
-                <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Ht</th>
-                <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Pl</th>
-                <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Flt</th>
-                <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Score</th>
-              </tr></thead>
-              <tbody>
-                {(fg.data.rounds_detail || []).map((r) => (
-                  <tr key={r.round_id} className={`border-b border-line/50 last:border-0 ${r.dropped ? 'opacity-45' : ''}`}>
-                    <td className="px-3 py-2 text-muted">{fmtDate(r.class_date)}</td>
-                    <td className="px-3 py-2">{r.event_name}</td>
-                    <td className="px-3 py-2 text-right text-muted">{r.height_cm ? `${(Number(r.height_cm) / 100).toFixed(2)}m` : '—'}</td>
-                    <td className="px-3 py-2 text-right">{r.finish_place ?? '—'}</td>
-                    <td className="px-3 py-2 text-right">{r.status !== 'finished' ? r.status.slice(0, 1).toUpperCase() : Number(r.total_faults)}</td>
-                    <td className="px-3 py-2 text-right font-bold tabular-nums">{r.dropped ? <s>{Number(r.modelb).toFixed(1)}</s> : Number(r.modelb).toFixed(1)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </section>
-        </>
-      )}
-
       {/* division summary — rounds, clears and clear rate per division */}
       {!!divSummary.length && (
         <>
@@ -337,65 +286,6 @@ export default async function HorseProfile({ params, searchParams }) {
           </section>
         </>
       )}
-
-      {/* round record — simple per-round log: division, place, clear star, rider initials */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-[15px] font-bold">Round Record</h2>
-        {divsPresent.length > 1 && (
-          <span className="flex items-center gap-1.5">
-            {[['', 'All'], ...divsPresent.map((d) => [d.key, d.label])].map(([v, l]) => (
-              <Link key={v || 'all'} href={divHref(v)}
-                className={`text-[11px] rounded-full px-2 py-0.5 border no-underline ${divFilter === v ? 'bg-goldbg border-gold text-gold font-bold' : 'border-line text-muted'}`}>{l}</Link>
-            ))}
-          </span>
-        )}
-      </div>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Every round entered — division by height, placing, clear star and rider.</p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
-        <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-[13px]">
-          <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
-            <th className="border-b border-line px-3 py-2.5 font-semibold">Division</th>
-            <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Place</th>
-            <th className="border-b border-line px-3 py-2.5 font-semibold text-center">Clear</th>
-            <th className="border-b border-line px-3 py-2.5 font-semibold">Rider</th>
-          </tr></thead>
-          <tbody>
-            {roundHistory.map((r) => {
-              const div = divisions.find((d) => d.key === divOf(r)) || null;
-              return (
-                <tr key={r.id} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
-                  <td className="whitespace-nowrap px-3 py-2.5">
-                    {div ? (
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: div.color || '#888' }} />
-                        <b>{div.label}</b>
-                        <span className="text-[11px] text-faint">{r.height_cm ? `${(num(r.height_cm) / 100).toFixed(2)}m` : ''}</span>
-                      </span>
-                    ) : <span className="text-faint">—</span>}
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-semibold">{r.finish_place ?? '–'}</td>
-                  <td className="px-3 py-2.5 text-center text-[16px] leading-none">
-                    {r.clear_round
-                      ? <span className="text-gold" title="Clear round">★</span>
-                      : <span className="text-faint" title="Not clear">☆</span>}
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-2.5">
-                    <Link href={`/riders/${r.rider_slug || r.rider_id}`} title={r.rider}
-                      className="inline-flex items-center justify-center min-w-9 h-7 px-1.5 rounded-full border border-line bg-card2 text-[12px] font-bold text-white no-underline hover:border-gold/60 hover:text-gold">
-                      {initials(r.rider)}
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-            {!roundHistory.length && (
-              <tr><td colSpan={4} className="px-3 py-6 text-center text-muted text-[13px]">No rounds recorded yet.</td></tr>
-            )}
-          </tbody>
-        </table>
-        </div>
-      </section>
 
       {/* where performs best */}
       <h2 className="mb-3 text-[15px] font-bold">Where {h.name} Performs Best</h2>
