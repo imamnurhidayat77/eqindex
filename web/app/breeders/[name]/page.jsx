@@ -60,7 +60,6 @@ export default async function BreederProfile({ params }) {
         <StatCard label="Horses" value={num(d.horses)} />
         <StatCard label="Starts" value={num(d.starts)} />
         <StatCard label="Wins" value={num(d.wins)} />
-        <StatCard label="Points" value={num(d.total_points)} />
         <StatCard label="Clear %" value={d.clear_pct === null ? '—' : `${Number(d.clear_pct).toFixed(1)}%`} />
         <StatCard label="Avg faults" value={d.avg_faults === null ? '—' : Number(d.avg_faults).toFixed(2)} />
       </StatGrid>
@@ -107,19 +106,12 @@ export default async function BreederProfile({ params }) {
                     {divTotals.rounds ? `${((100 * divTotals.clears) / divTotals.rounds).toFixed(1)}%` : '–'}
                   </td>
                 </tr>
-                <tr className="border-b border-line/50 hover:bg-white/[0.02]">
+                <tr className="hover:bg-white/[0.02]">
                   <td className="px-3 py-2.5 text-muted">Wins</td>
                   {divSummary.map((x) => (
                     <td key={x.key} className="px-3 py-2.5 text-right text-muted">{x.wins}</td>
                   ))}
                   <td className="px-3 py-2.5 text-right"><b>{divTotals.wins}</b></td>
-                </tr>
-                <tr className="hover:bg-white/[0.02]">
-                  <td className="px-3 py-2.5 text-muted">Points</td>
-                  {divSummary.map((x) => (
-                    <td key={x.key} className="px-3 py-2.5 text-right text-muted">{x.points}</td>
-                  ))}
-                  <td className="px-3 py-2.5 text-right"><b>{divTotals.points}</b></td>
                 </tr>
               </tbody>
             </table>
@@ -130,7 +122,7 @@ export default async function BreederProfile({ params }) {
       <section className={CARD}>
         <div className="overflow-x-auto">
         <table className={TABLE}>
-          <thead><tr><th className={TH}>Horse</th><th className={TH}>Sire × Dam</th><th className={TH}>Born</th><th className={`${TH} ${NUM}`}>Starts</th><th className={`${TH} ${NUM}`}>Wins</th><th className={`${TH} ${NUM}`}>Points</th></tr></thead>
+          <thead><tr><th className={TH}>Horse</th><th className={TH}>Sire × Dam</th><th className={TH}>Born</th><th className={`${TH} ${NUM}`}>Starts</th><th className={`${TH} ${NUM}`}>Wins</th></tr></thead>
           <tbody>
             {horses.map((h) => (
               <tr key={h.horse_id}>
@@ -139,7 +131,6 @@ export default async function BreederProfile({ params }) {
                 <td className={TD}>{h.year_of_birth || '—'}</td>
                 <td className={`${TD} ${NUM}`}>{h.starts}</td>
                 <td className={`${TD} ${NUM}`}>{h.wins}</td>
-                <td className={`${TD} ${NUM}`}><b>{Number(h.total_points)}</b></td>
               </tr>
             ))}
           </tbody>
