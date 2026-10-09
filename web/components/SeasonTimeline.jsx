@@ -1,8 +1,20 @@
+'use client';
+import { useMemo, useState } from 'react';
+
 // Season Timeline — Charles's sheet as a component: one column per round,
-// chronological left to right, months grouped across the top. Dot colour =
+// chronological left to right, grouped by month. Dot colour =
 // event profile (green Normal, red Premier/Grand Prix), bold black ring =
 // jump-off class, number inside = faults (solid dot = clear).
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthKey = (ds) => {
+  const d = new Date(ds);
+  return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+const monthLabel = (key) => {
+  if (!key) return 'Unknown';
+  const [y, m] = key.split('-');
+  return `${MONTHS[Number(m) - 1]} ${y}`;
+};
 
 const initials = (name) => String(name || '').trim().split(/\s+/)
   .slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join('') || '–';
@@ -48,8 +60,22 @@ const TRACK = {
 };
 
 export default function SeasonTimeline({ history, limit = 20 }) {
-  const rounds = [...(history || [])].slice(0, limit).reverse();
-  if (!rounds.length) return null;
+  const months = useMemo(() => {
+    const keys = [];
+    for (const r of history || []) {
+      const k = monthKey(r.class_date);
+      if (k && !keys.includes(k)) keys.push(k);
+    }
+    return keys.sort().reverse();
+  }, [history]);
+  const [month, setMonth] = useState('');
+  const rounds = useMemo(() => {
+    let list = [...(history || [])];
+    if (month) list = list.filter((r) => monthKey(r.class_date) === month);
+    else list = list.slice(0, limit);
+    return list.reverse();
+  }, [history, month, limit]);
+  if (!(history || []).length) return null;
   // Group consecutive columns by month for a single spanning header.
   const groups = [];
   rounds.forEach((r, i) => {
@@ -58,8 +84,33 @@ export default function SeasonTimeline({ history, limit = 20 }) {
     if (last && last.month === m) last.span += 1;
     else groups.push({ month: m || '—', span: 1, start: i });
   });
+  const monthPicker = months.length > 1 ? (
+    <div className="mb-3 flex items-center gap-2 text-[12px] text-muted">
+      <label htmlFor="tl-month" className="uppercase tracking-wide text-[11px] text-faint font-bold">Month</label>
+      <select
+        id="tl-month"
+        value={month}
+        onChange={(e) => setMonth(e.target.value)}
+        className="rounded border border-line bg-ink px-2.5 py-1.5 text-[13px] text-white focus:border-gold/60 focus:outline-none"
+      >
+        <option value="">All months</option>
+        {months.map((k) => (
+          <option key={k} value={k}>{monthLabel(k)}</option>
+        ))}
+      </select>
+    </div>
+  ) : null;
+  if (!rounds.length) {
+    return (
+      <>
+        {monthPicker}
+        <p className="text-faint text-[13px] py-4">No rounds in this month.</p>
+      </>
+    );
+  }
   return (
     <>
+      {monthPicker}
       <div className="overflow-x-auto">
       <table className="w-full border-collapse text-[13px]">
         <thead>
