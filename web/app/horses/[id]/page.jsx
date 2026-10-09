@@ -6,6 +6,7 @@ import WatchButton from '../../../components/WatchButton';
 import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
 import HistoryTable from '../../../components/HistoryTable';
+import SeasonTimeline from '../../../components/SeasonTimeline';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 
 export const revalidate = 30;
@@ -64,9 +65,8 @@ const divisionFor = (heightCm, divs) => {
 
 export default async function HorseProfile({ params, searchParams }) {
   const hBand = (searchParams && searchParams.h) || '';
-  const [p, heights, splits, mbBoard, fg, scoring] = await Promise.all([
+  const [p, splits, mbBoard, fg, scoring] = await Promise.all([
     getJSON(`/horses/${params.id}`).catch(() => null),
-    getJSON('/height-stats?limit=200').catch(() => ({ data: [] })),
     getJSON(`/horses/${params.id}/splits`).catch(() => ({ data: [] })),
     getJSON('/rankings/modelb/horses?limit=500').catch(() => ({ data: [] })),
     getJSON(`/formguide/horse/${params.id}`).catch(() => null),
@@ -137,10 +137,6 @@ export default async function HorseProfile({ params, searchParams }) {
     { rounds: 0, clears: 0 });
 
 
-  const myHeights = (heights.data || []).filter((x) => x.horse_id === params.id);
-  const bestH = [...myHeights].sort((a, b) => num(b.clear_pct) - num(a.clear_pct) || num(b.starts) - num(a.starts))[0];
-  const bestHLabel = bestH ? `${(num(bestH.height_cm) / 100).toFixed(2)}m` : '1.30m';
-  const bestHRate = bestH ? `${num(bestH.clear_pct).toFixed(0)}% Clear Rate` : '—';
   const ageYears = h.age ?? (h.year_of_birth ? new Date().getFullYear() - Number(h.year_of_birth) : null);
   const registry = [
     ['Age', ageYears !== null && ageYears !== undefined ? `${ageYears} Years${h.year_of_birth && !h.age ? ` (b. ${h.year_of_birth})` : ''}` : '—'],
@@ -236,6 +232,12 @@ export default async function HorseProfile({ params, searchParams }) {
         <HistoryTable rows={bandHistory} mode="horse" />
       </section>
 
+      <h2 className="text-[15px] font-bold">Season Timeline</h2>
+      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Last rounds at a glance — place, clear/faults, height and rider.</p>
+      <section className="mb-6 rounded border border-line bg-card p-4">
+        <SeasonTimeline history={history} />
+      </section>
+
       {/* division summary — rounds, clears and clear rate per division */}
       {!!divSummary.length && (
         <>
@@ -286,22 +288,6 @@ export default async function HorseProfile({ params, searchParams }) {
           </section>
         </>
       )}
-
-      {/* where performs best */}
-      <h2 className="mb-3 text-[15px] font-bold">Where {h.name} Performs Best</h2>
-      <section className="mb-6 grid gap-x-8 gap-y-4 rounded border border-line bg-card p-5 md:grid-cols-2">
-        {[
-          { t: `Best Height Class (${bestHLabel})`, v: bestHRate, pct: Math.min(100, num(bestH?.clear_pct ?? clearPct)), color: 'bg-mint' },
-          { t: 'Best Level (A-Grade GP)', v: '75% Clear Rate', pct: 75, color: 'bg-gold' },
-          { t: 'Best Arena (Indoor Turf)', v: '76% Clear Rate', pct: 76, color: 'bg-mint' },
-          { t: 'Best Venue (Takapoto Estate)', v: `${wins || 3} Regional Wins`, pct: Math.min(100, (wins || 3) * 20), color: 'bg-gold' },
-        ].map((b) => (
-          <div key={b.t}>
-            <div className="mb-1.5 flex justify-between text-[12.5px]"><span className="font-semibold text-mint">{b.t}</span><span className="text-gold">{b.v}</span></div>
-            <div className="h-2 rounded bg-[#2A2A2A]"><div className={`h-2 rounded ${b.color}`} style={{ width: `${b.pct}%` }} /></div>
-          </div>
-        ))}
-      </section>
 
       <SurfaceSplits rows={splits.data} subject={h.name} />
 
