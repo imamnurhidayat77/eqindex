@@ -142,16 +142,6 @@ export default async function RiderProfile({ params, searchParams }) {
     .sort((a, b) => Number(b.clear_pct) - Number(a.clear_pct));
   const regionRank = rankedRegional.findIndex((x) => x.rider_id === params.id) + 1 || '—';
   const hiHeights = [...history].filter((x) => num(x.height_cm) >= 130);
-  // NZ season runs Aug–Jul; derive "2026/27"-style labels from actual rounds.
-  const seasonOf = (ds) => {
-    if (!ds) return null;
-    const d = new Date(ds);
-    if (Number.isNaN(d.getTime())) return null;
-    const y = d.getFullYear();
-    return d.getMonth() + 1 >= 8 ? `${y}/${String(y + 1).slice(2)}` : `${y - 1}/${String(y).slice(2)}`;
-  };
-  const seasonsHit = [...new Set(history.map((x) => seasonOf(x.class_date)).filter(Boolean))].sort();
-  const lastSeason = seasonsHit.length ? seasonsHit[seasonsHit.length - 1] : null;
   const hiClear = hiHeights.length ? (100 * hiHeights.filter((x) => x.clear_round).length) / hiHeights.length : 0;
 
   // ---- monthly / season trend from history ----
@@ -306,7 +296,7 @@ export default async function RiderProfile({ params, searchParams }) {
       </div>
 
       {/* hero */}
-      <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
+      <div className="mb-6">
         <section className="rounded border border-line bg-card p-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -332,22 +322,6 @@ export default async function RiderProfile({ params, searchParams }) {
               )}
             </div>
           </div>
-        </section>
-
-        <section className="rounded border border-line bg-card p-5">
-          <h2 className="mb-2 text-[15px] font-bold">Rider Registry Info</h2>
-          <dl>
-            {[
-              ['Region', r.region || '—'],
-              ['Season Status', lastSeason ? `${lastSeason} Active` : '—'],
-              ['Horses Ridden', String(horsesRidden)],
-            ].map(([k, v]) => (
-              <div key={k} className="flex items-center justify-between border-b border-line/60 py-[9px] text-[13px] last:border-0">
-                <dt className="text-muted">{k}</dt>
-                <dd className="font-semibold text-slate-100">{v}</dd>
-              </div>
-            ))}
-          </dl>
         </section>
       </div>
 
@@ -402,7 +376,7 @@ export default async function RiderProfile({ params, searchParams }) {
                     <td className="px-3 py-2">{r.horse_id ? <Link href={`/horses/${r.horse_id}`} className="text-white hover:text-gold">{r.horse}</Link> : r.horse}</td>
                     <td className="px-3 py-2">{r.event_name}</td>
                     <td className="px-3 py-2 text-right text-muted">{r.height_cm ? `${(Number(r.height_cm) / 100).toFixed(2)}m` : '—'}</td>
-                    <td className="px-3 py-2 text-right">{r.finish_place ?? '—'}</td>
+                    <td className="px-3 py-2 text-right">{r.status !== 'finished' ? ({ eliminated: 'E', retired: 'R', withdrawn: 'W', disqualified: 'DQ' }[r.status] || '–') : (r.finish_place ?? '—')}</td>
                     <td className="px-3 py-2 text-right font-bold tabular-nums">{r.dropped ? <s>{Number(r.modelb).toFixed(1)}</s> : Number(r.modelb).toFixed(1)}</td>
                   </tr>
                 ))}
