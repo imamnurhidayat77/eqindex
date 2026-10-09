@@ -62,7 +62,7 @@ export default function HistoryTable({ rows, mode }) {
             </>
           )}
           <td className="px-3 py-2.5 text-right">{placingBadge(r.finish_place, r.status)}</td>
-          <td className="px-3 py-2.5 text-right font-bold tabular-nums text-gold">{r.points === null || r.points === undefined ? '–' : Number(r.points)}</td>
+          <td className="px-3 py-2.5 text-right font-bold tabular-nums text-gold">{r.modelb_score === null || r.modelb_score === undefined ? '–' : Number(r.modelb_score).toFixed(1)}</td>
         </tr>
       )}
     />
