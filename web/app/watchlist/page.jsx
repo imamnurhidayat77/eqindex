@@ -199,6 +199,51 @@ export default async function Watchlist() {
     place: r.place, when: fmtRel(r.date, now),
   }));
 
+  // By-event grouping: every watched round (full histories, not just 30d)
+  // bucketed per event so the stable's performance reads event by event.
+  const byEventMap = {};
+  const pushRound = (kind, who, r) => {
+    const key = r.event_id || `name:${r.event_name || 'Unknown event'}`;
+    const g = (byEventMap[key] ||= { event_id: r.event_id || null, event: r.event_name || 'Unknown event', date: null, entries: [] });
+    if (r.class_date && (!g.date || r.class_date > g.date)) g.date = r.class_date;
+    g.entries.push({
+      kind, id: who.id, watchId: who.watchId, slug: who.slug, name: who.name,
+      horse: r.horse, rider: r.rider, horse_id: r.horse_id, rider_id: r.rider_id,
+      horse_slug: r.horse_slug, rider_slug: r.rider_slug,
+      cls: r.class_name, date: r.class_date, event_name: r.event_name,
+      height: r.height_cm, status: r.status || 'finished',
+      clear: !!r.clear_round,
+      faults: r.total_faults === null || r.total_faults === undefined ? null : Number(r.total_faults),
+      jumpfaults: r.jump_faults === null || r.jump_faults === undefined ? null : Number(r.jump_faults),
+      timefaults: r.time_faults === null || r.time_faults === undefined ? null : Number(r.time_faults),
+      place: r.finish_place === null || r.finish_place === undefined ? null : Number(r.finish_place),
+      points: r.points === null || r.points === undefined ? null : Number(r.points),
+    });
+  };
+  for (const w of horseItems) {
+    const d = hDetails[w.entity_id];
+    if (!d) continue;
+    const who = { id: w.entity_id, watchId: w.id, slug: w.slug || d.data?.slug, name: d.data?.name || w.name };
+    for (const r of d.history || []) pushRound('horse', who, r);
+  }
+  for (const w of riderItems) {
+    const d = rDetails[w.entity_id];
+    if (!d) continue;
+    const who = { id: w.entity_id, watchId: w.id, slug: w.slug || d.data?.slug, name: d.data?.name || w.name };
+    for (const r of d.history || []) pushRound('rider', who, r);
+  }
+  const byEvent = Object.values(byEventMap)
+    .map((g) => {
+      const entries = g.entries.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      const clears = entries.filter((e) => e.clear).length;
+      const withPlace = entries.filter((e) => e.place !== null);
+      const best = withPlace.length ? Math.min(...withPlace.map((e) => e.place)) : null;
+      const points = entries.reduce((s, e) => s + (Number(e.points) || 0), 0);
+      const { event_id, event, date } = g;
+      return { event_id, event, date, when: fmtDate(date), entries, clears, best, points };
+    })
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+
   // Stable pulse: what actually happened in the last 30 days.
   const all = updates.data || [];
   const pulse = {
@@ -234,6 +279,7 @@ export default async function Watchlist() {
           riders={riders}
           timeline={timeline}
           pulse={pulse}
+          byEvent={byEvent}
         />
       )}
     </>
