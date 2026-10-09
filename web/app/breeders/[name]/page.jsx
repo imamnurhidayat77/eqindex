@@ -35,7 +35,6 @@ export default async function BreederProfile({ params }) {
   const divisions = scoring?.data?.params?.divisions?.length ? scoring.data.params.divisions : DEFAULT_DIVS;
   const d = res.data;
   const horses = res.horses || [];
-  const sires = res.sires || [];
   const divSummary = divisions
     .map((div) => {
       const rows = (res.heights || []).filter(
@@ -65,28 +64,6 @@ export default async function BreederProfile({ params }) {
         <StatCard label="Clear %" value={d.clear_pct === null ? '—' : `${Number(d.clear_pct).toFixed(1)}%`} />
         <StatCard label="Avg faults" value={d.avg_faults === null ? '—' : Number(d.avg_faults).toFixed(2)} />
       </StatGrid>
-      <section className={CARD}>
-        <h2 className="text-[15px] font-bold mb-2">Top sires</h2>
-        <p className={SUB}>Stallions most used in this program, ranked by offspring points.</p>
-        <div className="overflow-x-auto">
-        <table className={TABLE}>
-          <thead><tr><th className={TH}>Sire</th><th className={`${TH} ${NUM}`}>Horses</th><th className={`${TH} ${NUM}`}>Starts</th><th className={`${TH} ${NUM}`}>Wins</th><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Points</th></tr></thead>
-          <tbody>
-            {sires.map((s) => (
-              <tr key={s.sire}>
-                <td className={`${TD} font-semibold`}>{s.sire}</td>
-                <td className={`${TD} ${NUM}`}>{s.horses}</td>
-                <td className={`${TD} ${NUM}`}>{s.starts}</td>
-                <td className={`${TD} ${NUM}`}>{s.wins}</td>
-                <td className={`${TD} ${NUM}`}>{s.clear_pct === null ? '—' : `${Number(s.clear_pct).toFixed(1)}%`}</td>
-                <td className={`${TD} ${NUM}`}><b>{Number(s.total_points)}</b></td>
-              </tr>
-            ))}
-            {!sires.length && <tr><td colSpan={6} className={`${TD} text-muted`}>No sire data recorded.</td></tr>}
-          </tbody>
-        </table>
-        </div>
-      </section>
       {!!divSummary.length && (
         <>
           <h2 className="text-[15px] font-bold">Division summary</h2>
