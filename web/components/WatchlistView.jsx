@@ -1,150 +1,92 @@
 'use client';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { API } from '../lib/api';
-import { H2, LINK } from '../lib/tokens';
 
-const trendStyle = (t) =>
-  t === 'Declining'
-    ? 'bg-redbg text-blood'
-    : t === 'Improving' || t === 'Rising'
-      ? 'bg-greenbg text-moss'
-      : 'bg-line text-muted';
-
-function FormBalls({ form }) {
-  if (!form || !form.length) return <span className="text-faint text-xs">No rounds yet</span>;
-  return (
-    <span className="inline-flex items-center gap-1" title="Last 5 rounds (left = most recent)">
-      {form.map((r, i) => (
-        <span
-          key={i}
-          title={`${r.event} — ${r.clear ? 'clear' : `${r.faults ?? '–'} faults`}${r.place ? ` · #${r.place}` : ''}`}
-          className={`inline-block w-3 h-3 rounded-full border ${r.clear
-            ? 'bg-moss border-moss'
-            : 'bg-transparent border-blood'
-            } ${i === 0 ? 'ring-1 ring-white/30' : ''}`}
-        />
-      ))}
-      <span className="text-faint text-[11px] ml-1">last {form.length}</span>
-    </span>
-  );
-}
-
-function ResultPill({ r }) {
-  if (r.place !== null && r.place !== undefined) {
-    const good = Number(r.place) <= 3;
-    return (
-      <span className={`text-[11px] font-bold rounded-md px-2 py-[3px] ${good ? 'bg-greenbg text-moss' : 'bg-card2 text-muted border border-line'}`}>
-        #{r.place}
-      </span>
-    );
+function placingBadge(place, status) {
+  if (status && status !== 'finished') {
+    const code = { eliminated: 'E', retired: 'R', withdrawn: 'W', disqualified: 'DQ' }[status] || '–';
+    return <span className="text-faint">{code}</span>;
   }
-  return (
-    <span className={`text-[11px] font-bold rounded-md px-2 py-[3px] ${r.clear ? 'bg-greenbg text-moss' : 'bg-redbg text-blood'}`}>
-      {r.clear ? 'Clear' : `${r.faults ?? '–'} flt`}
-    </span>
-  );
+  const p = Number(place);
+  if (!p) return <span className="text-faint">—</span>;
+  const lbl = p === 1 ? '1st' : p === 2 ? '2nd' : p === 3 ? '3rd' : `${p}th`;
+  return <span className="font-semibold text-gold">{lbl}</span>;
 }
 
-function HeightBars({ bands }) {
-  if (!bands || !bands.length) return null;
-  const max = Math.max(...bands.map((b) => b.rounds), 1);
+function EventAthleteCard({ a }) {
+  const [open, setOpen] = useState(false);
+  const rounds = a.rounds.length;
+  const clears = a.rounds.filter((r) => r.clear).length;
+  const withPlace = a.rounds.filter((r) => r.place !== null && r.place !== undefined);
+  const best = withPlace.length ? Math.min(...withPlace.map((r) => r.place)) : null;
+  const profileHref = `/${a.kind === 'horse' ? 'horses' : 'riders'}/${a.slug || a.id}`;
+  const partnerKey = a.kind === 'horse' ? 'rider' : 'horse';
+  const partnerSlug = a.kind === 'horse' ? 'rider_slug' : 'horse_slug';
+  const partnerId = a.kind === 'horse' ? 'rider_id' : 'horse_id';
   return (
-    <div className="mt-2.5">
-      <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1.5">Height form</div>
-      <div className="space-y-1.5">
-        {bands.map((b) => (
-          <div key={b.label} className="flex items-center gap-2 text-[12px]">
-            <span className="w-[52px] text-muted shrink-0">{b.label}</span>
-            <span className="flex-1 h-1.5 rounded bg-line overflow-hidden">
-              <span
-                className={`block h-full rounded ${b.clear >= 60 ? 'bg-moss' : b.clear >= 35 ? 'bg-gold' : 'bg-blood'}`}
-                style={{ width: `${Math.max(8, (100 * b.rounds) / max)}%` }}
-              />
-            </span>
-            <span className="w-[86px] text-right text-muted tabular-nums shrink-0">
-              {b.clear === null ? '–' : `${b.clear.toFixed(0)}%`} · {b.rounds}r
-            </span>
-          </div>
-        ))}
+    <div className="rounded bg-card2 border border-rowline px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <span className={`text-[10px] font-bold uppercase tracking-wide ${a.kind === 'horse' ? 'text-moss' : 'text-sky'}`}>{a.kind}</span>
+        <Link href={profileHref} className="text-white font-semibold text-[13.5px] no-underline hover:text-gold">{a.name}</Link>
+        <span className="text-faint text-[12px]">
+          {rounds} round{rounds === 1 ? '' : 's'} · <span className="text-moss font-semibold">{clears} clear{clears === 1 ? '' : 's'}</span>
+          {best !== null ? <> · best <span className="text-gold font-bold">#{best}</span></> : null}
+        </span>
+        <span className="flex-1" />
+        <button onClick={() => setOpen((o) => !o)} aria-expanded={open}
+          className="text-[12px] text-muted hover:text-white bg-none border border-line rounded px-2.5 py-1 cursor-pointer">
+          {open ? 'Hide rounds ▲' : `Show rounds (${rounds}) ▼`}
+        </button>
       </div>
+      {open && (
+        <div className="mt-2 border-t border-rowline pt-2 overflow-x-auto">
+          <table className="w-full border-collapse text-[12.5px] min-w-[640px]">
+            <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
+              <th className="border-b border-line px-2 py-1.5 font-semibold">Date</th>
+              <th className="border-b border-line px-2 py-1.5 font-semibold">Class</th>
+              <th className="border-b border-line px-2 py-1.5 font-semibold">Height</th>
+              <th className="border-b border-line px-2 py-1.5 font-semibold">{a.kind === 'horse' ? 'Rider' : 'Horse'}</th>
+              <th className="border-b border-line px-2 py-1.5 font-semibold text-right">Jump</th>
+              <th className="border-b border-line px-2 py-1.5 font-semibold text-right">Time</th>
+              <th className="border-b border-line px-2 py-1.5 font-semibold text-right">Total</th>
+              <th className="border-b border-line px-2 py-1.5 font-semibold text-right">Placing</th>
+            </tr></thead>
+            <tbody>
+              {a.rounds.map((r, i) => (
+                <tr key={i} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
+                  <td className="whitespace-nowrap px-2 py-1.5 text-muted">{r.date ? String(r.date).slice(0, 10) : '–'}</td>
+                  <td className="px-2 py-1.5 text-slate-200">{r.cls || '—'}</td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-muted">{r.height ? `${(Number(r.height) / 100).toFixed(2)}m` : '—'}</td>
+                  <td className="whitespace-nowrap px-2 py-1.5">
+                    <Link href={`/${a.kind === 'horse' ? 'riders' : 'horses'}/${r[partnerSlug] || r[partnerId]}`} className="text-white hover:text-gold">{r[partnerKey]}</Link>
+                  </td>
+                  {r.status !== 'finished' ? (
+                    <>
+                      <td className="px-2 py-1.5 text-right text-faint">–</td>
+                      <td className="px-2 py-1.5 text-right text-faint">–</td>
+                      <td className="px-2 py-1.5 text-right text-faint">–</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className={`px-2 py-1.5 text-right font-semibold ${Number(r.jumpfaults) === 0 ? 'text-mint' : 'text-danger'}`}>{r.jumpfaults ?? '–'}</td>
+                      <td className={`px-2 py-1.5 text-right ${Number(r.timefaults) === 0 ? 'text-mint' : 'text-danger'}`}>{r.timefaults === null || r.timefaults === undefined ? '–' : Number(r.timefaults).toFixed(2)}</td>
+                      <td className={`px-2 py-1.5 text-right font-bold ${Number(r.faults) === 0 ? 'text-mint' : 'text-danger'}`}>{r.faults === null || r.faults === undefined ? '–' : Number(r.faults).toFixed(2)}</td>
+                    </>
+                  )}
+                  <td className="px-2 py-1.5 text-right">{placingBadge(r.place, r.status)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
-function AthleteCard({ a, kind, selected, onToggle, onRemove, busy }) {
-  const profileHref = kind === 'horse' ? `/horses/${a.slug || a.id}` : `/riders/${a.slug || a.id}`;
-  return (
-    <article className="bg-card border border-line rounded p-4 flex flex-col gap-2 min-w-0">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <Link href={profileHref} className="text-white font-bold text-[15px] no-underline hover:text-gold transition-colors truncate block">
-            {a.name}
-          </Link>
-          <div className="text-faint text-[12px] mt-0.5">
-            {a.rank ? <>Ranked <b className={a.rank === 1 ? 'text-gold' : 'text-muted'}>#{a.rank}</b> · </> : null}
-            {a.starts} rounds · {Number(a.clear).toFixed(0)}% clear · {Number(a.avg).toFixed(2)} avg flt
-          </div>
-        </div>
-        <span className={`text-[11px] font-bold rounded-md px-2 py-[3px] shrink-0 ${trendStyle(a.trend)}`}>
-          {a.trend}
-        </span>
-      </div>
-
-      <FormBalls form={a.form} />
-
-      {a.outing ? (
-        <div className="text-[12.5px] text-muted">
-          Last outing:{' '}
-          <b className={a.outing.clear ? 'text-moss' : 'text-body'}>
-            {a.outing.clear ? 'Clear' : `${a.outing.faults ?? '–'} faults`}
-          </b>
-          {a.outing.height ? ` · ${(Number(a.outing.height) / 100).toFixed(2)}m` : null}
-          {' · '}{a.outing.event} <span className="text-faint">({a.outing.when})</span>
-        </div>
-      ) : (
-        <div className="text-[12.5px] text-faint">No rounds tracked yet.</div>
-      )}
-
-      {a.partner ? (
-        <div className="text-[12.5px] text-muted">
-          {kind === 'horse' ? 'Best with' : 'Best on'} <b className="text-body">{a.partner.name}</b>{' '}
-          <span className="text-faint">({a.partner.clear.toFixed(0)}% · {a.partner.rounds}r)</span>
-        </div>
-      ) : null}
-
-      <HeightBars bands={a.bands} />
-
-      <div className="flex items-center gap-3 mt-1.5 pt-2.5 border-t border-rowline">
-        <label className="flex items-center gap-1.5 text-[12px] text-muted cursor-pointer">
-          <input
-            type="checkbox"
-            className="w-4 h-4 accent-gold cursor-pointer"
-            checked={selected}
-            onChange={() => onToggle({ watchId: a.watchId, kind, id: a.id, name: a.name })}
-          />
-          Compare
-        </label>
-        <Link className={`${LINK} text-[12px]`} href={profileHref}>View profile →</Link>
-        <span className="flex-1" />
-        <button
-          className="text-sky bg-none border-0 p-0 text-[12px] cursor-pointer disabled:opacity-40"
-          disabled={busy}
-          onClick={() => onRemove(a.watchId)}
-        >
-          Remove
-        </button>
-      </div>
-    </article>
-  );
-}
-
-export default function WatchlistView({ horses, riders, timeline, pulse }) {
-  const router = useRouter();
+export default function WatchlistView({ pulse, byEvent }) {
   const [q, setQ] = useState('');
-  const [sel, setSel] = useState([]);
-  const [busy, setBusy] = useState(false);
+  const [evFilter, setEvFilter] = useState('');
 
   const matchQ = (s) => {
     const t = q.trim().toLowerCase();
@@ -152,38 +94,30 @@ export default function WatchlistView({ horses, riders, timeline, pulse }) {
     return (s || '').toLowerCase().includes(t);
   };
 
-  const fHorses = useMemo(
-    () => (horses || []).filter((h) => matchQ(`${h.name} ${h.partner?.name || ''}`)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [horses, q],
-  );
-  const fRiders = useMemo(
-    () => (riders || []).filter((r) => matchQ(`${r.name} ${r.partner?.name || ''}`)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [riders, q],
-  );
+  // ---- by-event view: one card per watched athlete per event ----
+  const evGroups = useMemo(() => {
+    const all = byEvent || [];
+    const grouped = (evFilter ? all.filter((g) => (g.event_id || g.event) === evFilter) : all)
+      .map((g) => {
+        const byAth = {};
+        for (const e of g.entries) {
+          if (!matchQ(`${e.name} ${e.kind === 'horse' ? e.rider : e.horse}`)) continue;
+          const k = `${e.kind}:${e.id}`;
+          (byAth[k] ||= { kind: e.kind, id: e.id, watchId: e.watchId, slug: e.slug, name: e.name, rounds: [] }).rounds.push(e);
+        }
+        const athletes = Object.values(byAth).sort((a, b) =>
+          (b.rounds.filter((r) => r.clear).length - a.rounds.filter((r) => r.clear).length)
+          || (b.rounds.reduce((s, r) => s + (Number(r.points) || 0), 0) - a.rounds.reduce((s, r) => s + (Number(r.points) || 0), 0)));
+        if (!athletes.length) return null;
+        return { ...g, athletes };
+      })
+      .filter(Boolean);
+    return grouped;
+  }, [byEvent, evFilter, q]);
+  const evChips = useMemo(() => (byEvent || []).map((g) => ({
+    key: g.event_id || g.event, label: g.event,
+  })), [byEvent]);
 
-  const isSel = (watchId) => sel.some((s) => s.watchId === watchId);
-  const toggleSel = (row) =>
-    setSel((s) => (isSel(row.watchId) ? s.filter((x) => x.watchId !== row.watchId) : [...s, row]));
-
-  async function removeIds(ids) {
-    if (!ids.length) return;
-    setBusy(true);
-    await Promise.all(ids.map((id) => fetch(`${API}/watchlist/${id}`, { method: 'DELETE' })));
-    setSel([]);
-    router.refresh();
-    setBusy(false);
-  }
-
-  const selHorses = sel.filter((s) => s.kind === 'horse');
-  const selRiders = sel.filter((s) => s.kind === 'rider');
-  const compareHref =
-    selHorses.length === 2 && !selRiders.length
-      ? `/comparison?type=horse&a=${selHorses[0].id}&b=${selHorses[1].id}`
-      : selRiders.length === 2 && !selHorses.length
-        ? `/comparison?type=rider&a=${selRiders[0].id}&b=${selRiders[1].id}`
-        : null;
 
   return (
     <>
@@ -202,107 +136,53 @@ export default function WatchlistView({ horses, riders, timeline, pulse }) {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Filter stable… (name or partner)"
+          placeholder="Filter by horse, rider or partner…"
           className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none w-full sm:w-[260px]"
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-5 items-start">
-        <div className="min-w-0 space-y-7">
-          {!!fHorses.length && (
-            <section>
-              <h2 className={H2}>Horses — form watch <span className="text-[11px] font-bold bg-greenbg text-moss rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{fHorses.length}</span></h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                {fHorses.map((h) => (
-                  <AthleteCard
-                    key={h.watchId} a={h} kind="horse"
-                    selected={isSel(h.watchId)} onToggle={toggleSel}
-                    onRemove={(id) => removeIds([id])} busy={busy}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {!!fRiders.length && (
-            <section>
-              <h2 className={H2}>Riders — form watch <span className="text-[11px] font-bold bg-bluebg text-sky rounded-full px-2.5 py-[3px] ml-1.5 align-middle">{fRiders.length}</span></h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                {fRiders.map((r) => (
-                  <AthleteCard
-                    key={r.watchId} a={r} kind="rider"
-                    selected={isSel(r.watchId)} onToggle={toggleSel}
-                    onRemove={(id) => removeIds([id])} busy={busy}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {!fHorses.length && !fRiders.length && (
-            <p className="text-faint text-sm">No matches for “{q}”. <button className="text-sky bg-none border-0 p-0 text-sm cursor-pointer" onClick={() => setQ('')}>Clear filter</button></p>
-          )}
-        </div>
-
-        {/* latest rounds feed */}
-        <div className="min-w-0">
-          <h2 className={H2}>Latest rounds</h2>
-          <div className="relative pl-4 mt-2">
-            <div className="absolute left-[3px] top-2 bottom-2 w-px bg-line" />
-            <div className="space-y-2.5">
-              {(timeline || []).map((r, i) => (
-                <div key={i} className="relative bg-card border border-line rounded p-3">
-                  <span className={`absolute -left-4 top-4 w-[7px] h-[7px] rounded-full ${r.clear ? 'bg-moss' : 'bg-blood'}`} />
-                  <div className="flex justify-between gap-2 items-baseline">
-                    <b className="text-[13px] truncate">{r.horse_id ? <Link href={`/horses/${r.horse_id}`} className="text-white hover:text-gold">{r.horse}</Link> : r.horse} <span className="text-faint font-normal">× {r.rider_id ? <Link href={`/riders/${r.rider_id}`} className="hover:text-gold">{r.rider}</Link> : r.rider}</span></b>
-                    <span className="text-[11px] text-faint shrink-0">{r.when}</span>
-                  </div>
-                  <div className="text-muted text-xs mt-0.5 truncate">{r.event}{r.cls ? ` · ${r.cls}` : ''}</div>
-                  <div className="flex justify-between gap-2 items-center mt-1.5">
-                    <span className="text-muted text-xs">
-                      {r.clear ? 'Clear round' : `${r.faults ?? '–'} faults`}
-                    </span>
-                    <ResultPill r={r} />
-                  </div>
-                </div>
-              ))}
-              {!(timeline || []).length && <p className="text-faint text-xs">No tracked rounds in the last 30 days.</p>}
-            </div>
-          </div>
-        </div>
+      <div className="flex flex-wrap gap-1.5 mb-4 items-center">
+        <span className="text-[11px] text-faint">Event:</span>
+        <button onClick={() => setEvFilter('')}
+          className={`text-[12px] no-underline px-2.5 py-1 rounded-full border ${!evFilter ? 'bg-goldbg text-gold border-gold/50 font-bold' : 'text-muted border-line hover:text-white'}`}>All events</button>
+        {evChips.map((c) => (
+          <button key={c.key} onClick={() => setEvFilter(c.key)}
+            className={`text-[12px] no-underline px-2.5 py-1 rounded-full border ${evFilter === c.key ? 'bg-goldbg text-gold border-gold/50 font-bold' : 'text-muted border-line hover:text-white'}`}>{c.label}</button>
+        ))}
       </div>
 
-      {/* compare tray */}
-      {(sel.length > 0 || compareHref) && (
-        <div className="sticky bottom-4 mt-6 bg-card2 border border-line rounded px-4 py-3 flex flex-wrap items-center gap-3 shadow-lg">
-          <span className="text-[13px] text-muted">
-            {sel.length ? `${sel.length} selected` : 'Select 2 horses or 2 riders to compare'}
-            {!compareHref && sel.length > 0 ? ' — need exactly 2 of the same kind' : ''}
-          </span>
-          <span className="flex-1" />
-          {!!sel.length && (
-            <button
-              onClick={() => removeIds(sel.map((s) => s.watchId))}
-              disabled={busy}
-              className="border border-blood text-blood rounded px-4 py-2 text-sm disabled:opacity-40"
-            >
-              {busy ? 'Removing…' : 'Remove selected'}
-            </button>
-          )}
-          {compareHref ? (
-            <Link href={compareHref} className="bg-sky text-ink font-semibold rounded px-4 py-2 text-sm no-underline">
-              Compare now →
-            </Link>
-          ) : (
-            <span className="text-faint text-xs">Tick “Compare” on two cards above</span>
-          )}
-          {!!sel.length && (
-            <button onClick={() => setSel([])} className="text-faint bg-none border-0 text-[12px] cursor-pointer">
-              Clear
-            </button>
-          )}
+      <div className="min-w-0 space-y-4">
+        {!evGroups.length && (
+          <p className="text-faint text-sm">No watched rounds at events yet — results appear here once your stable competes.</p>
+        )}
+          {evGroups.map((g) => {
+            const key = g.event_id || g.event;
+            const rate = g.entries.length ? (100 * g.clears) / g.entries.length : null;
+            return (
+              <section key={key} className="bg-card border border-line rounded p-4">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-1">
+                  {g.event_id ? (
+                    <Link href={`/events/${g.event_id}`} className="text-white font-bold text-[15px] no-underline hover:text-gold">{g.event}</Link>
+                  ) : (
+                    <span className="text-white font-bold text-[15px]">{g.event}</span>
+                  )}
+                  <span className="text-[12px] text-faint ml-auto">{g.when || ''}</span>
+                </div>
+                <div className="text-[12.5px] text-muted mb-2.5">
+                  {g.entries.length} {g.entries.length === 1 ? 'entry' : 'entries'} ·{' '}
+                  <span className="text-moss font-semibold">{g.clears} clear{g.clears === 1 ? '' : 's'}</span>
+                  {rate !== null ? <span className="text-faint"> ({rate.toFixed(0)}%)</span> : null}
+                  {g.best !== null && g.best !== undefined ? <> · best <span className="text-gold font-bold">#{g.best}</span></> : null}
+                </div>
+                <div className="space-y-1.5">
+                  {g.athletes.map((a) => (
+                    <EventAthleteCard key={`${a.kind}-${a.id}`} a={a} />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
-      )}
     </>
   );
 }
