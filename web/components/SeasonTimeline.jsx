@@ -59,7 +59,7 @@ const TRACK = {
   background: 'linear-gradient(to bottom, transparent calc(50% - 1px), #333  calc(50% - 1px), #333 calc(50% + 1px), transparent calc(50% + 1px))',
 };
 
-export default function SeasonTimeline({ history, limit = 20 }) {
+export default function SeasonTimeline({ history, limit = 20, partnerKey = 'rider', partnerTitle = 'Rider' }) {
   const months = useMemo(() => {
     const keys = [];
     for (const r of history || []) {
@@ -152,9 +152,9 @@ export default function SeasonTimeline({ history, limit = 20 }) {
             ))}
           </tr>
           <tr className="border-t border-line/50">
-            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-10">Rider</td>
+            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-10">{partnerTitle}</td>
             {rounds.map((r, i) => (
-              <td key={r.id || i} className="px-2 py-2 text-center text-[12px] font-bold min-w-[64px]">{initials(r.rider)}</td>
+              <td key={r.id || i} className="px-2 py-2 text-center text-[12px] font-bold min-w-[64px]">{initials(r[partnerKey])}</td>
             ))}
           </tr>
         </tbody>

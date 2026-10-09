@@ -43,8 +43,6 @@ export default function RootLayout({ children }) {
           <div className="w-full max-w-shell mx-auto px-7 pt-[26px] pb-[30px] flex justify-between items-start gap-4 text-muted text-xs flex-wrap">
             <div>
               <div><b className="text-gold">EQIndex</b></div>
-              <div>The elite horse intelligence platform. Connecting data, horses, and riders.</div>
-              <div className="mt-2">© 2026 EQIndex Platforms Ltd. All rights reserved.</div>
             </div>
             <div className="text-right">
               <nav className="flex gap-5 justify-end mb-2.5">
@@ -54,7 +52,6 @@ export default function RootLayout({ children }) {
                 <Link className="text-muted no-underline" href="/glossary">Glossary</Link>
                 <Link className="text-muted no-underline" href="/contact">Contact</Link>
               </nav>
-              <div className="mt-2">Bloomberg Terminal x Showjumping New Zealand Circuit</div>
             </div>
           </div>
         </footer>
