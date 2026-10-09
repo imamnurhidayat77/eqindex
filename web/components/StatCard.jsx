@@ -68,6 +68,7 @@ export function StatCard({
   sparkColor = '#FFD700',
   highlight = false,
   title = null,
+  compact = false,
 }) {
   const hasDelta = delta !== null && delta !== undefined && delta !== '';
   const hasSub = sub !== null && sub !== undefined && sub !== '';
@@ -77,12 +78,12 @@ export function StatCard({
   return (
     <div
       title={title || labelText}
-      className={`rounded border bg-card p-4 flex flex-col min-h-[118px] ${highlight ? 'border-gold/60' : 'border-line'}`}
+      className={`rounded border bg-card flex flex-col ${compact ? 'p-3 min-h-[96px]' : 'p-4 min-h-[118px]'} ${highlight ? 'border-gold/60' : 'border-line'}`}
     >
-      <div className="truncate text-[10px] font-semibold uppercase tracking-[0.4px] text-muted">{label}</div>
+      <div className={`truncate font-semibold uppercase tracking-[0.4px] text-muted ${compact ? 'text-[9px]' : 'text-[10px]'}`}>{label}</div>
       <div className="mt-2 flex flex-1 items-end justify-between gap-2">
-        <span className={`text-[26px] font-extrabold leading-none tabular-nums ${valueCls}`}>{value}</span>
-        {spark && <StatSpark data={spark} color={sparkColor} />}
+        <span className={`font-extrabold leading-none tabular-nums ${compact ? 'text-[20px]' : 'text-[26px]'} ${valueCls}`}>{value}</span>
+        {spark && <StatSpark data={spark} color={sparkColor} w={compact ? 60 : 76} h={compact ? 24 : 30} />}
       </div>
       <div className="mt-1.5 min-h-[18px] truncate text-[12px] tabular-nums">
         {hasDelta && (pill ? (

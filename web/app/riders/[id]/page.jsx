@@ -327,7 +327,7 @@ export default async function RiderProfile({ params, searchParams }) {
 
       {/* markers */}
       <h2 className="text-[15px] font-bold">Athlete Performance Markers</h2>
-      <StatGrid cols={4} className="mt-3">
+      <StatGrid cols={7} className="mt-3">
         {markers.map((m) => (
           <StatCard
             key={m.label}
@@ -335,6 +335,7 @@ export default async function RiderProfile({ params, searchParams }) {
             value={m.value}
             spark={m.data}
             sparkColor={m.color}
+            compact
           />
         ))}
       </StatGrid>
