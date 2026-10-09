@@ -47,7 +47,7 @@ const TRACK = {
   background: 'linear-gradient(to bottom, transparent calc(50% - 1px), #333  calc(50% - 1px), #333 calc(50% + 1px), transparent calc(50% + 1px))',
 };
 
-export default function SeasonTimeline({ history, limit = 12 }) {
+export default function SeasonTimeline({ history, limit = 20 }) {
   const rounds = [...(history || [])].slice(0, limit).reverse();
   if (!rounds.length) return null;
   // Group consecutive columns by month for a single spanning header.
