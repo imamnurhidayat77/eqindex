@@ -232,12 +232,6 @@ export default async function HorseProfile({ params, searchParams }) {
         <HistoryTable rows={bandHistory} mode="horse" />
       </section>
 
-      <h2 className="text-[15px] font-bold">Season Timeline</h2>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Last rounds at a glance — place, clear/faults, height and rider.</p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
-        <SeasonTimeline history={history} />
-      </section>
-
       {/* division summary — rounds, clears and clear rate per division */}
       {!!divSummary.length && (
         <>
@@ -288,6 +282,12 @@ export default async function HorseProfile({ params, searchParams }) {
           </section>
         </>
       )}
+
+      <h2 className="text-[15px] font-bold">Season Timeline</h2>
+      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Last rounds at a glance — place, clear/faults, height and rider.</p>
+      <section className="mb-6 rounded border border-line bg-card p-4">
+        <SeasonTimeline history={history} />
+      </section>
 
       <SurfaceSplits rows={splits.data} subject={h.name} />
 
