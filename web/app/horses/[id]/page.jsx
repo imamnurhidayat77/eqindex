@@ -103,6 +103,12 @@ export default async function HorseProfile({ params, searchParams }) {
     return (100 * slice.filter((x) => x.clear_round).length) / Math.max(slice.length, 1);
   });
 
+  const placed = history.map((r) => Number(r.finish_place)).filter((p) => p >= 1);
+  const bestPlace = placed.length ? Math.min(...placed) : null;
+  const sparkBest = chrono.map((_, i) => {
+    const soFar = chrono.slice(0, i + 1).map((x) => Number(x.finish_place)).filter((p) => p >= 1);
+    return soFar.length ? Math.min(...soFar) : null;
+  }).filter((v) => v !== null);
   const metrics = [
     { label: 'Total Rounds', delta: '+12%', value: String(starts), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
     { label: 'Events Entered', delta: '+8%', value: String(eventsEntered || s?.starts ? eventsEntered : starts), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
@@ -110,6 +116,7 @@ export default async function HorseProfile({ params, searchParams }) {
     { label: 'Avg Faults', delta: '-18%', value: avgFaults.toFixed(2), data: sparkFaults, color: '#00C853', good: true },
     { label: 'Wins', delta: '+2', value: String(wins), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) === 1).length), color: '#FFD700' },
     { label: 'Top 10 Finishes', delta: '+4', value: String(top10), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) <= 10 && Number(x.finish_place) >= 1).length), color: '#FFD700' },
+    { label: 'Best Place', delta: '', value: bestPlace === null ? '–' : `#${bestPlace}`, data: sparkBest, color: '#FFD700' },
   ];
 
   const bandHistory = history.filter((r) => {
