@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
-import { CARD, H1, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
+import { CARD, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
 import { Pagination } from '../../components/list-controls';
 import { TableEmpty } from '../../components/EmptyState';
 
@@ -54,34 +54,45 @@ export default function Standings() {
   const safePage = Math.min(page, pages);
   const view = filtered.slice((safePage - 1) * perPage, safePage * perPage);
 
+  const openDiv = open !== null ? divs.find((d) => d.key === open) : null;
   return (
     <>
-      <h1 className={H1}>Standings</h1>
+      {open !== null && (
+        <div className="mb-1 text-[12px] text-faint">
+          <button onClick={() => setOpen(null)} className="text-muted hover:text-white bg-none border-0 p-0 text-[12px] cursor-pointer">Standings</button>
+          <span className="mx-1.5">/</span>
+          <span className="text-gold">{openDiv?.label || 'Division'}</span>
+        </div>
+      )}
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <h1 className="text-[26px] font-extrabold tracking-tight">{open !== null ? (openDiv?.label || 'Division') : 'Standings'}</h1>
+        <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ Average score</span>
+      </div>
       <p className={SUB}>Average round score per combination — rounds column shows sample size.</p>
-      {open === null && <h2 className="mb-3 text-[15px] font-bold">Divisions</h2>}
+      {open === null && (
+      <>
+      <h2 className="mb-3 text-[15px] font-bold">Divisions</h2>
       <div className="grid gap-4 md:grid-cols-3 mb-6">
         {divs.map((d) => (
-          (open === null || open === d.key) && (
-          <button key={d.key || 'all'} onClick={() => { setOpen(d.key); setPage(1); }}
-            className={`group flex items-center justify-between rounded border bg-card p-4 text-left transition ${open === d.key ? 'border-gold/60' : 'border-line hover:border-gold/50'}`}>
+          <button key={d.key} onClick={() => { setOpen(d.key); setPage(1); }}
+            className="group flex items-center justify-between rounded border border-line bg-card p-4 text-left transition hover:border-gold/50">
             <div>
-              <div className={`text-[15px] font-bold ${open === d.key ? 'text-gold' : 'text-white group-hover:text-gold'} leading-tight`}>{d.label}</div>
+              <div className="text-[15px] font-bold text-white group-hover:text-gold leading-tight">{d.label}</div>
               <div className="mt-1 text-[12px] text-muted">Average score · min 3 rounds</div>
             </div>
             <span className="text-gold transition group-hover:translate-x-0.5">→</span>
           </button>
-          )
         ))}
       </div>
+      </>
+      )}
       {open !== null && (
-      <>
-      <button onClick={() => setOpen(null)} className="mb-4 rounded px-0 py-1 text-[13px] text-sky hover:underline bg-none border-0 cursor-pointer">← All divisions</button>
       <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Horse or rider…"
             className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 220 }} /></label>
       </div>
-      </>)}
+      )}
       {open !== null && (
       <section className={CARD}>
         <div className={TABLEWRAP}>
