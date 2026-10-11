@@ -392,33 +392,6 @@ export default async function RiderProfile({ params, searchParams }) {
         </>
       )}
 
-      {/* season timelines — one per horse ridden */}
-      {(() => {
-        const byHorse = new Map();
-        for (const r of history) {
-          const k = r.horse_id || r.horse;
-          if (!byHorse.has(k)) byHorse.set(k, { horse: r.horse, horse_slug: r.horse_slug, horse_id: r.horse_id, rounds: [] });
-          byHorse.get(k).rounds.push(r);
-        }
-        const groups = [...byHorse.values()].sort((a, b) => b.rounds.length - a.rounds.length);
-        if (!groups.length) return null;
-        return (
-          <>
-            <h2 className="text-[15px] font-bold">Season Timeline</h2>
-            <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Last rounds at a glance per horse — place, clear/faults and height.</p>
-            {groups.map((g) => (
-              <section key={g.horse_id || g.horse} className="mb-6 rounded border border-line bg-card p-4">
-                <div className="mb-2 text-[14px] font-bold">
-                  {g.horse_id ? <Link href={`/horses/${g.horse_slug || g.horse_id}`} className="text-white hover:text-gold">{g.horse}</Link> : g.horse}
-                  <span className="ml-2 text-[12px] font-normal text-muted">{g.rounds.length} round{g.rounds.length === 1 ? '' : 's'}</span>
-                </div>
-                <SeasonTimeline history={g.rounds} partnerKey="rider" partnerTitle="Rider" />
-              </section>
-            ))}
-          </>
-        );
-      })()}
-
     </div>
   );
 }
