@@ -60,7 +60,7 @@ export default function Standings() {
       <p className={SUB}>Average round score per combination — rounds column shows sample size.</p>
       {open === null && <h2 className="mb-3 text-[15px] font-bold">Divisions</h2>}
       <div className="grid gap-4 md:grid-cols-3 mb-6">
-        {[{ key: '', label: 'All divisions' }, ...divs].map((d) => (
+        {divs.map((d) => (
           (open === null || open === d.key) && (
           <button key={d.key || 'all'} onClick={() => { setOpen(d.key); setPage(1); }}
             className={`group flex items-center justify-between rounded border bg-card p-4 text-left transition ${open === d.key ? 'border-gold/60' : 'border-line hover:border-gold/50'}`}>
