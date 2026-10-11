@@ -75,7 +75,9 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
     else list = list.slice(0, limit);
     return list.reverse();
   }, [history, month, limit]);
-  if (!(history || []).length) return null;
+  if (!(history || []).length) {
+    return <p className="text-faint text-[13px] py-4">No rounds recorded yet — data is still empty.</p>;
+  }
   // Group consecutive columns by month for a single spanning header.
   const groups = [];
   rounds.forEach((r, i) => {
@@ -84,7 +86,7 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
     if (last && last.month === m) last.span += 1;
     else groups.push({ month: m || '—', span: 1, start: i });
   });
-  const monthPicker = months.length > 1 ? (
+  const monthPicker = months.length > 0 ? (
     <div className="mb-3 flex items-center gap-2 text-[12px] text-muted">
       <label htmlFor="tl-month" className="uppercase tracking-wide text-[11px] text-faint font-bold">Month</label>
       <select
