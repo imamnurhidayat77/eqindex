@@ -111,6 +111,66 @@ export function SeriesMatrixTable({ table, evLabels, hasDropped }) {
   );
 }
 
+// Standings aggregated per rider (all horses combined), rounds expand on
+// demand to show each horse's contribution.
+export function SeriesRiderTable({ riders }) {
+  const [open, setOpen] = useState(null);
+  const [q, setQ] = useState('');
+  const s = q.trim().toLowerCase();
+  const rows = (riders || [])
+    .filter((r) => !s || `${r.rider} ${(r.horses || []).map((h) => h.horse).join(' ')}`.toLowerCase().includes(s));
+  return (
+    <>
+      <div className="mb-3">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by rider or horse…"
+          className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 240 }} />
+      </div>
+      <table className="w-full border-collapse text-[13px]">
+        <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
+          <th className="border-b border-line px-3 py-2.5 font-semibold">#</th>
+          <th className="border-b border-line px-3 py-2.5 font-semibold">Rider</th>
+          <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Horses</th>
+          <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Total</th>
+          <th className="border-b border-line px-3 py-2.5 font-semibold"><span className="sr-only">Detail</span></th>
+        </tr></thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const rank = i + 1;
+            const isOpen = open === r.rider;
+            return [
+              <tr key={r.rider} onClick={() => setOpen(isOpen ? null : r.rider)}
+                className="border-b border-line/50 last:border-0 hover:bg-white/[0.02] cursor-pointer">
+                <td className="px-3 py-2.5"><span className={statusBadge(rank === 1 ? '1st' : rank === 2 ? '2nd' : rank === 3 ? '3rd' : 'stable')}>#{rank}</span></td>
+                <td className="px-3 py-2.5 font-semibold">
+                  {r.rd ? <Link href={`/riders/${r.rd.rider_slug || r.rd.id}`} className="text-white hover:text-gold" onClick={(e) => e.stopPropagation()}>{r.rider}</Link> : r.rider}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-muted">{r.horses.length}</td>
+                <td className="px-3 py-2.5 text-right font-extrabold">{r.total}</td>
+                <td className="px-3 py-2.5 text-right text-muted text-[11px]">{isOpen ? '▴' : '▾'}</td>
+              </tr>,
+              isOpen && (
+                <tr key={`${r.rider}-horses`}>
+                  <td />
+                  <td colSpan={4} className="px-3 py-2.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {(r.horses || []).map((h) => (
+                        <span key={h.horse} title={`${h.horse}: ${h.total} pts`}
+                          className="inline-flex items-center gap-1.5 rounded border border-gold/40 px-2 py-1 text-[12px] tabular-nums text-white">
+                          {h.total}<span className="max-w-[220px] truncate font-normal opacity-70">{h.horse}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ),
+            ];
+          })}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
 export function CategoryTable({ rows }) {
   return (
     <DataTable

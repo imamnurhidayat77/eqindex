@@ -22,7 +22,7 @@ export default function Standings() {
       setDivs(Array.isArray(d) && d.length ? d : [
         { key: 'development', label: 'Development' }, { key: 'copper', label: 'Copper' },
         { key: 'bronze', label: 'Bronze' }, { key: 'silver', label: 'Silver' },
-        { key: 'gold', label: 'Gold' },
+        { key: 'gold', label: 'Gold' }, { key: 'world_cup', label: 'World Cup' },
       ]);
     }).catch(() => {});
   }, []);
@@ -55,17 +55,24 @@ export default function Standings() {
     <>
       <h1 className={H1}>Standings</h1>
       <p className={SUB}>Average round score per combination — rounds column shows sample size.</p>
+      <h2 className="mb-3 text-[15px] font-bold">Divisions</h2>
+      <div className="grid gap-4 md:grid-cols-3 mb-6">
+        {[{ key: '', label: 'All divisions' }, ...divs].map((d) => (
+          <button key={d.key || 'all'} onClick={() => { setDiv(d.key); setPage(1); }}
+            className={`group flex items-center justify-between rounded border bg-card p-4 text-left transition ${div === d.key ? 'border-gold/60' : 'border-line hover:border-gold/50'}`}>
+            <div>
+              <div className={`text-[15px] font-bold ${div === d.key ? 'text-gold' : 'text-white group-hover:text-gold'} leading-tight`}>{d.label}</div>
+              <div className="mt-1 text-[12px] text-muted">Average score · min 3 rounds</div>
+            </div>
+            <span className="text-gold transition group-hover:translate-x-0.5">→</span>
+          </button>
+        ))}
+      </div>
       <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Horse or rider…"
             className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 220 }} /></label>
-        <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Division
-          <select value={div} onChange={(e) => setDiv(e.target.value)}
-            className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body cursor-pointer" style={{ width: 180 }}>
-            <option value="">All divisions</option>
-            {divs.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
-          </select></label>
-        <span className="ml-auto text-[12px] text-faint">Average score · min 3 rounds</span>
+        {div && <button onClick={() => setDiv('')} className="rounded px-2 py-2 text-[13px] text-sky hover:underline">All divisions</button>}
       </div>
       <section className={CARD}>
         <div className={TABLEWRAP}>

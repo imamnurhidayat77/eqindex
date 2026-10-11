@@ -311,6 +311,12 @@ export default async function RiderProfile({ params, searchParams }) {
         </section>
       </div>
 
+      <h2 className="text-[15px] font-bold">Season Timeline</h2>
+      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Every result on every horse at a glance — place, clear/faults, height and horse.</p>
+      <section className="mb-6 rounded border border-line bg-card p-4">
+        <SeasonTimeline history={history} partnerKey="horse" partnerTitle="Horse" />
+      </section>
+
       {/* markers */}
       <h2 className="text-[15px] font-bold">Athlete Performance Markers</h2>
       <StatGrid cols={7} className="mt-3">

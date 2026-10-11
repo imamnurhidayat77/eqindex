@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getJSON } from '../../../lib/api';
-import { SeriesStandingsTable } from '../../../components/SeriesTables';
+import { SeriesRiderTable } from '../../../components/SeriesTables';
 import { EmptyState } from '../../../components/EmptyState';
 
 export const revalidate = 30;
@@ -27,11 +27,26 @@ export default async function SeriesPage({ params }) {
   const { info, standings, events } = d.data;
   const name = info?.display_name || standings[0]?.series_name || key;
 
-  const table = (standings || []).map((r) => ({
-    ...r,
-    h: r.horse_id ? { id: r.horse_id, horse_slug: r.horse_slug } : null,
-    rd: r.rider_id ? { id: r.rider_id, rider_slug: r.rider_slug } : null,
-  }));
+  // Series ranks riders, not combinations: merge every horse's points
+  // into the rider's total.
+  const byRider = {};
+  for (const r of standings || []) {
+    const k = r.rider || 'Unknown rider';
+    const g = (byRider[k] ||= {
+      rider: k,
+      rd: r.rider_id ? { id: r.rider_id, rider_slug: r.rider_slug } : null,
+      total: 0, horses: [],
+    });
+    g.total += Number(r.total) || 0;
+    g.horses.push({
+      horse: r.horse,
+      total: Number(r.total) || 0,
+      h: r.horse_id ? { id: r.horse_id, horse_slug: r.horse_slug } : null,
+    });
+  }
+  const table = Object.values(byRider)
+    .map((g) => ({ ...g, horses: g.horses.sort((a, b) => b.total - a.total) }))
+    .sort((a, b) => b.total - a.total);
 
   const leader = table[0] || null;
 
@@ -48,9 +63,9 @@ export default async function SeriesPage({ params }) {
       </div>
 
       <h2 className="text-[15px] font-bold">Standings</h2>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Best-round totals per combination — click a row for the round breakdown.</p>
+      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rider totals across all horses — click a row for the per-horse breakdown.</p>
       <section className="mb-6 rounded border border-line bg-card p-4">
-        <SeriesStandingsTable table={table} />
+        <SeriesRiderTable riders={table} />
         {!table.length && (
           <EmptyState
             icon="🏆"
@@ -66,7 +81,7 @@ export default async function SeriesPage({ params }) {
         {[
           ['All Series', 'Browse every points race', '/series'],
           ['Rankings', 'National points leaderboard', '/rankings?by=points'],
-          ['Compare Leaders', 'Head-to-head the top two', leader && table[1] && leader.h && table[1].h ? `/comparison?type=horse&a=${leader.h.id}&b=${table[1].h.id}` : '/comparison'],
+          ['Compare Leaders', 'Head-to-head the top two', leader && table[1] && leader.rd && table[1].rd ? `/comparison?type=rider&a=${leader.rd.id}&b=${table[1].rd.id}` : '/comparison'],
         ].map(([t, d, href]) => (
           <Link key={t} href={href} className="group flex items-center justify-between rounded border border-line bg-card p-4 transition hover:border-gold/50">
             <div><div className="text-[13.5px] font-bold text-white">{t}</div><div className="mt-0.5 text-[12px] text-muted">{d}</div></div>

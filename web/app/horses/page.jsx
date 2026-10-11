@@ -142,9 +142,9 @@ export default function Horses() {
                     <td className={`${TD} text-muted text-[12px]`}>{x.eligible ? (x.form_score === null ? '' : `form ${Number(x.form_score).toFixed(1)}`) : `needs ${Math.max(1, 10 - Number(x.rounds || 0))} more rounds to rank`}</td>
                   </>)}
                   {tab === 'clear' && (<>
-                    <td className={`${TD} ${NUM} text-moss`}>{Number(x.clear_pct).toFixed(1)}%</td>
-                    <td className={`${TD} ${NUM}`}>{Number(x.avg_faults).toFixed(2)}</td>
-                    <td className={`${TD} ${NUM}`}>{x.starts}</td>
+                    <td className={`${TD} ${NUM} text-moss`}>{x.clear_pct === null || x.clear_pct === undefined ? '–' : `${Number(x.clear_pct).toFixed(1)}%`}</td>
+                    <td className={`${TD} ${NUM}`}>{x.avg_faults === null || x.avg_faults === undefined ? '–' : Number(x.avg_faults).toFixed(2)}</td>
+                    <td className={`${TD} ${NUM}`}>{x.starts ?? '–'}</td>
                   </>)}
                 </tr>
               );

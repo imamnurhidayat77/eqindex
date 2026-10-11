@@ -156,7 +156,7 @@ export default async function HorseProfile({ params, searchParams }) {
         <span className="text-gold">{h.name} Profile</span>
       </div>
       {/* hero */}
-      <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
+      <div className="mb-6">
         <section className="rounded border border-line bg-card p-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -186,20 +186,13 @@ export default async function HorseProfile({ params, searchParams }) {
           </div>
         </section>
 
-        <section className="rounded border border-line bg-card p-5">
-          <h2 className="mb-2 text-[15px] font-bold">Registry</h2>
-          <dl>
-            {registry.map(([k, v]) => (
-              <div key={k} className="flex items-center justify-between border-b border-line/60 py-[9px] text-[13px] last:border-0">
-                <dt className="text-muted">{k}</dt>
-                <dd className="font-semibold text-slate-100">{k === 'Breeder' && v !== '—'
-                  ? <Link href={`/breeders/${encodeURIComponent(v)}`} className="text-sky hover:text-white">{v}</Link>
-                  : v}</dd>
-              </div>
-            ))}
-          </dl>
-        </section>
       </div>
+
+      <h2 className="text-[15px] font-bold">Season Timeline</h2>
+      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Last rounds at a glance — place, clear/faults, height and rider.</p>
+      <section className="mb-6 rounded border border-line bg-card p-4">
+        <SeasonTimeline history={history} />
+      </section>
 
       {/* metrics */}
       <h2 className="text-[15px] font-bold">Circuit Metrics Summary</h2>
@@ -283,13 +276,21 @@ export default async function HorseProfile({ params, searchParams }) {
         </>
       )}
 
-      <h2 className="text-[15px] font-bold">Season Timeline</h2>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Last rounds at a glance — place, clear/faults, height and rider.</p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
-        <SeasonTimeline history={history} />
-      </section>
-
       <SurfaceSplits rows={splits.data} subject={h.name} />
+
+      <section className="rounded border border-line bg-card p-5">
+        <h2 className="mb-2 text-[15px] font-bold">Registry</h2>
+        <dl>
+          {registry.map(([k, v]) => (
+            <div key={k} className="flex items-center justify-between border-b border-line/60 py-[9px] text-[13px] last:border-0">
+              <dt className="text-muted">{k}</dt>
+              <dd className="font-semibold text-slate-100">{k === 'Breeder' && v !== '—'
+                ? <Link href={`/breeders/${encodeURIComponent(v)}`} className="text-sky hover:text-white">{v}</Link>
+                : v}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
 
     </div>
   );

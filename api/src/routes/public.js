@@ -586,7 +586,7 @@ module.exports = function mountPublicRoutes(app) {
     if (!rider.rows.length) return res.status(404).json({ error: 'rider not found' });
     const stats = await pool.query('SELECT * FROM rider_stats WHERE rider_id = $1', [req.params.id]);
     const history = await pool.query(
-      `SELECT rr.*, c.name AS class_name, e.name AS event_name, c.class_date, c.is_world_cup, h.name AS horse, h.slug AS horse_slug,
+      `SELECT rr.*, c.name AS class_name, e.name AS event_name, c.class_date, c.is_world_cup, c.format AS class_format, e.tier AS event_tier, h.name AS horse, h.slug AS horse_slug,
           m.modelb AS modelb_score
        FROM round_results rr
        JOIN classes c ON c.id = rr.class_id
@@ -1470,14 +1470,13 @@ module.exports = function mountPublicRoutes(app) {
           ORDER BY a.avg_round DESC LIMIT $2`, [minR, limit]);
       return res.json({ data: rows, metric: 'modelb', min_rounds: minR });
     }
-    // Division slice: average over rounds in that division only.
+    // Division slice: average over rounds in that division only
+    // (modelb_form carries the WC-flag override, unlike height-only mapping).
     const { rows } = await pool.query(
       `WITH div_rounds AS (
-        SELECT m.horse_id, m.rider_id, m.modelb
-        FROM modelb_round m
-        JOIN classes c ON c.id = m.class_id
-        WHERE m.modelb IS NOT NULL
-          AND division_for(COALESCE(m.h, c.height_cm)::NUMERIC, active_divisions()) = $1
+        SELECT f.horse_id, f.rider_id, f.modelb
+        FROM modelb_form f
+        WHERE f.modelb IS NOT NULL AND f.division = $1
       ),
       agg AS (
         SELECT horse_id, rider_id, COUNT(*)::INT AS rounds,
