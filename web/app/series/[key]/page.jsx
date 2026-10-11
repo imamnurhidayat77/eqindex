@@ -48,8 +48,6 @@ export default async function SeriesPage({ params }) {
     .map((g) => ({ ...g, horses: g.horses.sort((a, b) => b.total - a.total) }))
     .sort((a, b) => b.total - a.total);
 
-  const leader = table[0] || null;
-
   return (
     <div className="text-[14px] text-slate-100">
       <div className="mb-1 text-[12px] text-faint">
@@ -76,19 +74,6 @@ export default async function SeriesPage({ params }) {
         )}
       </section>
 
-      <h2 className="mb-3 text-[15px] font-bold">Series Tools</h2>
-      <div className="grid gap-4 md:grid-cols-3">
-        {[
-          ['All Series', 'Browse every points race', '/series'],
-          ['Rankings', 'National points leaderboard', '/rankings?by=points'],
-          ['Compare Leaders', 'Head-to-head the top two', leader && table[1] && leader.rd && table[1].rd ? `/comparison?type=rider&a=${leader.rd.id}&b=${table[1].rd.id}` : '/comparison'],
-        ].map(([t, d, href]) => (
-          <Link key={t} href={href} className="group flex items-center justify-between rounded border border-line bg-card p-4 transition hover:border-gold/50">
-            <div><div className="text-[13.5px] font-bold text-white">{t}</div><div className="mt-0.5 text-[12px] text-muted">{d}</div></div>
-            <span className="text-gold transition group-hover:translate-x-0.5">→</span>
-          </Link>
-        ))}
-      </div>
     </div>
   );
 }
