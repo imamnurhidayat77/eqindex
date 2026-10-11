@@ -71,7 +71,7 @@ export default function Standings() {
       <p className={SUB}>Average round score per combination — rounds column shows sample size.</p>
       {open === null && (
       <>
-      <h2 className="mb-3 text-[15px] font-bold">Divisions</h2>
+      <h2 className="mb-3 text-[22px] font-extrabold tracking-tight">Divisions</h2>
       <div className="grid gap-4 md:grid-cols-3 mb-6">
         {divs.map((d) => (
           <button key={d.key} onClick={() => { setOpen(d.key); setPage(1); }}
