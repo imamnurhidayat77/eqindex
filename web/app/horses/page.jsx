@@ -95,7 +95,7 @@ export default function Horses() {
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <div className="flex gap-1 bg-card2 border border-line rounded p-1 overflow-x-auto w-fit">
           {TABS.map(([k, lbl]) => (
-            <button key={k} onClick={() => { setTab(k); setPage(1); }}
+            <button key={k} onClick={() => { setTab(k); setPage(1); setRows([]); }}
               className={`px-3.5 py-[7px] rounded-md text-[13px] whitespace-nowrap cursor-pointer border-0 ${tab === k ? 'bg-card text-gold font-bold' : 'bg-transparent text-muted hover:text-white'}`}>
               {lbl}
             </button>
