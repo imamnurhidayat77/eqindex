@@ -281,10 +281,6 @@ export default async function RiderProfile({ params, searchParams }) {
         <span className="mx-1.5">/</span>
         <span className="text-gold">{r.name} Profile</span>
       </div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-[26px] font-extrabold tracking-tight">Rider Performance Intelligence</h1>
-      </div>
-
       {/* hero */}
       <div className="mb-6">
         <section className="rounded border border-line bg-card p-5">

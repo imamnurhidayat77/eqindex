@@ -187,7 +187,7 @@ export default async function HorseProfile({ params, searchParams }) {
         </section>
 
         <section className="rounded border border-line bg-card p-5">
-          <h2 className="mb-2 text-[15px] font-bold">Biological Registry</h2>
+          <h2 className="mb-2 text-[15px] font-bold">Registry</h2>
           <dl>
             {registry.map(([k, v]) => (
               <div key={k} className="flex items-center justify-between border-b border-line/60 py-[9px] text-[13px] last:border-0">
