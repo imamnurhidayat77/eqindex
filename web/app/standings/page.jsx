@@ -6,6 +6,16 @@ import { CARD, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
 import { Pagination } from '../../components/list-controls';
 import { TableEmpty } from '../../components/EmptyState';
 
+// Jump range label, e.g. Bronze (1.20–1.30m). World Cup has no range.
+const divRange = (d) => {
+  const lo = d.min === null || d.min === undefined ? null : Number(d.min);
+  const hi = d.max === null || d.max === undefined ? null : Number(d.max);
+  if (lo === null && hi === null) return '';
+  if (lo === null) return `up to ${(hi / 100).toFixed(2)}m`;
+  if (hi === null) return `${(lo / 100).toFixed(2)}m+`;
+  return `${(lo / 100).toFixed(2)}–${(hi / 100).toFixed(2)}m`;
+};
+
 export default function Standings() {
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
@@ -77,7 +87,7 @@ export default function Standings() {
           <button key={d.key} onClick={() => { setOpen(d.key); setPage(1); }}
             className="group flex items-center justify-between rounded border border-line bg-card p-4 text-left transition hover:border-gold/50">
             <div>
-              <div className="text-[15px] font-bold text-white group-hover:text-gold leading-tight">{d.label}</div>
+              <div className={`text-[15px] font-bold ${open === d.key ? 'text-gold' : 'text-white group-hover:text-gold'} leading-tight`}>{d.label}{divRange(d) ? ` (${divRange(d)})` : ''}</div>
               <div className="mt-1 text-[12px] text-muted">Average score · min 3 rounds</div>
             </div>
             <span className="text-gold transition group-hover:translate-x-0.5">→</span>
