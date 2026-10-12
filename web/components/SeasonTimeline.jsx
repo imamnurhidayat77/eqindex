@@ -41,11 +41,11 @@ function Star({ doubleClear, jumpOff, title }) {
     <svg width="30" height="30" viewBox="0 0 24 24" role="img" aria-label={title} className="relative z-10 overflow-visible">
       <title>{title}</title>
       <path
-        d="M12 1.8l3.1 6.5 7 0.9-5.2 4.9 1.4 6.9L12 17.6 5.7 21l1.4-6.9L1.9 9.2l7-0.9z"
-        fill="#FFD700" stroke={jumpOff ? '#000' : '#8a6d00'} strokeWidth={jumpOff ? 1.8 : 0.8}
+        d="M12 2l2.29 6.84 7.22 0.07-5.8 4.3 2.17 6.88L12 15.9l-5.88 4.19 2.17-6.88-5.8-4.3 7.22-0.07z"
+        fill="#FFD700" stroke={jumpOff ? '#000' : '#8a6d00'} strokeWidth={jumpOff ? 1.8 : 0.8} strokeLinejoin="round"
       />
       {doubleClear && (
-        <text x="12" y="15.5" textAnchor="middle" fontSize="10" fontWeight="800" fill="#0A0A0A">2</text>
+        <text x="12" y="12.6" textAnchor="middle" dominantBaseline="central" fontSize="9.5" fontWeight="800" fill="#0A0A0A">2</text>
       )}
     </svg>
   );
@@ -186,11 +186,11 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px] text-muted">
         <span className="font-bold text-white text-[13px]">Key</span>
         <span className="flex items-center gap-1.5">
-          <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 1.8l3.1 6.5 7 0.9-5.2 4.9 1.4 6.9L12 17.6 5.7 21l1.4-6.9L1.9 9.2l7-0.9z" fill="#FFD700" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 2l2.29 6.84 7.22 0.07-5.8 4.3 2.17 6.88L12 15.9l-5.88 4.19 2.17-6.88-5.8-4.3 7.22-0.07z" fill="#FFD700" /></svg>
           Clear
         </span>
         <span className="flex items-center gap-1.5">
-          <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 1.8l3.1 6.5 7 0.9-5.2 4.9 1.4 6.9L12 17.6 5.7 21l1.4-6.9L1.9 9.2l7-0.9z" fill="#FFD700" /><text x="12" y="15.5" textAnchor="middle" fontSize="10" fontWeight="800" fill="#0A0A0A">2</text></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 2l2.29 6.84 7.22 0.07-5.8 4.3 2.17 6.88L12 15.9l-5.88 4.19 2.17-6.88-5.8-4.3 7.22-0.07z" fill="#FFD700" /><text x="12" y="12.6" textAnchor="middle" dominantBaseline="central" fontSize="9.5" fontWeight="800" fill="#0A0A0A">2</text></svg>
           Double clear
         </span>
         <span className="flex items-center gap-1.5">
