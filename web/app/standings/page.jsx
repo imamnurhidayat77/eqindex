@@ -132,7 +132,7 @@ export default function Standings() {
                     <span className="text-faint"> × </span>
                     <Link href={`/riders/${x.rider_slug || x.rider_id}`} className="text-white font-semibold">{x.rider}</Link>
                   </td>
-                  <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{metric === 'clear' ? `${Number(x.clear_pct).toFixed(0)}%` : Number(x.avg_round).toFixed(1)}</b></td>
+                  <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{metric === 'clear' ? (x.clear_pct === null || x.clear_pct === undefined ? '–' : `${Number(x.clear_pct).toFixed(0)}%`) : Number(x.avg_round).toFixed(1)}</b></td>
                   <td className={`${TD} ${NUM} text-muted`}>{x.rounds}</td>
                   <td className={`${TD} ${NUM} text-muted`}>{Number(x.best_round).toFixed(1)}</td>
                 </tr>

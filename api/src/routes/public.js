@@ -1469,11 +1469,11 @@ module.exports = function mountPublicRoutes(app) {
       SELECT a.horse_id, h.name AS horse, h.slug AS horse_slug,
           a.rider_id, r.name AS rider, r.slug AS rider_slug,
           a.rounds, a.avg_round, a.best_round, a.clears, a.clear_pct,
-          RANK() OVER (ORDER BY ${orderCol} DESC)::INT AS rank
+          RANK() OVER (ORDER BY ${orderCol} DESC NULLS LAST)::INT AS rank
         FROM agg a
         JOIN horses h ON h.id = a.horse_id
         JOIN riders r ON r.id = a.rider_id
-        ORDER BY ${orderCol} DESC LIMIT $1`, [limit, div, minR]);
+        ORDER BY ${orderCol} DESC NULLS LAST LIMIT $1`, [limit, div, minR]);
     res.json({ data: rows, metric: byClear ? 'clear' : 'modelb', division: div, min_rounds: minR });
   }));
 
