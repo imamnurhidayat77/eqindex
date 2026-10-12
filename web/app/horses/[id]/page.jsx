@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import { getJSON } from '../../../lib/api';
 import { statusBadge } from '../../../lib/tokens';
 import WatchButton from '../../../components/WatchButton';
-import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
 import HistoryTable from '../../../components/HistoryTable';
 import SeasonTimeline from '../../../components/SeasonTimeline';
@@ -74,9 +73,8 @@ const divRange = (d) => {
 
 export default async function HorseProfile({ params, searchParams }) {
   const hBand = (searchParams && searchParams.h) || '';
-  const [p, splits, mbBoard, fg, scoring] = await Promise.all([
+  const [p, mbBoard, fg, scoring] = await Promise.all([
     getJSON(`/horses/${params.id}`).catch(() => null),
-    getJSON(`/horses/${params.id}/splits`).catch(() => ({ data: [] })),
     getJSON('/rankings/modelb/horses?limit=500').catch(() => ({ data: [] })),
     getJSON(`/formguide/horse/${params.id}`).catch(() => null),
     getJSON('/scoring/active').catch(() => null),
@@ -292,8 +290,6 @@ export default async function HorseProfile({ params, searchParams }) {
       <section className="mb-6 rounded border border-line bg-card p-4">
         <HistoryTable rows={bandHistory} mode="horse" />
       </section>
-
-      <SurfaceSplits rows={splits.data} subject={h.name} />
 
       <section className="rounded border border-line bg-card p-5">
         <h2 className="mb-2 text-[15px] font-bold">Registry</h2>
