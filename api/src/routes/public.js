@@ -1446,52 +1446,35 @@ module.exports = function mountPublicRoutes(app) {
         ORDER BY g.eligible DESC NULLS LAST, m.rank LIMIT $1`, [limit]);
     res.json({ data: rows, metric: 'modelb' });
   }));
+  // ?metric=avg (default) | clear — both computed over the same
+  // modelb_form rounds (WC-flag override included), optional ?division.
   app.get('/rankings/modelb/combinations', asyncH(async (req, res) => {
     const { limit } = paging(req, 100, 500);
-    // Ranked by AVERAGE round score (rounds column shows sample size).
-    const minR = Math.max(1, parseInt(req.query.min_rounds || '1', 10) || 1);
-    const div = (req.query.division || '').trim().toLowerCase();
-    if (!div) {
-      const { rows } = await pool.query(
-        `WITH agg AS (
-          SELECT m.horse_id, m.rider_id, COUNT(*)::INT AS rounds,
-            ROUND(AVG(m.modelb), 1) AS avg_round, MAX(m.modelb) AS best_round,
-            SUM(m.modelb) AS total
-          FROM modelb_round m WHERE m.modelb IS NOT NULL
-          GROUP BY 1, 2 HAVING COUNT(*) >= $1
-        )
-        SELECT a.horse_id, h.name AS horse, h.slug AS horse_slug,
-            a.rider_id, r.name AS rider, r.slug AS rider_slug,
-            a.rounds, a.avg_round, a.best_round, a.total AS best12,
-            RANK() OVER (ORDER BY a.avg_round DESC)::INT AS rank
-          FROM agg a
-          JOIN horses h ON h.id = a.horse_id
-          JOIN riders r ON r.id = a.rider_id
-          ORDER BY a.avg_round DESC LIMIT $2`, [minR, limit]);
-      return res.json({ data: rows, metric: 'modelb', min_rounds: minR });
-    }
-    // Division slice: average over rounds in that division only
-    // (modelb_form carries the WC-flag override, unlike height-only mapping).
+    const minR = Math.max(1, parseInt(req.query.min_rounds || '3', 10) || 3);
+    const div = (req.query.division || '').trim().toLowerCase() || null;
+    const byClear = (req.query.metric || '').trim().toLowerCase() === 'clear';
+    const orderCol = byClear ? 'clear_pct' : 'avg_round';
     const { rows } = await pool.query(
-      `WITH div_rounds AS (
-        SELECT f.horse_id, f.rider_id, f.modelb
-        FROM modelb_form f
-        WHERE f.modelb IS NOT NULL AND f.division = $1
+      `WITH f AS (
+        SELECT horse_id, rider_id, modelb, clear_round FROM modelb_form
+        WHERE modelb IS NOT NULL AND ($2::TEXT IS NULL OR division = $2)
       ),
       agg AS (
         SELECT horse_id, rider_id, COUNT(*)::INT AS rounds,
-          ROUND(AVG(modelb), 1) AS avg_round, MAX(modelb) AS best_round
-        FROM div_rounds GROUP BY 1, 2 HAVING COUNT(*) >= $2
+          ROUND(AVG(modelb), 1) AS avg_round, MAX(modelb) AS best_round,
+          COUNT(*) FILTER (WHERE clear_round)::INT AS clears,
+          ROUND(100.0 * AVG(clear_round::INT), 1) AS clear_pct
+        FROM f GROUP BY 1, 2 HAVING COUNT(*) >= $3
       )
       SELECT a.horse_id, h.name AS horse, h.slug AS horse_slug,
           a.rider_id, r.name AS rider, r.slug AS rider_slug,
-          NULL AS best12, a.rounds, a.avg_round, a.best_round,
-          RANK() OVER (ORDER BY a.avg_round DESC)::INT AS rank
+          a.rounds, a.avg_round, a.best_round, a.clears, a.clear_pct,
+          RANK() OVER (ORDER BY ${orderCol} DESC)::INT AS rank
         FROM agg a
         JOIN horses h ON h.id = a.horse_id
         JOIN riders r ON r.id = a.rider_id
-        ORDER BY a.avg_round DESC LIMIT $3`, [div, minR, limit]);
-    res.json({ data: rows, metric: 'modelb', division: div, min_rounds: minR });
+        ORDER BY ${orderCol} DESC LIMIT $1`, [limit, div, minR]);
+    res.json({ data: rows, metric: byClear ? 'clear' : 'modelb', division: div, min_rounds: minR });
   }));
 
   // ---- Seasons master (single source of truth for season keys/labels) ----

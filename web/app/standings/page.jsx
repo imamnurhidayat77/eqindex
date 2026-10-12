@@ -27,6 +27,7 @@ export default function Standings() {
   const [open, setOpen] = useState(null);
   const div = open ?? '';
   const [divs, setDivs] = useState([]);
+  const [metric, setMetric] = useState('avg');
 
   useEffect(() => {
     fetch(`${API}/scoring/active`).then((r) => r.json()).then((j) => {
@@ -42,14 +43,14 @@ export default function Standings() {
   useEffect(() => {
     if (open === null) return;
     setLoading(true);
-    const p = new URLSearchParams({ limit: '500', min_rounds: '3' });
+    const p = new URLSearchParams({ limit: '500', min_rounds: '3', metric });
     if (div) p.set('division', div);
     fetch(`${API}/rankings/modelb/combinations?${p}`)
       .then((r) => r.json())
       .then((j) => { setRows(j.data || []); setPage(1); })
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-  }, [open, div]);
+  }, [open, div, metric]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -76,9 +77,19 @@ export default function Standings() {
       )}
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <h1 className="text-[26px] font-extrabold tracking-tight">{open !== null ? (openDiv?.label || 'Division') : 'Standings'}</h1>
-        <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ Average score</span>
+        <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ {metric === 'clear' ? 'Clear rate' : 'Average score'}</span>
       </div>
-      <p className={SUB}>Average round score per combination — rounds column shows sample size.</p>
+      <p className={SUB}>{metric === 'clear' ? 'Rider clear rate on each horse — rounds column shows sample size.' : 'Average round score per combination — rounds column shows sample size.'}</p>
+      {open !== null && (
+        <div className="flex gap-1 bg-card2 border border-line rounded p-1 overflow-x-auto w-fit mb-4">
+          {[['avg', 'Average'], ['clear', 'Clear %']].map(([k, lbl]) => (
+            <button key={k} onClick={() => { setMetric(k); setPage(1); }}
+              className={`px-3.5 py-[7px] rounded-md text-[13px] whitespace-nowrap cursor-pointer border-0 ${metric === k ? 'bg-card text-gold font-bold' : 'bg-transparent text-muted hover:text-white'}`}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+      )}
       {open === null && (
       <>
       <h2 className="mb-3 text-[22px] font-extrabold tracking-tight">Divisions</h2>
@@ -108,7 +119,7 @@ export default function Standings() {
         <div className={TABLEWRAP}>
         <table className={TABLE}>
           <thead><tr><th className={TH}>Rank</th><th className={TH}>Combination</th>
-            <th className={`${TH} ${NUM}`}>Avg</th><th className={`${TH} ${NUM}`}>Rounds</th>
+            <th className={`${TH} ${NUM}`}>{metric === 'clear' ? 'Clear %' : 'Avg'}</th><th className={`${TH} ${NUM}`}>Rounds</th>
             <th className={`${TH} ${NUM}`}>Best</th></tr></thead>
           <tbody>
             {view.map((x, i) => {
@@ -121,7 +132,7 @@ export default function Standings() {
                     <span className="text-faint"> × </span>
                     <Link href={`/riders/${x.rider_slug || x.rider_id}`} className="text-white font-semibold">{x.rider}</Link>
                   </td>
-                  <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{Number(x.avg_round).toFixed(1)}</b></td>
+                  <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 ? 'text-gold' : ''}>{metric === 'clear' ? `${Number(x.clear_pct).toFixed(0)}%` : Number(x.avg_round).toFixed(1)}</b></td>
                   <td className={`${TD} ${NUM} text-muted`}>{x.rounds}</td>
                   <td className={`${TD} ${NUM} text-muted`}>{Number(x.best_round).toFixed(1)}</td>
                 </tr>

@@ -2,9 +2,10 @@
 import { useMemo, useState } from 'react';
 
 // Season Timeline — Charles's sheet as a component: one column per round,
-// chronological left to right, grouped by month. Dot colour =
-// event profile (green Normal, red Premier/Grand Prix), bold black ring =
-// jump-off class, number inside = faults (solid dot = clear).
+// chronological left to right, grouped by month. Clears are gold stars
+// (a 2 inside = double clear); faults are numbered circles coloured by
+// event profile (green Normal, red Premier/Grand Prix); bold black ring =
+// jump-off class.
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthKey = (ds) => {
   const d = new Date(ds);
@@ -31,25 +32,45 @@ const monthOf = (ds) => {
   return Number.isNaN(d.getTime()) ? '' : MONTHS[d.getMonth()];
 };
 
+const isDoubleClear = (r) => !!r.clear_round &&
+  ((r.jumpoff_faults !== null && r.jumpoff_faults !== undefined && Number(r.jumpoff_faults) === 0) ||
+   (r.round2_faults !== null && r.round2_faults !== undefined && Number(r.round2_faults) === 0));
+
+function Star({ doubleClear, jumpOff, title }) {
+  return (
+    <svg width="30" height="30" viewBox="0 0 24 24" role="img" aria-label={title} className="relative z-10 overflow-visible">
+      <title>{title}</title>
+      <path
+        d="M12 1.8l3.1 6.5 7 0.9-5.2 4.9 1.4 6.9L12 17.6 5.7 21l1.4-6.9L1.9 9.2l7-0.9z"
+        fill="#FFD700" stroke={jumpOff ? '#000' : '#8a6d00'} strokeWidth={jumpOff ? 1.8 : 0.8}
+      />
+      {doubleClear && (
+        <text x="12" y="15.5" textAnchor="middle" fontSize="10" fontWeight="800" fill="#0A0A0A">2</text>
+      )}
+    </svg>
+  );
+}
+
 function Dot({ r }) {
   const premier = isPremier(r);
   const jumpOff = isJumpOff(r);
   const clear = !!r.clear_round;
   const faults = r.total_faults === null || r.total_faults === undefined ? null : Number(r.total_faults);
   const color = premier ? '#FF1744' : '#00C853';
-  const title = `${r.event_name || ''} — ${r.class_name || ''}${faults === null ? '' : faults === 0 ? ' · clear' : ` · ${faults} faults`}${jumpOff ? ' · jump-off' : ''}`;
+  const dc = isDoubleClear(r);
+  const title = `${r.event_name || ''} — ${r.class_name || ''}${faults === null ? '' : faults === 0 ? (dc ? ' · double clear' : ' · clear') : ` · ${faults} faults`}${jumpOff ? ' · jump-off' : ''}`;
+  if (clear) return <Star doubleClear={dc} jumpOff={jumpOff} title={title} />;
   return (
     <span
       title={title}
-      className="relative z-10 inline-flex items-center justify-center w-[28px] h-[28px] rounded-full text-[12px] font-extrabold tabular-nums bg-card"
+      className="relative z-10 inline-flex items-center justify-center w-[28px] h-[28px] rounded-full text-[12px] font-extrabold tabular-nums"
       style={{
         border: `${jumpOff ? 3 : 2}px solid ${jumpOff ? '#000' : color}`,
         boxShadow: jumpOff ? `0 0 0 1.5px ${color}, 0 0 0 3px #000` : `0 0 0 3px #141414`,
-        color: clear ? color : '#fff',
-        background: clear ? color : '#141414',
+        background: '#141414',
       }}
     >
-      {!clear && faults !== null ? <span style={{ color }}>{faults}</span> : null}
+      {faults !== null ? <span style={{ color }}>{faults}</span> : null}
     </span>
   );
 }
@@ -164,6 +185,14 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px] text-muted">
         <span className="font-bold text-white text-[13px]">Key</span>
+        <span className="flex items-center gap-1.5">
+          <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 1.8l3.1 6.5 7 0.9-5.2 4.9 1.4 6.9L12 17.6 5.7 21l1.4-6.9L1.9 9.2l7-0.9z" fill="#FFD700" /></svg>
+          Clear
+        </span>
+        <span className="flex items-center gap-1.5">
+          <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 1.8l3.1 6.5 7 0.9-5.2 4.9 1.4 6.9L12 17.6 5.7 21l1.4-6.9L1.9 9.2l7-0.9z" fill="#FFD700" /><text x="12" y="15.5" textAnchor="middle" fontSize="10" fontWeight="800" fill="#0A0A0A">2</text></svg>
+          Double clear
+        </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-3.5 h-3.5 rounded-full" style={{ background: '#00C853' }} /> Normal Event
         </span>

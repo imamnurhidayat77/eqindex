@@ -220,21 +220,6 @@ export default async function HorseProfile({ params, searchParams }) {
         ))}
       </StatGrid>
 
-      {/* competition */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-[15px] font-bold">Competition Performance</h2>        <span className="flex items-center gap-1.5">
-          <ExportCsv rows={history} filename={`${h.name}-record.csv`} />
-          {[['', 'All'], ['110-120', '1.10–1.20'], ['120-130', '1.20–1.30'], ['130-140', '1.30–1.40'], ['140-', '1.40m+']].map(([v, l]) => {
-            const href = `/horses/${params.id}${v ? `?h=${v}` : ''}`;
-            return <Link key={v || 'all'} href={href} className={`text-[11px] rounded-full px-2 py-0.5 border no-underline ${hBand === v ? 'bg-goldbg border-gold text-gold font-bold' : 'border-line text-muted'}`}>{l}</Link>;
-          })}
-        </span>
-      </div>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Historical performance records from the NZ Showjumping Circuit.</p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
-        <HistoryTable rows={bandHistory} mode="horse" />
-      </section>
-
       {/* division summary — rounds, clears and clear rate per division */}
       {!!divSummary.length && (
         <>
@@ -291,6 +276,21 @@ export default async function HorseProfile({ params, searchParams }) {
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Last rounds at a glance — place, clear/faults, height and rider.</p>
       <section className="mb-6 rounded border border-line bg-card p-4">
         <SeasonTimeline history={history} />
+      </section>
+
+      {/* competition */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-[15px] font-bold">Competition Performance</h2>        <span className="flex items-center gap-1.5">
+          <ExportCsv rows={history} filename={`${h.name}-record.csv`} />
+          {[['', 'All'], ['110-120', '1.10–1.20'], ['120-130', '1.20–1.30'], ['130-140', '1.30–1.40'], ['140-', '1.40m+']].map(([v, l]) => {
+            const href = `/horses/${params.id}${v ? `?h=${v}` : ''}`;
+            return <Link key={v || 'all'} href={href} className={`text-[11px] rounded-full px-2 py-0.5 border no-underline ${hBand === v ? 'bg-goldbg border-gold text-gold font-bold' : 'border-line text-muted'}`}>{l}</Link>;
+          })}
+        </span>
+      </div>
+      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Historical performance records from the NZ Showjumping Circuit.</p>
+      <section className="mb-6 rounded border border-line bg-card p-4">
+        <HistoryTable rows={bandHistory} mode="horse" />
       </section>
 
       <SurfaceSplits rows={splits.data} subject={h.name} />
