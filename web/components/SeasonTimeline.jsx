@@ -39,11 +39,7 @@ const isDoubleClear = (r) => !!r.clear_round &&
 function Star({ doubleClear, title }) {
   // Plain gold star — event profile now lives in its own row below.
   return (
-    <span
-      title={title}
-      className="relative z-10 inline-flex rounded-full"
-      style={{ boxShadow: '0 0 0 3px #141414' }}
-    >
+    <span title={title} className="relative z-10 inline-flex">
       <svg width="30" height="30" viewBox="0 0 24 24" role="img" aria-label={title} className="overflow-visible">
         <path
           d="M12 2l2.29 6.84 7.22 0.07-5.8 4.3 2.17 6.88L12 15.9l-5.88 4.19 2.17-6.88-5.8-4.3 7.22-0.07z"
@@ -159,19 +155,6 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
           </tr>
         </thead>
         <tbody>
-          <tr className="border-t border-line/50">
-            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-10">Event</td>
-            {rounds.map((r, i) => {
-              const premier = isPremier(r);
-              return (
-                <td key={r.id || i} className="px-2 py-2 text-center min-w-[64px]">
-                  <span className={`inline-block rounded-full px-2 py-[3px] text-[10px] font-bold ${premier ? 'bg-redbg text-blood' : 'bg-card2 text-faint border border-line'}`}>
-                    {premier ? 'Premier' : 'Normal'}
-                  </span>
-                </td>
-              );
-            })}
-          </tr>
           <tr className="border-t border-line/50">
             <td className="px-2 py-2 text-muted sticky left-0 bg-card z-10">Place</td>
             {rounds.map((r, i) => (
