@@ -36,18 +36,26 @@ const isDoubleClear = (r) => !!r.clear_round &&
   ((r.jumpoff_faults !== null && r.jumpoff_faults !== undefined && Number(r.jumpoff_faults) === 0) ||
    (r.round2_faults !== null && r.round2_faults !== undefined && Number(r.round2_faults) === 0));
 
-function Star({ doubleClear, jumpOff, title }) {
+function Star({ doubleClear, jumpOff, premier, title }) {
+  // Gold star, edge tinted by event profile (green Normal, red Premier) so
+  // the event colour survives on clears. Jump-off classes get a black halo.
+  const edge = premier ? '#FF1744' : '#00C853';
   return (
-    <svg width="30" height="30" viewBox="0 0 24 24" role="img" aria-label={title} className="relative z-10 overflow-visible">
-      <title>{title}</title>
-      <path
-        d="M12 2l2.29 6.84 7.22 0.07-5.8 4.3 2.17 6.88L12 15.9l-5.88 4.19 2.17-6.88-5.8-4.3 7.22-0.07z"
-        fill="#FFD700" stroke={jumpOff ? '#000' : '#8a6d00'} strokeWidth={jumpOff ? 1.8 : 0.8} strokeLinejoin="round"
-      />
-      {doubleClear && (
-        <text x="12" y="12.6" textAnchor="middle" dominantBaseline="central" fontSize="9.5" fontWeight="800" fill="#0A0A0A">2</text>
-      )}
-    </svg>
+    <span
+      title={title}
+      className="relative z-10 inline-flex rounded-full"
+      style={jumpOff ? { boxShadow: '0 0 0 2px #000' } : undefined}
+    >
+      <svg width="30" height="30" viewBox="0 0 24 24" role="img" aria-label={title} className="overflow-visible">
+        <path
+          d="M12 2l2.29 6.84 7.22 0.07-5.8 4.3 2.17 6.88L12 15.9l-5.88 4.19 2.17-6.88-5.8-4.3 7.22-0.07z"
+          fill="#FFD700" stroke={edge} strokeWidth="1.6" strokeLinejoin="round"
+        />
+        {doubleClear && (
+          <text x="12" y="12.6" textAnchor="middle" dominantBaseline="central" fontSize="9.5" fontWeight="800" fill="#0A0A0A">2</text>
+        )}
+      </svg>
+    </span>
   );
 }
 
@@ -59,7 +67,7 @@ function Dot({ r }) {
   const color = premier ? '#FF1744' : '#00C853';
   const dc = isDoubleClear(r);
   const title = `${r.event_name || ''} — ${r.class_name || ''}${faults === null ? '' : faults === 0 ? (dc ? ' · double clear' : ' · clear') : ` · ${faults} faults`}${jumpOff ? ' · jump-off' : ''}`;
-  if (clear) return <Star doubleClear={dc} jumpOff={jumpOff} title={title} />;
+  if (clear) return <Star doubleClear={dc} jumpOff={jumpOff} premier={premier} title={title} />;
   return (
     <span
       title={title}
@@ -186,8 +194,8 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px] text-muted">
         <span className="font-bold text-white text-[13px]">Key</span>
         <span className="flex items-center gap-1.5">
-          <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 2l2.29 6.84 7.22 0.07-5.8 4.3 2.17 6.88L12 15.9l-5.88 4.19 2.17-6.88-5.8-4.3 7.22-0.07z" fill="#FFD700" /></svg>
-          Clear
+          <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 2l2.29 6.84 7.22 0.07-5.8 4.3 2.17 6.88L12 15.9l-5.88 4.19 2.17-6.88-5.8-4.3 7.22-0.07z" fill="#FFD700" stroke="#00C853" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+          Clear (edge = event)
         </span>
         <span className="flex items-center gap-1.5">
           <svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 2l2.29 6.84 7.22 0.07-5.8 4.3 2.17 6.88L12 15.9l-5.88 4.19 2.17-6.88-5.8-4.3 7.22-0.07z" fill="#FFD700" /><text x="12" y="12.6" textAnchor="middle" dominantBaseline="central" fontSize="9.5" fontWeight="800" fill="#0A0A0A">2</text></svg>
