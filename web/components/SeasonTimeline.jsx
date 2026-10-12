@@ -142,11 +142,11 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
   return (
     <>
       {monthPicker}
-      <div className="overflow-x-auto">
-      <table className="w-max min-w-[420px] border-collapse text-[13px]">
+      <div className="overflow-x-auto isolate">
+      <table className="w-full border-collapse text-[13px]">
         <thead>
           <tr className="text-[11px] uppercase tracking-wide text-faint">
-            <th className="px-2 py-2 font-semibold text-left sticky left-0 bg-card z-20 w-[92px]">Season</th>
+            <th className="px-2 py-2 font-semibold text-left sticky left-0 bg-card z-[2]">Season</th>
             {groups.map((g, i) => (
               <th key={i} colSpan={g.span} className="px-2 py-2 font-semibold text-center border-b border-line">
                 {g.month}
@@ -156,7 +156,7 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
         </thead>
         <tbody>
           <tr className="border-t border-line/50">
-            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-10">Place</td>
+            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-[1]">Place</td>
             {rounds.map((r, i) => (
               <td key={r.id || i} className="px-2 py-2 text-center font-semibold min-w-[64px]">
                 {r.status !== 'finished'
@@ -166,7 +166,7 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
             ))}
           </tr>
           <tr className="border-t border-line/50">
-            <td className="px-2 py-2.5 text-muted sticky left-0 bg-card z-10">Clear / Faults</td>
+            <td className="px-2 py-2.5 text-muted sticky left-0 bg-card z-[1]">Clear / Faults</td>
             {rounds.map((r, i) => (
               <td key={r.id || i} className="px-2 py-2.5 text-center min-w-[64px]" style={TRACK}>
                 <Dot r={r} />
@@ -174,7 +174,7 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
             ))}
           </tr>
           <tr className="border-t border-line/50">
-            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-10">Height</td>
+            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-[1]">Height</td>
             {rounds.map((r, i) => (
               <td key={r.id || i} className="px-2 py-2 text-center tabular-nums min-w-[64px]">
                 <b>{r.height_cm ? `${(Number(r.height_cm) / 100).toFixed(2)}` : '–'}</b>
@@ -183,7 +183,7 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
             ))}
           </tr>
           <tr className="border-t border-line/50">
-            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-10">{partnerTitle}</td>
+            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-[1]">{partnerTitle}</td>
             {rounds.map((r, i) => (
               <td key={r.id || i} className="px-2 py-2 text-center text-[12px] font-bold min-w-[64px]">{initials(r[partnerKey])}</td>
             ))}
