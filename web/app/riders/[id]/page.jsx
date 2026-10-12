@@ -67,6 +67,15 @@ const divisionFor = (heightCm, divs) => {
     (d.min === null || d.min === undefined || hgt >= d.min) &&
     (d.max === null || d.max === undefined || hgt < d.max)) || null;
 };
+// Jump range label, e.g. Bronze (1.20–1.30m). World Cup has no range.
+const divRange = (d) => {
+  const lo = d.min === null || d.min === undefined ? null : Number(d.min);
+  const hi = d.max === null || d.max === undefined ? null : Number(d.max);
+  if (lo === null && hi === null) return '';
+  if (lo === null) return `up to ${(hi / 100).toFixed(2)}m`;
+  if (hi === null) return `${(lo / 100).toFixed(2)}m+`;
+  return `${(lo / 100).toFixed(2)}–${(hi / 100).toFixed(2)}m`;
+};
 
 function trendStatus(clearPct) {
   const c = num(clearPct);
@@ -311,12 +320,6 @@ export default async function RiderProfile({ params, searchParams }) {
         </section>
       </div>
 
-      <h2 className="text-[15px] font-bold">Season Timeline</h2>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Every result on every horse at a glance — place, clear/faults, height and horse.</p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
-        <SeasonTimeline history={history} partnerKey="horse" partnerTitle="Horse" />
-      </section>
-
       {/* markers */}
       <h2 className="text-[15px] font-bold">Athlete Performance Markers</h2>
       <StatGrid cols={7} className="mt-3">
@@ -331,16 +334,6 @@ export default async function RiderProfile({ params, searchParams }) {
           />
         ))}
       </StatGrid>
-
-      {/* competition history */}
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-[15px] font-bold">Competition History</h2>
-        <ExportCsv rows={history} filename={`${r.name}-record.csv`} />
-      </div>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rider performance logs from official New Zealand showjumping rounds.</p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
-        <HistoryTable rows={history} mode="rider" />
-      </section>
 
       {!!divSummary.length && (
         <>
@@ -357,6 +350,7 @@ export default async function RiderProfile({ params, searchParams }) {
                       <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: d.color || '#888' }} />
                       {d.label}
                     </span>
+                    {divRange(d) && <span className="block text-[10px] font-normal text-faint">{divRange(d)}</span>}
                   </th>
                 ))}
                 <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Total</th>
@@ -391,6 +385,22 @@ export default async function RiderProfile({ params, searchParams }) {
           </section>
         </>
       )}
+
+      <h2 className="text-[15px] font-bold">Season Timeline</h2>
+      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Every result on every horse at a glance — place, clear/faults, height and horse.</p>
+      <section className="mb-6 rounded border border-line bg-card p-4">
+        <SeasonTimeline history={history} partnerKey="horse" partnerTitle="Horse" />
+      </section>
+
+      {/* competition history */}
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[15px] font-bold">Competition History</h2>
+        <ExportCsv rows={history} filename={`${r.name}-record.csv`} />
+      </div>
+      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rider performance logs from official New Zealand showjumping rounds.</p>
+      <section className="mb-6 rounded border border-line bg-card p-4">
+        <HistoryTable rows={history} mode="rider" />
+      </section>
 
     </div>
   );

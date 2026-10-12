@@ -62,6 +62,15 @@ const divisionFor = (heightCm, divs) => {
     (d.min === null || d.min === undefined || hgt >= d.min) &&
     (d.max === null || d.max === undefined || hgt < d.max)) || null;
 };
+// Jump range label, e.g. Bronze (1.20–1.30m). World Cup has no range.
+const divRange = (d) => {
+  const lo = d.min === null || d.min === undefined ? null : Number(d.min);
+  const hi = d.max === null || d.max === undefined ? null : Number(d.max);
+  if (lo === null && hi === null) return '';
+  if (lo === null) return `up to ${(hi / 100).toFixed(2)}m`;
+  if (hi === null) return `${(lo / 100).toFixed(2)}m+`;
+  return `${(lo / 100).toFixed(2)}–${(hi / 100).toFixed(2)}m`;
+};
 
 export default async function HorseProfile({ params, searchParams }) {
   const hBand = (searchParams && searchParams.h) || '';
@@ -195,12 +204,6 @@ export default async function HorseProfile({ params, searchParams }) {
 
       </div>
 
-      <h2 className="text-[15px] font-bold">Season Timeline</h2>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Last rounds at a glance — place, clear/faults, height and rider.</p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
-        <SeasonTimeline history={history} />
-      </section>
-
       {/* metrics */}
       <h2 className="text-[15px] font-bold">Circuit Metrics Summary</h2>
       <StatGrid cols={7} className="mt-3">
@@ -248,6 +251,7 @@ export default async function HorseProfile({ params, searchParams }) {
                       <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: d.color || '#888' }} />
                       {d.label}
                     </span>
+                    {divRange(d) && <span className="block text-[10px] font-normal text-faint">{divRange(d)}</span>}
                   </th>
                 ))}
                 <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Total</th>
@@ -282,6 +286,12 @@ export default async function HorseProfile({ params, searchParams }) {
           </section>
         </>
       )}
+
+      <h2 className="text-[15px] font-bold">Season Timeline</h2>
+      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Last rounds at a glance — place, clear/faults, height and rider.</p>
+      <section className="mb-6 rounded border border-line bg-card p-4">
+        <SeasonTimeline history={history} />
+      </section>
 
       <SurfaceSplits rows={splits.data} subject={h.name} />
 
