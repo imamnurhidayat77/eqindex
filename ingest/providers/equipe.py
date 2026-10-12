@@ -49,7 +49,7 @@ def parse_height(raw):
     if raw is None:
         return None
     vals = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", str(raw))]
-    return int(max(vals) * 100) if vals else None
+    return int(round(max(vals) * 100)) if vals else None
 
 
 def classify(name):
@@ -164,6 +164,16 @@ def main():
         if cno in series_map:
             series = series_map[cno]
         height = parse_height(cls.get("fence_height"))
+        # Class names often carry the real spread ("1.30-1.40m") while
+        # fence_height holds the low end: repo convention is the upper
+        # bound, so take the max of both.
+        name_high = None
+        for _lo, _hi, _unit in re.findall(
+                r"(\d+(?:\.\d+)?)\s*[-/]\s*(\d+(?:\.\d+)?)\s*(cm|m)\b", name, re.I):
+            _v = int(round(float(_hi) * (100.0 if _unit.lower() == "m" else 1.0)))
+            name_high = _v if name_high is None or _v > name_high else name_high
+        if name_high and (height is None or name_high > height):
+            height = name_high
         jo = bool(re.search(r"\bIJO\b|\bAM5\b|\b261\.", name, re.I))
         for sec in cls.get("class_sections", []) or []:
             if (sec.get("state") or "") not in ("results", "finished", "final"):
