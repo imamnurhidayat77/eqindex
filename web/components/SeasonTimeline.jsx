@@ -36,14 +36,13 @@ const isDoubleClear = (r) => !!r.clear_round &&
   ((r.jumpoff_faults !== null && r.jumpoff_faults !== undefined && Number(r.jumpoff_faults) === 0) ||
    (r.round2_faults !== null && r.round2_faults !== undefined && Number(r.round2_faults) === 0));
 
-function Star({ doubleClear, jumpOff, title }) {
-  // Plain gold star; jump-off classes get a black halo. Event profile stays
-  // on the fault rings + tooltip — tinting the star edge looked noisy.
+function Star({ doubleClear, title }) {
+  // Plain gold star — event profile now lives in its own row below.
   return (
     <span
       title={title}
       className="relative z-10 inline-flex rounded-full"
-      style={{ boxShadow: jumpOff ? '0 0 0 2px #000' : '0 0 0 3px #141414' }}
+      style={{ boxShadow: '0 0 0 3px #141414' }}
     >
       <svg width="30" height="30" viewBox="0 0 24 24" role="img" aria-label={title} className="overflow-visible">
         <path
@@ -66,7 +65,7 @@ function Dot({ r }) {
   const color = premier ? '#FF1744' : '#00C853';
   const dc = isDoubleClear(r);
   const title = `${r.event_name || ''} — ${r.class_name || ''}${faults === null ? '' : faults === 0 ? (dc ? ' · double clear' : ' · clear') : ` · ${faults} faults`}${jumpOff ? ' · jump-off' : ''}`;
-  if (clear) return <Star doubleClear={dc} jumpOff={jumpOff} title={title} />;
+  if (clear) return <Star doubleClear={dc} title={title} />;
   // Not clear with zero faults (eliminated / retired / ...) shows the status
   // code instead of a confusing "0".
   const statusCode = !clear && faults === 0
@@ -160,6 +159,19 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
           </tr>
         </thead>
         <tbody>
+          <tr className="border-t border-line/50">
+            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-10">Event</td>
+            {rounds.map((r, i) => {
+              const premier = isPremier(r);
+              return (
+                <td key={r.id || i} className="px-2 py-2 text-center min-w-[64px]">
+                  <span className={`inline-block rounded-full px-2 py-[3px] text-[10px] font-bold ${premier ? 'bg-redbg text-blood' : 'bg-card2 text-faint border border-line'}`}>
+                    {premier ? 'Premier' : 'Normal'}
+                  </span>
+                </td>
+              );
+            })}
+          </tr>
           <tr className="border-t border-line/50">
             <td className="px-2 py-2 text-muted sticky left-0 bg-card z-10">Place</td>
             {rounds.map((r, i) => (
