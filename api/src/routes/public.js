@@ -1450,7 +1450,7 @@ module.exports = function mountPublicRoutes(app) {
   // modelb_form rounds (WC-flag override included), optional ?division.
   app.get('/rankings/modelb/combinations', asyncH(async (req, res) => {
     const { limit } = paging(req, 100, 500);
-    const minR = Math.max(1, parseInt(req.query.min_rounds || '3', 10) || 3);
+    const minR = Math.max(1, parseInt(req.query.min_rounds || '1', 10) || 1);
     const div = (req.query.division || '').trim().toLowerCase() || null;
     const byClear = (req.query.metric || '').trim().toLowerCase() === 'clear';
     const orderCol = byClear ? 'clear_pct' : 'avg_round';

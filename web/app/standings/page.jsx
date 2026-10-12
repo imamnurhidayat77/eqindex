@@ -43,7 +43,7 @@ export default function Standings() {
   useEffect(() => {
     if (open === null) return;
     setLoading(true);
-    const p = new URLSearchParams({ limit: '500', min_rounds: '3', metric });
+    const p = new URLSearchParams({ limit: '500', min_rounds: '1', metric });
     if (div) p.set('division', div);
     fetch(`${API}/rankings/modelb/combinations?${p}`)
       .then((r) => r.json())
@@ -99,7 +99,7 @@ export default function Standings() {
             className="group flex items-center justify-between rounded border border-line bg-card p-4 text-left transition hover:border-gold/50">
             <div>
               <div className={`text-[15px] font-bold ${open === d.key ? 'text-gold' : 'text-white group-hover:text-gold'} leading-tight`}>{d.label}{divRange(d) ? ` (${divRange(d)})` : ''}</div>
-              <div className="mt-1 text-[12px] text-muted">Average score · min 3 rounds</div>
+              <div className="mt-1 text-[12px] text-muted">Average score</div>
             </div>
             <span className="text-gold transition group-hover:translate-x-0.5">→</span>
           </button>
