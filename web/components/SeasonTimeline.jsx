@@ -143,10 +143,10 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
     <>
       {monthPicker}
       <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-[13px]">
+      <table className="w-max min-w-[420px] border-collapse text-[13px]">
         <thead>
           <tr className="text-[11px] uppercase tracking-wide text-faint">
-            <th className="px-2 py-2 font-semibold text-left sticky left-0 bg-card z-20">Season</th>
+            <th className="px-2 py-2 font-semibold text-left sticky left-0 bg-card z-20 w-[92px]">Season</th>
             {groups.map((g, i) => (
               <th key={i} colSpan={g.span} className="px-2 py-2 font-semibold text-center border-b border-line">
                 {g.month}
