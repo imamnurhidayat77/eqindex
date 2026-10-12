@@ -9,6 +9,7 @@ import { RiderSeasonChart, RiderMiniTrend } from '../../../components/rider-prof
 import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
 import HistoryTable from '../../../components/HistoryTable';
+import PhotoStrip from '../../../components/PhotoStrip';
 import { EmptyState, TableEmpty } from '../../../components/EmptyState';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 
@@ -401,6 +402,8 @@ export default async function RiderProfile({ params, searchParams }) {
       <section className="mb-6 rounded border border-line bg-card p-4">
         <HistoryTable rows={history} mode="rider" />
       </section>
+
+      <PhotoStrip query={{ rider_id: r.id }} title="Photos" moreHref={`/photos?rider=${r.slug || r.id}`} />
 
     </div>
   );

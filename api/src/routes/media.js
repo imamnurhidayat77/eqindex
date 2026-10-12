@@ -177,6 +177,79 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows[0] });
   }));
 
+  // ---- Public catalog (published only; previews/thumbs are CDN-public) ----
+  app.get('/photos', asyncH(async (req, res) => {
+    const conds = [`m.status = 'published'`], params = [];
+    const push = (sql, v) => { params.push(v); conds.push(sql.replace('?', `$${params.length}`)); };
+    if (req.query.event_id) {
+      const evid = await resolveId('events', req.query.event_id, res);
+      if (!evid) return;
+      push('m.event_id = ?', evid);
+    }
+    if (req.query.horse_id) {
+      const hid = await resolveId('horses', req.query.horse_id, res);
+      if (!hid) return;
+      push('m.horse_id = ?', hid);
+    }
+    if (req.query.rider_id) {
+      const rid = await resolveId('riders', req.query.rider_id, res);
+      if (!rid) return;
+      push('m.rider_id = ?', rid);
+    }
+    if (req.query.kind) push('m.kind = ?', String(req.query.kind));
+    const limit = Math.min(parseInt(req.query.limit, 10) || 48, 200);
+    params.push(limit);
+    const { rows } = await pool.query(
+      `SELECT m.id, m.kind, m.event_id, m.class_id, m.horse_id, m.rider_id,
+          m.thumb_key, m.preview_key, m.width, m.height, m.taken_at,
+          m.price_cents, m.license_default, m.moment, m.created_at,
+          e.name AS event_name, h.name AS horse, r.name AS rider,
+          p.name AS photographer
+        FROM media m LEFT JOIN events e ON e.id = m.event_id
+        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        JOIN photographers p ON p.id = m.photographer_id
+        WHERE ${conds.join(' AND ')}
+        ORDER BY m.created_at DESC LIMIT $${params.length}`,
+      params
+    );
+    withUrls(rows);
+    res.json({ data: rows });
+  }));
+
+  app.get('/photos/:id', asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT m.*, e.name AS event_name, e.date_start AS event_date,
+          c.name AS class_name, h.name AS horse, r.name AS rider,
+          p.name AS photographer
+        FROM media m LEFT JOIN events e ON e.id = m.event_id
+        LEFT JOIN classes c ON c.id = m.class_id
+        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        JOIN photographers p ON p.id = m.photographer_id
+        WHERE m.id = $1 AND m.status = 'published'`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'photo not found' });
+    withUrls(rows);
+    const rel = await pool.query(
+      `SELECT id, thumb_key, kind FROM media
+        WHERE status = 'published' AND id <> $1
+          AND (event_id = $2 OR horse_id = $3 OR rider_id = $4)
+        ORDER BY created_at DESC LIMIT 8`,
+      [req.params.id, rows[0].event_id, rows[0].horse_id, rows[0].rider_id]
+    );
+    withUrls(rel.rows);
+    res.json({ data: rows[0], related: rel.rows });
+  }));
+
+  function withUrls(rows) {
+    for (const r of rows) {
+      try {
+        if (r.preview_key) r.preview_url = mediaStore.publicUrl(r.preview_key);
+        if (r.thumb_key) r.thumb_url = mediaStore.publicUrl(r.thumb_key);
+      } catch { /* R2 public base unconfigured */ }
+    }
+  }
+
   // ---- Assisted tagging: rank classes by taken_at proximity, with candidates ----
   app.post('/admin/media/suggest-tags', needRole('ADMIN'), asyncH(async (req, res) => {
     const { event_id, taken_at } = req.body || {};

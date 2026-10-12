@@ -6,6 +6,7 @@ import { BADGE, CARD, H1, H2, LINK, LIVE, NUM, SUB, TABLE, TABLEWRAP, TD, TH, ba
 import ClassResults from '../../../components/ClassResults';
 import { EventDifficultyTable } from '../../../components/EventTables';
 import { StatCard, StatGrid } from '../../../components/StatCard';
+import PhotoStrip from '../../../components/PhotoStrip';
 
 export const revalidate = 30;
 
@@ -234,6 +235,8 @@ export default async function EventDetail({ params }) {
         </table>
         </div>
       </section>
+
+      <PhotoStrip query={{ event_id: params.id }} title="Event photos" moreHref={`/photos?event=${params.id}`} />
 
     </>
   );

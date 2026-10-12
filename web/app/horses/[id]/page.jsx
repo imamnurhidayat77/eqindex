@@ -5,6 +5,7 @@ import { statusBadge } from '../../../lib/tokens';
 import WatchButton from '../../../components/WatchButton';
 import ExportCsv from '../../../components/ExportCsv';
 import HistoryTable from '../../../components/HistoryTable';
+import PhotoStrip from '../../../components/PhotoStrip';
 import SeasonTimeline from '../../../components/SeasonTimeline';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 
@@ -290,6 +291,8 @@ export default async function HorseProfile({ params, searchParams }) {
       <section className="mb-6 rounded border border-line bg-card p-4">
         <HistoryTable rows={bandHistory} mode="horse" />
       </section>
+
+      <PhotoStrip query={{ horse_id: h.id }} title="Photos" moreHref={`/photos?horse=${h.slug || h.id}`} />
 
       <section className="rounded border border-line bg-card p-5">
         <h2 className="mb-2 text-[15px] font-bold">Registry</h2>
