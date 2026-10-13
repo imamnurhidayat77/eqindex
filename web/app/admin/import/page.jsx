@@ -41,6 +41,8 @@ export default function AdminImport() {
   const [evNew, setEvNew] = useState({ name: '', date_start: '', date_end: '', venue: '', region: '', arena_type: '' });
   const [csv, setCsv] = useState('');
   const [mode, setMode] = useState('csv');
+  const [assistUrl, setAssistUrl] = useState('');
+  const [assist, setAssist] = useState(null);
   const [preview, setPreview] = useState(null);
   const [history, setHistory] = useState([]);
   const [err, setErr] = useState('');
@@ -87,6 +89,25 @@ export default function AdminImport() {
     rd.onload = () => setCsv(String(rd.result || ''));
     rd.readAsText(f);
   }
+  async function analyze() {
+    setErr(''); setAssist(null);
+    setBusy(true);
+    try {
+      const body = assistUrl.trim()
+        ? { source_url: assistUrl.trim() }
+        : { text: csv, filename: 'pasted-text' };
+      if (!assistUrl.trim() && !csv.trim()) throw new Error('Paste a show link or some results text first.');
+      const d = await api('/admin/import/assist', body);
+      setAssist(d);
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
+  function loadAssist() {
+    if (!assist?.records?.length) return;
+    setMode('json');
+    setCsv(JSON.stringify(assist.records, null, 1));
+    setPreview(null);
+  }
   async function run(dry) {
     setErr('');
     const isNew = eventId === '__new__';
@@ -126,8 +147,32 @@ export default function AdminImport() {
   return (
     <>
       <h1 className={H1}>Results import</h1>
-      <p className={SUB}>CSV or JSON organiser results → validate → preview points → commit. Duplicates auto-rejected.</p>
+      <p className={SUB}>Paste a show link or file → Assistant maps it → validate & preview → commit. Duplicates auto-rejected.</p>
       {err && <section className={CARD}><p className="text-blood text-sm">{err}</p></section>}
+      <section className={CARD}>
+        <h2 className="text-[15px] font-bold mb-1">Import Assistant <span className="text-[11px] text-faint font-semibold">· link or file first, approve before anything saves</span></h2>
+        <div className="flex flex-wrap gap-2 items-end mb-2">
+          <label className="text-xs text-muted flex flex-col gap-1 grow">Show link (Equipe) or paste results below
+            <input value={assistUrl} onChange={(e) => setAssistUrl(e.target.value)} placeholder="https://online.equipe.com/shows/…"
+              className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" /></label>
+          <button className={BTN_PRIMARY} disabled={busy} onClick={analyze}>{busy ? 'Reading…' : 'Analyze →'}</button>
+          {!!assist?.records?.length && (
+            <button className="rounded border border-gold/60 px-4 py-2 text-sm font-bold text-gold bg-none cursor-pointer hover:bg-goldbg/40" onClick={loadAssist}>Load {assist.records.length} rows into editor ↓</button>
+          )}
+        </div>
+        {assist && (
+          <div className="rounded border border-line bg-card2/50 p-3 text-[13px]">
+            <b>Detected: {assist.detected.type}</b>
+            {assist.detected.meeting ? ` · ${assist.detected.meeting}` : ''}
+            {assist.detected.filename ? ` · ${assist.detected.filename}` : ''}
+            <span className="text-muted"> — {assist.stats.rounds} rounds · {assist.stats.with_series} with series · {assist.stats.finished} finished</span>
+            {!!assist.warnings.length && (
+              <ul className="mt-1.5 text-[12.5px] text-gold">{assist.warnings.slice(0, 6).map((w, i) => <li key={i}>{w}</li>)}</ul>
+            )}
+            <p className="mt-1.5 text-[12px] text-faint">Check the rows, edit if needed, then Validate & preview below — nothing is saved until Commit.</p>
+          </div>
+        )}
+      </section>
       <section className={CARD}>
         <div className="flex gap-1 rounded bg-card2 p-1 text-[12.5px] w-fit mb-3">
           {[['csv', 'CSV'], ['json', 'JSON']].map(([v, l]) => (

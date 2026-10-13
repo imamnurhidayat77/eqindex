@@ -369,6 +369,40 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ received: true });
   }));
 
+  // ---- Moment badges: suggest win/clear/debut from round_results ----
+  // POST /admin/media/:id/suggest-moment
+  app.post('/admin/media/:id/suggest-moment', needRole('ADMIN'), asyncH(async (req, res) => {
+    const m = await pool.query('SELECT horse_id, rider_id, event_id FROM media WHERE id = $1', [req.params.id]);
+    if (!m.rows.length) return res.status(404).json({ error: 'media not found' });
+    const { horse_id, rider_id, event_id } = m.rows[0];
+    const out = { suggested: null, reasons: [] };
+    if (horse_id || rider_id) {
+      const cond = horse_id ? 'rr.horse_id = $1' : 'rr.rider_id = $1';
+      const wins = await pool.query(
+        `SELECT COUNT(*)::INT AS n FROM round_results rr WHERE ${cond} AND rr.finish_place = 1 AND class_id_visible(rr.class_id)`,
+        [horse_id || rider_id]
+      );
+      const clears = await pool.query(
+        `SELECT COUNT(*)::INT AS n, MIN(c.class_date) AS first FROM round_results rr
+          JOIN classes c ON c.id = rr.class_id
+          WHERE ${cond} AND rr.clear_round AND class_id_visible(rr.class_id)`,
+        [horse_id || rider_id]
+      );
+      if (wins.rows[0].n > 0) { out.suggested = 'win'; out.reasons.push(`${wins.rows[0].n} career wins`); }
+      else if (clears.rows[0].n > 0) { out.suggested = 'clear'; out.reasons.push(`${clears.rows[0].n} clears`); }
+    }
+    if (event_id && (horse_id || rider_id)) {
+      const cond = horse_id ? 'rr.horse_id = $1' : 'rr.rider_id = $1';
+      const prior = await pool.query(
+        `SELECT COUNT(*)::INT AS n FROM round_results rr JOIN classes c ON c.id = rr.class_id
+          WHERE ${cond} AND rr.event_id <> $2 AND c.class_date < (SELECT MIN(c2.class_date) FROM classes c2 JOIN round_results r2 ON r2.class_id = c2.id WHERE r2.event_id = $2 AND ${cond.replace('rr.', 'r2.')})`,
+        [horse_id || rider_id, event_id]
+      ).catch(() => ({ rows: [{ n: 1 }] }));
+      if (prior.rows[0].n === 0) { out.suggested = out.suggested || 'debut'; out.reasons.push('first tracked event'); }
+    }
+    res.json({ data: out });
+  }));
+
   // Download: entitlement check → 302 to signed R2 URL (15 min).
   app.get('/api/media/:id/download', asyncH(async (req, res) => {
     const email = (req.query.email || req.authUser?.email || '').trim().toLowerCase();
@@ -405,6 +439,39 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows });
   }));
 
+  // Admin: sales CSV export (plan §9 settlement).
+  app.get('/admin/sales.csv', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT pu.created_at, pu.buyer_email, pu.license_tier, pu.amount_cents, pu.currency, pu.status,
+          e.name AS event_name, h.name AS horse, r.name AS rider, pk.title AS package_title
+        FROM purchases pu LEFT JOIN media m ON m.id = pu.media_id
+        LEFT JOIN events e ON e.id = m.event_id
+        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        LEFT JOIN packages pk ON pk.id = pu.package_id
+        ORDER BY pu.created_at DESC LIMIT 5000`
+    );
+    const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const csv = ['created_at,buyer_email,license_tier,amount_cents,currency,status,event,horse,rider,package',
+      ...rows.map((r) => [r.created_at, r.buyer_email, r.license_tier, r.amount_cents, r.currency, r.status, r.event_name, r.horse, r.rider, r.package_title].map(q).join(','))].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="eqindex-sales.csv"');
+    res.send(csv);
+  }));
+
+  // Admin: photo view→purchase funnel (plan §8.6).
+  app.get('/admin/media/stats', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::INT AS assets,
+          COUNT(*) FILTER (WHERE status = 'published')::INT AS published,
+          COALESCE(SUM(view_count), 0)::INT AS views,
+          COALESCE(SUM(purchase_count), 0)::INT AS purchases,
+          (SELECT COUNT(*)::INT FROM purchases WHERE status = 'paid')::INT AS paid_sales,
+          (SELECT COALESCE(SUM(amount_cents), 0)::INT FROM purchases WHERE status = 'paid')::INT AS gross_cents
+        FROM media`
+    );
+    res.json({ data: rows[0] });
+  }));
+
   // Admin sales table.
   app.get('/admin/sales', needRole('ADMIN'), asyncH(async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
@@ -422,6 +489,81 @@ module.exports = function mountMediaRoutes(app) {
         FROM purchases WHERE status = 'paid'`
     );
     res.json({ data: rows, totals: totals.rows[0] });
+  }));
+
+  // ---- Packages: auto-create per event × horse/rider (plan §3.4) ----
+  // POST /admin/packages {event_id, horse_id?, rider_id?, price_cents?}
+  app.post('/admin/packages', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { event_id, horse_id, rider_id, price_cents, title } = req.body || {};
+    if (!event_id || (!!horse_id === !!rider_id)) {
+      return res.status(400).json({ error: 'need {event_id} + exactly one of {horse_id, rider_id}' });
+    }
+    const ev = await pool.query('SELECT id, name FROM events WHERE id = $1', [event_id]);
+    if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
+    let who = null;
+    if (horse_id) {
+      const hid = await resolveId('horses', horse_id, res);
+      if (!hid) return;
+      const h = await pool.query('SELECT name FROM horses WHERE id = $1', [hid]);
+      who = { col: 'horse_id', id: hid, name: h.rows[0]?.name || 'horse' };
+    } else {
+      const rid = await resolveId('riders', rider_id, res);
+      if (!rid) return;
+      const r = await pool.query('SELECT name FROM riders WHERE id = $1', [rid]);
+      who = { col: 'rider_id', id: rid, name: r.rows[0]?.name || 'rider' };
+    }
+    const photographer = await activePhotographer(pool, req.body?.photographer_id);
+    const items = await pool.query(
+      `SELECT id, COALESCE(price_cents, 0) AS price_cents FROM media
+        WHERE status = 'published' AND event_id = $1 AND ${who.col} = $2`,
+      [event_id, who.id]
+    );
+    if (!items.rows.length) return res.status(409).json({ error: 'no published photos for this event × subject' });
+    const sum = items.rows.reduce((s, x) => s + Number(x.price_cents), 0);
+    const singleMax = Math.max(...items.rows.map((x) => Number(x.price_cents)));
+    const auto = price_cents !== undefined && price_cents !== null ? Math.max(0, parseInt(price_cents, 10) || 0)
+      : Math.max(Math.floor(0.6 * sum), singleMax);
+    const { rows } = await pool.query(
+      `INSERT INTO packages (photographer_id, event_id, ${who.col}, title, price_cents, auto, status)
+        VALUES ($1, $2, $3, $4, $5, true, 'published') RETURNING *`,
+      [photographer.id, event_id, who.id,
+        title || `All ${items.rows.length} photos of ${who.name} at ${ev.rows[0].name}`, auto]
+    );
+    await pool.query(
+      `INSERT INTO package_items (package_id, media_id)
+        SELECT $1, unnest($2::uuid[]) ON CONFLICT DO NOTHING`,
+      [rows[0].id, items.rows.map((x) => x.id)]
+    );
+    audit(req, 'package.create', 'package', rows[0].id, { items: items.rows.length, auto });
+    res.status(201).json({ data: { ...rows[0], items: items.rows.length } });
+  }));
+
+  app.get('/admin/packages', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT pk.*, e.name AS event_name,
+          (SELECT COUNT(*)::INT FROM package_items WHERE package_id = pk.id) AS items
+        FROM packages pk LEFT JOIN events e ON e.id = pk.event_id
+        ORDER BY pk.created_at DESC LIMIT 100`
+    );
+    res.json({ data: rows });
+  }));
+
+  // Public: packages for a photo's event × subject (upsell block).
+  app.get('/photos/packages', asyncH(async (req, res) => {
+    const { event_id, horse_id, rider_id } = req.query;
+    if (!event_id || (!horse_id && !rider_id)) {
+      return res.status(400).json({ error: 'need {event_id} + {horse_id|rider_id}' });
+    }
+    const conds = [`pk.status = 'published'`, 'pk.event_id = $1'];
+    const params = [event_id];
+    if (horse_id) { params.push(horse_id); conds.push(`pk.horse_id = $${params.length}`); }
+    else { params.push(rider_id); conds.push(`pk.rider_id = $${params.length}`); }
+    const { rows } = await pool.query(
+      `SELECT pk.*, (SELECT COUNT(*)::INT FROM package_items WHERE package_id = pk.id) AS items
+        FROM packages pk WHERE ${conds.join(' AND ')} ORDER BY pk.price_cents LIMIT 10`,
+      params
+    );
+    res.json({ data: rows });
   }));
 
   // ---- Assisted tagging: rank classes by taken_at proximity, with candidates ----

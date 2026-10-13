@@ -117,6 +117,84 @@ module.exports = function mountAdminRoutes(app) {
     res.json({ data: rows, summary: { days, totalRounds, totalImported } });
   }));
 
+  // ---- Import Assistant: link/file → canonical records → human reviews →
+  // existing dry-run preview → Commit. Deterministic rules first (Equipe
+  // API, known CSV headers); AI (Muse Spark) only for unknown text formats.
+  // Nothing here writes to the database.
+  app.post('/admin/import/assist', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { source_url, text, filename, series_map, skip_practice } = req.body || {};
+    if (source_url) {
+      const m = String(source_url).match(/online\.equipe\.com\/shows\/(\d+)/);
+      if (!m) return res.status(400).json({ error: 'Only Equipe show URLs are auto-read (online.equipe.com/shows/…). For anything else, paste the results text.' });
+      const { equipeRecords } = require('../lib/equipe');
+      let out;
+      try {
+        out = await equipeRecords(m[1], { seriesMap: series_map || {}, skipPractice: skip_practice !== false });
+      } catch (e) {
+        return res.status(502).json({ error: `Could not read Equipe show: ${e.message}` });
+      }
+      return res.json({ data: summarizeAssist('equipe', { meeting: out.meeting }, out.records, out.skipped) });
+    }
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: 'need {source_url} or {text}' });
+    }
+    // Deterministic CSV path: known headers incl. the 3 required columns.
+    const head = text.trim().split(/\r?\n/, 1)[0] || '';
+    const normH = (h) => String(h).trim().toLowerCase().replace(/\s+/g, '_');
+    const ALIAS = {
+      class: 'class_name', rider: 'rider_name', horse: 'horse_name',
+      finish_place: 'placing', place: 'placing', jump_faults: 'faults',
+      time_seconds: 'time', height: 'height_cm', series: 'series_key',
+      prize_money: 'prize', event: 'event_name', event_date: 'date_start',
+    };
+    const cols = head.split(',').map(normH).map((h) => ALIAS[h] || h);
+    const has = (...ks) => ks.some((k) => cols.includes(k));
+    if (has('class_name', 'class') && has('rider_name', 'rider') && has('horse_name', 'horse')) {
+      const lines = text.trim().split(/\r?\n/).slice(1);
+      const records = lines.filter((l) => l.trim()).map((l) => {
+        const cells = l.split(',');
+        const r = {};
+        cols.forEach((k, i) => { if (cells[i] !== undefined && cells[i] !== '') r[k] = cells[i].trim(); });
+        return r;
+      });
+      return res.json({ data: summarizeAssist('csv-rule', { filename: filename || null }, records, []) });
+    }
+    // AI fallback for unknown formats.
+    try {
+      const { aiMapRecords, aiAvailable } = require('../lib/ai');
+      if (!aiAvailable()) {
+        return res.status(503).json({ error: 'Format not recognised and AI is not configured. Use the CSV/JSON template instead.' });
+      }
+      const { records, dropped } = await aiMapRecords({ text, hint: filename ? `Source file: ${filename}.` : '' });
+      const warnings = dropped ? [`${dropped} row(s) dropped (missing class/rider/horse)`] : [];
+      const noSeries = records.filter((r) => !r.series_key).length;
+      if (noSeries) warnings.push(`${noSeries} row(s) without series_key will score 0 series points`);
+      return res.json({ data: { ...summarizeAssist('ai', { filename: filename || null }, records, []), warnings } });
+    } catch (e) {
+      return res.status(502).json({ error: e.message });
+    }
+  }));
+
+  function summarizeAssist(type, meta, records, skipped) {
+    const withSeries = records.filter((r) => r.series_key).length;
+    const finished = records.filter((r) => (r.status || 'finished') === 'finished').length;
+    const warnings = [];
+    if (withSeries < records.length) warnings.push(`${records.length - withSeries} row(s) without series_key will score 0 series points`);
+    for (const [, name, why] of (skipped || []).slice(0, 8)) warnings.push(`skipped: ${String(name).slice(0, 50)} — ${why}`);
+    return {
+      detected: { type, ...meta },
+      records,
+      warnings,
+      stats: {
+        rounds: records.length,
+        with_series: withSeries,
+        finished,
+        non_finished: records.length - finished,
+        new_check: 'run Validate & preview to see new horses/riders and points',
+      },
+    };
+  }
+
   // ---- Admin CSV import (spec §8A): paste/upload → validate → preview → commit.
   // Body: { event_id?, event?: {name,date_start,date_end,venue,region,arena_type},
   //         csv, filename?, source?, dry_run? }

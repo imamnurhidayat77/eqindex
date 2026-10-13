@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation';
 import { getJSON } from '../../../lib/api';
 import { CARD, H1, SUB } from '../../../lib/tokens';
 import BuyBox from '../../../components/BuyBox';
+import PackageUpsell from '../../../components/PackageUpsell';
+import ShareCard from '../../../components/ShareCard';
 
 export const revalidate = 30;
 
@@ -32,15 +34,20 @@ export default async function PhotoDetail({ params }) {
               : <span className="text-4xl py-16">{d.kind === 'reel' ? '🎬' : '📷'}</span>}
           </div>
           <p className="text-[11px] text-faint mt-2">Watermarked preview — full resolution unlocks after purchase.</p>
+          <ShareCard title={title} text={`${d.event_name || ''}${d.class_name ? ` · ${d.class_name}` : ''}`} />
         </section>
         <section className={CARD}>
           <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-2">Details</div>
+          {d.moment && (
+            <div className="mb-3"><span className="inline-block text-[11px] font-bold rounded-md px-2 py-[3px] bg-goldbg text-gold">
+              {d.moment === 'win' ? '🏆 Win' : d.moment === 'clear' ? '✨ Clear round' : d.moment === 'debut' ? '🌟 Debut' : '⚡ PB'}
+            </span></div>
+          )}
           <dl className="text-[13px] space-y-2">
             {[
               ['Event', d.event_name || '—'],
               ['Class', d.class_name || '—'],
               ['Date', (d.taken_at || d.event_date || '').slice(0, 10) || '—'],
-              ['Moment', d.moment || '—'],
               ['Price', nzd(d.price_cents)],
               ['Photographer', d.photographer || '—'],
             ].map(([k, v]) => (
@@ -54,6 +61,7 @@ export default async function PhotoDetail({ params }) {
             ))}
           </dl>
           <BuyBox id={d.id} priceCents={d.price_cents} tier={d.license_default} />
+          <PackageUpsell eventId={d.event_id} horseId={d.horse_id} riderId={d.rider_id} horse={d.horse} rider={d.rider} />
         </section>
       </div>
       {!!related.length && (
