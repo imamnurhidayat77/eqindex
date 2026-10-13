@@ -39,7 +39,7 @@ async function aiJsonArray({ input, maxTokens = 4000, session }) {
   return JSON.parse(text.slice(a, b + 1));
 }
 
-async function aiChat({ system, messages, maxTokens = 800, session }) {
+async function aiChat({ system, messages, maxTokens = 1500, session }) {
   if (!KEY) throw new Error('AI not configured — set OPENCODE_GO_API_KEY on the API service');
   const input = `${system}\n\n${messages.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')}\n\nAssistant:`;
   const res = await fetch(`${BASE}/responses`, {
@@ -50,13 +50,15 @@ async function aiChat({ system, messages, maxTokens = 800, session }) {
       'Content-Type': 'application/json',
       'x-opencode-session': session || `chat-${Date.now().toString(36)}`,
     },
-    body: JSON.stringify({ model: MODEL, input: input.slice(0, 15000), max_output_tokens: maxTokens }),
+    body: JSON.stringify({ model: MODEL, input: input.slice(0, 15000), reasoning: { effort: 'low' }, max_output_tokens: maxTokens }),
   });
   if (!res.ok) {
     const t = await res.text().catch(() => '');
     throw new Error(`AI request failed (${res.status}) ${t.slice(0, 120)}`);
   }
-  return extractText(await res.json()).trim();
+  const text = extractText(await res.json()).trim();
+  if (!text) throw new Error('AI returned an empty reply — try again');
+  return text;
 }
 
 const CANON_KEYS = ['class_name', 'class_type', 'class_date', 'rider_name', 'horse_name',

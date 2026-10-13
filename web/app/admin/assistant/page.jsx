@@ -204,6 +204,16 @@ export default function AdminAssistant() {
     try {
       const d = await runChunked(analysis.records, dry);
       setPreview(d);
+      if (!dry) {
+        const s = d.summary;
+        const evNames = (s.events || []).map((e) => e.name).join(', ');
+        patchActive((c) => ({
+          ...c, updatedAt: Date.now(),
+          msgs: [...c.msgs, { id: uid(), role: 'assistant', content: `✅ Imported **${s.ok}** rounds${evNames ? ` into ${evNames}` : ''}${s.failed ? ` (${s.failed} failed — see preview above)` : ''}. The review form is cleared; send a new link or file whenever ready.` }],
+          analysis: null,
+        }));
+        setPreview(null);
+      }
     } catch (e) { setErr(e.message); }
     setBusy(null);
     setProgress(null);
