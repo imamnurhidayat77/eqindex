@@ -9,8 +9,6 @@ import ShareCard from '../../../components/ShareCard';
 
 export const revalidate = 30;
 
-const nzd = (c) => (c === null || c === undefined ? '—' : `NZ$${(Number(c) / 100).toFixed(2)}`);
-
 export default async function PhotoDetail({ params }) {
   const res = await getJSON(`/photos/${params.id}`).catch(() => null);
   if (!res?.data) notFound();
@@ -49,7 +47,6 @@ export default async function PhotoDetail({ params }) {
               ['Event', d.event_name || '—'],
               ['Class', d.class_name || '—'],
               ['Date', (d.taken_at || d.event_date || '').slice(0, 10) || '—'],
-              ['Price', nzd(d.price_cents)],
               ['Photographer', d.photographer || '—'],
             ].map(([k, v]) => (
               <div key={k} className="flex justify-between gap-3 border-b border-rowline last:border-0 pb-2">
