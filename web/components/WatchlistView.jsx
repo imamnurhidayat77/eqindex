@@ -84,7 +84,7 @@ function EventAthleteCard({ a }) {
   );
 }
 
-export default function WatchlistView({ pulse, byEvent }) {
+export default function WatchlistView({ pulse, byEvent, photoFeed }) {
   const [q, setQ] = useState('');
   const [evFilter, setEvFilter] = useState('');
 
@@ -150,6 +150,23 @@ export default function WatchlistView({ pulse, byEvent }) {
             className={`text-[12px] no-underline px-2.5 py-1 rounded-full border ${evFilter === c.key ? 'bg-goldbg text-gold border-gold/50 font-bold' : 'text-muted border-line hover:text-white'}`}>{c.label}</button>
         ))}
       </div>
+
+      {!!(photoFeed || []).length && (
+        <div className="mb-4">
+          <h2 className="text-[15px] font-bold mb-2.5">New photos of your stable</h2>
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-2.5">
+            {(photoFeed || []).map((x) => (
+              <Link key={x.id} href={`/photos/${x.id}`} className="block rounded border border-line bg-card overflow-hidden no-underline hover:border-gold/50">
+                <div className="aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
+                  {x.thumb_url || x.preview_url
+                    ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                    : <span className="text-xl">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="min-w-0 space-y-4">
         {!evGroups.length && (

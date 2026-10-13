@@ -58,6 +58,28 @@ export default function AdminMedia() {
     setBusy(false);
   }
 
+  async function createPackage() {
+    try {
+      const horseId = prompt('Horse id/slug (blank for rider):');
+      const riderId = !horseId ? prompt('Rider id/slug:') : null;
+      const evId = prompt('Event id:');
+      if ((!horseId && !riderId) || !evId) { setMsg('Need event + horse or rider.'); return; }
+      const body = { event_id: evId };
+      if (horseId) body.horse_id = horseId; else body.rider_id = riderId;
+      const pk = await call('/admin/packages', { method: 'POST', body: JSON.stringify(body) });
+      setMsg(`Package created: ${pk.title} (${pk.items} photos).`);
+    } catch (e) { setMsg(e.message); }
+  }
+
+  async function suggestMoment(id) {
+    try {
+      const r = await fetch(`${API}/admin/media/${id}/suggest-moment`, { method: 'POST', credentials: 'include' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `Failed (${r.status})`);
+      setMsg(`Suggested: ${j.data.suggested || 'none'}${j.data.reasons?.length ? ` (${j.data.reasons.join(', ')})` : ''}. Apply via the moment dropdown + Save.`);
+    } catch (e) { setMsg(e.message); }
+  }
+
   async function save(id) {
     const e = edits[id] || {};
     try {
@@ -140,6 +162,8 @@ export default function AdminMedia() {
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Taken at (optional)
             <input type="datetime-local" value={sgTaken} onChange={(e) => setSgTaken(e.target.value)} className={INP} /></label>
           <button onClick={runSuggest} className={BTN_PRIMARY}>Suggest</button>
+          <button onClick={createPackage} className="rounded border border-line px-3.5 py-2 text-sm text-body hover:text-white">Create package</button>
+          <a href={`${API}/admin/sales.csv`} className="text-sky text-[13px] hover:underline ml-auto">Sales CSV ↓</a>
         </div>
         {!!suggest?.length && (
           <div className="mt-3 space-y-2">
@@ -191,6 +215,14 @@ export default function AdminMedia() {
                     <div className="flex flex-wrap gap-1">
                       <input placeholder="horse id/slug" defaultValue="" onChange={(ev) => setE(r.id, 'horse_id', ev.target.value)} className={`${INP} w-[130px] !py-1 !text-[12px]`} />
                       <input placeholder="rider id/slug" defaultValue="" onChange={(ev) => setE(r.id, 'rider_id', ev.target.value)} className={`${INP} w-[130px] !py-1 !text-[12px]`} />
+                      <select defaultValue={r.moment || ''} onChange={(ev) => setE(r.id, 'moment', ev.target.value || null)} className={`${INP} !py-1 !text-[12px]`}>
+                        <option value="">moment…</option>
+                        <option value="win">win</option>
+                        <option value="clear">clear</option>
+                        <option value="debut">debut</option>
+                        <option value="pb">pb</option>
+                      </select>
+                      <button onClick={() => suggestMoment(r.id)} className="text-[12px] text-sky hover:underline bg-none border-0 cursor-pointer">suggest</button>
                       <input placeholder="price ¢" defaultValue={r.price_cents ?? ''} onChange={(ev) => setE(r.id, 'price_cents', ev.target.value)} className={`${INP} w-[90px] !py-1 !text-[12px]`} />
                       <select value={e.status ?? r.status} onChange={(ev) => setE(r.id, 'status', ev.target.value)} className={`${INP} !py-1 !text-[12px]`}>
                         <option value="draft">draft</option>

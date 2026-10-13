@@ -244,6 +244,22 @@ export default async function Watchlist() {
     })
     .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 
+  // New-photo feed: latest published media for watched horses/riders.
+  let photoFeed = [];
+  try {
+    const ids = { horses: horses.map((h) => h.id), riders: riders.map((r) => r.id) };
+    const seen = new Map();
+    for (const h of horses.slice(0, 10)) {
+      const r = await getJSON(`/photos?horse_id=${h.id}&limit=3`).catch(() => ({ data: [] }));
+      for (const m of r.data || []) if (!seen.has(m.id)) seen.set(m.id, m);
+    }
+    for (const r of riders.slice(0, 10)) {
+      const x = await getJSON(`/photos?rider_id=${r.id}&limit=3`).catch(() => ({ data: [] }));
+      for (const m of x.data || []) if (!seen.has(m.id)) seen.set(m.id, m);
+    }
+    photoFeed = [...seen.values()].slice(0, 6);
+  } catch { /* photos optional */ }
+
   // Stable pulse: what actually happened in the last 30 days.
   const all = updates.data || [];
   const pulse = {
@@ -280,6 +296,7 @@ export default async function Watchlist() {
           timeline={timeline}
           pulse={pulse}
           byEvent={byEvent}
+          photoFeed={photoFeed}
         />
       )}
     </>
