@@ -7,3 +7,4 @@ ingest/.venv/
 node_modules/
 .next/
 .DS_Store
+horses_missing*
