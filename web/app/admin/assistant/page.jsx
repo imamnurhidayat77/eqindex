@@ -141,7 +141,7 @@ export default function AdminAssistant() {
     if (!/\.pdf$/i.test(f.name || '')) return;
     setExtracting(true);
     try {
-      const pdfjs = await import('pdfjs-dist');
+      const pdfjs = await import('pdfjs-dist/build/pdf.mjs');
       pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
       const buf = await f.arrayBuffer();
       const pdf = await pdfjs.getDocument({ data: buf }).promise;
