@@ -208,6 +208,13 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // ---- Public catalog (published only; previews/thumbs are CDN-public) ----
+  // License tiers with prices (public by design — buyers pick one, Sportfot-style).
+  app.get('/api/license-tiers', asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT id, label, price_cents FROM license_tiers ORDER BY price_cents NULLS LAST, id`);
+    res.json({ data: rows });
+  }));
+
   app.get('/photos', asyncH(async (req, res) => {
     const conds = [`m.status = 'published'`], params = [];
     const push = (sql, v) => { params.push(v); conds.push(sql.replace('?', `$${params.length}`)); };
