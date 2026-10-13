@@ -197,9 +197,12 @@ def main():
                 p1, p2 = phase_results(s)
                 status = status_of(s, p1)
                 # start number -> start_order (series nomination rule needs
-                # it); non-numeric stays None = rule not applied.
+                # it); non-numeric stays None = rule not applied. Negative
+                # numbers are late/scratch entries, not a real start order.
                 try:
                     start_order = int(str(s.get("start_no") or "").strip())
+                    if start_order < 1:
+                        start_order = None
                 except (ValueError, TypeError):
                     start_order = None
                 if status != "finished":

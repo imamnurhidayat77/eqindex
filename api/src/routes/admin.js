@@ -437,6 +437,27 @@ module.exports = function mountAdminRoutes(app) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      // Bulk speed: the AFTER share trigger recalculates the WHOLE class
+      // per inserted row (O(n^2) over a slow link). Disable it for the load
+      // and recalculate each touched class ONCE afterwards. Transactional —
+      // COMMIT/ROLLBACK restores the trigger automatically.
+      await client.query('ALTER TABLE round_results DISABLE TRIGGER round_results_esnz_share_trg');
+      const touchedClasses = new Set();
+      // In-request caches: the DB link is ~50ms RTT, so per-row lookups
+      // would cost minutes on big files. Preload small tables once; lazily
+      // cache classes, events and per-class dup sets. All writes go through
+      // the same transaction, so caches stay consistent.
+      const catKeys = await masterCategoryKeys(pool);
+      const sireMap = new Map((await client.query(
+        'SELECT normalized_alias, canonical_name FROM sire_aliases')).rows
+        .map((r) => [r.normalized_alias, r.canonical_name]));
+      const horseCache = new Map((await client.query(
+        'SELECT normalized_name, id FROM horses')).rows.map((r) => [r.normalized_name, r.id]));
+      const riderCache = new Map((await client.query(
+        'SELECT normalized_name, id FROM riders')).rows.map((r) => [r.normalized_name, r.id]));
+      const classCache = new Map(); // `${eventId}|${name}|${date}` -> row
+      const eventCache = new Map(); // `${name}|${date}` -> {id, name}
+      const dupCache = new Map();   // classId -> Set(`horse|rid`)
       let evId = event_id || null;
       const ensureVenue = async (name, region) => {
         if (!name) return null;
@@ -585,12 +606,7 @@ module.exports = function mountAdminRoutes(app) {
         // sire spelling: resolve known variants to canonical (sire_aliases,
         // migration 046) so one sire never splits into two rankings again.
         let sireName = cleanName(g(ci.sire));
-        if (sireName) {
-          const hit = await client.query(
-            'SELECT canonical_name FROM sire_aliases WHERE normalized_alias = $1',
-            [normName(sireName)]);
-          if (hit.rows.length) sireName = hit.rows[0].canonical_name;
-        }
+        if (sireName) sireName = sireMap.get(normName(sireName)) || sireName;
         // optional enrichment (fill-if-null only — curated values always win)
         const hEn = {
           breed: g(ci.breed) || null, age: cleanAge(g(ci.age)),
@@ -601,7 +617,7 @@ module.exports = function mountAdminRoutes(app) {
         };
         const rEn = {
           region: g(ci.rider_region) || null,
-          series_category: canonCategoryKey(g(ci.series_category), await masterCategoryKeys(pool)),
+          series_category: canonCategoryKey(g(ci.series_category), catKeys),
           nationality: g(ci.nationality) || null,
         };
         for (const k of ['venue', 'venue_country', 'region', 'arena_type']) {
@@ -619,29 +635,35 @@ module.exports = function mountAdminRoutes(app) {
             [id, ...sets.map(([, v]) => v)]);
           return res.rowCount;
         };
-        let hRow = (await client.query('SELECT id FROM horses WHERE normalized_name = $1', [hn])).rows[0];
-        let rRow = (await client.query('SELECT id FROM riders WHERE normalized_name = $1', [rn])).rows[0];
-        const newHorse = !hRow, newRider = !rRow;
-        if (!hRow) {
+        let hId = horseCache.get(hn), rId = riderCache.get(rn);
+        const newHorse = !hId, newRider = !rId;
+        if (!hId) {
           const hk = Object.keys(hEn).filter((k) => hEn[k] !== null);
-          hRow = (await client.query(
+          hId = (await client.query(
             `INSERT INTO horses (name, normalized_name${hk.length ? ', ' + hk.join(', ') : ''})
              VALUES ($1,$2${hk.map((_, i) => `,$${i + 3}`).join('')}) RETURNING id`,
-            [horse, hn, ...hk.map((k) => hEn[k])])).rows[0];
+            [horse, hn, ...hk.map((k) => hEn[k])])).rows[0].id;
+          horseCache.set(hn, hId);
         } else {
-          enriched += await fillNull('horses', hRow.id, hEn);
+          enriched += await fillNull('horses', hId, hEn);
         }
-        if (!rRow) {
+        if (!rId) {
           const rk = Object.keys(rEn).filter((k) => rEn[k] !== null);
-          rRow = (await client.query(
+          rId = (await client.query(
             `INSERT INTO riders (name, normalized_name${rk.length ? ', ' + rk.join(', ') : ''})
              VALUES ($1,$2${rk.map((_, i) => `,$${i + 3}`).join('')}) RETURNING id`,
-            [rider, rn, ...rk.map((k) => rEn[k])])).rows[0];
+            [rider, rn, ...rk.map((k) => rEn[k])])).rows[0].id;
+          riderCache.set(rn, rId);
         } else {
-          enriched += await fillNull('riders', rRow.id, rEn);
+          enriched += await fillNull('riders', rId, rEn);
         }
         const seriesKey = g(ci.series) || null;
-        let cRow = (await client.query('SELECT id, series_key, is_active, is_world_cup FROM classes WHERE event_id = $1 AND name = $2 AND COALESCE(class_date::TEXT,\'\') = COALESCE($3,\'\')', [rEvId, cls, cdate])).rows[0];
+        const ck = `${rEvId}|${cls}|${cdate || ''}`;
+        let cRow = classCache.get(ck);
+        if (cRow === undefined) {
+          cRow = (await client.query('SELECT id, series_key, is_active, is_world_cup FROM classes WHERE event_id = $1 AND name = $2 AND COALESCE(class_date::TEXT,\'\') = COALESCE($3,\'\')', [rEvId, cls, cdate])).rows[0] || null;
+          classCache.set(ck, cRow);
+        }
         const newClass = !cRow;
         if (cRow && cRow.is_active === false) {
           out.push({ line: li + 1, ok: false, errors: [`class "${cls}" is switched off — enable it in Admin → Classes`] });
@@ -652,6 +674,7 @@ module.exports = function mountAdminRoutes(app) {
           cRow = (await client.query(
             'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, format, series_key, arena_name, arena_type, surface, start_time, is_world_cup, source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,\'MANUAL\') RETURNING id',
             [rEvId, cls, cdate || null, hcm, ctype, fmt, seriesKey, cArenaName, cArenaType, cSurface, cStart, worldCup === true])).rows[0];
+          classCache.set(ck, cRow);
         } else {
           if (seriesKey && !cRow.series_key) {
             await client.query('UPDATE classes SET series_key = $2 WHERE id = $1', [cRow.id, seriesKey]);
@@ -672,10 +695,14 @@ module.exports = function mountAdminRoutes(app) {
               [cRow.id, ...fills.map(([, v]) => v)]);
           }
         }
-        const dup = await client.query(
-          'SELECT id FROM round_results WHERE class_id = $1 AND horse_id = $2 AND rider_id = $3',
-          [cRow.id, hRow.id, rRow.id]);
-        if (dup.rows.length) {
+        let dupSet = dupCache.get(cRow.id);
+        if (!dupSet) {
+          const existing = await client.query(
+            'SELECT horse_id, rider_id FROM round_results WHERE class_id = $1', [cRow.id]);
+          dupSet = new Set(existing.rows.map((r) => `${r.horse_id}|${r.rider_id}`));
+          dupCache.set(cRow.id, dupSet);
+        }
+        if (dupSet.has(`${hId}|${rId}`)) {
           out.push({ line: li + 1, ok: false, errors: ['duplicate of an existing round'] });
           bump(rEvId, rowEv.name, 'failed');
           continue;
@@ -687,19 +714,38 @@ module.exports = function mountAdminRoutes(app) {
             round2_faults, round2_time_seconds, jumpoff_faults, jumpoff_time_seconds, prize_money,
             start_order, nominated_manual)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'MANUAL',0,$14,$15,$16,$17,$18,$19,$20) RETURNING id, points`,
-          [rEvId, cRow.id, hRow.id, rRow.id, faults ?? 0, tf ?? 0, tot, tsec, place,
+          [rEvId, cRow.id, hId, rId, faults ?? 0, tf ?? 0, tot, tsec, place,
            status === 'finished' && tot === 0, hcm, status, g(ci.notes) || null, r2f, r2t, jof, jot, prize,
            startOrder, nominated]);
+        dupSet.add(`${hId}|${rId}`);
         okCount++;
         bump(rEvId, rowEv.name, 'ok');
-        // NOTE: ins.rows[0].points is the BEFORE-trigger placeholder (the
-        // AFTER trigger recalculates the whole class afterwards), so re-read
-        // the stored value for an honest preview.
-        const stored = await client.query('SELECT points FROM round_results WHERE id = $1', [ins.rows[0].id]);
-        out.push({ line: li + 1, ok: true, errors: [], preview: {
-          event: rowEv.name, rider, horse, class: cls, place, points: stored.rows[0]?.points ?? 0,
+        touchedClasses.add(cRow.id);
+        // Points are recalculated once per class after the loop (see below),
+        // so store the row id and patch the preview then.
+        out.push({ line: li + 1, ok: true, errors: [], rid: ins.rows[0].id, preview: {
+          event: rowEv.name, rider, horse, class: cls, place, points: 0,
           new_horse: newHorse, new_rider: newRider, new_class: newClass,
         }});
+      }
+      // Recalculate each touched class once (replaces the disabled per-row
+      // trigger), then patch honest points into the previews. All still
+      // inside the transaction, so dry_run ROLLBACK discards everything.
+      for (const cid of touchedClasses) {
+        await client.query('SELECT esnz_recalc_class($1)', [cid]);
+      }
+      if (touchedClasses.size) {
+        const ids = out.filter((x) => x.ok && x.rid).map((x) => x.rid);
+        if (ids.length) {
+          const pts = await client.query('SELECT id, points FROM round_results WHERE id = ANY($1)', [ids]);
+          const byId = Object.fromEntries(pts.rows.map((r) => [r.id, r.points]));
+          for (const x of out) {
+            if (x.ok && x.rid) {
+              x.preview.points = byId[x.rid] ?? 0;
+              delete x.rid;
+            }
+          }
+        }
       }
       // event-level enrichment from row columns (fill-if-null, first non-empty wins;
       // 'Unknown' venue counts as blank — it is the auto-created placeholder)

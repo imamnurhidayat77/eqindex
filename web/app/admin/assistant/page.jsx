@@ -1,8 +1,8 @@
 'use client';
 // Import Assistant — ChatGPT-style chat, separate from CSV import.
-// Sidebar holds conversation history (persisted locally, resumable).
-// Chat, link or upload results → records summary → validate & preview →
-// commit on the side panel. The assistant never writes anything itself.
+// History sidebar (persisted locally, resumable), centered chat column,
+// review panel docked right on wide screens / stacked below on small ones.
+// The assistant never writes anything itself: validate → preview → commit.
 import { useEffect, useRef, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
@@ -13,6 +13,11 @@ const LS_KEY = 'eq-assistant-chats';
 const uid = () => Math.random().toString(36).slice(2);
 const QUICK = ['Import an Equipe show URL', 'What formats can you read?', 'Why would a row score 0?'];
 const HELLO = 'Hi — send me an Equipe show link, paste results text, or upload a file (PDF, CSV, TXT, JSON). I’ll map it and show a summary before anything is saved.';
+const SUGGESTIONS = [
+  ['🔗', 'Import a show', 'Paste an Equipe show URL and I’ll pull every class.'],
+  ['📄', 'Upload results', 'Drop a PDF or CSV from the organiser.'],
+  ['❓', 'Ask about scoring', 'Why a row scores 0, what a series needs…'],
+];
 
 // Tiny markdown-lite: **bold**, `code`, line breaks.
 function Rich({ text }) {
@@ -50,37 +55,49 @@ function saveChats(chats) {
   }
 }
 
+function CopyBtn({ text }) {
+  const [ok, setOk] = useState(false);
+  return (
+    <button title="Copy" onClick={() => { navigator.clipboard?.writeText(text); setOk(true); setTimeout(() => setOk(false), 1200); }}
+      className="text-faint hover:text-white bg-none border-0 cursor-pointer text-[12px] px-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      {ok ? '✓' : '⧉'}
+    </button>
+  );
+}
+
+function freshChat() {
+  return { id: uid(), title: 'New conversation', updatedAt: Date.now(), msgs: [{ id: uid(), role: 'assistant', content: HELLO }], analysis: null };
+}
+
 export default function AdminAssistant() {
   const call = useAdminApi();
-  const [chats, setChats] = useState([]);
-  const [activeId, setActiveId] = useState(null);
+  // Lazy init from storage: avoids the mount race where the saver wipes
+  // saved chats before the loader runs.
+  const [chats, setChats] = useState(() => {
+    if (typeof window === 'undefined') return [];
+    const saved = loadChats();
+    return saved.length ? saved : [freshChat()];
+  });
+  const [activeId, setActiveId] = useState(() => chats[0]?.id || null);
   const [input, setInput] = useState('');
   const [file, setFile] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(null);
   const [events, setEvents] = useState([]);
   const [eventId, setEventId] = useState('');
   const [evNew, setEvNew] = useState({ name: '', date_start: '', venue: '' });
   const [preview, setPreview] = useState(null);
   const [err, setErr] = useState('');
-  const [sideOpen, setSideOpen] = useState(false);
+  const [drawer, setDrawer] = useState(false);
   const bottom = useRef(null);
   const ta = useRef(null);
+  const fileRef = useRef(null);
 
   useEffect(() => {
-    const saved = loadChats();
-    if (saved.length) {
-      setChats(saved);
-      setActiveId(saved[0].id);
-    } else {
-      const first = { id: uid(), title: 'New conversation', updatedAt: Date.now(), msgs: [{ id: uid(), role: 'assistant', content: HELLO }], analysis: null };
-      setChats([first]);
-      setActiveId(first.id);
-    }
     fetch(`${API}/events?limit=100&include_empty=1`).then((r) => r.json()).then((j) => setEvents(j.data || [])).catch(() => {});
   }, []);
   useEffect(() => { saveChats(chats); }, [chats]);
   const active = chats.find((c) => c.id === activeId) || null;
-  useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth' }); }, [active?.msgs?.length, busy]);
+  useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [active?.msgs?.length, busy]);
   useEffect(() => { setPreview(null); }, [activeId]);
 
   function patchActive(fn) {
@@ -90,7 +107,8 @@ export default function AdminAssistant() {
     const c = { id: uid(), title: 'New conversation', updatedAt: Date.now(), msgs: [{ id: uid(), role: 'assistant', content: HELLO }], analysis: null };
     setChats((prev) => [c, ...prev]);
     setActiveId(c.id);
-    setSideOpen(false);
+    setDrawer(false);
+    setTimeout(() => ta.current?.focus(), 50);
   }
   function removeChat(id) {
     setChats((prev) => {
@@ -105,14 +123,15 @@ export default function AdminAssistant() {
   }
 
   async function send(text, attachment) {
-    if (!active) return;
+    if (!active || busy) return;
     const userMsg = { id: uid(), role: 'user', content: text + (attachment ? `\n[attached: ${attachment.name}]` : '') };
     const base = [...active.msgs, userMsg];
-    const title = active.msgs.filter((m) => m.role === 'user').length === 0
-      ? text.slice(0, 42) || (attachment ? `File: ${attachment.name}` : 'New conversation')
-      : active.title;
+    const isFirst = active.msgs.filter((m) => m.role === 'user').length === 0;
+    const title = isFirst ? (text.slice(0, 44) || (attachment ? `File: ${attachment.name}` : 'New conversation')) : active.title;
     patchActive((c) => ({ ...c, title, updatedAt: Date.now(), msgs: base }));
-    setInput(''); setFile(null); setBusy(true); setErr('');
+    setInput(''); setFile(null);
+    if (ta.current) ta.current.style.height = 'auto';
+    setBusy('chat'); setErr('');
     try {
       const fd = new FormData();
       fd.append('messages', JSON.stringify(base.map(({ role, content }) => ({ role, content })).slice(-12)));
@@ -131,7 +150,7 @@ export default function AdminAssistant() {
     } catch (e) {
       patchActive((c) => ({ ...c, msgs: [...base, { id: uid(), role: 'assistant', content: `Sorry — ${e.message}`, error: true }] }));
     }
-    setBusy(false);
+    setBusy(null);
   }
 
   async function run(dry) {
@@ -140,7 +159,7 @@ export default function AdminAssistant() {
     if (!analysis?.records?.length) { setErr('Nothing to import yet — ask me to read a link or file first.'); return; }
     if (eventId !== '__new__' && !eventId) { setErr('Pick a target event (rows without their own event need one).'); return; }
     if (eventId === '__new__' && (!evNew.name.trim() || !evNew.date_start)) { setErr('New event needs a name and start date.'); return; }
-    setBusy(true);
+    setBusy(dry ? 'validate' : 'commit');
     try {
       const body = { records: analysis.records, dry_run: dry };
       if (eventId === '__new__') {
@@ -151,10 +170,11 @@ export default function AdminAssistant() {
       const d = await call('/admin/import', { method: 'POST', body: JSON.stringify(body) });
       setPreview(d);
     } catch (e) { setErr(e.message); }
-    setBusy(false);
+    setBusy(null);
   }
 
   const analysis = active?.analysis || null;
+  const isFresh = (active?.msgs || []).filter((m) => m.role === 'user').length === 0;
   const timeFmt = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
   return (
@@ -165,85 +185,116 @@ export default function AdminAssistant() {
           <p className={SUB}>Chat, link or upload results — I map them, you approve. Nothing saves until you commit.</p>
         </div>
         <span className="flex-1" />
-        <button onClick={() => setSideOpen((o) => !o)}
-          className="lg:hidden rounded border border-line px-3 py-2 text-[13px] text-muted hover:text-white bg-none cursor-pointer">☰ Chats</button>
+        <button onClick={() => setDrawer((o) => !o)}
+          className="lg:hidden rounded border border-line px-3 py-2 text-[13px] text-muted hover:text-white bg-none cursor-pointer">☰ History</button>
       </div>
       {err && <section className={CARD}><p className="text-blood text-sm">{err}</p></section>}
       <div className="flex gap-4 items-start">
-        {/* history sidebar */}
-        <aside className={`${sideOpen ? 'block' : 'hidden'} lg:block w-60 shrink-0 rounded border border-line bg-card p-2`}>
+        {/* history */}
+        <aside className={`${drawer ? 'fixed inset-y-0 left-0 z-40 w-72 p-3 bg-card border-r border-line overflow-y-auto' : 'hidden'} lg:static lg:block lg:z-auto lg:w-60 lg:shrink-0 lg:rounded lg:border lg:border-line lg:bg-card lg:p-2`}>
           <button onClick={newChat}
-            className="w-full rounded border border-gold/60 px-3 py-2 text-[13px] font-bold text-gold bg-none cursor-pointer hover:bg-goldbg/40 mb-2">＋ New chat</button>
-          <div className="flex flex-col gap-1 max-h-[520px] overflow-y-auto">
+            className="w-full rounded-lg border border-gold/60 px-3 py-2 text-[13px] font-bold text-gold bg-none cursor-pointer hover:bg-goldbg/40 mb-2">＋ New chat</button>
+          <div className="flex flex-col gap-0.5 max-h-[60vh] overflow-y-auto">
             {chats.map((c) => (
               <div key={c.id}
-                onClick={() => { setActiveId(c.id); setSideOpen(false); }}
-                className={`group flex items-center gap-1.5 rounded px-2.5 py-2 cursor-pointer ${c.id === activeId ? 'bg-goldbg/40 text-white' : 'text-muted hover:bg-white/5 hover:text-white'}`}>
+                onClick={() => { setActiveId(c.id); setDrawer(false); }}
+                className={`group flex items-center gap-1.5 rounded-lg px-2.5 py-2 cursor-pointer ${c.id === activeId ? 'bg-goldbg/40 text-white' : 'text-muted hover:bg-white/5 hover:text-white'}`}>
                 <span className="grow truncate text-[13px]">{c.title}</span>
                 <span className="text-[11px] text-faint shrink-0">{timeFmt(c.updatedAt)}</span>
                 <button title="Delete" onClick={(e) => { e.stopPropagation(); removeChat(c.id); }}
-                  className="opacity-0 group-hover:opacity-100 text-faint hover:text-blood bg-none border-0 cursor-pointer text-[13px] px-1">×</button>
+                  className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-faint hover:text-blood bg-none border-0 cursor-pointer text-[14px] px-1">×</button>
               </div>
             ))}
           </div>
         </aside>
-        {/* chat column */}
-        <section className={`${CARD} grow min-w-0 flex flex-col`} style={{ minHeight: 560 }}>
-          <div className="flex flex-col gap-3 overflow-y-auto grow pr-1" style={{ maxHeight: 520 }}>
-            {(active?.msgs || []).map((m) => (
-              m.role === 'user' ? (
-                <div key={m.id} className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-goldbg/50 px-3.5 py-2.5 text-[13.5px] text-white">
-                  <Rich text={m.content} />
-                </div>
-              ) : (
-                <div key={m.id} className="flex gap-2.5 items-start">
-                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gold text-[13px] font-extrabold text-black">✨</span>
-                  <div className={`max-w-[92%] rounded-2xl rounded-tl-md px-3.5 py-2.5 text-[13.5px] leading-relaxed ${m.error ? 'bg-redbg/40 text-blood' : 'bg-card2 text-body'}`}>
-                    <Rich text={m.content} />
-                  </div>
-                </div>
-              )
-            ))}
-            {busy && (
-              <div className="flex gap-2.5 items-center">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gold text-[13px] font-extrabold text-black">✨</span>
-                <div className="flex gap-1 rounded-2xl rounded-tl-md bg-card2 px-3.5 py-3">
-                  {[0, 1, 2].map((i) => <span key={i} className="sk h-2 w-2 rounded-full" style={{ animationDelay: `${i * 0.15}s` }} />)}
+        {drawer && <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={() => setDrawer(false)} />}
+        {/* chat */}
+        <section className="grow min-w-0 flex flex-col" style={{ minHeight: 600 }}>
+          <div className="mx-auto w-full max-w-[780px] flex flex-col grow">
+            {isFresh ? (
+              <div className="flex flex-col items-center justify-center text-center py-14">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gold text-[20px] font-extrabold text-black mb-4">✦</span>
+                <h2 className="text-[22px] font-extrabold">What are we importing today?</h2>
+                <p className="text-muted text-[13.5px] mt-1 mb-6">A show link, a results file, or just a question.</p>
+                <div className="grid gap-2.5 sm:grid-cols-3 w-full max-w-[640px]">
+                  {SUGGESTIONS.map(([icon, t, d]) => (
+                    <button key={t} disabled={!!busy} onClick={() => send(t === 'Ask about scoring' ? 'Why would a row score 0?' : t === 'Upload results' ? 'What formats can you read?' : 'Import an Equipe show URL')}
+                      className="rounded-xl border border-line bg-card p-3.5 text-left hover:border-gold/50 bg-none cursor-pointer disabled:opacity-50">
+                      <div className="text-[20px]">{icon}</div>
+                      <div className="text-[13.5px] font-bold text-white mt-1.5">{t}</div>
+                      <div className="text-[12px] text-muted mt-0.5">{d}</div>
+                    </button>
+                  ))}
                 </div>
               </div>
+            ) : (
+              <div className="flex flex-col gap-5 overflow-y-auto grow pr-1 py-2" style={{ maxHeight: 560 }}>
+                {(active?.msgs || []).map((m) => (
+                  m.role === 'user' ? (
+                    <div key={m.id} className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-goldbg/50 px-4 py-2.5 text-[14px] leading-relaxed text-white">
+                      <Rich text={m.content} />
+                    </div>
+                  ) : (
+                    <div key={m.id} className="group flex gap-3 items-start">
+                      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gold text-[13px] font-extrabold text-black">✦</span>
+                      <div className="min-w-0 grow">
+                        <div className={`text-[14px] leading-relaxed ${m.error ? 'text-blood' : 'text-body'}`}>
+                          <Rich text={m.content} />
+                        </div>
+                        {!m.error && <div className="mt-1"><CopyBtn text={m.content} /></div>}
+                      </div>
+                    </div>
+                  )
+                ))}
+                {busy === 'chat' && (
+                  <div className="flex gap-3 items-center">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gold text-[13px] font-extrabold text-black">✦</span>
+                    <div className="flex gap-1.5 py-2">
+                      {[0, 1, 2].map((i) => <span key={i} className="sk h-2 w-2 rounded-full" style={{ animationDelay: `${i * 0.15}s` }} />)}
+                    </div>
+                  </div>
+                )}
+                <div ref={bottom} />
+              </div>
             )}
-            <div ref={bottom} />
-          </div>
-          <div className="flex flex-wrap gap-1.5 mt-3 mb-2">
-            {QUICK.map((q) => (
-              <button key={q} disabled={busy} onClick={() => send(q)}
-                className="text-[12px] rounded-full border border-line px-2.5 py-1 text-muted hover:text-gold hover:border-gold/50 bg-none cursor-pointer disabled:opacity-50">{q}</button>
-            ))}
-          </div>
-          <div className="flex gap-2 items-end border-t border-line pt-3">
-            <label title="Upload PDF, CSV, TXT or JSON"
-              className="rounded-xl border border-line px-3 py-2.5 text-[13px] text-muted hover:text-white hover:border-faint cursor-pointer shrink-0">
-              📎
-              <input type="file" accept=".pdf,.csv,.txt,.json,text/*,application/json" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) setFile(f); e.target.value = ''; }} />
-            </label>
-            <div className="flex flex-col grow gap-1">
-              {file && (
-                <span className="text-[12px] text-gold">📎 {file.name} <button onClick={() => setFile(null)} className="text-faint hover:text-blood bg-none border-0 cursor-pointer ml-1">×</button></span>
+            <div className="mt-auto pt-3">
+              {!isFresh && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {QUICK.map((q) => (
+                    <button key={q} disabled={!!busy} onClick={() => send(q)}
+                      className="text-[12px] rounded-full border border-line px-2.5 py-1 text-muted hover:text-gold hover:border-gold/50 bg-none cursor-pointer disabled:opacity-50">{q}</button>
+                  ))}
+                </div>
               )}
-              <textarea ref={ta} rows={1} value={input} onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && (input.trim() || file)) { e.preventDefault(); send(input.trim() || 'Please read this file.', file); } }}
-                onInput={() => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; } }}
-                placeholder="Message the assistant… (Enter to send, Shift+Enter for new line)"
-                className="rounded-xl border border-line bg-ink px-3.5 py-2.5 text-[13.5px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none resize-none" />
+              <div className="rounded-2xl border border-line bg-card p-2 focus-within:border-gold/60">
+                {file && (
+                  <div className="flex items-center gap-2 px-2 pt-1 text-[12.5px] text-gold">
+                    <span className="truncate">📎 {file.name} ({(file.size / 1024).toFixed(0)} KB)</span>
+                    <button onClick={() => setFile(null)} className="text-faint hover:text-blood bg-none border-0 cursor-pointer">×</button>
+                  </div>
+                )}
+                <div className="flex gap-2 items-end p-1">
+                  <button title="Attach PDF, CSV, TXT or JSON" onClick={() => fileRef.current?.click()}
+                    className="rounded-xl px-2.5 py-2 text-[16px] text-muted hover:text-white hover:bg-white/5 bg-none border-0 cursor-pointer shrink-0">📎</button>
+                  <input ref={fileRef} type="file" accept=".pdf,.csv,.txt,.json,text/*,application/json" className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) setFile(f); e.target.value = ''; }} />
+                  <textarea ref={ta} rows={1} value={input} onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && (input.trim() || file)) { e.preventDefault(); send(input.trim() || 'Please read this file.', file); } }}
+                    onInput={() => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px'; } }}
+                    placeholder="Message…"
+                    className="grow bg-transparent px-1 py-2 text-[14px] text-body placeholder:text-faint focus:outline-none resize-none" />
+                  <button disabled={!!busy || (!input.trim() && !file)} onClick={() => send(input.trim() || 'Please read this file.', file)}
+                    aria-label="Send"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold text-[16px] font-bold text-black cursor-pointer disabled:opacity-40">↑</button>
+                </div>
+              </div>
+              <p className="mt-1.5 text-center text-[11.5px] text-faint">Assistant maps results only — Validate & preview, then Commit, before anything is saved.</p>
             </div>
-            <button disabled={busy || (!input.trim() && !file)} onClick={() => send(input.trim() || 'Please read this file.', file)}
-              className="rounded-xl bg-gold px-5 py-2.5 text-[14px] font-bold text-black cursor-pointer disabled:opacity-50 shrink-0">↑</button>
           </div>
         </section>
-        {/* review panel */}
+        {/* review */}
         {(analysis || preview) && (
-          <div className="w-[340px] shrink-0 flex flex-col gap-4 max-lg:hidden">
+          <div className="w-full 2xl:w-[360px] 2xl:shrink-0 flex flex-col gap-4">
             {analysis && (
               <section className={CARD}>
                 <h2 className="text-[15px] font-bold mb-1">Mapped: {analysis.detected.type}
@@ -265,8 +316,8 @@ export default function AdminAssistant() {
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <button className={BTN_PRIMARY} disabled={busy} onClick={() => run(true)}>{busy ? 'Working…' : 'Validate & preview →'}</button>
-                  <button className={BTN_DANGER} disabled={busy || !preview || preview.dry_run === false} onClick={() => run(false)}>Commit</button>
+                  <button className={BTN_PRIMARY} disabled={!!busy} onClick={() => run(true)}>{busy === 'validate' ? 'Validating…' : 'Validate & preview →'}</button>
+                  <button className={BTN_DANGER} disabled={!!busy || !preview || preview.dry_run === false} onClick={() => run(false)}>{busy === 'commit' ? 'Committing…' : 'Commit'}</button>
                 </div>
               </section>
             )}

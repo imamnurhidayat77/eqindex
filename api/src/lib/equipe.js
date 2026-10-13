@@ -107,7 +107,9 @@ async function equipeRecords(meetingId, { seriesMap = {}, skipPractice = true } 
           const status = statusOf(s, p1);
           let so = null;
           const sn = parseInt(String(s.start_no || '').trim(), 10);
-          if (Number.isInteger(sn)) so = sn;
+          // Equipe uses negative numbers for late/scratch entries —
+          // not a real start order, so leave it NULL (rule not applied).
+          if (Number.isInteger(sn) && sn >= 1) so = sn;
           if (status !== 'finished') {
             records.push({
               class_name: name, class_no: cno || undefined, class_type: ctype,
