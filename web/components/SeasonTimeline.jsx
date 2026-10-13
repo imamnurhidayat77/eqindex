@@ -38,8 +38,11 @@ const isDoubleClear = (r) => !!r.clear_round &&
 
 function Star({ doubleClear, title }) {
   // Plain gold star — event profile now lives in its own row below.
+  // NOTE: no z-index here — the dots must slide UNDER the sticky row-label
+  // column when scrolled horizontally (a z-10 punched through and the
+  // first star painted over the label).
   return (
-    <span title={title} className="relative z-10 inline-flex">
+    <span title={title} className="inline-flex">
       <svg width="30" height="30" viewBox="0 0 24 24" role="img" aria-label={title} className="overflow-visible">
         <path
           d="M12 2l2.29 6.84 7.22 0.07-5.8 4.3 2.17 6.88L12 15.9l-5.88 4.19 2.17-6.88-5.8-4.3 7.22-0.07z"
@@ -70,7 +73,7 @@ function Dot({ r }) {
   return (
     <span
       title={title}
-      className="relative z-10 inline-flex items-center justify-center w-[28px] h-[28px] rounded-full text-[12px] font-extrabold tabular-nums"
+      className="inline-flex items-center justify-center w-[28px] h-[28px] rounded-full text-[12px] font-extrabold tabular-nums"
       style={{
         border: `${jumpOff ? 3 : 2}px solid ${jumpOff ? '#000' : color}`,
         boxShadow: jumpOff ? `0 0 0 1.5px ${color}, 0 0 0 3px #000` : `0 0 0 3px #141414`,
@@ -156,7 +159,7 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
         </thead>
         <tbody>
           <tr className="border-t border-line/50">
-            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-[1]">Place</td>
+            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-[1] whitespace-nowrap">Place</td>
             {rounds.map((r, i) => (
               <td key={r.id || i} className="px-2 py-2 text-center font-semibold min-w-[64px]">
                 {r.status !== 'finished'
@@ -166,7 +169,7 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
             ))}
           </tr>
           <tr className="border-t border-line/50">
-            <td className="px-2 py-2.5 text-muted sticky left-0 bg-card z-[1]">Clear / Faults</td>
+            <td className="px-2 py-2.5 text-muted sticky left-0 bg-card z-[1] whitespace-nowrap">Clear / Faults</td>
             {rounds.map((r, i) => (
               <td key={r.id || i} className="px-2 py-2.5 text-center min-w-[64px]" style={TRACK}>
                 <Dot r={r} />
@@ -174,7 +177,7 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
             ))}
           </tr>
           <tr className="border-t border-line/50">
-            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-[1]">Height</td>
+            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-[1] whitespace-nowrap">Height</td>
             {rounds.map((r, i) => (
               <td key={r.id || i} className="px-2 py-2 text-center tabular-nums min-w-[64px]">
                 <b>{r.height_cm ? `${(Number(r.height_cm) / 100).toFixed(2)}` : '–'}</b>
@@ -183,7 +186,7 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
             ))}
           </tr>
           <tr className="border-t border-line/50">
-            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-[1]">{partnerTitle}</td>
+            <td className="px-2 py-2 text-muted sticky left-0 bg-card z-[1] whitespace-nowrap">{partnerTitle}</td>
             {rounds.map((r, i) => (
               <td key={r.id || i} className="px-2 py-2 text-center text-[12px] font-bold min-w-[64px]">{initials(r[partnerKey])}</td>
             ))}
