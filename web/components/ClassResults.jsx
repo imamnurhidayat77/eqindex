@@ -161,7 +161,7 @@ export default function ClassResults({ groups }) {
                     const joCode = { eliminated: 'E', retired: 'R', withdrawn: 'W', disqualified: 'DQ' }[r.status];
                     const r1zero = Number(r.total_faults) === 0 && !dead;
                     return (
-                      <tr key={r.id} className={dead ? 'opacity-50' : ''} title={r.notes || undefined}>
+                      <tr key={r.id} title={r.notes || undefined}>
                         <td className={TD}>{placeCell(r)}</td>
                         <td className={TD}><Link className={LINK} href={`/riders/${r.rider_slug || r.rider_id}`}>{r.rider}</Link></td>
                         <td className={TD}><Link className={LINK} href={`/horses/${r.horse_slug || r.horse_id}`}>{r.horse}</Link></td>
