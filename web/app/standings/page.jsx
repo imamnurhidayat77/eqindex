@@ -43,7 +43,7 @@ export default function Standings() {
   useEffect(() => {
     if (open === null) return;
     setLoading(true);
-    const p = new URLSearchParams({ limit: '500', min_rounds: '1', metric });
+    const p = new URLSearchParams({ limit: '500', min_rounds: '3', metric });
     if (div) p.set('division', div);
     fetch(`${API}/rankings/modelb/combinations?${p}`)
       .then((r) => r.json())
@@ -79,7 +79,7 @@ export default function Standings() {
         <h1 className="text-[26px] font-extrabold tracking-tight">{open !== null ? (openDiv?.label || 'Division') : 'Standings'}</h1>
         <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ {metric === 'clear' ? 'Clear rate' : 'Average score'}</span>
       </div>
-      <p className={SUB}>{metric === 'clear' ? 'Rider clear rate on each horse — rounds column shows sample size.' : 'Average round score per combination — rounds column shows sample size.'}</p>
+      <p className={SUB}>{metric === 'clear' ? 'Rider clear rate on each horse — min 3 rounds, rounds column shows sample size.' : 'Average round score per combination — min 3 rounds, rounds column shows sample size.'}</p>
       {open !== null && (
         <div className="flex gap-1 bg-card2 border border-line rounded p-1 overflow-x-auto w-fit mb-4">
           {[['avg', 'Average'], ['clear', 'Clear %']].map(([k, lbl]) => (
