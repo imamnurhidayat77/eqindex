@@ -10,11 +10,11 @@ const fmt1 = (v) => (v === null || v === undefined ? '–' : Number(v).toFixed(1
 
 function placeCell(r) {
   // A classified-but-not-finished round (e.g. retired in the jump-off but
-  // officially 2nd) keeps its placing: show the ordinal plus a status tag.
-  const code = { eliminated: 'E', withdrawn: 'W', retired: 'R', disqualified: 'DQ' }[r.status];
+  // officially 2nd) shows its placing plainly; the status lives in the
+  // JO column / row tag instead of cluttering the placing.
   if (r.status && r.status !== 'finished' && r.finish_place) {
-    const tag = code === 'DQ' ? BADGE.red : code === 'E' ? BADGE.red : BADGE.gray;
-    return <span className="text-muted">{ordinal(r.finish_place)} <span className={badge(tag)}>{code}</span></span>;
+    if (r.finish_place === 1) return <span className={badge(BADGE.goldfill)}>{ordinal(r.finish_place)}</span>;
+    return <span className="text-muted">{ordinal(r.finish_place)}</span>;
   }
   if (r.status === 'eliminated') return <span className={badge(BADGE.red)}>E</span>;
   if (r.status === 'withdrawn') return <span className={badge(BADGE.gray)}>W</span>;

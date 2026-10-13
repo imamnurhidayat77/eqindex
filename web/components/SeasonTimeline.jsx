@@ -165,11 +165,9 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
             <td className="px-2 py-2 text-muted sticky left-0 bg-card z-[1] whitespace-nowrap">Place</td>
             {rounds.map((r, i) => (
               <td key={r.id || i} className="px-2 py-2 text-center font-semibold min-w-[64px]">
-                {r.status && r.status !== 'finished' && r.finish_place
-                  ? <>{r.finish_place} <span className="text-faint text-[11px]">{({ eliminated: 'E', retired: 'R', withdrawn: 'W', disqualified: 'DQ' })[r.status]}</span></>
-                  : r.status !== 'finished'
-                    ? ({ eliminated: 'E', retired: 'R', withdrawn: 'W', disqualified: 'DQ' }[r.status] || '–')
-                    : (r.finish_place ?? '–')}
+                {r.finish_place ?? (r.status !== 'finished'
+                  ? ({ eliminated: 'E', retired: 'R', withdrawn: 'W', disqualified: 'DQ' }[r.status] || '–')
+                  : '–')}
               </td>
             ))}
           </tr>
