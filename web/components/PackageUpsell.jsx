@@ -4,7 +4,7 @@ import { API } from '../lib/api';
 import { INP } from '../lib/tokens';
 import { useAuth } from './auth';
 
-const nzd = (c) => `$${(Number(c || 0) / 100).toFixed(2)}`;
+const nzd = (c) => `NZ$${(Number(c || 0) / 100).toFixed(2)}`;
 const keyFor = () => (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '').slice(0, 32)
   : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 20)}`);
 

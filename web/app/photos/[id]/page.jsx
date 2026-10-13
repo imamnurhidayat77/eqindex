@@ -9,7 +9,7 @@ import ShareCard from '../../../components/ShareCard';
 
 export const revalidate = 30;
 
-const nzd = (c) => (c === null || c === undefined ? '—' : `$${(Number(c) / 100).toFixed(2)}`);
+const nzd = (c) => (c === null || c === undefined ? '—' : `NZ$${(Number(c) / 100).toFixed(2)}`);
 
 export default async function PhotoDetail({ params }) {
   const res = await getJSON(`/photos/${params.id}`).catch(() => null);
