@@ -162,6 +162,38 @@ export default function AdminAssistant() {
     setBusy(null);
   }
 
+  // Chunked runs: the Vercel proxy kills requests past ~30s, and prod
+  // rows cost ~0.5s each over the ocean link — so big files go in ~50-row
+  // chunks with a progress readout. Each chunk is its own transaction;
+  // duplicates across chunks are caught at commit (dup check reads
+  // committed rows), never silently double-imported.
+  const CHUNK = 50;
+  const [progress, setProgress] = useState(null);
+  async function runChunked(records, dry) {
+    const merged = { rows: [], summary: null };
+    const evAgg = {};
+    for (let i = 0; i < records.length; i += CHUNK) {
+      setProgress({ done: Math.min(i, records.length), total: records.length, phase: dry ? 'Validating' : 'Committing' });
+      const body = { records: records.slice(i, i + CHUNK), dry_run: dry };
+      if (eventId === '__new__') {
+        body.event = { name: evNew.name.trim(), date_start: evNew.date_start, date_end: evNew.date_start, venue: evNew.venue.trim() };
+      } else {
+        body.event_id = eventId;
+      }
+      const d = await call('/admin/import', { method: 'POST', body: JSON.stringify(body) });
+      const off = i;
+      for (const r of d.rows) merged.rows.push({ ...r, line: off + r.line - 1 });
+      for (const e of d.summary.events || []) {
+        (evAgg[e.id] ||= { ...e, ok: 0, failed: 0 }).ok += e.ok;
+        evAgg[e.id].failed += e.failed;
+      }
+    }
+    setProgress({ done: records.length, total: records.length, phase: dry ? 'Validating' : 'Committing' });
+    const ok = merged.rows.filter((r) => r.ok).length;
+    merged.summary = { total: records.length, ok, failed: merged.rows.length - ok, enriched: 0, events: Object.values(evAgg) };
+    return { dry_run: dry, rows: merged.rows, summary: merged.summary };
+  }
+
   async function run(dry) {
     setErr('');
     const analysis = active?.analysis;
@@ -170,16 +202,11 @@ export default function AdminAssistant() {
     if (eventId === '__new__' && (!evNew.name.trim() || !evNew.date_start)) { setErr('New event needs a name and start date.'); return; }
     setBusy(dry ? 'validate' : 'commit');
     try {
-      const body = { records: analysis.records, dry_run: dry };
-      if (eventId === '__new__') {
-        body.event = { name: evNew.name.trim(), date_start: evNew.date_start, date_end: evNew.date_start, venue: evNew.venue.trim() };
-      } else {
-        body.event_id = eventId;
-      }
-      const d = await call('/admin/import', { method: 'POST', body: JSON.stringify(body) });
+      const d = await runChunked(analysis.records, dry);
       setPreview(d);
     } catch (e) { setErr(e.message); }
     setBusy(null);
+    setProgress(null);
   }
 
   const analysis = active?.analysis || null;
@@ -286,9 +313,12 @@ export default function AdminAssistant() {
                             options={[{ value: '', label: '— select —' }, { value: '__new__', label: '＋ New event…' },
                               ...events.map((e) => ({ value: e.id, label: `${e.name} · ${(e.date_start || '').slice(0, 10)}` }))]}
                             onSelect={(o) => setEventId(o.value)} /></label>
-                        <button className={BTN_PRIMARY} disabled={!!busy} onClick={() => run(true)}>{busy === 'validate' ? 'Validating…' : 'Validate & preview →'}</button>
-                        <button className={BTN_DANGER} disabled={!!busy || !preview || preview.dry_run === false} onClick={() => run(false)}>{busy === 'commit' ? 'Committing…' : 'Commit'}</button>
+                        <button className={BTN_PRIMARY} disabled={!!busy} onClick={() => run(true)}>{busy === 'validate' ? `Validating… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Validate & preview →'}</button>
+                        <button className={BTN_DANGER} disabled={!!busy || !preview || preview.dry_run === false} onClick={() => run(false)}>{busy === 'commit' ? `Committing… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Commit'}</button>
                       </div>
+                      {!!progress && progress.total > 0 && (
+                        <div className="mt-2 h-1.5 rounded bg-[#2A2A2A]"><div className="h-1.5 rounded bg-gold transition-all" style={{ width: `${Math.round((100 * progress.done) / progress.total)}%` }} /></div>
+                      )}
                       {eventId === '__new__' && (
                         <div className="grid sm:grid-cols-3 gap-2 mt-2">
                           {[['name', 'Event name*'], ['date_start', 'Start date* (YYYY-MM-DD)'], ['venue', 'Venue']].map(([k, lbl]) => (

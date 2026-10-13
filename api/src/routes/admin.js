@@ -439,9 +439,12 @@ module.exports = function mountAdminRoutes(app) {
       await client.query('BEGIN');
       // Bulk speed: the AFTER share trigger recalculates the WHOLE class
       // per inserted row (O(n^2) over a slow link). Disable it for the load
-      // and recalculate each touched class ONCE afterwards. Transactional —
-      // COMMIT/ROLLBACK restores the trigger automatically.
+      // and recalculate each touched class ONCE afterwards. The BEFORE
+      // points trigger is disabled too (we insert the 0 placeholder; the
+      // recalc stamps points + points_version). Transactional —
+      // COMMIT/ROLLBACK restores both triggers automatically.
       await client.query('ALTER TABLE round_results DISABLE TRIGGER round_results_esnz_share_trg');
+      await client.query('ALTER TABLE round_results DISABLE TRIGGER round_results_points_trg');
       const touchedClasses = new Set();
       // In-request caches: the DB link is ~50ms RTT, so per-row lookups
       // would cost minutes on big files. Preload small tables once; lazily
