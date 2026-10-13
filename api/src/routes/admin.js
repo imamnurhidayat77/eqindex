@@ -7,6 +7,7 @@ const { needRole } = require('../lib/auth');
 const { bustCache, bustPublic } = require('../middleware/cache');
 const { bustVisibility, excludedClassTypes } = require('../lib/filters');
 const { canonCategoryKey, masterCategoryKeys, bustCategoryKeys } = require('../lib/categories');
+const { summarizeAssist, loadSeriesMap, applySeriesMap } = require('../lib/assist');
 
 module.exports = function mountAdminRoutes(app) {
   // ---- Rank snapshots: capture today's points ranks (idempotent per day) ----
@@ -160,7 +161,7 @@ module.exports = function mountAdminRoutes(app) {
       return res.json({ data: summarizeAssist('csv-rule', { filename: filename || null }, records, []) });
     }
     // Deterministic EvoEvents path (no AI needed for these PDFs).
-    const evo = evoAssist(text, filename);
+    const evo = await evoAssist(text, filename, req.authUser?.id);
     if (evo) return res.json({ data: evo.analysis });
     // AI fallback for unknown formats.
     try {
@@ -179,36 +180,19 @@ module.exports = function mountAdminRoutes(app) {
     }
   }));
 
-  function summarizeAssist(type, meta, records, skipped) {
-    const withSeries = records.filter((r) => r.series_key).length;
-    const finished = records.filter((r) => (r.status || 'finished') === 'finished').length;
-    const warnings = [];
-    if (withSeries < records.length) warnings.push(`${records.length - withSeries} row(s) without series_key will score 0 series points`);
-    for (const [, name, why] of (skipped || []).slice(0, 8)) warnings.push(`skipped: ${String(name).slice(0, 50)} — ${why}`);
-    return {
-      detected: { type, ...meta },
-      records,
-      warnings,
-      stats: {
-        rounds: records.length,
-        with_series: withSeries,
-        finished,
-        non_finished: records.length - finished,
-        new_check: 'run Validate & preview to see new horses/riders and points',
-      },
-    };
-  }
-
   // Deterministic EvoEvents path: EvoEvents results PDFs (pasted or
   // browser-extracted) map without AI. Returns null when the text isn't
   // EvoEvents-shaped or nothing mappable was found (caller falls to AI).
-  function evoAssist(blob, filename) {
+  // Remembered series mappings auto-tag matching classes (counted aloud).
+  async function evoAssist(blob, filename, userId) {
     const { parseEvoEvents, looksEvoEvents } = require('../lib/evoevents');
     if (!looksEvoEvents(blob)) return null;
     const parsed = parseEvoEvents(blob);
     if (!parsed.records.length) return null;
+    const tagged = await applySeriesMap(parsed.records, userId);
     const noSeries = parsed.records.filter((r) => !r.series_key).length;
     const warnings = [...parsed.warnings];
+    if (tagged) warnings.push(`${tagged} row(s) tagged from your remembered series mappings`);
     if (noSeries) warnings.push(`${noSeries} row(s) without series_key will score 0 series points`);
     return {
       reply: `Read ${filename || 'your file'} directly — ${parsed.records.length} rounds across ${parsed.classesFound} classes, no AI needed.`,
@@ -231,6 +215,7 @@ module.exports = function mountAdminRoutes(app) {
           session: req.body.session,
           context: safeJson(req.body.context, null),
           file: req.file || null,
+          userId: req.authUser?.id || null,
         });
         res.json({ data: out });
       } catch (e) {
@@ -239,12 +224,29 @@ module.exports = function mountAdminRoutes(app) {
     });
   }));
 
+  // ---- Import Assistant background jobs (Phase 3): poll mapping progress.
+  app.get('/admin/import/jobs/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    if (!/^[0-9a-f-]{36}$/i.test(req.params.id || '')) return res.status(404).json({ error: 'job not found' });
+    const { getJob } = require('../lib/agentJobs');
+    const job = await getJob({ id: req.params.id, userId: req.authUser?.id });
+    if (!job) return res.status(404).json({ error: 'job not found' });
+    res.json({
+      data: {
+        id: job.id,
+        status: job.status,
+        progress: job.progress || null,
+        error: job.error || null,
+        ...(job.status === 'done' && job.output ? job.output : {}),
+      },
+    });
+  }));
+
   function safeJson(v, fb) {
     try { const j = typeof v === 'string' ? JSON.parse(v) : v; return j ?? fb; } catch { return fb; }
   }
 
-  async function assistChat({ messages, session, context, file }) {
-    const { aiAgent, aiMapRecords, aiAvailable } = require('../lib/ai');
+  async function assistChat({ messages, session, context, file, userId }) {
+    const { aiAgent, aiAvailable } = require('../lib/ai');
     const { TOOL_DEFS, runTool } = require('../lib/agentTools');
     const { equipeRecords } = require('../lib/equipe');
     const lastUser = [...(messages || [])].reverse().find((m) => m.role === 'user');
@@ -295,7 +297,7 @@ module.exports = function mountAdminRoutes(app) {
           analysis: summarizeAssist('csv-rule', { filename: filename || null }, records, []),
         };
       }
-      const evo = evoAssist(blob, filename);
+      const evo = await evoAssist(blob, filename, userId);
       if (evo) {
         const noSeries = evo.analysis.records.filter((r) => !r.series_key).length;
         return {
@@ -314,38 +316,39 @@ module.exports = function mountAdminRoutes(app) {
         if (!aiAvailable()) {
           return { reply: 'I can see results text but the format is unfamiliar and my AI mapping is not configured. Please reshape it to the CSV template (Admin → CSV Import has one), or ask your admin to set the AI key.', analysis: null };
         }
-        const { records, dropped, prose, truncated } = await aiMapRecords({ text: blob, hint: filename ? `Source file: ${filename}.` : '' });
-      // Back/draw numbers are not start order (nomination rule needs the
-      // real ring order) — strip unless a human confirms via import columns.
-      for (const r of records) delete r.start_order;
-      if (!records.length) {
-        const say = prose
-          ? `Here's what I made of ${filename || 'the text'}: ${prose.slice(0, 600)}${prose.length > 600 ? '…' : ''} — but I couldn't pull complete result rows (need class + rider + horse on each). Paste a couple of example rows so I can see the layout?`
-          : `I read ${filename || 'the text'} but couldn't find any complete result rows (need class + rider + horse on each). Could you paste a couple of example rows so I can see the layout?`;
-        return { reply: say, analysis: null };
-      }
-      const warnings = [];
-      if (dropped) warnings.push(`${dropped} row(s) dropped (missing class/rider/horse)`);
-      if (truncated) warnings.push('File is very long — only the first ~72KB was mapped. Split the PDF by day/ring and send the rest separately.');
-      const noSeries = records.filter((r) => !r.series_key).length;
-      if (noSeries) warnings.push(`${noSeries} row(s) without series_key will score 0 series points`);
-      return {
-        reply: `Mapped ${records.length} rounds from ${filename || 'your text'}${dropped ? ` (${dropped} dropped)` : ''}. ${noSeries ? `${noSeries} have no series — tell me which classes are series classes (e.g. "class 9 is pro-am") and I'll tag them. ` : ''}Review below, then validate & commit — nothing saved yet.`,
-        analysis: { ...summarizeAssist('ai', { filename: filename || null }, records, []), warnings },
-      };
+        // AI mapping runs as a background job: big files take longer than
+        // the ~30s proxy limit. The client polls the job until done.
+        const { queueAiMapJob } = require('../lib/agentJobs');
+        const jobId = await queueAiMapJob({
+          userId,
+          text: blob,
+          hint: filename ? `Source file: ${filename}.` : '',
+          filename: filename || null,
+        });
+        return {
+          reply: `Mapping ${filename || 'your text'} in the background — I'll post the summary here when it's done. Nothing is saved until you validate & commit.`,
+          analysis: null,
+          job: { id: jobId },
+        };
       }
     }
 
     // 4. Free chat about importing — agentic: the model can look up
-    // shows, events, horses, riders and series via read-only tools before
-    // answering. It can never save anything; Commit stays human.
+    // shows, events, horses, riders and series via tools before answering,
+    // and remember lasting preferences via memory tools. It can never save
+    // results; Commit stays human.
     const ctx = context ? `Last analysis: ${JSON.stringify(context).slice(0, 800)}.` : 'No analysis yet this session.';
+    const memMaps = await loadSeriesMap(userId);
+    const memLine = memMaps.length
+      ? `Remembered series mappings for this admin: ${memMaps.map((m) => `"${m.pattern}" → ${m.series_key}`).join(', ')}. Apply them when tagging; mention counts.`
+      : 'No remembered series mappings for this admin yet.';
     const { reply } = await aiAgent({
       session,
-      system: `You are the EQIndex Import Assistant. You help an admin import show-jumping results. Capabilities: read Equipe show URLs (online.equipe.com/shows/ID), map pasted results text or uploaded files (PDF/CSV/TXT/JSON) to canonical records, explain warnings (missing series_key means 0 series points, skipped rows), and guide the validate-then-commit flow. You have read-only tools: use equipe_show for show links instead of guessing, events_list to help pick an import target, horses_search/riders_search to check whether names already exist, series_list for the exact series vocabulary (never invent a series_key). Rules: never claim anything is saved (only dry-run preview then human Commit saves); series mapping for unfamiliar class names must be asked, never guessed silently; use tools when the answer needs real data, otherwise answer directly; keep replies short and practical. ${ctx}`,
+      system: `You are the EQIndex Import Assistant. You help an admin import show-jumping results. Capabilities: read Equipe show URLs (online.equipe.com/shows/ID), map pasted results text or uploaded files (PDF/CSV/TXT/JSON) to canonical records, explain warnings (missing series_key means 0 series points, skipped rows), and guide the validate-then-commit flow. You have tools: use equipe_show for show links instead of guessing, events_list to help pick an import target, horses_search/riders_search to check whether names already exist, series_list for the exact series vocabulary (never invent a series_key). When the admin states a lasting preference (e.g. "class 9 is pro-am", "remember my venue is X"), store it with memory_save (series_map keys are lowercase class-name fragments); recall with memory_list when unsure. ${memLine} Rules: never claim anything is saved (only dry-run preview then human Commit saves); use tools when the answer needs real data, otherwise answer directly; keep replies short and practical. ${ctx}`,
       messages: (messages || []).slice(-8),
       tools: TOOL_DEFS,
       runTool,
+      toolCtx: { userId },
       maxIter: 2,
     });
     return { reply, analysis: null };

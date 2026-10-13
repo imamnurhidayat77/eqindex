@@ -147,20 +147,38 @@ export default function AdminAssistant() {
       const pdf = await pdfjs.getDocument({ data: buf }).promise;
       // Line-aware extraction: group items by y-coordinate so table rows
       // survive as lines (a flat join turns results into unreadable soup).
+      // Tolerance is 6px: EvoEvents prints the horse and rider columns at
+      // slightly different baselines, and 2px left them on separate lines.
+      // Single-item lines keep their column as a tab prefix (rider column
+      // is right of the header midpoint) so the server can tell a lone
+      // horse fragment from a lone rider fragment.
       let out = '';
       for (let p = 1; p <= pdf.numPages && out.length < 400000; p++) {
         const page = await pdf.getPage(p);
         const tc = await page.getTextContent();
+        // Column boundary from the table header row itself (a class title
+        // elsewhere on the page may also contain standalone Horse/Rider
+        // words at unrelated x positions — never use those).
+        const yBack = (tc.items.find((it) => (it.str || '').trim() === 'Back No')?.transform?.[5]) ?? null;
+        const atHeader = (it) => yBack === null || Math.abs((it.transform?.[5] || 0) - yBack) < 8;
+        const xHorse = tc.items.find((it) => (it.str || '').trim() === 'Horse' && atHeader(it))?.transform?.[4] || 0;
+        const xRider = tc.items.find((it) => (it.str || '').trim() === 'Rider' && atHeader(it))?.transform?.[4] || 0;
+        const boundary = xHorse && xRider ? (xHorse + xRider) / 2 : 0;
         const lines = new Map();
         for (const it of tc.items) {
-          const y = Math.round((it.transform?.[5] || 0) / 2) * 2;
+          // Blank items (inter-word spacing) would fake multi-item lines
+          // and break the single-fragment column detection — drop them;
+          // the join below re-inserts spacing.
+          if (!(it.str || '').trim()) continue;
+          const y = Math.round((it.transform?.[5] || 0) / 6) * 6;
           if (!lines.has(y)) lines.set(y, []);
           lines.get(y).push({ x: it.transform?.[4] || 0, s: it.str });
         }
         const sorted = [...lines.entries()].sort((a, b) => b[0] - a[0]);
         for (const [, items] of sorted) {
           items.sort((a, b) => a.x - b.x);
-          out += items.map((i) => i.s).join('  ') + '\n';
+          const prefix = items.length === 1 && boundary && items[0].x > boundary ? '\t' : '';
+          out += prefix + items.map((i) => i.s).join('  ') + '\n';
         }
         out += '\n';
       }
@@ -206,15 +224,51 @@ export default function AdminAssistant() {
       const res = await fetch(`${API}/admin/import/chat`, { method: 'POST', credentials: 'include', body: fd });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
+      const assistantMsg = { id: uid(), role: 'assistant', content: j.data.reply };
       patchActive((c) => ({
         ...c, updatedAt: Date.now(),
-        msgs: [...base, { id: uid(), role: 'assistant', content: j.data.reply }],
+        msgs: [...base, assistantMsg],
         analysis: j.data.analysis?.records?.length ? j.data.analysis : c.analysis,
       }));
+      // Background mapping jobs (AI path): poll until done, then swap the
+      // placeholder message for the real summary + review panel. Polling
+      // runs detached so the admin can keep chatting meanwhile; updates
+      // land in the chat where the job started.
+      if (j.data.job?.id) pollJob(j.data.job.id, assistantMsg.id, active.id);
     } catch (e) {
       patchActive((c) => ({ ...c, msgs: [...base, { id: uid(), role: 'assistant', content: `Sorry — ${e.message}`, error: true }] }));
     }
     setBusy(null);
+  }
+
+  async function pollJob(jobId, msgId, chatId) {
+    const patchMsg = (fn) => setChats((prev) => prev.map((c) => (
+      c.id === chatId ? { ...c, updatedAt: Date.now(), msgs: c.msgs.map((m) => (m.id === msgId ? fn(m) : m)) } : c
+    )));
+    for (let i = 0; i < 150; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      let d = null;
+      try {
+        const res = await fetch(`${API}/admin/import/jobs/${jobId}`, { credentials: 'include' });
+        const j = await res.json().catch(() => ({}));
+        if (res.ok) d = j.data;
+      } catch { /* transient network blip — keep polling */ }
+      if (!d) continue;
+      if (d.status === 'done') {
+        patchMsg((m) => ({ ...m, content: d.reply }));
+        if (d.analysis?.records?.length) {
+          setChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, analysis: d.analysis } : c)));
+        }
+        return;
+      }
+      if (d.status === 'error') {
+        patchMsg((m) => ({ ...m, content: `Mapping failed: ${d.error || 'unknown error'}. Try a smaller file or paste the results text.`, error: true }));
+        return;
+      }
+      const n = d.progress?.done;
+      if (n) patchMsg((m) => ({ ...m, content: `Mapping in the background… (${n} part${n > 1 ? 's' : ''} done, nothing saved yet)` }));
+    }
+    patchMsg((m) => ({ ...m, content: 'Mapping is taking unusually long — it may still finish. Resend the file if no summary appears.', error: true }));
   }
 
   // Chunked runs: the Vercel proxy kills requests past ~30s, and prod
