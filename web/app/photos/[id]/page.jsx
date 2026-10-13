@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getJSON } from '../../../lib/api';
 import { CARD, H1, SUB } from '../../../lib/tokens';
+import BuyBox from '../../../components/BuyBox';
 
 export const revalidate = 30;
 
@@ -52,9 +53,7 @@ export default async function PhotoDetail({ params }) {
               </div>
             ))}
           </dl>
-          <div className="mt-4 rounded border border-line bg-card2 p-3 text-[13px] text-muted">
-            Online purchase opens at launch — this preview is not yet for sale.
-          </div>
+          <BuyBox id={d.id} priceCents={d.price_cents} tier={d.license_default} />
         </section>
       </div>
       {!!related.length && (

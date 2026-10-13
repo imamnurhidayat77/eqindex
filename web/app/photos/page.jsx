@@ -50,7 +50,7 @@ function PhotosInner() {
   return (
     <>
       <h1 className={H1}>Photos</h1>
-      <p className={SUB}>Event photos and reels, tagged to horse and rider.</p>
+      <p className={SUB}>Event photos and reels, tagged to horse and rider. <Link href="/photos/library" className="text-sky hover:underline">My photos →</Link></p>
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="flex gap-1 bg-card2 border border-line rounded p-1 overflow-x-auto w-fit">
           {TABS.map(([k, lbl]) => (

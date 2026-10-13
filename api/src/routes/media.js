@@ -1,3 +1,4 @@
+const express = require('express');
 const pool = require('../db');
 const { asyncH } = require('../lib/async');
 const { needRole } = require('../lib/auth');
@@ -6,6 +7,15 @@ const { resolveId } = require('../lib/resolve');
 const multer = require('multer');
 const sharp = require('sharp');
 const mediaStore = require('../lib/mediaStore');
+
+const stripe = () => {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    const err = new Error('stripe unconfigured (STRIPE_SECRET_KEY)');
+    err.status = 503;
+    throw err;
+  }
+  return require('stripe')(process.env.STRIPE_SECRET_KEY);
+};
 
 // Photo platform P1: upload + renditions + assisted tagging + review queue.
 // See docs/PHOTO_PLATFORM_PLAN.md §4–§5.
@@ -249,6 +259,170 @@ module.exports = function mountMediaRoutes(app) {
       } catch { /* R2 public base unconfigured */ }
     }
   }
+
+  // ---- Commerce: Stripe Checkout + webhook + downloads (plan §7) ----
+  const APP_URL = (process.env.APP_URL || '').replace(/\/$/, '');
+
+  // POST /api/checkout {media_id|package_id, license_tier?, email?}
+  app.post('/api/checkout', asyncH(async (req, res) => {
+    const { media_id, package_id, license_tier, email } = req.body || {};
+    if (!!media_id === !!package_id) {
+      return res.status(400).json({ error: 'need exactly one of {media_id, package_id}' });
+    }
+    const buyerEmail = (email || req.authUser?.email || '').trim();
+    if (!buyerEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(buyerEmail)) {
+      return res.status(400).json({ error: 'need a valid {email}' });
+    }
+    let title, amount, tierId = license_tier || null, mediaId = null, packageId = null;
+    if (media_id) {
+      const m = await pool.query(
+        `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label
+          FROM media m LEFT JOIN license_tiers t ON t.id = $2
+          WHERE m.id = $1 AND m.status = 'published'`,
+        [media_id, tierId]
+      );
+      if (!m.rows.length) return res.status(404).json({ error: 'photo not found or not for sale' });
+      const row = m.rows[0];
+      if (tierId && !row.tier_label) return res.status(400).json({ error: 'unknown license tier' });
+      if (!tierId) {
+        const dflt = await pool.query('SELECT * FROM license_tiers WHERE id = $1', [row.license_default || 'web']);
+        tierId = dflt.rows[0]?.id || 'web';
+        amount = dflt.rows[0]?.price_cents ?? row.price_cents;
+      } else {
+        amount = row.tier_price;
+      }
+      if (row.price_cents !== null && tierId === row.license_default) amount = Math.min(amount ?? Infinity, row.price_cents);
+      if (amount === null || amount === undefined) return res.status(409).json({ error: 'no price set for this photo' });
+      title = `${row.horse_id || row.rider_id ? '' : 'Event '}photo${row.moment ? ` (${row.moment})` : ''} · ${tierId}`;
+      mediaId = row.id;
+    } else {
+      const pk = await pool.query(`SELECT * FROM packages WHERE id = $1 AND status = 'published'`, [package_id]);
+      if (!pk.rows.length) return res.status(404).json({ error: 'package not found or not for sale' });
+      amount = pk.rows[0].price_cents;
+      title = pk.rows[0].title;
+      packageId = pk.rows[0].id;
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending') RETURNING id`,
+      [mediaId, packageId, buyerEmail, req.authUser?.id || null, tierId, amount]
+    );
+    const session = await stripe().checkout.sessions.create({
+      mode: 'payment',
+      customer_email: buyerEmail,
+      line_items: [{
+        price_data: {
+          currency: 'nzd',
+          product_data: { name: title.slice(0, 120) },
+          unit_amount: amount,
+        },
+        quantity: 1,
+      }],
+      success_url: `${APP_URL}/photos/success?purchase=${rows[0].id}`,
+      cancel_url: `${APP_URL}/photos`,
+      metadata: { purchase_id: rows[0].id },
+    });
+    await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = $1', [rows[0].id, session.id]);
+    res.status(201).json({ data: { purchase_id: rows[0].id, checkout_url: session.url } });
+  }));
+
+  // Stripe webhook — must see the RAW body (registered before express.json).
+  app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), asyncH(async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    let event;
+    try {
+      event = stripe().webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    } catch (e) {
+      return res.status(400).json({ error: `webhook signature failed: ${e.message}` });
+    }
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const purchaseId = session.metadata?.purchase_id;
+      if (purchaseId) {
+        const done = await pool.query(
+          `UPDATE purchases SET status = 'paid'
+            WHERE id = $1 AND status = 'pending' RETURNING id, media_id, package_id`,
+          [purchaseId]
+        );
+        if (done.rows.length) {
+          const r = done.rows[0];
+          await pool.query(
+            `UPDATE media SET purchase_count = purchase_count + 1 WHERE id = $1
+              OR id IN (SELECT media_id FROM package_items WHERE package_id = $2)`,
+            [r.media_id, r.package_id]
+          );
+          audit(req, 'media.purchase', 'purchase', purchaseId, { session: session.id });
+        }
+      }
+    } else if (event.type === 'charge.refunded') {
+      const pi = event.data.object?.payment_intent;
+      if (pi) {
+        await pool.query(
+          `UPDATE purchases SET status = 'refunded' WHERE stripe_session_id IN
+            (SELECT id FROM stripe_checkout_sessions WHERE payment_intent = $1)`, [pi]
+        ).catch(() => pool.query(
+          `UPDATE purchases SET status = 'refunded' WHERE id IN
+            (SELECT (metadata->>'purchase_id')::UUID FROM stripe_events WHERE id = $1)`, [event.id]
+        ).catch(() => {}));
+      }
+    }
+    res.json({ received: true });
+  }));
+
+  // Download: entitlement check → 302 to signed R2 URL (15 min).
+  app.get('/api/media/:id/download', asyncH(async (req, res) => {
+    const email = (req.query.email || req.authUser?.email || '').trim().toLowerCase();
+    const m = await pool.query('SELECT * FROM media WHERE id = $1 AND status = $2', [req.params.id, 'published']);
+    if (!m.rows.length) return res.status(404).json({ error: 'photo not found' });
+    if (!m.rows[0].storage_key) return res.status(409).json({ error: 'original not stored yet' });
+    const ent = email ? await pool.query(
+      `SELECT 1 FROM purchases
+        WHERE status = 'paid' AND lower(buyer_email) = $2
+          AND (media_id = $1 OR package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))
+        LIMIT 1`,
+      [req.params.id, email]
+    ) : { rows: [] };
+    if (!ent.rows.length) return res.status(402).json({ error: 'purchase required' });
+    res.redirect(302, await mediaStore.signedDownloadUrl(m.rows[0].storage_key));
+  }));
+
+  // Buyer library ("my photos").
+  app.get('/api/my/photos', asyncH(async (req, res) => {
+    const email = (req.query.email || req.authUser?.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'need {email}' });
+    const { rows } = await pool.query(
+      `SELECT pu.id AS purchase_id, pu.license_tier, pu.amount_cents, pu.status, pu.created_at,
+          m.id AS media_id, m.kind, m.thumb_key, m.preview_key, m.event_id,
+          e.name AS event_name, h.name AS horse, r.name AS rider
+        FROM purchases pu LEFT JOIN media m ON m.id = pu.media_id
+        LEFT JOIN events e ON e.id = m.event_id
+        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        WHERE lower(pu.buyer_email) = $1 AND pu.status = 'paid'
+        ORDER BY pu.created_at DESC LIMIT 200`,
+      [email]
+    );
+    withUrls(rows);
+    res.json({ data: rows });
+  }));
+
+  // Admin sales table.
+  app.get('/admin/sales', needRole('ADMIN'), asyncH(async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+    const { rows } = await pool.query(
+      `SELECT pu.*, e.name AS event_name, h.name AS horse, r.name AS rider, pk.title AS package_title
+        FROM purchases pu LEFT JOIN media m ON m.id = pu.media_id
+        LEFT JOIN events e ON e.id = m.event_id
+        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        LEFT JOIN packages pk ON pk.id = pu.package_id
+        ORDER BY pu.created_at DESC LIMIT $1`,
+      [limit]
+    );
+    const totals = await pool.query(
+      `SELECT COUNT(*)::INT AS sales, COALESCE(SUM(amount_cents), 0)::INT AS gross_cents
+        FROM purchases WHERE status = 'paid'`
+    );
+    res.json({ data: rows, totals: totals.rows[0] });
+  }));
 
   // ---- Assisted tagging: rank classes by taken_at proximity, with candidates ----
   app.post('/admin/media/suggest-tags', needRole('ADMIN'), asyncH(async (req, res) => {

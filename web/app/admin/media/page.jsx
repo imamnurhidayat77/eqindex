@@ -18,6 +18,8 @@ export default function AdminMedia() {
   const [sgEvent, setSgEvent] = useState('');
   const [sgTaken, setSgTaken] = useState('');
   const [suggest, setSuggest] = useState(null);
+  const [sales, setSales] = useState([]);
+  const [totals, setTotals] = useState(null);
 
   async function load() {
     try {
@@ -33,6 +35,10 @@ export default function AdminMedia() {
   }, []);
   useEffect(() => { load(); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fStatus, fUntagged]);
+  useEffect(() => {
+    call('/admin/sales?limit=50').then((d) => { setSales(d.data || []); setTotals(d.totals || null); }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function upload() {
     if (!files.length) { setMsg('Pick files first.'); return; }
@@ -77,10 +83,33 @@ export default function AdminMedia() {
 
   const setE = (id, k, v) => setEdits((p) => ({ ...p, [id]: { ...(p[id] || {}), [k]: v } }));
 
+  const nzd = (c) => `$${(Number(c || 0) / 100).toFixed(2)}`;
+
   return (
     <>
+      {!!sales.length && (
+        <section className={CARD}>
+          <h2 className="text-[15px] font-bold mb-2">Recent sales</h2>
+          <div className="overflow-x-auto">
+          <table className={TABLE}>
+            <thead><tr><th className={TH}>When</th><th className={TH}>Buyer</th><th className={TH}>Item</th><th className={`${TH} ${NUM}`}>Amount</th><th className={TH}>Status</th></tr></thead>
+            <tbody>
+              {sales.slice(0, 10).map((s) => (
+                <tr key={s.id}>
+                  <td className={`${TD} text-muted text-[12px]`}>{String(s.created_at).slice(0, 16).replace('T', ' ')}</td>
+                  <td className={TD}>{s.buyer_email}</td>
+                  <td className={`${TD} text-muted text-[12px]`}>{s.package_title || [s.horse, s.rider].filter(Boolean).join(' × ') || s.event_name || s.media_id?.slice(0, 8)}</td>
+                  <td className={`${TD} ${NUM}`}>{nzd(s.amount_cents)}</td>
+                  <td className={TD}>{s.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+        </section>
+      )}
       <h1 className={H1}>Media</h1>
-      <p className={SUB}>Photo/reel upload, tagging review, publish. Single photographer v1.</p>
+      <p className={SUB}>Photo/reel upload, tagging review, publish. Single photographer v1.{totals ? ` · ${totals.sales} paid · $${(totals.gross_cents / 100).toFixed(2)} gross` : ''}</p>
       {msg && <section className={CARD}><p className="text-sm text-gold">{msg}</p></section>}
 
       <section className={CARD}>

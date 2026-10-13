@@ -17,6 +17,8 @@ const mountMediaRoutes = require('./routes/media');
 // same file in their original order.
 function createApp() {
   const app = express();
+  // Stripe webhook needs the raw body — security middleware skips the
+  // JSON parser for /api/stripe/webhook (raw parsed in the route itself).
   applySecurity(app);
   mountSession(app);
   mountCache(app);
