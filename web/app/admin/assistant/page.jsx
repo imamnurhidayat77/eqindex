@@ -79,6 +79,8 @@ export default function AdminAssistant() {
   const [activeId, setActiveId] = useState(null);
   const [input, setInput] = useState('');
   const [file, setFile] = useState(null);
+  const [fileText, setFileText] = useState('');
+  const [extracting, setExtracting] = useState(false);
   const [busy, setBusy] = useState(null);
   const [events, setEvents] = useState([]);
   const [eventId, setEventId] = useState('');
@@ -131,19 +133,57 @@ export default function AdminAssistant() {
     });
   }
 
+  // Text is extracted in the browser (PDF via local worker) so only KBs
+  // of text cross the Vercel proxy — raw multi-MB uploads get a 502 there.
+  async function pickFile(f) {
+    if (!f) return;
+    setFile(f); setFileText(''); setErr('');
+    if (!/\.pdf$/i.test(f.name || '')) return;
+    setExtracting(true);
+    try {
+      const pdfjs = await import('pdfjs-dist');
+      pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+      const buf = await f.arrayBuffer();
+      const pdf = await pdfjs.getDocument({ data: buf }).promise;
+      let out = '';
+      for (let p = 1; p <= pdf.numPages && out.length < 1500000; p++) {
+        const page = await pdf.getPage(p);
+        const tc = await page.getTextContent();
+        out += tc.items.map((it) => it.str).join(' ') + '\n';
+      }
+      if (!out.trim()) throw new Error('no text found (scanned images cannot be read)');
+      setFileText(out);
+    } catch (e) {
+      setErr(`Could not read ${f.name}: ${e.message}. Try a CSV or pasted text instead.`);
+      setFile(null);
+    }
+    setExtracting(false);
+  }
+
   async function send(text, attachment) {
     if (!active || busy) return;
+    // Text files are read locally; PDFs were pre-extracted at pick time —
+    // only KBs of text travel, never the raw multi-MB binary.
+    let attachedText = '';
+    if (attachment) {
+      if (/\.pdf$/i.test(attachment.name || '')) attachedText = fileText;
+      else attachedText = await attachment.text().catch(() => '');
+    }
     const userMsg = { id: uid(), role: 'user', content: text + (attachment ? `\n[attached: ${attachment.name}]` : '') };
     const base = [...active.msgs, userMsg];
     const isFirst = active.msgs.filter((m) => m.role === 'user').length === 0;
     const title = isFirst ? (text.slice(0, 44) || (attachment ? `File: ${attachment.name}` : 'New conversation')) : active.title;
     patchActive((c) => ({ ...c, title, updatedAt: Date.now(), msgs: base }));
-    setInput(''); setFile(null);
+    setInput(''); setFile(null); setFileText('');
     if (ta.current) ta.current.style.height = 'auto';
     setBusy('chat'); setErr('');
     try {
+      // Text travels inside the chat transcript (no binary upload at all).
+      const withText = attachedText
+        ? [...base, { id: uid(), role: 'user', content: `File contents (${attachment.name}):\n${attachedText.slice(0, 60000)}` }]
+        : base;
       const fd = new FormData();
-      fd.append('messages', JSON.stringify(base.map(({ role, content }) => ({ role, content })).slice(-12)));
+      fd.append('messages', JSON.stringify(withText.map(({ role, content }) => ({ role, content })).slice(-12)));
       fd.append('session', active.id);
       const a = active.analysis;
       if (a) fd.append('context', JSON.stringify({ rounds: a.stats?.rounds, with_series: a.stats?.with_series }));
@@ -377,16 +417,16 @@ export default function AdminAssistant() {
               <div className="rounded-2xl border border-line bg-card p-2 focus-within:border-gold/60">
                 {file && (
                   <div className="flex items-center gap-2 px-2 pt-1 text-[12.5px] text-gold">
-                    <span className="truncate">📎 {file.name} ({(file.size / 1024).toFixed(0)} KB)</span>
-                    <button onClick={() => setFile(null)} className="text-faint hover:text-blood bg-none border-0 cursor-pointer">×</button>
+                    <span className="truncate">📎 {file.name} ({(file.size / 1024).toFixed(0)} KB{/\.pdf$/i.test(file.name) && fileText ? ` → ${(fileText.length / 1024).toFixed(0)} KB text` : ''})</span>
+                    <button onClick={() => { setFile(null); setFileText(''); }} className="text-faint hover:text-blood bg-none border-0 cursor-pointer">×</button>
                   </div>
                 )}
                 <div className="flex gap-2 items-end p-1">
                   <button title="Attach PDF, CSV, TXT or JSON" onClick={() => fileRef.current?.click()}
                     className="rounded-xl px-2.5 py-2 text-[16px] text-muted hover:text-white hover:bg-white/5 bg-none border-0 cursor-pointer shrink-0">📎</button>
                   <input ref={fileRef} type="file" accept=".pdf,.csv,.txt,.json,text/*,application/json" className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) setFile(f); e.target.value = ''; }} />
-                  <textarea ref={ta} rows={1} value={input} onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
+                  <textarea ref={ta} rows={1} value={extracting ? 'Reading PDF…' : input} disabled={extracting} onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && (input.trim() || file)) { e.preventDefault(); send(input.trim() || 'Please read this file.', file); } }}
                     onInput={() => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px'; } }}
                     placeholder="Message…"
