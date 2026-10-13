@@ -119,6 +119,16 @@ module.exports = function mountMediaRoutes(app) {
     const push = (sql, v) => { params.push(v); conds.push(sql.replace('?', `$${params.length}`)); };
     if (req.query.status) push('m.status = ?', String(req.query.status));
     if (req.query.event_id) push('m.event_id = ?', String(req.query.event_id));
+    if (req.query.horse_id) {
+      const hid = await resolveId('horses', req.query.horse_id, res);
+      if (!hid) return;
+      push('m.horse_id = ?', hid);
+    }
+    if (req.query.rider_id) {
+      const rid = await resolveId('riders', req.query.rider_id, res);
+      if (!rid) return;
+      push('m.rider_id = ?', rid);
+    }
     if (req.query.kind) push('m.kind = ?', String(req.query.kind));
     if (req.query.untagged === '1') conds.push('(m.horse_id IS NULL OR m.rider_id IS NULL)');
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
@@ -678,6 +688,29 @@ module.exports = function mountMediaRoutes(app) {
       params
     );
     res.json({ data: rows });
+  }));
+
+  // ---- Delete: DB row is source of truth; R2 keys removed best-effort.
+  // Refused when the photo has paid purchases (refund/settle first).
+  app.delete('/admin/media/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    const cur = await pool.query('SELECT * FROM media WHERE id = $1', [req.params.id]);
+    if (!cur.rows.length) return res.status(404).json({ error: 'media not found' });
+    const paid = await pool.query(
+      `SELECT COUNT(*)::INT AS n FROM purchases
+        WHERE status = 'paid' AND (media_id = $1 OR package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))`,
+      [req.params.id]
+    );
+    if (paid.rows[0].n > 0) {
+      return res.status(409).json({ error: 'has paid purchases — archive instead of deleting' });
+    }
+    await pool.query('DELETE FROM package_items WHERE media_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM media WHERE id = $1', [req.params.id]);
+    const m = cur.rows[0];
+    try {
+      await mediaStore.deleteKeys([m.storage_key, m.preview_key, m.thumb_key, m.poster_key]);
+    } catch (e) { console.error('[media.delete] R2 cleanup failed:', e.message); }
+    audit(req, 'media.delete', 'media', req.params.id, { event_id: m.event_id });
+    res.json({ ok: true });
   }));
 
   // ---- Assisted tagging: rank classes by taken_at proximity, with candidates ----

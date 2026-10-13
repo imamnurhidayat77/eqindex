@@ -70,6 +70,8 @@ export default function AdminMedia() {
   // review filters
   const [fStatus, setFStatus] = useState('draft');
   const [fEvent, setFEvent] = useState('');
+  const [fHorse, setFHorse] = useState(null);
+  const [fRider, setFRider] = useState(null);
   const [fUntagged, setFUntagged] = useState(true);
   // bulk tagging
   const [selected, setSelected] = useState([]);
@@ -91,6 +93,8 @@ export default function AdminMedia() {
       const p = new URLSearchParams();
       if (fStatus) p.set('status', fStatus);
       if (fEvent) p.set('event_id', fEvent);
+      if (fHorse) p.set('horse_id', fHorse.id);
+      if (fRider) p.set('rider_id', fRider.id);
       if (fUntagged) p.set('untagged', '1');
       setRows(await call(`/admin/media?limit=100&${p}`) || []);
       setSelected([]);
@@ -101,7 +105,7 @@ export default function AdminMedia() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => { load(); // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fStatus, fEvent, fUntagged]);
+  }, [fStatus, fEvent, fHorse, fRider, fUntagged]);
   useEffect(() => {
     call('/admin/sales?limit=50').then((d) => { setSales(d.data || []); setTotals(d.totals || null); }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -190,6 +194,27 @@ export default function AdminMedia() {
       const pk = await call('/admin/packages', { method: 'POST', body: JSON.stringify(body) });
       setMsg(`Package created: ${pk.title} (${pk.items} photos).`);
     } catch (e) { setMsg(e.message); }
+  }
+
+  async function removeOne(id) {
+    if (!window.confirm('Delete this photo permanently (R2 files too)?')) return;
+    try {
+      await call(`/admin/media/${id}`, { method: 'DELETE' });
+      setMsg('Deleted.');
+      load();
+    } catch (e) { setMsg(e.message); }
+  }
+
+  async function removeSelected() {
+    if (!selected.length) return;
+    if (!window.confirm(`Delete ${selected.length} selected photos permanently?`)) return;
+    let ok = 0, fail = 0;
+    for (const id of selected) {
+      try { await call(`/admin/media/${id}`, { method: 'DELETE' }); ok += 1; }
+      catch { fail += 1; }
+    }
+    setMsg(`Deleted ${ok}/${selected.length}${fail ? ` (${fail} blocked — paid purchases, archive instead)` : ''}.`);
+    load();
   }
 
   const nzd = (c) => `$${(Number(c || 0) / 100).toFixed(2)}`;
@@ -337,9 +362,18 @@ export default function AdminMedia() {
               <option value="">All events</option>
               {events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
             </select></label>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint w-[210px]">Horse
+            <EntityPicker kind="horse" value={fHorse} onPick={setFHorse} placeholder="Filter by horse…" /></label>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint w-[210px]">Rider
+            <EntityPicker kind="rider" value={fRider} onPick={setFRider} placeholder="Filter by rider…" /></label>
           <label className="flex items-center gap-1.5 text-[13px] text-muted pb-2">
             <input type="checkbox" checked={fUntagged} onChange={(e) => setFUntagged(e.target.checked)} /> Untagged only
           </label>
+          {!!selected.length && (
+            <button onClick={removeSelected} className="text-blood text-[13px] hover:underline bg-none border-0 cursor-pointer pb-2">
+              Delete selected ({selected.length})
+            </button>
+          )}
           {!!rows.length && (
             <button onClick={() => setSelected(allIds)} className="text-sky text-[13px] hover:underline bg-none border-0 cursor-pointer pb-2">
               {allSel ? 'Deselect all' : `Select all ${rows.length}`}
@@ -365,6 +399,8 @@ export default function AdminMedia() {
                     <div className={`absolute top-2 left-2 w-5 h-5 rounded border flex items-center justify-center text-[12px] font-bold
                       ${sel ? 'bg-gold border-gold text-black' : 'bg-ink/70 border-line text-transparent'}`}>✓</div>
                     <div className="absolute top-2 right-2 rounded bg-ink/70 px-1.5 py-0.5 text-[10px] font-bold text-faint">{r.status}</div>
+                    <button onClick={(e) => { e.stopPropagation(); removeOne(r.id); }} title="Delete photo"
+                      className="absolute bottom-2 right-2 rounded bg-ink/70 px-1.5 py-0.5 text-[11px] text-faint hover:text-blood border-0 cursor-pointer">✕</button>
                     <div className="p-2">
                       <div className={`text-[12.5px] font-bold truncate ${r.horse || r.rider ? 'text-white' : 'text-gold'}`}>
                         {tagLabel(r)}

@@ -4,7 +4,7 @@
 // Optional: R2_PUBLIC_BASE (public CDN base for previews/thumbs).
 // Layout: {originals,previews,thumbs}/{event_id}/{media_id}.{ext}
 // Throws a clear error when unconfigured (P0 wires config only; P1 uploads).
-const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 let client = null;
@@ -50,4 +50,15 @@ function publicUrl(key) {
   return `${base}/${key}`;
 }
 
-module.exports = { keyFor, putBuffer, signedDownloadUrl, publicUrl };
+// Best-effort delete (DB row is the source of truth; missing keys are fine).
+async function deleteKeys(keys) {
+  const list = (keys || []).filter(Boolean);
+  if (!list.length) return 0;
+  const { R2_BUCKET } = cfg();
+  const out = await s3().send(new DeleteObjectsCommand({
+    Bucket: R2_BUCKET, Delete: { Objects: list.map((Key) => ({ Key })) },
+  }));
+  return (out.Deleted || []).length;
+}
+
+module.exports = { keyFor, putBuffer, signedDownloadUrl, publicUrl, deleteKeys };
