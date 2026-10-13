@@ -130,7 +130,7 @@ export default function AdminMediaUpload() {
       {msg && <section className={CARD} role="alert"><p className="text-sm text-gold">{msg}</p></section>}
 
       <section className={CARD}>
-        <div className="grid gap-3 max-w-[640px]">
+        <div className="grid gap-3">
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Event (optional — can tag later)
             <select value={eventId} onChange={(e) => setEventId(e.target.value)} className={INP}>
               <option value="">Unsorted (tag later)</option>
@@ -174,7 +174,7 @@ export default function AdminMediaUpload() {
                 </span>
                 <button onClick={() => setFiles([])} className="text-faint hover:text-blood bg-none border-0 cursor-pointer text-[12.5px]">Clear all</button>
               </div>
-              <ul className="grid grid-cols-3 sm:grid-cols-4 gap-2 list-none m-0 p-0">
+              <ul className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 list-none m-0 p-0">
                 {files.map((f, i) => (
                   <li key={`${f.name}-${f.size}-${i}`} className="group relative overflow-hidden rounded-lg border border-line bg-ink">
                     {f.preview

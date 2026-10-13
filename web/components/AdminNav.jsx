@@ -56,6 +56,14 @@ const STORE_KEY = 'eqindex-adminnav-open-v1';
 const startsWithPath = (pathname, href) =>
   href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
 
+// All nav hrefs, for longest-prefix-wins active state (so /admin/media
+// doesn't also light up on /admin/media/upload).
+const ALL_HREFS = [
+  ...MANAGE_TOP.map(([href]) => href),
+  ...MANAGE_GROUPS.flatMap((g) => g.items.map(([href]) => href)),
+  ...FLAT_GROUPS.flatMap((g) => g.items.map(([href]) => href)),
+];
+
 const groupOf = (pathname) =>
   MANAGE_GROUPS.find((g) => g.items.some(([href]) => startsWithPath(pathname, href)))?.title;
 
@@ -107,7 +115,14 @@ export default function AdminNav({ user }) {
     try { localStorage.setItem(STORE_KEY, JSON.stringify(next)); } catch {}
     return next;
   });
-  const active = (href) => startsWithPath(pathname, href);
+  const active = (href) => {
+    if (!startsWithPath(pathname, href)) return false;
+    if (href === '/admin') return true;
+    // Longest matching href wins — /admin/media/upload must not also
+    // activate /admin/media.
+    return ALL_HREFS.every((h) =>
+      h.length <= href.length || !(pathname === h || pathname.startsWith(`${h}/`)));
+  };
   const row = ([href, icon, label, badgeKey], sub = false) => {
     const on = active(href);
     const n = badgeKey ? counts[badgeKey] : null;
