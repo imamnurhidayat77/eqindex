@@ -1,13 +1,20 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
+import { INP } from '../lib/tokens';
+import { useAuth } from './auth';
 
 const nzd = (c) => `$${(Number(c || 0) / 100).toFixed(2)}`;
+const keyFor = () => (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '').slice(0, 32)
+  : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 20)}`);
 
 export default function PackageUpsell({ eventId, horseId, riderId, horse, rider }) {
+  const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [busyId, setBusyId] = useState(null);
+  const [email, setEmail] = useState('');
   const [err, setErr] = useState('');
+  const [idem] = useState(keyFor);
   useEffect(() => {
     if (!eventId || (!horseId && !riderId)) return;
     const p = new URLSearchParams({ event_id: eventId });
@@ -17,17 +24,19 @@ export default function PackageUpsell({ eventId, horseId, riderId, horse, rider 
   if (!rows.length) return null;
 
   async function buy(pk) {
+    if (busyId) return;
     setErr('');
+    const em = (user?.email || email).trim();
+    if (!em) { setErr('Enter your email for delivery.'); return; }
     setBusyId(pk.id);
     try {
-      const em = prompt('Email for delivery:');
-      if (!em) { setBusyId(null); return; }
       const res = await fetch(`${API}/api/checkout`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ package_id: pk.id, email: em.trim() }),
+        body: JSON.stringify({ package_id: pk.id, email: em, idempotency_key: idem() }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
+      if (!j.data?.checkout_url) throw new Error('Checkout already started — check your email for the payment link.');
       window.location.assign(j.data.checkout_url);
     } catch (e) { setErr(e.message); setBusyId(null); }
   }
@@ -47,6 +56,10 @@ export default function PackageUpsell({ eventId, horseId, riderId, horse, rider 
           </button>
         </div>
       ))}
+      {!user?.email && (
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email for delivery"
+          type="email" className={`${INP} w-full mt-2 !text-[13px]`} />
+      )}
       {err && <p className="text-blood text-[12px] mt-1">{err}</p>}
     </div>
   );

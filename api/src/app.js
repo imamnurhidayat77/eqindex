@@ -19,6 +19,8 @@ function createApp() {
   const app = express();
   // Stripe webhook needs the raw body — security middleware skips the
   // JSON parser for /api/stripe/webhook (raw parsed in the route itself).
+  if (!process.env.STRIPE_SECRET_KEY) console.error('[boot] STRIPE_SECRET_KEY unset — checkout disabled');
+  if (!process.env.STRIPE_WEBHOOK_SECRET) console.error('[boot] STRIPE_WEBHOOK_SECRET unset — webhook will 500');
   applySecurity(app);
   mountSession(app);
   mountCache(app);

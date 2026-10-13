@@ -1,7 +1,7 @@
 const express = require('express');
 const pool = require('../db');
 const { asyncH } = require('../lib/async');
-const { needRole } = require('../lib/auth');
+const { EMAIL_RE, needRole, throttled } = require('../lib/auth');
 const { audit } = require('../lib/audit');
 const { resolveId } = require('../lib/resolve');
 const multer = require('multer');
@@ -230,8 +230,9 @@ module.exports = function mountMediaRoutes(app) {
     const { rows } = await pool.query(
       `SELECT m.*, e.name AS event_name, e.date_start AS event_date,
           c.name AS class_name, h.name AS horse, r.name AS rider,
-          p.name AS photographer
+          p.name AS photographer, t.label AS tier_label
         FROM media m LEFT JOIN events e ON e.id = m.event_id
+        LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
         LEFT JOIN classes c ON c.id = m.class_id
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
         JOIN photographers p ON p.id = m.photographer_id
@@ -263,14 +264,29 @@ module.exports = function mountMediaRoutes(app) {
   // ---- Commerce: Stripe Checkout + webhook + downloads (plan §7) ----
   const APP_URL = (process.env.APP_URL || '').replace(/\/$/, '');
 
-  // POST /api/checkout {media_id|package_id, license_tier?, email?}
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const TIER_RE = /^[a-z0-9_-]{1,32}$/i;
+  const normEmail = (v) => String(v || '').trim().toLowerCase().slice(0, 254);
+
+  // POST /api/checkout {media_id|package_id, license_tier?, email?, idempotency_key?}
+  // Login required: purchases bind to the buyer account (buyer_user_id).
   app.post('/api/checkout', asyncH(async (req, res) => {
-    const { media_id, package_id, license_tier, email } = req.body || {};
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (throttled(req.ip, 'checkout')) return res.status(429).json({ error: 'too many requests, try again later' });
+    const { media_id, package_id, license_tier, email, idempotency_key } = req.body || {};
     if (!!media_id === !!package_id) {
       return res.status(400).json({ error: 'need exactly one of {media_id, package_id}' });
     }
-    const buyerEmail = (email || req.authUser?.email || '').trim();
-    if (!buyerEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(buyerEmail)) {
+    if (media_id && !UUID_RE.test(String(media_id))) return res.status(400).json({ error: 'bad media_id' });
+    if (package_id && !UUID_RE.test(String(package_id))) return res.status(400).json({ error: 'bad package_id' });
+    if (license_tier !== undefined && license_tier !== null && !TIER_RE.test(String(license_tier))) {
+      return res.status(400).json({ error: 'bad license_tier' });
+    }
+    if (idempotency_key !== undefined && idempotency_key !== null && !/^[A-Za-z0-9_-]{8,128}$/.test(String(idempotency_key))) {
+      return res.status(400).json({ error: 'bad idempotency_key' });
+    }
+    const buyerEmail = normEmail(email || req.authUser.email);
+    if (!EMAIL_RE.test(buyerEmail)) {
       return res.status(400).json({ error: 'need a valid {email}' });
     }
     let title, amount, tierId = license_tier || null, mediaId = null, packageId = null;
@@ -292,21 +308,48 @@ module.exports = function mountMediaRoutes(app) {
         amount = row.tier_price;
       }
       if (row.price_cents !== null && tierId === row.license_default) amount = Math.min(amount ?? Infinity, row.price_cents);
-      if (amount === null || amount === undefined) return res.status(409).json({ error: 'no price set for this photo' });
+      if (!Number.isInteger(amount) || amount <= 0) return res.status(409).json({ error: 'no price set for this photo' });
       title = `${row.horse_id || row.rider_id ? '' : 'Event '}photo${row.moment ? ` (${row.moment})` : ''} · ${tierId}`;
       mediaId = row.id;
     } else {
       const pk = await pool.query(`SELECT * FROM packages WHERE id = $1 AND status = 'published'`, [package_id]);
       if (!pk.rows.length) return res.status(404).json({ error: 'package not found or not for sale' });
       amount = pk.rows[0].price_cents;
+      if (!Number.isInteger(amount) || amount <= 0) return res.status(409).json({ error: 'no price set for this package' });
       title = pk.rows[0].title;
       packageId = pk.rows[0].id;
     }
-    const { rows } = await pool.query(
-      `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status)
-        VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending') RETURNING id`,
-      [mediaId, packageId, buyerEmail, req.authUser?.id || null, tierId, amount]
-    );
+    if (idempotency_key) {
+      const prior = await pool.query(
+        `SELECT p.id, p.status, s.checkout_url FROM purchases p
+          LEFT JOIN (SELECT purchase_id, checkout_url FROM stripe_checkout_cache) s ON s.purchase_id = p.id
+          WHERE p.idempotency_key = $1 AND p.buyer_user_id = $2`,
+        [String(idempotency_key), req.authUser.id]
+      ).catch(() => ({ rows: [] }));
+      if (prior.rows.length && prior.rows[0].checkout_url) {
+        return res.status(200).json({ data: { purchase_id: prior.rows[0].id, checkout_url: prior.rows[0].checkout_url, reused: true } });
+      }
+    }
+    let purchaseId;
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key)
+          VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7) RETURNING id`,
+        [mediaId, packageId, buyerEmail, req.authUser.id, tierId, amount, idempotency_key || null]
+      );
+      purchaseId = rows[0].id;
+    } catch (e) {
+      if (e.code === '23505' && idempotency_key) {
+        const prior = await pool.query(
+          'SELECT id, stripe_session_id FROM purchases WHERE idempotency_key = $1 AND buyer_user_id = $2',
+          [String(idempotency_key), req.authUser.id]
+        );
+        if (prior.rows.length) {
+          return res.status(200).json({ data: { purchase_id: prior.rows[0].id, checkout_url: null, reused: true, pending: true } });
+        }
+      }
+      throw e;
+    }
     const session = await stripe().checkout.sessions.create({
       mode: 'payment',
       customer_email: buyerEmail,
@@ -318,55 +361,93 @@ module.exports = function mountMediaRoutes(app) {
         },
         quantity: 1,
       }],
-      success_url: `${APP_URL}/photos/success?purchase=${rows[0].id}`,
+      success_url: `${APP_URL}/photos/success?purchase=${purchaseId}`,
       cancel_url: `${APP_URL}/photos`,
-      metadata: { purchase_id: rows[0].id },
-    });
-    await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = $1', [rows[0].id, session.id]);
-    res.status(201).json({ data: { purchase_id: rows[0].id, checkout_url: session.url } });
+      metadata: { purchase_id: purchaseId },
+    }, { idempotencyKey: idempotency_key ? `co-${idempotency_key}` : `co-${purchaseId}` });
+    await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = $1', [purchaseId, session.id]);
+    try {
+      await pool.query(
+        `CREATE TEMPORARY TABLE IF NOT EXISTS stripe_checkout_cache (purchase_id UUID, checkout_url TEXT)
+          ON COMMIT DELETE ROWS`
+      );
+    } catch { /* temp cache optional */ }
+    res.status(201).json({ data: { purchase_id: purchaseId, checkout_url: session.url } });
   }));
 
-  // Stripe webhook — must see the RAW body (registered before express.json).
+  // Stripe webhook — must see the RAW body (express.raw here; the global
+  // JSON parser in security.js skips this path).
   app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), asyncH(async (req, res) => {
     const sig = req.headers['stripe-signature'];
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      console.error('[webhook] STRIPE_WEBHOOK_SECRET unset');
+      return res.status(500).json({ error: 'webhook unconfigured' });
+    }
     let event;
     try {
       event = stripe().webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
     } catch (e) {
-      return res.status(400).json({ error: `webhook signature failed: ${e.message}` });
+      console.error('[webhook] signature failed:', e.message);
+      return res.status(400).json({ error: 'webhook signature failed' });
     }
+    const ok = (extra) => res.json({ received: true, ...extra });
     if (event.type === 'checkout.session.completed') {
-      const session = event.data.object;
+      const session = event.data.object || {};
       const purchaseId = session.metadata?.purchase_id;
-      if (purchaseId) {
-        const done = await pool.query(
-          `UPDATE purchases SET status = 'paid'
-            WHERE id = $1 AND status = 'pending' RETURNING id, media_id, package_id`,
-          [purchaseId]
-        );
-        if (done.rows.length) {
-          const r = done.rows[0];
-          await pool.query(
-            `UPDATE media SET purchase_count = purchase_count + 1 WHERE id = $1
-              OR id IN (SELECT media_id FROM package_items WHERE package_id = $2)`,
-            [r.media_id, r.package_id]
-          );
-          audit(req, 'media.purchase', 'purchase', purchaseId, { session: session.id });
-        }
+      if (!purchaseId || !UUID_RE.test(String(purchaseId))) return ok();
+      if (session.payment_status && session.payment_status !== 'paid') return ok();
+      const cur = await pool.query('SELECT amount_cents, buyer_email FROM purchases WHERE id = $1', [purchaseId]);
+      if (!cur.rows.length) return ok();
+      if (typeof session.amount_total === 'number' && session.amount_total !== cur.rows[0].amount_cents) {
+        console.error('[webhook] amount mismatch', { purchaseId, expected: cur.rows[0].amount_cents, got: session.amount_total });
+        return ok();
       }
-    } else if (event.type === 'charge.refunded') {
-      const pi = event.data.object?.payment_intent;
-      if (pi) {
+      if (session.customer_email && cur.rows[0].buyer_email &&
+        String(session.customer_email).toLowerCase() !== String(cur.rows[0].buyer_email).toLowerCase()) {
+        console.error('[webhook] email mismatch', { purchaseId });
+        return ok();
+      }
+      const done = await pool.query(
+        `UPDATE purchases SET status = 'paid', stripe_payment_intent = COALESCE(stripe_payment_intent, $2)
+          WHERE id = $1 AND status = 'pending' RETURNING id, media_id, package_id`,
+        [purchaseId, session.payment_intent || null]
+      );
+      if (done.rows.length) {
+        const r = done.rows[0];
         await pool.query(
-          `UPDATE purchases SET status = 'refunded' WHERE stripe_session_id IN
-            (SELECT id FROM stripe_checkout_sessions WHERE payment_intent = $1)`, [pi]
-        ).catch(() => pool.query(
-          `UPDATE purchases SET status = 'refunded' WHERE id IN
-            (SELECT (metadata->>'purchase_id')::UUID FROM stripe_events WHERE id = $1)`, [event.id]
-        ).catch(() => {}));
+          `UPDATE media SET purchase_count = purchase_count + 1 WHERE id = $1
+            OR id IN (SELECT media_id FROM package_items WHERE package_id = $2)`,
+          [r.media_id, r.package_id]
+        );
+        audit(req, 'media.purchase', 'purchase', purchaseId, { session: session.id });
       }
+      return ok();
     }
-    res.json({ received: true });
+    if (event.type === 'charge.refunded' || event.type === 'charge.refund.updated') {
+      const ch = event.data.object || {};
+      const pi = ch.payment_intent || null;
+      const refunded = ch.amount_refunded ?? null;
+      const total = ch.amount ?? null;
+      if (!pi) return ok();
+      if (refunded !== null && total !== null && refunded < total) {
+        console.error('[webhook] partial refund, keeping paid', { pi, refunded, total });
+        return ok();
+      }
+      let sessionId = null;
+      try {
+        const sessions = await stripe().checkout.sessions.list({ payment_intent: String(pi), limit: 1 });
+        sessionId = sessions.data[0]?.id || null;
+      } catch (e) { console.error('[webhook] session lookup failed:', e.message); }
+      const done = await pool.query(
+        `UPDATE purchases SET status = 'refunded'
+          WHERE status = 'paid' AND (stripe_payment_intent = $1 OR ($2::TEXT IS NOT NULL AND stripe_session_id = $2))
+          RETURNING id`,
+        [String(pi), sessionId]
+      );
+      if (done.rows.length) audit(req, 'media.refund', 'purchase', done.rows.map((r) => r.id).join(','), { pi });
+      return ok();
+    }
+    return ok();
   }));
 
   // ---- Moment badges: suggest win/clear/debut from round_results ----
@@ -403,39 +484,67 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: out });
   }));
 
-  // Download: entitlement check → 302 to signed R2 URL (15 min).
+  // Download: session-owned entitlement → 303 to signed R2 URL (15 min).
+  // Login required — the email oracle is closed.
   app.get('/api/media/:id/download', asyncH(async (req, res) => {
-    const email = (req.query.email || req.authUser?.email || '').trim().toLowerCase();
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
     const m = await pool.query('SELECT * FROM media WHERE id = $1 AND status = $2', [req.params.id, 'published']);
     if (!m.rows.length) return res.status(404).json({ error: 'photo not found' });
     if (!m.rows[0].storage_key) return res.status(409).json({ error: 'original not stored yet' });
-    const ent = email ? await pool.query(
+    const ent = await pool.query(
       `SELECT 1 FROM purchases
-        WHERE status = 'paid' AND lower(buyer_email) = $2
+        WHERE status = 'paid' AND buyer_user_id = $2
           AND (media_id = $1 OR package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))
         LIMIT 1`,
-      [req.params.id, email]
-    ) : { rows: [] };
+      [req.params.id, req.authUser.id]
+    );
     if (!ent.rows.length) return res.status(402).json({ error: 'purchase required' });
-    res.redirect(302, await mediaStore.signedDownloadUrl(m.rows[0].storage_key));
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.redirect(303, await mediaStore.signedDownloadUrl(m.rows[0].storage_key));
   }));
 
-  // Buyer library ("my photos").
+  // Single purchase status (owner-only; powers the success page).
+  app.get('/api/purchases/:id', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
+    const { rows } = await pool.query(
+      `SELECT p.id, p.status, p.license_tier, p.amount_cents, p.created_at,
+          m.id AS media_id, m.kind, e.name AS event_name, h.name AS horse, r.name AS rider
+        FROM purchases p LEFT JOIN media m ON m.id = p.media_id
+        LEFT JOIN events e ON e.id = m.event_id
+        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        WHERE p.id = $1 AND p.buyer_user_id = $2`,
+      [req.params.id, req.authUser.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'purchase not found' });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ data: rows[0] });
+  }));
+
+  // Buyer library ("my photos") — session-owned. Package purchases expand
+  // to one row per contained photo so buyers can find what they paid for.
   app.get('/api/my/photos', asyncH(async (req, res) => {
-    const email = (req.query.email || req.authUser?.email || '').trim().toLowerCase();
-    if (!email) return res.status(400).json({ error: 'need {email}' });
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
     const { rows } = await pool.query(
       `SELECT pu.id AS purchase_id, pu.license_tier, pu.amount_cents, pu.status, pu.created_at,
           m.id AS media_id, m.kind, m.thumb_key, m.preview_key, m.event_id,
           e.name AS event_name, h.name AS horse, r.name AS rider
-        FROM purchases pu LEFT JOIN media m ON m.id = pu.media_id
+        FROM purchases pu
+        JOIN LATERAL (
+          SELECT m.* FROM media m WHERE m.id = pu.media_id
+          UNION ALL
+          SELECT m.* FROM package_items pi JOIN media m ON m.id = pi.media_id
+            WHERE pi.package_id = pu.package_id
+        ) m ON true
         LEFT JOIN events e ON e.id = m.event_id
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
-        WHERE lower(pu.buyer_email) = $1 AND pu.status = 'paid'
+        WHERE pu.buyer_user_id = $1 AND pu.status = 'paid'
         ORDER BY pu.created_at DESC LIMIT 200`,
-      [email]
+      [req.authUser.id]
     );
     withUrls(rows);
+    res.setHeader('Cache-Control', 'private, no-store');
     res.json({ data: rows });
   }));
 
@@ -450,7 +559,12 @@ module.exports = function mountMediaRoutes(app) {
         LEFT JOIN packages pk ON pk.id = pu.package_id
         ORDER BY pu.created_at DESC LIMIT 5000`
     );
-    const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const q = (v) => {
+      let s = String(v ?? '');
+      if (/^[=+\-@\t]/.test(s)) s = `'${s}`;
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+    audit(req, 'sales.export', 'purchase', null, {});
     const csv = ['created_at,buyer_email,license_tier,amount_cents,currency,status,event,horse,rider,package',
       ...rows.map((r) => [r.created_at, r.buyer_email, r.license_tier, r.amount_cents, r.currency, r.status, r.event_name, r.horse, r.rider, r.package_title].map(q).join(','))].join('\n');
     res.setHeader('Content-Type', 'text/csv');

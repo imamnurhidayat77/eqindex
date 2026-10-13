@@ -1,54 +1,49 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
-import { CARD, H1, SUB, INP, BTN_PRIMARY } from '../../../lib/tokens';
+import { CARD, H1, SUB } from '../../../lib/tokens';
 import { useAuth } from '../../../components/auth';
 import { TableEmpty } from '../../../components/EmptyState';
 
 export default function PhotoLibrary() {
-  const { user } = useAuth();
-  const [email, setEmail] = useState('');
+  const { user, loading } = useAuth();
   const [rows, setRows] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const em = user?.email || email;
 
   async function load() {
-    if (!em.trim()) { setErr('Enter the email you bought with.'); return; }
     setBusy(true); setErr('');
     try {
-      const p = new URLSearchParams({ email: em.trim() });
-      const r = await fetch(`${API}/api/my/photos?${p}`, { credentials: 'include' });
+      const r = await fetch(`${API}/api/my/photos`, { credentials: 'include' });
       const j = await r.json().catch(() => ({}));
+      if (r.status === 401) throw new Error('Log in to see your photos.');
       if (!r.ok) throw new Error(j.error || `Failed (${r.status})`);
       setRows(j.data || []);
     } catch (e) { setErr(e.message); }
     setBusy(false);
   }
 
-  const dl = (id) => `${API}/api/media/${id}/download?email=${encodeURIComponent(em.trim())}`;
+  useEffect(() => {
+    if (!loading && user) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user]);
+
+  const dl = (id) => `${API}/api/media/${id}/download`;
 
   return (
     <>
       <h1 className={H1}>My photos</h1>
-      <p className={SUB}>Paid downloads, re-downloadable any time.</p>
-      {!user?.email && (
-        <div className="flex flex-wrap items-end gap-2.5 mb-4">
-          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Purchase email
-            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" className={INP} style={{ width: 260 }} /></label>
-          <button onClick={load} disabled={busy} className={BTN_PRIMARY}>{busy ? 'Loading…' : 'Show my photos'}</button>
-        </div>
-      )}
-      {user?.email && rows === null && (
-        <div className="mb-4"><button onClick={load} disabled={busy} className={BTN_PRIMARY}>{busy ? 'Loading…' : 'Show my photos'}</button></div>
-      )}
+      <p className={SUB}>Paid downloads, re-downloadable any time. Purchases are linked to your login.</p>
       {err && <p className="text-blood text-sm mb-3">{err}</p>}
+      {rows === null && !err && (
+        <p className="text-muted text-sm mb-3">{busy ? 'Loading…' : ''}</p>
+      )}
       {rows !== null && !rows.length && <TableEmpty icon="📷" title="No purchases yet" hint="Bought photos appear here." />}
       {!!rows?.length && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {rows.map((x) => (
-            <div key={x.purchase_id} className="rounded border border-line bg-card overflow-hidden">
+            <div key={`${x.purchase_id}-${x.media_id}`} className="rounded border border-line bg-card overflow-hidden">
               <div className="aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                 {x.thumb_url || x.preview_url
                   ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover" />

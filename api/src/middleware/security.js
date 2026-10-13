@@ -7,19 +7,19 @@ const { WEB_ORIGINS } = require('../config');
 // Browsers use the same-origin /api proxy, so direct cross-origin access is
 // never needed. Local dev stays permissive; production denies unless
 // WEB_ORIGIN is set.
-function applySecurity(app, opts = {}) {
+function applySecurity(app) {
   app.disable('x-powered-by');
   app.use(cors({
     origin: WEB_ORIGINS.length ? WEB_ORIGINS : (process.env.NODE_ENV === 'production' ? false : true),
     credentials: true,
   }));
   // Stripe webhooks verify the RAW body signature, so skip the JSON parser
-  // for that path (the webhook route parses raw itself).
+  // for that path (the webhook route parses raw itself). Trailing slash
+  // tolerated — Stripe dashboard entries and proxies vary.
   app.use((req, res, next) => {
-    if (req.path === '/api/stripe/webhook') return next();
+    if (req.path.replace(/\/$/, '') === '/api/stripe/webhook') return next();
     return express.json({ limit: '10mb' })(req, res, next);
   });
-  if (opts.skipJson) return;
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
