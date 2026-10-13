@@ -20,7 +20,8 @@ const GROUPS = [
     ['/admin/categories', '⛉', 'Categories'],
     ['/admin/scoring', '✦', 'Scoring'],
     ['/admin/rating', '◎', 'Rating'],
-    ['/admin/media', '◍', 'Media'],
+    ['/admin/media', '◍', 'Media Library'],
+    ['/admin/media/upload', '⇪', 'Media Upload'],
   ]},
   { title: 'Curate', items: [
     ['/admin/review', '◐', 'Naming Review', 'review'],

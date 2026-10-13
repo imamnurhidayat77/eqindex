@@ -134,9 +134,10 @@ module.exports = function mountMediaRoutes(app) {
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
     params.push(limit);
     const { rows } = await pool.query(
-      `SELECT m.*, e.name AS event_name, h.name AS horse, r.name AS rider
+      `SELECT m.*, e.name AS event_name, h.name AS horse, r.name AS rider, c.name AS class_name
         FROM media m LEFT JOIN events e ON e.id = m.event_id
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        LEFT JOIN classes c ON c.id = m.class_id
         ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
         ORDER BY m.created_at DESC LIMIT $${params.length}`,
       params
