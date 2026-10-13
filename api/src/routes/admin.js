@@ -276,9 +276,15 @@ module.exports = function mountAdminRoutes(app) {
       if (!aiAvailable()) {
         return { reply: 'I can see results text but the format is unfamiliar and my AI mapping is not configured. Please reshape it to the CSV template (Admin → CSV Import has one), or ask your admin to set the AI key.', analysis: null };
       }
-      const { records, dropped } = await aiMapRecords({ text: blob, hint: filename ? `Source file: ${filename}.` : '' });
+      const { records, dropped, prose } = await aiMapRecords({ text: blob, hint: filename ? `Source file: ${filename}.` : '' });
+      // Back/draw numbers are not start order (nomination rule needs the
+      // real ring order) — strip unless a human confirms via import columns.
+      for (const r of records) delete r.start_order;
       if (!records.length) {
-        return { reply: `I read ${filename || 'the text'} but couldn't find any complete result rows (need class + rider + horse on each). Could you paste a couple of example rows so I can see the layout?`, analysis: null };
+        const say = prose
+          ? `Here's what I made of ${filename || 'the text'}: ${prose.slice(0, 600)}${prose.length > 600 ? '…' : ''} — but I couldn't pull complete result rows (need class + rider + horse on each). Paste a couple of example rows so I can see the layout?`
+          : `I read ${filename || 'the text'} but couldn't find any complete result rows (need class + rider + horse on each). Could you paste a couple of example rows so I can see the layout?`;
+        return { reply: say, analysis: null };
       }
       const warnings = [];
       if (dropped) warnings.push(`${dropped} row(s) dropped (missing class/rider/horse)`);

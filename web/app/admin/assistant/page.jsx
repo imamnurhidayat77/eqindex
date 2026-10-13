@@ -145,11 +145,24 @@ export default function AdminAssistant() {
       pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
       const buf = await f.arrayBuffer();
       const pdf = await pdfjs.getDocument({ data: buf }).promise;
+      // Line-aware extraction: group items by y-coordinate so table rows
+      // survive as lines (a flat join turns results into unreadable soup).
       let out = '';
-      for (let p = 1; p <= pdf.numPages && out.length < 1500000; p++) {
+      for (let p = 1; p <= pdf.numPages && out.length < 400000; p++) {
         const page = await pdf.getPage(p);
         const tc = await page.getTextContent();
-        out += tc.items.map((it) => it.str).join(' ') + '\n';
+        const lines = new Map();
+        for (const it of tc.items) {
+          const y = Math.round((it.transform?.[5] || 0) / 2) * 2;
+          if (!lines.has(y)) lines.set(y, []);
+          lines.get(y).push({ x: it.transform?.[4] || 0, s: it.str });
+        }
+        const sorted = [...lines.entries()].sort((a, b) => b[0] - a[0]);
+        for (const [, items] of sorted) {
+          items.sort((a, b) => a.x - b.x);
+          out += items.map((i) => i.s).join('  ') + '\n';
+        }
+        out += '\n';
       }
       if (!out.trim()) throw new Error('no text found (scanned images cannot be read)');
       setFileText(out);

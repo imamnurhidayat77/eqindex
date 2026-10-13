@@ -35,8 +35,17 @@ async function aiJsonArray({ input, maxTokens = 4000, session }) {
   }
   const text = extractText(await res.json());
   const a = text.indexOf('['), b = text.lastIndexOf(']');
-  if (a < 0 || b <= a) throw new Error('AI did not return a JSON array');
-  return JSON.parse(text.slice(a, b + 1));
+  const fail = (msg) => {
+    const err = new Error(msg);
+    err.prose = text.slice(0, 1500);
+    throw err;
+  };
+  if (a < 0 || b <= a) fail('AI did not return a JSON array');
+  try {
+    return JSON.parse(text.slice(a, b + 1));
+  } catch {
+    fail('AI returned malformed JSON');
+  }
 }
 
 async function aiChat({ system, messages, maxTokens = 1500, session }) {
@@ -90,7 +99,8 @@ function cleanRecord(r) {
 // Map free-form organiser results text to canonical import records.
 async function aiMapRecords({ text, hint }) {
   const input = `You convert show-jumping results into JSON for a results database.
-Return ONLY a JSON array, no prose. Each element uses these keys (omit unknowns):
+OUTPUT CONTRACT (must hold): your entire response is exactly one JSON array and nothing else — no intro, no explanation, no code fences. If you cannot find complete rows, output exactly [].
+Each element uses these keys (omit unknowns):
 class_name (string, required), class_type (Grand Prix|Premier|Open|Standard|Young Horse|Amateur|Pony),
 class_date (YYYY-MM-DD), rider_name (required), horse_name (required),
 placing (integer 1..N, null when unplaced), faults (round-1 jump faults number, 0 when clear),
@@ -103,8 +113,15 @@ Amateur -> amateur-rider-series, Grand Prix -> grand-prix-series, Young Horse/5Y
 else null), start_order (start/draw number when shown, else null).
 ${hint || ''}
 Results text (may be truncated):
-${text.slice(0, 10000)}`;
-  const rows = await aiJsonArray({ input, maxTokens: 2500 });
+${text.slice(0, 10000)}
+REMINDER: output exactly one JSON array, nothing else. [] when no complete rows.`;
+  let rows;
+  try {
+    rows = await aiJsonArray({ input, maxTokens: 2500 });
+  } catch (e) {
+    if (e.prose !== undefined) return { records: [], dropped: 0, prose: e.prose };
+    throw e;
+  }
   if (!Array.isArray(rows)) throw new Error('AI did not return a JSON array');
   const kept = [], dropped = [];
   for (const r of rows) {
