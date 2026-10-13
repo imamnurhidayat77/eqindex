@@ -4,6 +4,7 @@ import { getJSON } from '../../../lib/api';
 import { CARD, H1, SUB } from '../../../lib/tokens';
 import BuyBox from '../../../components/BuyBox';
 import PackageUpsell from '../../../components/PackageUpsell';
+import ProtectedImage from '../../../components/ProtectedImage';
 import ShareCard from '../../../components/ShareCard';
 
 export const revalidate = 30;
@@ -30,7 +31,7 @@ export default async function PhotoDetail({ params }) {
         <section className={CARD}>
           <div className="rounded overflow-hidden bg-ink flex items-center justify-center min-h-[280px]">
             {d.preview_url
-              ? <img src={d.preview_url} alt={title} className="w-full h-auto" />
+              ? <ProtectedImage src={d.preview_url} alt={title} className="w-full h-auto" />
               : <span className="text-4xl py-16">{d.kind === 'reel' ? '🎬' : '📷'}</span>}
           </div>
           <p className="text-[11px] text-faint mt-2">Watermarked preview — full resolution unlocks after purchase.</p>
@@ -72,7 +73,7 @@ export default async function PhotoDetail({ params }) {
               <Link key={x.id} href={`/photos/${x.id}`} className="block rounded border border-line bg-card overflow-hidden no-underline hover:border-gold/50">
                 <div className="aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                   {x.thumb_url
-                    ? <img src={x.thumb_url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                    ? <ProtectedImage src={x.thumb_url} alt="" loading="lazy" className="w-full h-full object-cover" />
                     : <span className="text-2xl">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
                 </div>
               </Link>

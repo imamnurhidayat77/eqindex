@@ -30,11 +30,14 @@ const REEL_MIMES = ['video/mp4', 'video/quicktime', 'video/webm'];
 
 const escXml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 function watermarkSvg(w, h, text) {
-  const size = Math.max(28, Math.round(Math.min(w, h) / 12));
+  // Dense diagonal tiles across the whole frame (corner-only marks get
+  // cropped) at an opacity that survives casual AI cleaners (~0.36) without
+  // ruining the sales appeal. Baked into pixels at upload — not strippable.
+  const size = Math.max(30, Math.round(Math.min(w, h) / 10));
   return Buffer.from(
     `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
-    `<defs><pattern id="wm" width="340" height="120" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">` +
-    `<text x="10" y="60" font-family="sans-serif" font-size="${size}" font-weight="bold" fill="white" fill-opacity="0.28">${escXml(text)}</text>` +
+    `<defs><pattern id="wm" width="260" height="100" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">` +
+    `<text x="8" y="52" font-family="sans-serif" font-size="${size}" font-weight="bold" fill="white" fill-opacity="0.36">${escXml(text)}</text>` +
     `</pattern></defs><rect width="${w}" height="${h}" fill="url(#wm)"/></svg>`
   );
 }
@@ -87,10 +90,15 @@ module.exports = function mountMediaRoutes(app) {
         const patch = { storage_key: origKey };
         if (isPhoto) {
           const meta = await sharp(f.buffer).metadata();
-          const wm = watermarkSvg(1600, Math.round(1600 * (meta.height || 1000) / (meta.width || 1600)), `${photographer.name} • PREVIEW ONLY`);
-          const thumb = await sharp(f.buffer).rotate().resize({ width: 640, withoutEnlargement: true }).jpeg({ quality: 78 }).toBuffer();
-          const preview = await sharp(f.buffer).rotate().resize({ width: 1600, withoutEnlargement: true })
-            .composite([{ input: wm, blend: 'over' }]).jpeg({ quality: 80 }).toBuffer();
+          // Display sizes are deliberately NOT HD: the 1024px preview is
+          // enough to judge sharpness/expression (what sells), not to print.
+          // Originals never go public — only via paid signed URLs.
+          const pvW = 1024;
+          const pvH = Math.round(pvW * (meta.height || 1000) / (meta.width || 1600));
+          const wm = watermarkSvg(pvW, pvH, `${photographer.name} • EQINDEX PREVIEW`);
+          const thumb = await sharp(f.buffer).rotate().resize({ width: 480, withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
+          const preview = await sharp(f.buffer).rotate().resize({ width: pvW, withoutEnlargement: true })
+            .composite([{ input: wm, blend: 'over' }]).jpeg({ quality: 68 }).toBuffer();
           patch.thumb_key = mediaStore.keyFor('thumbs', eventId, id, 'jpg');
           patch.preview_key = mediaStore.keyFor('previews', eventId, id, 'jpg');
           await mediaStore.putBuffer(patch.thumb_key, thumb, 'image/jpeg');
