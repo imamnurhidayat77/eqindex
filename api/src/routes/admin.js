@@ -159,14 +159,18 @@ module.exports = function mountAdminRoutes(app) {
       });
       return res.json({ data: summarizeAssist('csv-rule', { filename: filename || null }, records, []) });
     }
+    // Deterministic EvoEvents path (no AI needed for these PDFs).
+    const evo = evoAssist(text, filename);
+    if (evo) return res.json({ data: evo.analysis });
     // AI fallback for unknown formats.
     try {
       const { aiMapRecords, aiAvailable } = require('../lib/ai');
       if (!aiAvailable()) {
         return res.status(503).json({ error: 'Format not recognised and AI is not configured. Use the CSV/JSON template instead.' });
       }
-      const { records, dropped } = await aiMapRecords({ text, hint: filename ? `Source file: ${filename}.` : '' });
+      const { records, dropped, truncated } = await aiMapRecords({ text, hint: filename ? `Source file: ${filename}.` : '' });
       const warnings = dropped ? [`${dropped} row(s) dropped (missing class/rider/horse)`] : [];
+      if (truncated) warnings.push('File is very long — only the first ~72KB was mapped. Split the file and send the rest separately.');
       const noSeries = records.filter((r) => !r.series_key).length;
       if (noSeries) warnings.push(`${noSeries} row(s) without series_key will score 0 series points`);
       return res.json({ data: { ...summarizeAssist('ai', { filename: filename || null }, records, []), warnings } });
@@ -192,6 +196,23 @@ module.exports = function mountAdminRoutes(app) {
         non_finished: records.length - finished,
         new_check: 'run Validate & preview to see new horses/riders and points',
       },
+    };
+  }
+
+  // Deterministic EvoEvents path: EvoEvents results PDFs (pasted or
+  // browser-extracted) map without AI. Returns null when the text isn't
+  // EvoEvents-shaped or nothing mappable was found (caller falls to AI).
+  function evoAssist(blob, filename) {
+    const { parseEvoEvents, looksEvoEvents } = require('../lib/evoevents');
+    if (!looksEvoEvents(blob)) return null;
+    const parsed = parseEvoEvents(blob);
+    if (!parsed.records.length) return null;
+    const noSeries = parsed.records.filter((r) => !r.series_key).length;
+    const warnings = [...parsed.warnings];
+    if (noSeries) warnings.push(`${noSeries} row(s) without series_key will score 0 series points`);
+    return {
+      reply: `Read ${filename || 'your file'} directly — ${parsed.records.length} rounds across ${parsed.classesFound} classes, no AI needed.`,
+      analysis: { ...summarizeAssist('evoevents-rule', { filename: filename || null }, parsed.records, []), warnings },
     };
   }
 
@@ -223,7 +244,8 @@ module.exports = function mountAdminRoutes(app) {
   }
 
   async function assistChat({ messages, session, context, file }) {
-    const { aiChat, aiMapRecords, aiAvailable } = require('../lib/ai');
+    const { aiAgent, aiMapRecords, aiAvailable } = require('../lib/ai');
+    const { TOOL_DEFS, runTool } = require('../lib/agentTools');
     const { equipeRecords } = require('../lib/equipe');
     const lastUser = [...(messages || [])].reverse().find((m) => m.role === 'user');
     const text = String(lastUser?.content || '');
@@ -255,7 +277,7 @@ module.exports = function mountAdminRoutes(app) {
       };
     }
 
-    // 3. Results text (pasted or from file) → csv-rule, else AI.
+    // 3. Results text (pasted or from file) → csv-rule, evoevents-rule, else AI.
     if (blob.trim().length > 40) {
       const head = blob.trim().split(/\r?\n/, 1)[0] || '';
       const cols = head.split(',').map((h) => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
@@ -273,10 +295,26 @@ module.exports = function mountAdminRoutes(app) {
           analysis: summarizeAssist('csv-rule', { filename: filename || null }, records, []),
         };
       }
-      if (!aiAvailable()) {
-        return { reply: 'I can see results text but the format is unfamiliar and my AI mapping is not configured. Please reshape it to the CSV template (Admin → CSV Import has one), or ask your admin to set the AI key.', analysis: null };
+      const evo = evoAssist(blob, filename);
+      if (evo) {
+        const noSeries = evo.analysis.records.filter((r) => !r.series_key).length;
+        return {
+          reply: `${evo.reply} ${noSeries ? `${noSeries} have no series — tell me which classes are series classes (e.g. "class 9 is pro-am") and I'll tag them. ` : ''}Review below, then validate & commit — nothing saved yet.`,
+          analysis: evo.analysis,
+        };
       }
-      const { records, dropped, prose } = await aiMapRecords({ text: blob, hint: filename ? `Source file: ${filename}.` : '' });
+      // Short typed text without results markers is a question, not results
+      // (previously any message over 40 chars was force-sent to AI mapping
+      // and wrongly told the admin "couldn't find result rows"). Long
+      // pastes and file attachments still try AI mapping below.
+      const { looksEvoEvents } = require('../lib/evoevents');
+      if (!filename && !looksEvoEvents(blob) && blob.trim().length <= 500) {
+        // fall through to free chat (step 4)
+      } else {
+        if (!aiAvailable()) {
+          return { reply: 'I can see results text but the format is unfamiliar and my AI mapping is not configured. Please reshape it to the CSV template (Admin → CSV Import has one), or ask your admin to set the AI key.', analysis: null };
+        }
+        const { records, dropped, prose, truncated } = await aiMapRecords({ text: blob, hint: filename ? `Source file: ${filename}.` : '' });
       // Back/draw numbers are not start order (nomination rule needs the
       // real ring order) — strip unless a human confirms via import columns.
       for (const r of records) delete r.start_order;
@@ -288,20 +326,27 @@ module.exports = function mountAdminRoutes(app) {
       }
       const warnings = [];
       if (dropped) warnings.push(`${dropped} row(s) dropped (missing class/rider/horse)`);
+      if (truncated) warnings.push('File is very long — only the first ~72KB was mapped. Split the PDF by day/ring and send the rest separately.');
       const noSeries = records.filter((r) => !r.series_key).length;
       if (noSeries) warnings.push(`${noSeries} row(s) without series_key will score 0 series points`);
       return {
         reply: `Mapped ${records.length} rounds from ${filename || 'your text'}${dropped ? ` (${dropped} dropped)` : ''}. ${noSeries ? `${noSeries} have no series — tell me which classes are series classes (e.g. "class 9 is pro-am") and I'll tag them. ` : ''}Review below, then validate & commit — nothing saved yet.`,
         analysis: { ...summarizeAssist('ai', { filename: filename || null }, records, []), warnings },
       };
+      }
     }
 
-    // 4. Free chat about importing.
+    // 4. Free chat about importing — agentic: the model can look up
+    // shows, events, horses, riders and series via read-only tools before
+    // answering. It can never save anything; Commit stays human.
     const ctx = context ? `Last analysis: ${JSON.stringify(context).slice(0, 800)}.` : 'No analysis yet this session.';
-    const reply = await aiChat({
+    const { reply } = await aiAgent({
       session,
-      system: `You are the EQIndex Import Assistant. You help an admin import show-jumping results. Capabilities: read Equipe show URLs (online.equipe.com/shows/ID), map pasted results text or uploaded files (PDF/CSV/TXT/JSON) to canonical records, explain warnings (missing series_key means 0 series points, skipped rows), and guide the validate-then-commit flow. Rules: never claim anything is saved (only dry-run preview then human Commit saves); series mapping for unfamiliar class names must be asked, never guessed silently; keep replies short and practical. ${ctx}`,
+      system: `You are the EQIndex Import Assistant. You help an admin import show-jumping results. Capabilities: read Equipe show URLs (online.equipe.com/shows/ID), map pasted results text or uploaded files (PDF/CSV/TXT/JSON) to canonical records, explain warnings (missing series_key means 0 series points, skipped rows), and guide the validate-then-commit flow. You have read-only tools: use equipe_show for show links instead of guessing, events_list to help pick an import target, horses_search/riders_search to check whether names already exist, series_list for the exact series vocabulary (never invent a series_key). Rules: never claim anything is saved (only dry-run preview then human Commit saves); series mapping for unfamiliar class names must be asked, never guessed silently; use tools when the answer needs real data, otherwise answer directly; keep replies short and practical. ${ctx}`,
       messages: (messages || []).slice(-8),
+      tools: TOOL_DEFS,
+      runTool,
+      maxIter: 2,
     });
     return { reply, analysis: null };
   }
@@ -348,6 +393,7 @@ module.exports = function mountAdminRoutes(app) {
   // Canonical import record (JSON mode uses these exact keys; CSV headers map to them).
   const IMPORT_FIELDS = ['class_name', 'class_type', 'class_date', 'rider_name', 'horse_name',
     'placing', 'faults', 'time', 'time_faults', 'height_cm', 'format', 'status', 'notes', 'series_key',
+    'field_size',
     'breed', 'age', 'gender', 'sire', 'dam', 'damsire', 'breeder', 'country', 'color', 'year_of_birth',
     'arena_name', 'arena_type', 'surface', 'start_time',
     'round2_faults', 'round2_time', 'jumpoff_faults', 'jumpoff_time', 'prize',
@@ -428,6 +474,7 @@ module.exports = function mountAdminRoutes(app) {
       jof: col('jumpoff_faults'), jot: col('jumpoff_time'), prize: col('prize', 'prize_money'),
       start_order: col('start_order'), nominated: col('nominated'),
       wc: col('is_world_cup', 'world_cup', 'wc'),
+      fsize: col('field_size', 'starters', 'field'),
       breed: col('breed'), age: col('age'), gender: col('gender'), sire: col('sire'), dam: col('dam'),
       breeder: col('breeder'), country: col('country'),
       region: col('region'), rider_region: col('rider_region'),
@@ -572,6 +619,11 @@ module.exports = function mountAdminRoutes(app) {
         for (const [v, n] of [[faults, 'faults'], [tsec, 'time'], [tf, 'time_faults'], [hcm, 'height_cm']]) {
           if (v !== null && (typeof v !== 'number' || Number.isNaN(v))) errs.push(`${n} must be numeric`);
         }
+        // Starter count (Model B field/place multipliers read it; 0/blank =
+        // unknown -> falls back to actual DB starters, never "field of 0").
+        const fsizeRaw = g(ci.fsize);
+        const fsize = fsizeRaw === '' ? null : parseInt(fsizeRaw, 10);
+        if (fsizeRaw !== '' && !(fsize >= 1)) errs.push('field_size must be a positive integer');
         let status = 'finished';
         const stRaw = g(ci.status).toUpperCase();
         if (stRaw) {
@@ -681,8 +733,8 @@ module.exports = function mountAdminRoutes(app) {
         }
         if (!cRow) {
           cRow = (await client.query(
-            'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, format, series_key, arena_name, arena_type, surface, start_time, is_world_cup, source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,\'MANUAL\') RETURNING id',
-            [rEvId, cls, cdate || null, hcm, ctype, fmt, seriesKey, cArenaName, cArenaType, cSurface, cStart, worldCup === true])).rows[0];
+            'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, format, series_key, arena_name, arena_type, surface, start_time, is_world_cup, field_size, source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,\'MANUAL\') RETURNING id',
+            [rEvId, cls, cdate || null, hcm, ctype, fmt, seriesKey, cArenaName, cArenaType, cSurface, cStart, worldCup === true, fsize])).rows[0];
           classCache.set(ck, cRow);
         } else {
           if (seriesKey && !cRow.series_key) {
@@ -698,6 +750,7 @@ module.exports = function mountAdminRoutes(app) {
           if (cArenaType) fills.push(['arena_type', cArenaType]);
           if (cSurface) fills.push(['surface', cSurface]);
           if (cStart) fills.push(['start_time', cStart]);
+          if (fsize) fills.push(['field_size', fsize]);
           if (fills.length) {
             await client.query(
               `UPDATE classes SET ${fills.map(([k], i) => `${k} = COALESCE(${k}, $${i + 2})`).join(', ')} WHERE id = $1`,
@@ -1029,14 +1082,21 @@ module.exports = function mountAdminRoutes(app) {
             if (!key) return res.status(400).json({ error: `${f} must be a master category key (see Admin → Categories)` });
             v = key;
           }
-          if ((f === 'date_start' || f === 'date_end') && v !== null && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
-            return res.status(400).json({ error: `${f} must be YYYY-MM-DD` });
+          if ((f === 'date_start' || f === 'date_end') && v !== null) {
+            // Accept full ISO datetimes (what the edit form round-trips)
+            // by truncating to the date part; reject anything else.
+            const m = typeof v === 'string' && /^(\d{4}-\d{2}-\d{2})/.exec(v);
+            if (!m) return res.status(400).json({ error: `${f} must be YYYY-MM-DD` });
+            v = m[1];
           }
           vals.push(v); sets.push(`${f} = $${vals.length}`);
         }
       }
       if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
-      if (body.name !== undefined) { vals.push(normFn(body.name)); sets.push(`normalized_name = $${vals.length}`); }
+      // Only horses/riders carry normalized_name — events/classes don't.
+      if (body.name !== undefined && (table === 'horses' || table === 'riders')) {
+        vals.push(normFn(body.name)); sets.push(`normalized_name = $${vals.length}`);
+      }
       vals.push(req.params.id);
       const { rows } = await pool.query(
         `UPDATE ${table} SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);

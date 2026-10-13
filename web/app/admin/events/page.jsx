@@ -8,14 +8,15 @@ export default function ManageEvents() {
       base="events" profile={(r) => { const id = r.slug || r.id; return id ? `/events/${id}` : null; }}
       columns={[
         { k: 'is_active', label: 'Active', bool: true }, { k: 'name', label: 'Event' }, { k: 'venue', label: 'Venue' },
-        { k: 'date_start', label: 'Starts' }, { k: 'tier', label: 'Tier' }, { k: 'status', label: 'Status' },
+        { k: 'date_start', label: 'Starts', render: (r) => String(r.date_start || '').slice(0, 10) || '–' },
+        { k: 'tier', label: 'Tier' }, { k: 'status', label: 'Status' },
         { k: 'round_count', label: 'Rounds', num: true },
       ]}
       fields={[
         { k: 'is_active', label: 'Active (on = open for results + visible)', bool: true },
         { k: 'name', label: 'Name' }, { k: 'venue', label: 'Venue' },
-        { k: 'region', label: 'Region' }, { k: 'date_start', label: 'Start (YYYY-MM-DD)' },
-        { k: 'date_end', label: 'End (YYYY-MM-DD)' }, { k: 'arena_type', label: 'Arena type' },
+        { k: 'region', label: 'Region' }, { k: 'date_start', label: 'Start date', type: 'date' },
+        { k: 'date_end', label: 'End date', type: 'date' }, { k: 'arena_type', label: 'Arena type' },
         { k: 'event_kind', label: 'Kind — series multipliers (recompute scoring after changing)', options: ['regular', 'national_championship', 'series_final', 'islands', 'hoy', 'national_young_horse'] },
         { k: 'tier', label: 'Tier', options: ['Grand Prix', 'Premier', 'No Series'] },
         { k: 'event_type', label: 'Type', options: ['Show', 'Championship', 'League', 'Training'] },

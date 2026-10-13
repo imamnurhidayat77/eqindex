@@ -205,6 +205,12 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
           placeholder={fld.placeholder || fld.label} maxLength={2000} />
       );
     }
+    if (fld.type === 'date') {
+      return (
+        <input type="date" className={INP} value={String(form[fld.k] ?? '').slice(0, 10)}
+          onChange={(e) => setForm({ ...form, [fld.k]: e.target.value })} />
+      );
+    }
     return (
       <input className={INP} value={form[fld.k] ?? ''} onChange={(e) => setForm({ ...form, [fld.k]: e.target.value })}
         placeholder={fld.placeholder || fld.label} maxLength={200} />
