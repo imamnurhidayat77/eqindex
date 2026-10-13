@@ -17,6 +17,7 @@ const KPIS = [
 const GROUPS = [
   ['Manage', [
     ['⇪', 'Import CSV results', 'Organiser upload with preview', '/admin/import', false],
+    ['✨', 'Import Assistant', 'Chat, link or upload results', '/admin/assistant', false],
     ['＋', 'Add single result', 'Manual entry, live points preview', '/admin/results/add', false],
     ['♞', 'Horses', 'Profiles, pedigrees & visibility', '/admin/horses', false],
     ['◉', 'Riders', 'Regions, categories & visibility', '/admin/riders', false],

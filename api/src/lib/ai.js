@@ -39,6 +39,26 @@ async function aiJsonArray({ input, maxTokens = 4000, session }) {
   return JSON.parse(text.slice(a, b + 1));
 }
 
+async function aiChat({ system, messages, maxTokens = 800, session }) {
+  if (!KEY) throw new Error('AI not configured — set OPENCODE_GO_API_KEY on the API service');
+  const input = `${system}\n\n${messages.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')}\n\nAssistant:`;
+  const res = await fetch(`${BASE}/responses`, {
+    method: 'POST',
+    headers: {
+      'User-Agent': 'eqindex-import/1.0',
+      Authorization: `Bearer ${KEY}`,
+      'Content-Type': 'application/json',
+      'x-opencode-session': session || `chat-${Date.now().toString(36)}`,
+    },
+    body: JSON.stringify({ model: MODEL, input: input.slice(0, 15000), max_output_tokens: maxTokens }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`AI request failed (${res.status}) ${t.slice(0, 120)}`);
+  }
+  return extractText(await res.json()).trim();
+}
+
 const CANON_KEYS = ['class_name', 'class_type', 'class_date', 'rider_name', 'horse_name',
   'placing', 'faults', 'time', 'time_faults', 'height_cm', 'format', 'status', 'notes',
   'series_key', 'start_order', 'breed', 'age', 'gender', 'sire', 'dam', 'breeder', 'country',
@@ -93,4 +113,4 @@ ${text.slice(0, 12000)}`;
   return { records: kept, dropped: dropped.length };
 }
 
-module.exports = { aiMapRecords, cleanRecord, aiAvailable: () => !!KEY };
+module.exports = { aiMapRecords, aiChat, cleanRecord, aiAvailable: () => !!KEY };

@@ -9,6 +9,7 @@ const GROUPS = [
   { title: 'Manage', items: [
     ['/admin', '◈', 'Overview'],
     ['/admin/import', '⇪', 'CSV Import'],
+    ['/admin/assistant', '✨', 'Import Assistant'],
     ['/admin/results/add', '＋', 'Add Result'],
     ['/admin/horses', '♞', 'Horses'],
     ['/admin/riders', '◉', 'Riders'],

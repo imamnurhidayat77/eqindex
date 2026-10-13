@@ -195,6 +195,111 @@ module.exports = function mountAdminRoutes(app) {
     };
   }
 
+  // ---- Import Assistant chat (separate menu from CSV import).
+  // Conversational: link, pasted text, or uploaded file (PDF/CSV/TXT/JSON)
+  // → canonical records + summary. NEVER writes; commit happens only via
+  // the existing dry-run → Commit flow on this page or CSV import.
+  app.post('/admin/import/chat', needRole('ADMIN'), asyncH(async (req, res) => {
+    const multer = require('multer');
+    const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 1 } });
+    upload.single('file')(req, res, async (err) => {
+      if (err) return res.status(400).json({ error: `upload failed: ${err.message}` });
+      try {
+        const out = await assistChat({
+          messages: safeJson(req.body.messages, []),
+          session: req.body.session,
+          context: safeJson(req.body.context, null),
+          file: req.file || null,
+        });
+        res.json({ data: out });
+      } catch (e) {
+        res.status(502).json({ error: e.message });
+      }
+    });
+  }));
+
+  function safeJson(v, fb) {
+    try { const j = typeof v === 'string' ? JSON.parse(v) : v; return j ?? fb; } catch { return fb; }
+  }
+
+  async function assistChat({ messages, session, context, file }) {
+    const { aiChat, aiMapRecords, aiAvailable } = require('../lib/ai');
+    const { equipeRecords } = require('../lib/equipe');
+    const lastUser = [...(messages || [])].reverse().find((m) => m.role === 'user');
+    const text = String(lastUser?.content || '');
+    const url = text.match(/online\.equipe\.com\/shows\/(\d+)/);
+
+    // 1. File attachment → extract text.
+    let fileText = '', filename = '';
+    if (file) {
+      filename = file.originalname || 'upload';
+      if (/\.pdf$/i.test(filename)) {
+        const pdf = require('pdf-parse');
+        fileText = (await pdf(file.buffer)).text || '';
+      } else {
+        fileText = file.buffer.toString('utf8');
+      }
+      if (!fileText.trim()) {
+        return { reply: `I couldn't read any text from ${filename}. For PDFs, a text-based export works best — scanned images can't be read. Try pasting the results or uploading a CSV instead.`, analysis: null };
+      }
+    }
+    const blob = [text, fileText].filter(Boolean).join('\n\n');
+
+    // 2. Equipe link → deterministic fetch.
+    if (url) {
+      const out = await equipeRecords(url[1], { skipPractice: true });
+      const withSeries = out.records.filter((r) => r.series_key).length;
+      return {
+        reply: `${out.meeting}: ${out.records.length} rounds across the show-jumping classes (${withSeries} already mapped to a series, ${out.records.filter((r) => r.start_order).length} with start order). ${out.skipped.length ? `${out.skipped.length} skipped (${out.skipped[0][2]}…). ` : ''}Have a look at the summary below — if it looks right, load it into the editor, validate, then commit. Nothing is saved yet.`,
+        analysis: summarizeAssist('equipe', { meeting: out.meeting }, out.records, out.skipped),
+      };
+    }
+
+    // 3. Results text (pasted or from file) → csv-rule, else AI.
+    if (blob.trim().length > 40) {
+      const head = blob.trim().split(/\r?\n/, 1)[0] || '';
+      const cols = head.split(',').map((h) => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
+      const has = (...ks) => ks.some((k) => cols.includes(k));
+      if (has('class_name', 'class') && has('rider_name', 'rider') && has('horse_name', 'horse')) {
+        const lines = blob.trim().split(/\r?\n/).slice(1);
+        const records = lines.filter((l) => l.trim()).map((l) => {
+          const cells = l.split(',');
+          const r = {};
+          cols.forEach((k, i) => { if (cells[i] !== undefined && cells[i] !== '') r[k] = cells[i].trim(); });
+          return r;
+        });
+        return {
+          reply: `That looks like a CSV with known headers — mapped ${records.length} rows directly (no AI needed). Check the summary, then validate & commit when ready.`,
+          analysis: summarizeAssist('csv-rule', { filename: filename || null }, records, []),
+        };
+      }
+      if (!aiAvailable()) {
+        return { reply: 'I can see results text but the format is unfamiliar and my AI mapping is not configured. Please reshape it to the CSV template (Admin → CSV Import has one), or ask your admin to set the AI key.', analysis: null };
+      }
+      const { records, dropped } = await aiMapRecords({ text: blob, hint: filename ? `Source file: ${filename}.` : '' });
+      if (!records.length) {
+        return { reply: `I read ${filename || 'the text'} but couldn't find any complete result rows (need class + rider + horse on each). Could you paste a couple of example rows so I can see the layout?`, analysis: null };
+      }
+      const warnings = [];
+      if (dropped) warnings.push(`${dropped} row(s) dropped (missing class/rider/horse)`);
+      const noSeries = records.filter((r) => !r.series_key).length;
+      if (noSeries) warnings.push(`${noSeries} row(s) without series_key will score 0 series points`);
+      return {
+        reply: `Mapped ${records.length} rounds from ${filename || 'your text'}${dropped ? ` (${dropped} dropped)` : ''}. ${noSeries ? `${noSeries} have no series — tell me which classes are series classes (e.g. "class 9 is pro-am") and I'll tag them. ` : ''}Review below, then validate & commit — nothing saved yet.`,
+        analysis: { ...summarizeAssist('ai', { filename: filename || null }, records, []), warnings },
+      };
+    }
+
+    // 4. Free chat about importing.
+    const ctx = context ? `Last analysis: ${JSON.stringify(context).slice(0, 800)}.` : 'No analysis yet this session.';
+    const reply = await aiChat({
+      session,
+      system: `You are the EQIndex Import Assistant. You help an admin import show-jumping results. Capabilities: read Equipe show URLs (online.equipe.com/shows/ID), map pasted results text or uploaded files (PDF/CSV/TXT/JSON) to canonical records, explain warnings (missing series_key means 0 series points, skipped rows), and guide the validate-then-commit flow. Rules: never claim anything is saved (only dry-run preview then human Commit saves); series mapping for unfamiliar class names must be asked, never guessed silently; keep replies short and practical. ${ctx}`,
+      messages: (messages || []).slice(-8),
+    });
+    return { reply, analysis: null };
+  }
+
   // ---- Admin CSV import (spec §8A): paste/upload → validate → preview → commit.
   // Body: { event_id?, event?: {name,date_start,date_end,venue,region,arena_type},
   //         csv, filename?, source?, dry_run? }
