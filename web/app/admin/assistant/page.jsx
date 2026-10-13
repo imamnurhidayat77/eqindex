@@ -187,7 +187,9 @@ export default function AdminAssistant() {
       fd.append('session', active.id);
       const a = active.analysis;
       if (a) fd.append('context', JSON.stringify({ rounds: a.stats?.rounds, with_series: a.stats?.with_series }));
-      if (attachment) fd.append('file', attachment);
+      // NOTE: the raw file is never uploaded — text was extracted in the
+      // browser (PDF via worker, others via .text()). The 15MB server cap
+      // and the ~4.5MB proxy cap only ever see KBs of text.
       const res = await fetch(`${API}/admin/import/chat`, { method: 'POST', credentials: 'include', body: fd });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
