@@ -28,6 +28,8 @@ from html.parser import HTMLParser
 
 sys.path.insert(0, "ingest/providers")
 from evoevents import classify, parse_height  # noqa: E402
+sys.path.insert(0, "ingest")
+from series_keys import suggest_series_key  # noqa: E402
 
 BASE = "https://evoevents.co.nz"
 UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -215,6 +217,10 @@ def main():
                 rec["region"] = args.region
             if skey:
                 rec["series_key"] = skey
+            else:
+                _s = suggest_series_key(cname_full)
+                if _s:
+                    rec["series_key"] = _s
             if get(c_jotpen) not in (None, ""):
                 rec["jumpoff_time"] = num(get(c_jot))
                 rec["jumpoff_faults"] = num(get(c_jotpen))

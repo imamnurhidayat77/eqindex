@@ -8,6 +8,7 @@ const { bustCache, bustPublic } = require('../middleware/cache');
 const { bustVisibility, excludedClassTypes } = require('../lib/filters');
 const { canonCategoryKey, masterCategoryKeys, bustCategoryKeys } = require('../lib/categories');
 const { summarizeAssist, loadSeriesMap, applySeriesMap } = require('../lib/assist');
+const { suggestSeriesKey, seriesLike } = require('../lib/seriesKeys');
 
 module.exports = function mountAdminRoutes(app) {
   // ---- Rank snapshots: capture today's points ranks (idempotent per day) ----
@@ -183,8 +184,6 @@ module.exports = function mountAdminRoutes(app) {
       const { records, dropped, truncated } = await aiMapRecords({ text, hint: filename ? `Source file: ${filename}.` : '' });
       const warnings = dropped ? [`${dropped} row(s) dropped (missing class/rider/horse)`] : [];
       if (truncated) warnings.push('File is very long — only the first ~72KB was mapped. Split the file and send the rest separately.');
-      const noSeries = records.filter((r) => !r.series_key).length;
-      if (noSeries) warnings.push(`${noSeries} row(s) without series_key will score 0 series points`);
       return res.json({ data: { ...summarizeAssist('ai', { filename: filename || null }, records, []), warnings } });
     } catch (e) {
       return res.status(502).json({ error: e.message });
@@ -201,10 +200,8 @@ module.exports = function mountAdminRoutes(app) {
     const parsed = parseEvoEvents(blob);
     if (!parsed.records.length) return null;
     const tagged = await applySeriesMap(parsed.records, userId);
-    const noSeries = parsed.records.filter((r) => !r.series_key).length;
     const warnings = [...parsed.warnings];
     if (tagged) warnings.push(`${tagged} row(s) tagged from your remembered series mappings`);
-    if (noSeries) warnings.push(`${noSeries} row(s) without series_key will score 0 series points`);
     return {
       reply: `Read ${filename || 'your file'} directly — ${parsed.records.length} rounds across ${parsed.classesFound} classes, no AI needed.`,
       analysis: { ...summarizeAssist('evoevents-rule', { filename: filename || null }, parsed.records, []), warnings },
@@ -615,7 +612,8 @@ module.exports = function mountAdminRoutes(app) {
       }
 
       const out = [];
-      let okCount = 0, enriched = 0;
+      let okCount = 0, enriched = 0, seriesTagged = 0;
+      const seriesVerify = new Map(); // class name -> rows, series-like but no key match
       const evFills = {};
       for (let li = 1; li < grid.length; li++) {
         const r = grid[li];
@@ -748,7 +746,10 @@ module.exports = function mountAdminRoutes(app) {
         } else {
           enriched += await fillNull('riders', rId, rEn);
         }
-        const seriesKey = g(ci.series) || null;
+        const seriesKey = g(ci.series) || suggestSeriesKey(cls);
+        const seriesSuggested = !g(ci.series) && !!seriesKey;
+        if (seriesSuggested) seriesTagged++;
+        if (!seriesKey && cls && seriesLike(cls)) seriesVerify.set(cls, (seriesVerify.get(cls) || 0) + 1);
         const ck = `${rEvId}|${cls}|${cdate || ''}`;
         let cRow = classCache.get(ck);
         if (cRow === undefined) {
@@ -817,6 +818,7 @@ module.exports = function mountAdminRoutes(app) {
         // so store the row id and patch the preview then.
         out.push({ line: li + 1, ok: true, errors: [], rid: ins.rows[0].id, preview: {
           event: rowEv.name, rider, horse, class: cls, place, points: 0,
+          series_key: seriesKey || null, series_suggested: seriesSuggested || false,
           new_horse: newHorse, new_rider: newRider, new_class: newClass,
         }});
       }
@@ -861,7 +863,8 @@ module.exports = function mountAdminRoutes(app) {
       const evList = Object.entries(perEvent).map(([id, v]) => ({ id, ...v }));
       const summary = {
         total: grid.length - 1, ok: okCount, failed: out.filter((x) => !x.ok).length,
-        enriched, events: evList,
+        enriched, events: evList, series_tagged: seriesTagged,
+        series_verify: [...seriesVerify.entries()].map(([name, rows]) => ({ name, rows })),
       };
       if (dry_run) {
         await client.query('ROLLBACK');

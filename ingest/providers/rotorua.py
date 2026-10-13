@@ -18,10 +18,14 @@ Usage:
 import argparse
 import csv
 import json
+import os
 import re
 import sys
 from collections import Counter
 from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from series_keys import suggest_series_key  # noqa: E402
 
 JUNK = {"", "unknown", "n/a", "na", "n-a", "-", "--", "unsure", "nil", "n/a.", "tbd"}
 
@@ -148,6 +152,7 @@ def main():
         }
         ctype, series = classify(cls)
         rec["class_type"] = ctype
+        series = series or suggest_series_key(cls)
         if series:
             rec["series_key"] = series
         if use_jo:

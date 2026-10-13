@@ -249,9 +249,15 @@ export default function AdminImport() {
               </span>
             )}
           </h2>
+          {!!preview.summary.series_tagged && (
+            <p className="mb-1 text-[12px] text-gold font-semibold">Auto-tagged {preview.summary.series_tagged} row(s) to a series from the class name — check the Series column before committing.</p>
+          )}
+          {(preview.summary.series_verify || []).slice(0, 5).map((v) => (
+            <p key={v.name} className="mb-1 text-[12px] text-blood font-semibold">Verify series link: “{v.name.slice(0, 70)}” ({v.rows} row(s)) — set a series_key or confirm non-series (scores 0 without one).</p>
+          ))}
           <div className={TABLEWRAP}>
           <table className={TABLE}>
-            <thead><tr><th className={TH}>Line</th><th className={TH}>Event</th><th className={TH}>Rider</th><th className={TH}>Horse</th><th className={TH}>Class</th><th className={`${TH} ${NUM}`}>Place</th><th className={`${TH} ${NUM}`}>Points</th><th className={TH}>Flags</th></tr></thead>
+            <thead><tr><th className={TH}>Line</th><th className={TH}>Event</th><th className={TH}>Rider</th><th className={TH}>Horse</th><th className={TH}>Class</th><th className={`${TH} ${NUM}`}>Place</th><th className={TH}>Series</th><th className={`${TH} ${NUM}`}>Points</th><th className={TH}>Flags</th></tr></thead>
             <tbody>
               {preview.rows.map((r, i) => (
                 <tr key={i}>
@@ -261,6 +267,7 @@ export default function AdminImport() {
                   <td className={TD}>{r.preview?.horse || '–'}</td>
                   <td className={TD}>{r.preview?.class || '–'}</td>
                   <td className={`${TD} ${NUM}`}>{r.preview?.place ?? '–'}</td>
+                  <td className={`${TD} text-muted`}>{r.preview?.series_key ? <>{r.preview.series_key}{r.preview.series_suggested && <span className="text-gold"> ★</span>}</> : '–'}</td>
                   <td className={`${TD} ${NUM}`}><b className={r.ok ? 'text-gold' : 'text-faint'}>{r.ok ? r.preview.points : '–'}</b></td>
                   <td className={TD}>
                     {r.ok

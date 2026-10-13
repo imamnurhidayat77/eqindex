@@ -39,10 +39,14 @@ Usage:
 """
 import argparse
 import json
+import os
 import re
 import sys
 from collections import Counter
 from datetime import date, timedelta
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from series_keys import suggest_series_key  # noqa: E402
 
 try:
     from pypdf import PdfReader
@@ -318,6 +322,10 @@ def main():
             }
             if cno in series_map:
                 rec["series_key"] = series_map[cno]
+            else:
+                _s = suggest_series_key(c["name"])
+                if _s:
+                    rec["series_key"] = _s
             if jo:
                 rec["jumpoff_time"] = next(
                     (num_or_none(x) for x in jo if x not in ("E", "R") and "." in str(x)), None)

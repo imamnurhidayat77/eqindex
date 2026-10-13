@@ -18,9 +18,12 @@ Expected header (1 row = 1 round):
   event_name,date_start,date_end,venue,venue_country,region,arena_type,season,
   class_name,class_date,height_cm,level,format,rider,horse,
   breed,age,gender,sire,dam,breeder,country,
-  rider_region,rider_series,rider_nationality,
-  jump_faults,time_faults,time_seconds,finish_place,source_result_id
-  - season: optional, auto-derived (Aug-Jul season) when empty.
+   rider_region,rider_series,rider_nationality,
+   jump_faults,time_faults,time_seconds,finish_place,source_result_id
+   - season: optional, auto-derived (Aug-Jul season) when empty.
+   - series_key: optional per-row series link; when empty the class name is
+     matched against the built-in series map (ingest/series_keys.py) and
+     auto-tagged when confident — counted in output, never silent.
   - format: optional jumping format (Two-phase, Jump-off, Speed, Power & Speed).
   - breed/age/gender/sire/dam/breeder/country, rider_region/rider_series/
     rider_nationality: optional enrichment — filled on create, fill-if-null
@@ -39,9 +42,14 @@ from psycopg.types.json import Json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from normalize import normalize_name, slug
+from series_keys import suggest_series_key
 
 SOURCES = ("FEI", "EQUIPE", "ESNZ", "CSV", "MANUAL")
 FORMATS = ("Two-phase", "Jump-off", "Speed", "Power & Speed")
+
+# Rows whose class name confidently matches a series but carry no explicit
+# series_key are auto-tagged (counted here, never silent).
+SERIES_TAGGED = 0
 
 
 def clean_format(value):
@@ -212,21 +220,35 @@ def get_or_create_event(cur, r, source):
 
 
 def get_or_create_class(cur, event_id, r, source, show_id):
+    global SERIES_TAGGED
     class_id_ext = slug(f"{r['class_name']}-{r.get('class_date') or r['date_start']}")
+    skey = clean_str(r.get('series_key')) or suggest_series_key(r.get('class_name'))
+    suggested = clean_str(r.get('series_key')) is None and skey is not None
     cur.execute(
-        """INSERT INTO classes (event_id, name, class_date, height_cm, level, format, source, external_class_id)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-           ON CONFLICT (event_id, external_class_id) DO NOTHING""",
+        """INSERT INTO classes (event_id, name, class_date, height_cm, level, format, source, external_class_id, series_key)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+           ON CONFLICT (event_id, external_class_id) DO NOTHING
+           RETURNING id""",
         (event_id, r["class_name"].strip(), (r.get("class_date") or "").strip() or None,
          int_or_none(r.get("height_cm")), (r.get("level") or "").strip() or None,
          clean_format(r.get("format")),
-         source, class_id_ext),
+         source, class_id_ext, skey),
     )
+    row = cur.fetchone()
+    if row is not None:
+        if suggested:
+            SERIES_TAGGED += 1
+        return row[0], class_id_ext
     cur.execute(
-        "SELECT id FROM classes WHERE event_id=%s AND external_class_id=%s",
+        "SELECT id, series_key FROM classes WHERE event_id=%s AND external_class_id=%s",
         (event_id, class_id_ext),
     )
-    return cur.fetchone()[0], class_id_ext
+    cid, existing_key = cur.fetchone()
+    if skey and not existing_key:
+        cur.execute("UPDATE classes SET series_key = %s WHERE id = %s", (skey, cid))
+        if suggested:
+            SERIES_TAGGED += 1
+    return cid, class_id_ext
 
 
 def import_row(cur, r, source, show_default_region=""):
@@ -310,7 +332,8 @@ def main():
                 )
 
     print(f"rows={stats['inserted'] + stats['skipped'] + stats['failed']} "
-          f"inserted={stats['inserted']} skipped_dup={stats['skipped']} failed={stats['failed']}")
+          f"inserted={stats['inserted']} skipped_dup={stats['skipped']} failed={stats['failed']} "
+          f"series_tagged={SERIES_TAGGED}")
 
 
 if __name__ == "__main__":

@@ -144,7 +144,9 @@ async function evoeventsRecords(eventId, { seriesMap = {}, dateStart = null, dat
     const cJot = col('jo time'), cJotpen = col('jo time pen');
     const [ctype, fmt] = classify(cname);
     const height = parseHeight(cname);
-    const skey = seriesMap[cno];
+    // Explicit per-class map first, built-in name guess second (never silent).
+    const { suggestSeriesKey } = require('./seriesKeys');
+    const skey = seriesMap[cno] || suggestSeriesKey(cname);
     const cnameFull = cno ? `${cno} ${cname}` : cname;
     let nRows = 0;
     const classRecs = [];
