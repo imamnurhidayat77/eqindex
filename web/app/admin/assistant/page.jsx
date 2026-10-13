@@ -87,7 +87,7 @@ export default function AdminAssistant() {
   const [evNew, setEvNew] = useState({ name: '', date_start: '', venue: '' });
   const [preview, setPreview] = useState(null);
   const [err, setErr] = useState('');
-  const [drawer, setDrawer] = useState(false);
+  const [drawer, setDrawer] = useState(true);
   const bottom = useRef(null);
   const ta = useRef(null);
   const fileRef = useRef(null);
@@ -186,14 +186,18 @@ export default function AdminAssistant() {
         </div>
         <span className="flex-1" />
         <button onClick={() => setDrawer((o) => !o)}
-          className="lg:hidden rounded border border-line px-3 py-2 text-[13px] text-muted hover:text-white bg-none cursor-pointer">☰ History</button>
+          className="rounded border border-line px-3 py-2 text-[13px] text-muted hover:text-white bg-none cursor-pointer">☰ History</button>
       </div>
       {err && <section className={CARD}><p className="text-blood text-sm">{err}</p></section>}
       <div className="flex gap-4 items-start">
         {/* history */}
-        <aside className={`${drawer ? 'fixed inset-y-0 left-0 z-40 w-72 p-3 bg-card border-r border-line overflow-y-auto' : 'hidden'} lg:static lg:block lg:z-auto lg:w-60 lg:shrink-0 lg:rounded lg:border lg:border-line lg:bg-card lg:p-2`}>
-          <button onClick={newChat}
-            className="w-full rounded-lg border border-gold/60 px-3 py-2 text-[13px] font-bold text-gold bg-none cursor-pointer hover:bg-goldbg/40 mb-2">＋ New chat</button>
+        <aside className={`${drawer ? 'block' : 'hidden'} fixed inset-y-0 left-0 z-40 w-72 p-3 bg-card border-r border-line overflow-y-auto lg:static lg:z-auto lg:w-60 lg:shrink-0 lg:rounded lg:border lg:border-line lg:bg-card lg:p-2`}>
+          <div className="flex items-center gap-2 mb-2">
+            <button onClick={newChat}
+              className="grow rounded-lg border border-gold/60 px-3 py-2 text-[13px] font-bold text-gold bg-none cursor-pointer hover:bg-goldbg/40">＋ New chat</button>
+            <button onClick={() => setDrawer(false)} aria-label="Close history"
+              className="lg:hidden rounded-lg border border-line px-2.5 py-2 text-muted bg-none cursor-pointer">×</button>
+          </div>
           <div className="flex flex-col gap-0.5 max-h-[60vh] overflow-y-auto">
             {chats.map((c) => (
               <div key={c.id}
@@ -231,7 +235,7 @@ export default function AdminAssistant() {
               <div className="flex flex-col gap-5 overflow-y-auto grow pr-1 py-2" style={{ maxHeight: 560 }}>
                 {(active?.msgs || []).map((m) => (
                   m.role === 'user' ? (
-                    <div key={m.id} className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-goldbg/50 px-4 py-2.5 text-[14px] leading-relaxed text-white">
+                    <div key={m.id} className="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-goldbg/50 px-4 py-2.5 text-[14px] leading-relaxed text-white [overflow-wrap:anywhere]">
                       <Rich text={m.content} />
                     </div>
                   ) : (
@@ -258,6 +262,61 @@ export default function AdminAssistant() {
               </div>
             )}
             <div className="mt-auto pt-3">
+              {(analysis || preview) && (
+                <div className="mb-3 rounded-2xl border border-gold/40 bg-goldbg/20 p-3.5">
+                  {analysis && (
+                    <>
+                      <div className="mb-1 text-[14px] font-bold">Mapped: {analysis.detected.type}
+                        <span className="ml-2 text-[12px] text-muted font-semibold">{analysis.stats.rounds} rounds · {analysis.stats.with_series} with series</span></div>
+                      {!!analysis.warnings.length && (
+                        <ul className="text-[12.5px] text-gold mb-2">{analysis.warnings.slice(0, 4).map((w, i) => <li key={i}>{w}</li>)}</ul>
+                      )}
+                      <div className="flex flex-wrap gap-2 items-end">
+                        <label className="text-xs text-muted flex flex-col gap-1 grow min-w-[200px]">Target event
+                          <Dropdown ariaLabel="Target event" value={eventId} searchable placeholder="— select —"
+                            options={[{ value: '', label: '— select —' }, { value: '__new__', label: '＋ New event…' },
+                              ...events.map((e) => ({ value: e.id, label: `${e.name} · ${(e.date_start || '').slice(0, 10)}` }))]}
+                            onSelect={(o) => setEventId(o.value)} /></label>
+                        <button className={BTN_PRIMARY} disabled={!!busy} onClick={() => run(true)}>{busy === 'validate' ? 'Validating…' : 'Validate & preview →'}</button>
+                        <button className={BTN_DANGER} disabled={!!busy || !preview || preview.dry_run === false} onClick={() => run(false)}>{busy === 'commit' ? 'Committing…' : 'Commit'}</button>
+                      </div>
+                      {eventId === '__new__' && (
+                        <div className="grid sm:grid-cols-3 gap-2 mt-2">
+                          {[['name', 'Event name*'], ['date_start', 'Start date* (YYYY-MM-DD)'], ['venue', 'Venue']].map(([k, lbl]) => (
+                            <input key={k} value={evNew[k]} onChange={(e) => setEvNew({ ...evNew, [k]: e.target.value })} placeholder={lbl}
+                              className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" />
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {preview && (
+                    <div className="mt-2 border-t border-gold/30 pt-2">
+                      <div className="mb-1 text-[13.5px] font-bold">{preview.dry_run ? 'Preview (nothing saved)' : 'Import result'}
+                        <span className="ml-2 text-[12px] text-muted font-semibold">{preview.summary.ok} ok · {preview.summary.failed} failed</span></div>
+                      <div className="overflow-x-auto">
+                      <table className={TABLE}>
+                        <thead><tr><th className={TH}>Rider</th><th className={TH}>Horse</th><th className={TH}>Class</th><th className={`${TH} ${NUM}`}>Pts</th><th className={TH}>Flags</th></tr></thead>
+                        <tbody>
+                          {preview.rows.slice(0, 10).map((r, i) => (
+                            <tr key={i}>
+                              <td className={TD}>{r.preview?.rider || '–'}</td>
+                              <td className={TD}>{r.preview?.horse || '–'}</td>
+                              <td className={`${TD} text-muted`}>{r.preview?.class || '–'}</td>
+                              <td className={`${TD} ${NUM}`}><b className={r.ok ? 'text-gold' : 'text-faint'}>{r.ok ? r.preview.points : '–'}</b></td>
+                              <td className={TD}>{r.ok
+                                ? <>{r.preview.new_horse && <span className={badge(BADGE.blue)}>new horse</span>}{' '}{r.preview.new_rider && <span className={badge(BADGE.blue)}>new rider</span>}{' '}{r.preview.new_class && <span className={badge(BADGE.gray)}>new class</span>}</>
+                                : <span className={badge(BADGE.red)}>{(r.errors || []).join('; ')}</span>}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      </div>
+                      {preview.rows.length > 10 && <p className="text-[12px] text-faint mt-1">Showing 10 of {preview.rows.length} rows.</p>}
+                    </div>
+                  )}
+                </div>
+              )}
               {!isFresh && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {QUICK.map((q) => (
@@ -292,61 +351,6 @@ export default function AdminAssistant() {
             </div>
           </div>
         </section>
-        {/* review */}
-        {(analysis || preview) && (
-          <div className="w-full 2xl:w-[360px] 2xl:shrink-0 flex flex-col gap-4">
-            {analysis && (
-              <section className={CARD}>
-                <h2 className="text-[15px] font-bold mb-1">Mapped: {analysis.detected.type}
-                  <span className="ml-2 text-[12px] text-muted font-semibold">{analysis.stats.rounds} rounds · {analysis.stats.with_series} with series</span></h2>
-                {!!analysis.warnings.length && (
-                  <ul className="text-[12.5px] text-gold mb-2">{analysis.warnings.slice(0, 5).map((w, i) => <li key={i}>{w}</li>)}</ul>
-                )}
-                <label className="text-xs text-muted flex flex-col gap-1 mb-2">Target event
-                  <Dropdown ariaLabel="Target event" value={eventId} searchable placeholder="— select —"
-                    options={[{ value: '', label: '— select —' }, { value: '__new__', label: '＋ New event…' },
-                      ...events.map((e) => ({ value: e.id, label: `${e.name} · ${(e.date_start || '').slice(0, 10)}` }))]}
-                    onSelect={(o) => setEventId(o.value)} /></label>
-                {eventId === '__new__' && (
-                  <div className="grid gap-2 mb-2">
-                    {[['name', 'Event name*'], ['date_start', 'Start date* (YYYY-MM-DD)'], ['venue', 'Venue']].map(([k, lbl]) => (
-                      <input key={k} value={evNew[k]} onChange={(e) => setEvNew({ ...evNew, [k]: e.target.value })} placeholder={lbl}
-                        className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" />
-                    ))}
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <button className={BTN_PRIMARY} disabled={!!busy} onClick={() => run(true)}>{busy === 'validate' ? 'Validating…' : 'Validate & preview →'}</button>
-                  <button className={BTN_DANGER} disabled={!!busy || !preview || preview.dry_run === false} onClick={() => run(false)}>{busy === 'commit' ? 'Committing…' : 'Commit'}</button>
-                </div>
-              </section>
-            )}
-            {preview && (
-              <section className={CARD}>
-                <h2 className="text-[15px] font-bold mb-1">{preview.dry_run ? 'Preview (nothing saved)' : 'Import result'}
-                  <span className="ml-2 text-[12px] text-muted font-semibold">{preview.summary.ok} ok · {preview.summary.failed} failed</span></h2>
-                <div className={TABLEWRAP}>
-                <table className={TABLE}>
-                  <thead><tr><th className={TH}>Rider</th><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Pts</th><th className={TH}>Flags</th></tr></thead>
-                  <tbody>
-                    {preview.rows.slice(0, 10).map((r, i) => (
-                      <tr key={i}>
-                        <td className={TD}>{r.preview?.rider || '–'}</td>
-                        <td className={TD}>{r.preview?.horse || '–'}</td>
-                        <td className={`${TD} ${NUM}`}><b className={r.ok ? 'text-gold' : 'text-faint'}>{r.ok ? r.preview.points : '–'}</b></td>
-                        <td className={TD}>{r.ok
-                          ? <>{r.preview.new_horse && <span className={badge(BADGE.blue)}>new</span>}</>
-                          : <span className={badge(BADGE.red)}>{(r.errors || []).join('; ')}</span>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
-                {preview.rows.length > 10 && <p className="text-[12px] text-faint mt-1">Showing 10 of {preview.rows.length} rows.</p>}
-              </section>
-            )}
-          </div>
-        )}
       </div>
     </>
   );
