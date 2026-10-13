@@ -3,14 +3,16 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
 function placingBadge(place, status) {
+  const p = Number(place);
+  if (p) {
+    const lbl = p === 1 ? '1st' : p === 2 ? '2nd' : p === 3 ? '3rd' : `${p}th`;
+    return <span className="font-semibold text-gold">{lbl}</span>;
+  }
   if (status && status !== 'finished') {
     const code = { eliminated: 'E', retired: 'R', withdrawn: 'W', disqualified: 'DQ' }[status] || '–';
     return <span className="text-faint">{code}</span>;
   }
-  const p = Number(place);
-  if (!p) return <span className="text-faint">—</span>;
-  const lbl = p === 1 ? '1st' : p === 2 ? '2nd' : p === 3 ? '3rd' : `${p}th`;
-  return <span className="font-semibold text-gold">{lbl}</span>;
+  return <span className="text-faint">—</span>;
 }
 
 function EventAthleteCard({ a }) {

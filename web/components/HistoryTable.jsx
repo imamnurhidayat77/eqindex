@@ -7,14 +7,18 @@ const fmtDate = (d) => (d || '').slice(0, 10);
 const num = (v, d = 0) => (v === null || v === undefined || v === '' ? d : Number(v));
 
 function placingBadge(place, status) {
+  // Classified-but-not-finished (e.g. retired in the JO but officially 2nd):
+  // placing first, status code only when unplaced.
+  const p = Number(place);
+  if (p) {
+    const lbl = p === 1 ? '1st' : p === 2 ? '2nd' : p === 3 ? '3rd' : `${p}th`;
+    return <span className={statusBadge(lbl)}>{lbl}</span>;
+  }
   if (status && status !== 'finished') {
     const code = { eliminated: 'E', retired: 'R', withdrawn: 'W', disqualified: 'DQ' }[status] || '–';
     return <span className="text-faint">{code}</span>;
   }
-  const p = Number(place);
-  if (!p) return <span className="text-faint">—</span>;
-  const lbl = p === 1 ? '1st' : p === 2 ? '2nd' : p === 3 ? '3rd' : `${p}th`;
-  return <span className={statusBadge(lbl)}>{lbl}</span>;
+  return <span className="text-faint">—</span>;
 }
 
 // Shared competition-history datatable for horse + rider profiles.
@@ -48,7 +52,10 @@ export default function HistoryTable({ rows, mode }) {
               ? <Link href={`/riders/${r.rider_slug || r.rider_id}`} className="text-white hover:text-gold">{r[partnerKey]}</Link>
               : <Link href={`/horses/${r.horse_slug || r.horse_id}`} className="text-gold hover:underline">{r[partnerKey]}</Link>}
           </td>
-          {r.status !== 'finished' ? (
+          {/* A completed first round (time recorded) shows its score even when
+              the status is retired/eliminated later — same rule as Model B.
+              No round on record: '–'. */}
+          {r.status !== 'finished' && (r.time_seconds === null || r.time_seconds === undefined) ? (
             <>
               <td className="px-3 py-2.5 text-right text-faint">–</td>
               <td className="px-3 py-2.5 text-right text-faint">–</td>

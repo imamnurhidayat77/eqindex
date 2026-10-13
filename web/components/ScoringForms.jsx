@@ -114,7 +114,7 @@ export function ModelBSections({ draft, setDraft }) {
           <Fld label="Per cm"><Num value={lh.perCm} step={0.05} width={72} onChange={(v) => set((n) => { n.lowHeight.perCm = v ?? 0.2; })} /></Fld>
         </div>
       </Sec>
-      <Sec title="Fault multipliers" hint="Round-1 total faults → multiplier. Non-finishers always take elim (status-based, not faults=99).">
+      <Sec title="Fault multipliers" hint="Round-1 total faults → multiplier. Non-finishers with no recorded round take elim; a retired round with a completed first round (time recorded) scores its R1 faults.">
         <div className="flex flex-wrap gap-3 items-end">
           <Fld label="Faults (faults:mult, …)"><Txt value={fmtObjPairs(mb.faults)} placeholder="0:1, 1:0.9, …" width={420}
             onChange={(v) => set((n) => { const p = parseObjPairs(v); if (Object.keys(p).length) n.faults = p; })} /></Fld>
