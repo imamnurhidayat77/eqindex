@@ -152,8 +152,8 @@ export default function AdminImport() {
       <section className={CARD}>
         <h2 className="text-[15px] font-bold mb-1">Import Assistant <span className="text-[11px] text-faint font-semibold">· link or file first, approve before anything saves</span></h2>
         <div className="flex flex-wrap gap-2 items-end mb-2">
-          <label className="text-xs text-muted flex flex-col gap-1 grow">Show link (Equipe) or paste results below
-            <input value={assistUrl} onChange={(e) => setAssistUrl(e.target.value)} placeholder="https://online.equipe.com/shows/…"
+          <label className="text-xs text-muted flex flex-col gap-1 grow">Show link (Equipe or EvoEvents) or paste results below
+            <input value={assistUrl} onChange={(e) => setAssistUrl(e.target.value)} placeholder="https://online.equipe.com/shows/… or https://www.evoevents.co.nz/results/…"
               className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" /></label>
           <button className={BTN_PRIMARY} disabled={busy} onClick={analyze}>{busy ? 'Reading…' : 'Analyze →'}</button>
           {!!assist?.records?.length && (

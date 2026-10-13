@@ -11,10 +11,10 @@ import Dropdown from '../../../components/Dropdown';
 
 const LS_KEY = 'eq-assistant-chats';
 const uid = () => Math.random().toString(36).slice(2);
-const QUICK = ['Import an Equipe show URL', 'What formats can you read?', 'Why would a row score 0?'];
-const HELLO = 'Hi — send me an Equipe show link, paste results text, or upload a file (PDF, CSV, TXT, JSON). I’ll map it and show a summary before anything is saved.';
+const QUICK = ['Import an Equipe or EvoEvents link', 'What formats can you read?', 'Why would a row score 0?'];
+const HELLO = 'Hi — send me an Equipe or EvoEvents results link, paste results text, or upload a file (PDF, CSV, TXT, JSON). I’ll map it and show a summary before anything is saved.';
 const SUGGESTIONS = [
-  ['🔗', 'Import a show', 'Paste an Equipe show URL and I’ll pull every class.'],
+  ['🔗', 'Import a show', 'Paste an Equipe or EvoEvents link and I’ll pull every class — no PDF needed.'],
   ['📄', 'Upload results', 'Drop a PDF or CSV from the organiser.'],
   ['❓', 'Ask about scoring', 'Why a row scores 0, what a series needs…'],
 ];

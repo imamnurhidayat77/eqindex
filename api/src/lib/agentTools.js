@@ -26,6 +26,16 @@ const TOOL_DEFS = [
   },
   {
     type: 'function',
+    name: 'evoevents_event',
+    description: 'Fetch an EvoEvents event by ID (from an evoevents.co.nz/results/ID link). Returns the meeting name, dates and per-class entry counts. Use before saying anything about an EvoEvents link — full horse/rider names come straight from the results tables, no PDF needed.',
+    parameters: {
+      type: 'object',
+      properties: { event_id: { type: 'string', description: 'Numeric EvoEvents results ID' } },
+      required: ['event_id'],
+    },
+  },
+  {
+    type: 'function',
     name: 'events_list',
     description: 'List recent events in the database (for picking an import target).',
     parameters: {
@@ -115,6 +125,30 @@ async function equipe_show({ show_id }) {
     };
   } catch (e) {
     return { error: `Equipe fetch failed: ${e.message}` };
+  }
+}
+
+async function evoevents_event({ event_id }) {
+  const id = String(event_id || '').match(/\d+/);
+  if (!id) return { error: 'need a numeric EvoEvents results ID' };
+  try {
+    const { evoeventsRecords } = require('./evoeventsFetch');
+    const out = await evoeventsRecords(id[0]);
+    const classes = new Map();
+    for (const r of out.records) {
+      const k = r.class_name || 'unknown';
+      classes.set(k, (classes.get(k) || 0) + 1);
+    }
+    return {
+      meeting: out.meeting,
+      date_start: out.event.date_start,
+      date_end: out.event.date_end,
+      classes: [...classes.entries()].map(([name, entries]) => ({ name, entries })),
+      total_rounds: out.records.length,
+      skipped: out.skipped.length,
+    };
+  } catch (e) {
+    return { error: `EvoEvents fetch failed: ${e.message}` };
   }
 }
 
@@ -208,7 +242,7 @@ async function memory_list({ kind }, ctx) {
   }
 }
 
-const HANDLERS = { equipe_show, events_list, horses_search, riders_search, series_list, memory_save, memory_list };
+const HANDLERS = { equipe_show, evoevents_event, events_list, horses_search, riders_search, series_list, memory_save, memory_list };
 
 // Never throws for known tools — errors come back as data so the model
 // can recover and answer. Unknown tools are rejected the same way.
