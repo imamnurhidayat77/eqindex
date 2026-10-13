@@ -34,8 +34,7 @@ export default function ClassResults({ groups }) {
   const selectClass = (id) => { setOpen(id); setCq(''); setCpage(1); };
   const pickTab = (k) => {
     setHtab(k);
-    const list = k === 'pony' ? groups.filter(isPony) : groups.filter((g) => !isPony(g));
-    setOpen(list.length ? list[0].class_id : null);
+    setOpen(null);
     setCq(''); setCpage(1);
   };
   // Follow the expanded class into view (skip initial mount).
