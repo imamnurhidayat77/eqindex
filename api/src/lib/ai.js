@@ -27,7 +27,7 @@ async function aiJsonArray({ input, maxTokens = 4000, session }) {
       'Content-Type': 'application/json',
       'x-opencode-session': session || `import-${Date.now().toString(36)}`,
     },
-    body: JSON.stringify({ model: MODEL, input, max_output_tokens: maxTokens }),
+    body: JSON.stringify({ model: MODEL, input, reasoning: { effort: 'low' }, max_output_tokens: maxTokens }),
   });
   if (!res.ok) {
     const t = await res.text().catch(() => '');
@@ -103,8 +103,8 @@ Amateur -> amateur-rider-series, Grand Prix -> grand-prix-series, Young Horse/5Y
 else null), start_order (start/draw number when shown, else null).
 ${hint || ''}
 Results text (may be truncated):
-${text.slice(0, 12000)}`;
-  const rows = await aiJsonArray({ input });
+${text.slice(0, 10000)}`;
+  const rows = await aiJsonArray({ input, maxTokens: 2500 });
   if (!Array.isArray(rows)) throw new Error('AI did not return a JSON array');
   const kept = [], dropped = [];
   for (const r of rows) {
