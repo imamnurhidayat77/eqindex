@@ -174,6 +174,7 @@ def main():
         height = parse_height(cname)
         skey = series_map.get(cno)
         n_rows = 0
+        class_recs = []
         for r in sc.rows:
             get = lambda i: r[i] if i is not None and i < len(r) else ""  # noqa: E731
             horse, rider = get(c_horse), get(c_rider)
@@ -215,8 +216,14 @@ def main():
                 rec["jumpoff_time"] = num(get(c_jot))
                 rec["jumpoff_faults"] = num(get(c_jotpen))
                 rec["notes"] = f"evo class {cno} final-round tail — placing kept as final"
-            recs.append({k: v for k, v in rec.items() if v is not None})
+            class_recs.append({k: v for k, v in rec.items() if v is not None})
             n_rows += 1
+        # starter count for Model B field multipliers (import maps it to
+        # classes.field_size; 0/blank upstream means unknown, never "field
+        # of 0" — see migration 055).
+        for rec in class_recs:
+            rec["field_size"] = n_rows
+        recs.extend(class_recs)
         print(f"[evo-site] class {cno} ({cname}): {n_rows} records", file=sys.stderr)
 
     out = {"event": {"name": args.event_name, "date_start": args.date_start,

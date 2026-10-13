@@ -326,6 +326,11 @@ def main():
             recs.append({k: v for k, v in rec.items() if v is not None})
             by_class[cno] += 1
 
+    # starter count per class for Model B field multipliers (0/blank
+    # upstream means unknown, never "field of 0" — see migration 055)
+    counts = Counter(r["class_name"] for r in recs)
+    for r in recs:
+        r["field_size"] = counts[r["class_name"]]
     out = {"records": recs}
     if args.event_json:
         out["event"] = {"name": args.event_name,
