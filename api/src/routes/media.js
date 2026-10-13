@@ -162,7 +162,8 @@ module.exports = function mountMediaRoutes(app) {
   app.patch('/admin/media/:id', needRole('ADMIN'), asyncH(async (req, res) => {
     const b = req.body || {};
     const sets = [], vals = [];
-    const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
+    // $1 is the media id (params are [id, ...vals]), so columns start at $2.
+    const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length + 1}`); };
     if (b.event_id !== undefined) {
       if (b.event_id) {
         const ev = await pool.query('SELECT id FROM events WHERE id = $1', [b.event_id]);

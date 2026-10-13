@@ -95,12 +95,12 @@ export default function AdminMediaLibrary() {
     if (bulkStatus) body.status = bulkStatus;
     if (!Object.keys(body).length) { setMsg('Pick a horse, rider, class, price, moment or status first.'); return; }
     setApplying(true); setMsg('');
-    let ok = 0, fail = 0;
+    let ok = 0, fail = 0, firstErr = '';
     for (const id of selected) {
       try { await call(`/admin/media/${id}`, { method: 'PATCH', body: JSON.stringify(body) }); ok += 1; }
-      catch { fail += 1; }
+      catch (e) { fail += 1; if (!firstErr) firstErr = e.message; }
     }
-    setMsg(`Applied to ${ok}/${selected.length}${fail ? ` (${fail} failed)` : ''}.`);
+    setMsg(`Applied to ${ok}/${selected.length}${fail ? ` (${fail} failed${firstErr ? `: ${firstErr}` : ''})` : ''}.`);
     setBulkHorse(null); setBulkRider(null); setBulkClass(''); setBulkPrice(''); setBulkMoment(''); setBulkStatus('');
     load();
     setApplying(false);
