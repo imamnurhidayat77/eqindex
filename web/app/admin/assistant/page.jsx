@@ -71,14 +71,12 @@ function freshChat() {
 
 export default function AdminAssistant() {
   const call = useAdminApi();
-  // Lazy init from storage: avoids the mount race where the saver wipes
-  // saved chats before the loader runs.
-  const [chats, setChats] = useState(() => {
-    if (typeof window === 'undefined') return [];
-    const saved = loadChats();
-    return saved.length ? saved : [freshChat()];
-  });
-  const [activeId, setActiveId] = useState(() => chats[0]?.id || null);
+  // Deterministic first render (server == client), then hydrate from
+  // storage client-side. Saves are gated on `ready` so the initial empty
+  // state can never wipe saved chats.
+  const [chats, setChats] = useState([]);
+  const [ready, setReady] = useState(false);
+  const [activeId, setActiveId] = useState(null);
   const [input, setInput] = useState('');
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(null);
@@ -93,8 +91,19 @@ export default function AdminAssistant() {
   const fileRef = useRef(null);
 
   useEffect(() => {
+    const saved = loadChats();
+    if (saved.length) {
+      setChats(saved);
+      setActiveId(saved[0].id);
+    } else {
+      const first = freshChat();
+      setChats([first]);
+      setActiveId(first.id);
+    }
+    setReady(true);
     fetch(`${API}/events?limit=100&include_empty=1`).then((r) => r.json()).then((j) => setEvents(j.data || [])).catch(() => {});
   }, []);
+  useEffect(() => { if (ready) saveChats(chats); }, [chats, ready]);
   useEffect(() => { saveChats(chats); }, [chats]);
   const active = chats.find((c) => c.id === activeId) || null;
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [active?.msgs?.length, busy]);
