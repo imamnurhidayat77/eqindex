@@ -137,20 +137,51 @@ export default function ClassResults({ groups }) {
               <table className={TABLE}>
                 <thead><tr>
                   <th className={TH}>Place</th><th className={TH}>Rider</th><th className={TH}>Horse</th>
-                  <th className={`${TH} ${NUM}`}>Faults</th><th className={TH}>Time</th>
+                  {(() => {
+                    const hasJO = g.rounds.some((r) => r.jumpoff_faults !== null && r.jumpoff_faults !== undefined
+                      || r.jumpoff_time_seconds !== null && r.jumpoff_time_seconds !== undefined
+                      || r.round2_faults !== null && r.round2_faults !== undefined);
+                    g._hasJO = hasJO;
+                    return hasJO
+                      ? <><th className={`${TH} ${NUM}`}>R1 Faults</th><th className={TH}>R1 Time</th><th className={`${TH} ${NUM}`}>JO Faults</th><th className={TH}>JO Time</th></>
+                      : <><th className={`${TH} ${NUM}`}>Faults</th><th className={TH}>Time</th></>;
+                  })()}
                 </tr></thead>
                 <tbody>
                   {view.map((r) => {
                     const dead = r.status !== 'finished';
+                    // Show real numbers whenever present (a retired rider still
+                    // has a first-round score); '–' only for genuinely missing.
+                    const f = (v) => (v === null || v === undefined ? '–' : fmt1(v));
+                    const t = (v) => (v === null || v === undefined ? '–' : `${v}s`);
+                    // Retired/eliminated IN the jump-off: R1 exists, JO is null.
+                    const joDead = dead && r.time_seconds !== null && r.time_seconds !== undefined
+                      && (r.jumpoff_faults === null || r.jumpoff_faults === undefined)
+                      && (r.jumpoff_time_seconds === null || r.jumpoff_time_seconds === undefined);
+                    const joCode = { eliminated: 'E', retired: 'R', withdrawn: 'W', disqualified: 'DQ' }[r.status];
+                    const r1zero = Number(r.total_faults) === 0 && !dead;
                     return (
                       <tr key={r.id} className={dead ? 'opacity-50' : ''} title={r.notes || undefined}>
                         <td className={TD}>{placeCell(r)}</td>
                         <td className={TD}><Link className={LINK} href={`/riders/${r.rider_slug || r.rider_id}`}>{r.rider}</Link></td>
                         <td className={TD}><Link className={LINK} href={`/horses/${r.horse_slug || r.horse_id}`}>{r.horse}</Link></td>
-                        <td className={`${TD} ${NUM} ${Number(r.total_faults) === 0 && !dead ? 'text-moss font-bold' : 'text-muted'}`}>
-                          {dead ? '–' : fmt1(r.total_faults)}
-                        </td>
-                        <td className={`${TD} text-muted`}>{r.time_seconds === null || dead ? '–' : `${r.time_seconds}s`}</td>
+                        {g._hasJO ? (
+                          <>
+                            <td className={`${TD} ${NUM} ${r1zero ? 'text-moss font-bold' : 'text-muted'}`}>{f(r.total_faults)}</td>
+                            <td className={`${TD} text-muted`}>{t(r.time_seconds)}</td>
+                            <td className={`${TD} ${NUM} ${Number(r.jumpoff_faults) === 0 ? 'text-moss font-bold' : 'text-muted'}`}>
+                              {joDead ? <span className="text-faint">{joCode}</span> : f(r.jumpoff_faults)}
+                            </td>
+                            <td className={`${TD} text-muted`}>{joDead ? '–' : t(r.jumpoff_time_seconds)}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td className={`${TD} ${NUM} ${r1zero ? 'text-moss font-bold' : 'text-muted'}`}>
+                              {f(r.total_faults)}
+                            </td>
+                            <td className={`${TD} text-muted`}>{t(r.time_seconds)}</td>
+                          </>
+                        )}
                       </tr>
                     );
                   })}
