@@ -29,6 +29,7 @@ const MANAGE_GROUPS = [
     ['/admin/categories', '⛉', 'Categories'],
     ['/admin/scoring', '✦', 'Scoring'],
     ['/admin/rating', '◎', 'Rating'],
+    ['/admin/pricing', '◆', 'Pricing'],
   ]},
   { title: 'Media', items: [
     ['/admin/media', '◍', 'Media Library'],

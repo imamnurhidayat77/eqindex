@@ -689,6 +689,122 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows });
   }));
 
+  // ---- License tiers (admin CRUD; buyers read prices via GET /api/license-tiers) ----
+  app.get('/admin/license-tiers', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      'SELECT * FROM license_tiers ORDER BY sort_order NULLS LAST, price_cents NULLS LAST, id');
+    res.json({ data: rows });
+  }));
+
+  app.post('/admin/license-tiers', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { id, label, price_cents, max_resolution, printable, sort_order } = req.body || {};
+    if (!id || !TIER_RE.test(String(id))) return res.status(400).json({ error: 'need {id} (a-z, 0-9, _, -)' });
+    const price = price_cents === null || price_cents === undefined || price_cents === ''
+      ? null : parseInt(price_cents, 10);
+    if (price !== null && !(price >= 0)) return res.status(400).json({ error: 'price_cents must be a non-negative integer or null' });
+    const sortRaw = sort_order === undefined || sort_order === null || sort_order === '' ? null : parseInt(sort_order, 10);
+    if (sortRaw !== null && !Number.isInteger(sortRaw)) return res.status(400).json({ error: 'sort_order must be an integer' });
+    try {
+      const { rows } = await pool.query(
+      `INSERT INTO license_tiers (id, label, price_cents, max_resolution, printable, sort_order)
+       VALUES ($1, $2, $3, $4, $5, COALESCE($6, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM license_tiers))) RETURNING *`,
+        [String(id).toLowerCase(), String(label || id), price,
+          max_resolution ? String(max_resolution).slice(0, 40) : null,
+          printable === undefined ? true : !!printable,
+          sort_order === undefined || sort_order === '' ? null : parseInt(sort_order, 10)]);
+      audit(req, 'tier.create', 'license_tier', id, {});
+      res.status(201).json({ data: rows[0] });
+    } catch (e) {
+      if (e.code === '23505') return res.status(409).json({ error: 'tier id already exists' });
+      throw e;
+    }
+  }));
+
+  app.patch('/admin/license-tiers/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    const b = req.body || {};
+    const sets = [], vals = [];
+    const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
+    if (b.label !== undefined) set('label', String(b.label).slice(0, 80));
+    if (b.price_cents !== undefined) {
+      const price = b.price_cents === null || b.price_cents === '' ? null : parseInt(b.price_cents, 10);
+      if (price !== null && !(price >= 0)) return res.status(400).json({ error: 'price_cents must be a non-negative integer or null' });
+      set('price_cents', price);
+    }
+    if (b.max_resolution !== undefined) set('max_resolution', b.max_resolution ? String(b.max_resolution).slice(0, 40) : null);
+    if (b.printable !== undefined) set('printable', !!b.printable);
+    if (b.sort_order !== undefined && b.sort_order !== '' && b.sort_order !== null) {
+      const so = parseInt(b.sort_order, 10);
+      if (!Number.isInteger(so)) return res.status(400).json({ error: 'sort_order must be an integer' });
+      set('sort_order', so);
+    }
+    if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
+    vals.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE license_tiers SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
+    if (!rows.length) return res.status(404).json({ error: 'tier not found' });
+    audit(req, 'tier.edit', 'license_tier', req.params.id, { fields: sets.map((s) => s.split(' = ')[0]) });
+    res.json({ data: rows[0] });
+  }));
+
+  app.delete('/admin/license-tiers/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    // 'web' is the hardcoded pricing fallback (checkout + buy box) — removing
+    // it silently degrades every photo without an explicit tier.
+    if (req.params.id === 'web') {
+      return res.status(409).json({ error: "'web' is the system default tier — rename/reprice it instead" });
+    }
+    const used = await pool.query(
+      `SELECT (SELECT COUNT(*)::INT FROM media WHERE license_default = $1)
+          + (SELECT COUNT(*)::INT FROM purchases WHERE license_tier = $1) AS n`,
+      [req.params.id]);
+    if (used.rows[0].n > 0) {
+      return res.status(409).json({ error: 'tier in use (media defaults / purchases) — edit instead' });
+    }
+    const { rows } = await pool.query('DELETE FROM license_tiers WHERE id = $1 RETURNING id', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'tier not found' });
+    audit(req, 'tier.delete', 'license_tier', req.params.id, {});
+    res.json({ ok: true });
+  }));
+
+  // ---- Packages: edit price/title/status, safe delete ----
+  app.patch('/admin/packages/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    const b = req.body || {};
+    const sets = [], vals = [];
+    const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
+    if (b.title !== undefined) set('title', String(b.title).slice(0, 160));
+    if (b.price_cents !== undefined) {
+      const price = b.price_cents === '' || b.price_cents === null ? null : parseInt(b.price_cents, 10);
+      if (price !== null && !(price >= 0)) return res.status(400).json({ error: 'price_cents must be a non-negative integer or null' });
+      set('price_cents', price);
+    }
+    if (b.status !== undefined) {
+      if (!['draft', 'published', 'archived'].includes(b.status)) {
+        return res.status(400).json({ error: 'status must be draft|published|archived' });
+      }
+      set('status', b.status);
+    }
+    if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
+    vals.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE packages SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
+    if (!rows.length) return res.status(404).json({ error: 'package not found' });
+    audit(req, 'package.edit', 'package', req.params.id, { fields: sets.map((s) => s.split(' = ')[0]) });
+    res.json({ data: rows[0] });
+  }));
+
+  app.delete('/admin/packages/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    const paid = await pool.query(
+      `SELECT COUNT(*)::INT AS n FROM purchases WHERE status = 'paid' AND package_id = $1`,
+      [req.params.id]);
+    if (paid.rows[0].n > 0) {
+      return res.status(409).json({ error: 'has paid purchases — archive instead of deleting' });
+    }
+    await pool.query('DELETE FROM package_items WHERE package_id = $1', [req.params.id]);
+    const { rows } = await pool.query('DELETE FROM packages WHERE id = $1 RETURNING id', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'package not found' });
+    audit(req, 'package.delete', 'package', req.params.id, {});
+    res.json({ ok: true });
+  }));
+
   // Public: packages for a photo's event × subject (upsell block).
   app.get('/photos/packages', asyncH(async (req, res) => {
     const { event_id, horse_id, rider_id } = req.query;
