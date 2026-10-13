@@ -514,14 +514,14 @@ module.exports = function mountPublicRoutes(app) {
     if (!horse.rows.length) return res.status(404).json({ error: 'horse not found' });
     const stats = await pool.query('SELECT * FROM horse_stats WHERE horse_id = $1', [req.params.id]);
     const history = await pool.query(
-      `SELECT rr.*, c.name AS class_name, e.name AS event_name, c.class_date, c.is_world_cup, c.format AS class_format, e.tier AS event_tier, r.name AS rider, r.slug AS rider_slug,
+      `SELECT rr.*, c.name AS class_name, e.name AS event_name, COALESCE(c.class_date, e.date_start) AS class_date, c.is_world_cup, c.format AS class_format, e.tier AS event_tier, r.name AS rider, r.slug AS rider_slug,
           m.modelb AS modelb_score
        FROM round_results rr
        JOIN classes c ON c.id = rr.class_id
        JOIN events e ON e.id = rr.event_id
        JOIN riders r ON r.id = rr.rider_id
        LEFT JOIN modelb_round m ON m.id = rr.id
-       WHERE rr.horse_id = $1 ORDER BY c.class_date DESC NULLS LAST LIMIT 50`,
+       WHERE rr.horse_id = $1 ORDER BY COALESCE(c.class_date, e.date_start) DESC NULLS LAST LIMIT 50`,
       [req.params.id]
     );
     const partners = await pool.query(
@@ -586,14 +586,14 @@ module.exports = function mountPublicRoutes(app) {
     if (!rider.rows.length) return res.status(404).json({ error: 'rider not found' });
     const stats = await pool.query('SELECT * FROM rider_stats WHERE rider_id = $1', [req.params.id]);
     const history = await pool.query(
-      `SELECT rr.*, c.name AS class_name, e.name AS event_name, c.class_date, c.is_world_cup, c.format AS class_format, e.tier AS event_tier, h.name AS horse, h.slug AS horse_slug,
+      `SELECT rr.*, c.name AS class_name, e.name AS event_name, COALESCE(c.class_date, e.date_start) AS class_date, c.is_world_cup, c.format AS class_format, e.tier AS event_tier, h.name AS horse, h.slug AS horse_slug,
           m.modelb AS modelb_score
        FROM round_results rr
        JOIN classes c ON c.id = rr.class_id
        JOIN events e ON e.id = rr.event_id
        JOIN horses h ON h.id = rr.horse_id
        LEFT JOIN modelb_round m ON m.id = rr.id
-       WHERE rr.rider_id = $1 ORDER BY c.class_date DESC NULLS LAST LIMIT 50`,
+       WHERE rr.rider_id = $1 ORDER BY COALESCE(c.class_date, e.date_start) DESC NULLS LAST LIMIT 50`,
       [req.params.id]
     );
     const partners = await pool.query(

@@ -9,6 +9,13 @@ import { EmptyState, TableEmpty } from './EmptyState';
 const fmt1 = (v) => (v === null || v === undefined ? '–' : Number(v).toFixed(1));
 
 function placeCell(r) {
+  // A classified-but-not-finished round (e.g. retired in the jump-off but
+  // officially 2nd) keeps its placing: show the ordinal plus a status tag.
+  const code = { eliminated: 'E', withdrawn: 'W', retired: 'R', disqualified: 'DQ' }[r.status];
+  if (r.status && r.status !== 'finished' && r.finish_place) {
+    const tag = code === 'DQ' ? BADGE.red : code === 'E' ? BADGE.red : BADGE.gray;
+    return <span className="text-muted">{ordinal(r.finish_place)} <span className={badge(tag)}>{code}</span></span>;
+  }
   if (r.status === 'eliminated') return <span className={badge(BADGE.red)}>E</span>;
   if (r.status === 'withdrawn') return <span className={badge(BADGE.gray)}>W</span>;
   if (r.status === 'retired') return <span className={badge(BADGE.gray)}>R</span>;
@@ -18,11 +25,12 @@ function placeCell(r) {
 }
 
 export default function ClassResults({ groups }) {
-  const [open, setOpen] = useState(groups.length ? groups[0].class_id : null);
+  // All classes start closed; the Horse/Pony tabs default to Horses.
+  const [open, setOpen] = useState(null);
   const [cq, setCq] = useState('');
   const [cpage, setCpage] = useState(1);
   const [perPage, setPerPage] = useState(15);
-  const [htab, setHtab] = useState(null); // horse | pony (set once groups known)
+  const [htab, setHtab] = useState('horse'); // horse | pony
   const selectClass = (id) => { setOpen(id); setCq(''); setCpage(1); };
   const pickTab = (k) => {
     setHtab(k);
@@ -40,7 +48,11 @@ export default function ClassResults({ groups }) {
   const isPony = (g) => /pony/i.test(g.name || '');
   const nPony = groups.filter(isPony).length;
   const showTabs = nPony > 0 && nPony < groups.length;
-  const activeTab = !showTabs ? 'all' : (htab || (groups.length && isPony(groups.find((g) => g.class_id === open) || groups[0]) ? 'pony' : 'horse'));
+  const hasHorse = groups.length - nPony > 0;
+  // Default to Horses; fall back to whatever exists (pony-only / horse-only events).
+  const activeTab = !showTabs ? 'all'
+    : htab === 'pony' && nPony > 0 ? 'pony'
+    : hasHorse ? 'horse' : 'pony';
   const visible = activeTab === 'all' ? groups
     : activeTab === 'pony' ? groups.filter(isPony) : groups.filter((g) => !isPony(g));
   if (!groups.length) {
@@ -75,7 +87,7 @@ export default function ClassResults({ groups }) {
               <span className="text-muted text-xs w-4">{isOpen ? '▾' : '▸'}</span>
               {g.class_number && <span className="text-[11px] text-faint font-bold">#{g.class_number}</span>}
               <span className="font-bold text-[14px] text-white">{g.name}</span>
-              {g.height_cm && <span className="text-[11px] text-faint">{(Number(g.height_cm) / 100).toFixed(2)}m</span>}
+              {g.height_cm && <span className={badge(BADGE.goldfill)}>{(Number(g.height_cm) / 100).toFixed(2)}m</span>}
               {g.format && <span className={badge(g.format === 'Two-phase' ? BADGE.goldfill : BADGE.gray)}>{g.format}</span>}
               {g.class_type && g.class_type !== 'Standard' && (
                 <span className={badge(BADGE.blue)}>{g.class_type}</span>

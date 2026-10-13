@@ -327,11 +327,15 @@ function parseEvoEvents(text) {
         }
       }
       const rec = { ...names };
-      if (status) {
-        rec.status = status;
-      } else {
-        rec.placing = nums.length ? nums[0] : null;
+      // Placing is an official fact: a retired/withdrawn rider can still be
+      // classified (e.g. 2nd after retiring in the jump-off), so keep it
+      // alongside the status instead of nulling it.
+      if (status) rec.status = status;
+      if (nums.length) {
+        rec.placing = nums[0];
         if (rec.placing === 0) rec.placing = null;
+      }
+      if (!status) {
         rec.time = nums.length > 1 ? nums[1] : null;
         Object.assign(rec, parsePenalties(nums.slice(2, 5)));
         if (mode === 'double' && nums.length > 5) rec.format = 'Jump-off';
@@ -354,7 +358,11 @@ function parseEvoEvents(text) {
       const rest = fields.slice(1);
       const texts = rest.filter((f) => !isNumericTok(f));
       const nums = rest.filter((f) => /^[\d.]+$/.test(f)).map(Number);
-      handleRow(texts, nums);
+      // A status code (R/E/W/DQ) sitting in its own column isNumericTok but
+      // not numeric — without this it would be silently dropped and the row
+      // misread as finished.
+      const rowStatus = rest.map((f) => STATUS_WORD[String(f).toUpperCase()]).find(Boolean) || null;
+      handleRow(texts, nums, rowStatus);
       continue;
     }
     const flat = fields.length <= 1 ? parseFlatRow(line) : null;

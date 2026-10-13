@@ -197,7 +197,10 @@ def main():
             rec = {
                 "class_name": cname_full, "class_type": ctype,
                 "rider_name": rider, "horse_name": horse,
-                "placing": int(place) if place is not None and finished else None,
+                # Placing is an official fact: a retired rider can still be
+                # classified (e.g. 2nd after retiring in the jump-off).
+                # (place==0 means unplaced; DB CHECK requires placing > 0.)
+                "placing": int(place) if place is not None and place > 0 else None,
                 "faults": num(get(c_jpen)) if finished else None,
                 "time_faults": num(get(c_tpen)) if finished else None,
                 "time": num(get(c_time)) if finished else None,
@@ -212,7 +215,7 @@ def main():
                 rec["region"] = args.region
             if skey:
                 rec["series_key"] = skey
-            if finished and get(c_jotpen) not in (None, ""):
+            if get(c_jotpen) not in (None, ""):
                 rec["jumpoff_time"] = num(get(c_jot))
                 rec["jumpoff_faults"] = num(get(c_jotpen))
                 rec["notes"] = f"evo class {cno} final-round tail — placing kept as final"

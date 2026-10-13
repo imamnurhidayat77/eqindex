@@ -160,10 +160,13 @@ async function evoeventsRecords(eventId, { seriesMap = {}, dateStart = null, dat
       }
       const status = eliminated ? 'eliminated' : retired ? 'retired' : 'finished';
       const finished = status === 'finished';
+      // Placing is an official fact from the sheet: a retired/withdrawn rider
+      // can still be classified (e.g. 2nd after retiring in the jump-off),
+      // so keep it. Faults/times are only meaningful for finished rounds.
       const rec = {
         class_name: cnameFull, class_type: ctype,
         rider_name: rider, horse_name: horse,
-        placing: finished && place !== null ? Math.trunc(place) : null,
+        placing: place !== null ? Math.trunc(place) : null,
         faults: finished ? num(get(cJpen)) : null,
         time_faults: finished ? num(get(cTpen)) : null,
         time: finished ? num(get(cTime)) : null,
@@ -174,7 +177,7 @@ async function evoeventsRecords(eventId, { seriesMap = {}, dateStart = null, dat
       if (venue) rec.venue = venue;
       if (region) rec.region = region;
       if (skey) rec.series_key = skey;
-      if (finished && get(cJotpen) !== '') {
+      if (get(cJotpen) !== '') {
         rec.jumpoff_time = num(get(cJot));
         rec.jumpoff_faults = num(get(cJotpen));
       }

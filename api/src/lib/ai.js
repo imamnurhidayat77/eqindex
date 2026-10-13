@@ -204,7 +204,9 @@ const MAP_GUIDE = `Layout notes (EvoEvents PDFs especially):
   (backNo, horse, rider, placing, time, penalties...). A rider name split across two lines
   still belongs to the same row — join it.
 - Placing may be E/EL (eliminated), R/RET (retired), W/WD/NS (withdrawn), DQ: set status
-  accordingly (E/R/W/DQ) and placing null. Placing 0 also means unplaced (null).`;
+  accordingly (E/R/W/DQ). Keep the numeric placing too when the sheet shows one
+  (a retired rider can still be classified, e.g. 2nd after retiring in the
+  jump-off) — placing and status are independent. Placing 0 also means unplaced (null).`;
 
 function buildInput(chunk, i, n, chunks, hint) {
   const ctx = i > 0 ? `Previous chunk tail for class-title context:\n${chunks[i - 1].slice(-500)}\n\n` : '';
@@ -213,10 +215,10 @@ OUTPUT CONTRACT (must hold): your entire response is exactly one JSON array and 
 Each element uses these keys (omit unknowns):
 class_name (string, required), class_type (Grand Prix|Premier|Open|Standard|Young Horse|Amateur|Pony),
 class_date (YYYY-MM-DD), rider_name (required), horse_name (required),
-placing (integer 1..N, null when unplaced), faults (round-1 jump faults number, 0 when clear),
+placing (integer 1..N, null when unplaced — keep it even when status is E/R/W/DQ, e.g. retired-but-2nd), faults (round-1 jump faults number, 0 when clear),
 time (round-1 time seconds or null), time_faults (number, default 0), height_cm (integer or null),
 format (Jump-off when the class has a jump-off, else null),
-status: finished normally; E eliminated, R retired, W withdrawn (also when placing shows E/R/W/DQ/EL/RET/WD/NS),
+status: finished normally; E eliminated, R retired, W withdrawn (also when a status code E/R/W/DQ/EL/RET/WD/NS appears — record it alongside placing, never instead of it),
 notes (anything else, e.g. prize), series_key (only when the class name clearly names a series,
 e.g. Pro Am -> pro-am-series, Young Rider -> young-rider-series, Junior Rider -> junior-rider-series,
 Amateur -> amateur-rider-series, Grand Prix -> grand-prix-series, Young Horse/5YO/6YO/7YO -> young-horse-series;

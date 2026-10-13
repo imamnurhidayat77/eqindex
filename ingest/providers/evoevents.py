@@ -297,10 +297,19 @@ def main():
                 status = "retired"
             else:
                 status = "finished"
+            # Placing is an official fact: a retired rider can still be classified
+            # (e.g. 2nd after retiring in the jump-off). Keep it whenever it is
+            # a positive number, independent of status. (place==0/E/R → unplaced.)
+            try:
+                _p = int(place) if place is not None else None
+            except (TypeError, ValueError):
+                _p = None
+            if _p == 0:
+                _p = None
             rec = {
                 "class_name": c["name"], "class_date": cdate, "class_type": ctype,
                 "rider_name": rider, "horse_name": horse,
-                "placing": int(place) if place is not None and status == "finished" else None,
+                "placing": _p,
                 "faults": num_or_none(jpen) if status == "finished" else None,
                 "time_faults": num_or_none(tpen) if status == "finished" else None,
                 "time": num_or_none(time) if status == "finished" else None,

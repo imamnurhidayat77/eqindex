@@ -101,12 +101,15 @@ def main():
     for i, r in enumerate(rows, start=2):
         rank_raw = (r.get("Rank") or "").strip()
         r1_raw = (r.get("First Round Penalties Total") or "").strip()
-        status, placing = "finished", None
+        status = "finished"
         flag = rank_raw.upper() if rank_raw.upper() in ("EL", "RET", "NS") else (
             r1_raw.upper() if r1_raw.upper() in ("EL", "RET", "NS") else "")
         if flag:
             status = {"EL": "eliminated", "RET": "retired", "NS": "withdrawn"}[flag]
-        elif rank_raw:
+        # Placing is an official fact independent of status: a retired rider
+        # can still be classified, so parse the rank whenever it is numeric.
+        placing = None
+        if rank_raw:
             try:
                 placing = int(rank_raw)
             except ValueError:

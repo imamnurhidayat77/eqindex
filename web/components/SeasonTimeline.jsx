@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 // jump-off class.
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthKey = (ds) => {
+  if (!ds) return '';
   const d = new Date(ds);
   return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
@@ -24,10 +25,12 @@ const isPremier = (r) => r.event_tier === 'Premier' || r.event_tier === 'Grand P
 const isJumpOff = (r) => (r.class_format || '').toLowerCase() === 'jump-off';
 
 const dayOf = (ds) => {
+  if (!ds) return '';
   const d = new Date(ds);
   return Number.isNaN(d.getTime()) ? '' : d.getDate();
 };
 const monthOf = (ds) => {
+  if (!ds) return '';
   const d = new Date(ds);
   return Number.isNaN(d.getTime()) ? '' : MONTHS[d.getMonth()];
 };
@@ -162,9 +165,11 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
             <td className="px-2 py-2 text-muted sticky left-0 bg-card z-[1] whitespace-nowrap">Place</td>
             {rounds.map((r, i) => (
               <td key={r.id || i} className="px-2 py-2 text-center font-semibold min-w-[64px]">
-                {r.status !== 'finished'
-                  ? ({ eliminated: 'E', retired: 'R', withdrawn: 'W', disqualified: 'DQ' }[r.status] || '–')
-                  : (r.finish_place ?? '–')}
+                {r.status && r.status !== 'finished' && r.finish_place
+                  ? <>{r.finish_place} <span className="text-faint text-[11px]">{({ eliminated: 'E', retired: 'R', withdrawn: 'W', disqualified: 'DQ' })[r.status]}</span></>
+                  : r.status !== 'finished'
+                    ? ({ eliminated: 'E', retired: 'R', withdrawn: 'W', disqualified: 'DQ' }[r.status] || '–')
+                    : (r.finish_place ?? '–')}
               </td>
             ))}
           </tr>
