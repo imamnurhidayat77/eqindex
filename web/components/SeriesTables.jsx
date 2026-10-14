@@ -111,9 +111,10 @@ export function SeriesMatrixTable({ table, evLabels, hasDropped }) {
   );
 }
 
-// Standings aggregated per rider (all horses combined), rounds expand on
-// demand to show each horse's contribution.
-export function SeriesRiderTable({ riders }) {
+// Standings aggregated per rider (all horses combined). Expands on demand:
+// rider → per-horse totals → per-event scores, so every point is traceable
+// to the event (linked) and class where it was scored.
+export function SeriesRiderTable({ riders, eventIds = {} }) {
   const [open, setOpen] = useState(null);
   const [q, setQ] = useState('');
   const s = q.trim().toLowerCase();
@@ -152,13 +153,53 @@ export function SeriesRiderTable({ riders }) {
                 <tr key={`${r.rider}-horses`}>
                   <td />
                   <td colSpan={4} className="px-3 py-2.5">
-                    <div className="flex flex-wrap gap-1.5">
-                      {(r.horses || []).map((h) => (
-                        <span key={h.horse} title={`${h.horse}: ${h.total} pts`}
-                          className="inline-flex items-center gap-1.5 rounded border border-gold/40 px-2 py-1 text-[12px] tabular-nums text-white">
-                          {h.total}<span className="max-w-[220px] truncate font-normal opacity-70">{h.horse}</span>
-                        </span>
-                      ))}
+                    <div className="space-y-2.5">
+                      {(r.horses || []).map((h) => {
+                        const entries = Object.entries(h.scores || {}).sort((a, b) => b[1] - a[1]);
+                        const nDrop = Number(h.dropped) || 0;
+                        const droppedFrom = entries.length - nDrop;
+                        const scored = entries.map(([lbl, pts], i) => ({
+                          lbl, pts, dropped: nDrop > 0 && i >= droppedFrom,
+                        }));
+                        const names = Object.keys(eventIds || {});
+                        const groups = {};
+                        for (const s of scored) {
+                          const ev = names.find((n) => s.lbl === n || s.lbl.startsWith(`${n} — `)) || null;
+                          const key = ev || 'Other';
+                          (groups[key] ||= { event: ev, rows: [] }).rows.push({
+                            cls: ev ? s.lbl.slice(ev.length + 3) || s.lbl : s.lbl,
+                            pts: s.pts, dropped: s.dropped,
+                          });
+                        }
+                        return (
+                          <div key={h.horse} className="rounded-lg border border-line/70 bg-ink/40 p-2.5">
+                            <div className="flex items-baseline justify-between gap-2">
+                              <span className="text-[13px] font-bold">
+                                {h.h ? <Link href={`/horses/${h.h.horse_slug || h.h.id}`} className="text-gold hover:underline">{h.horse}</Link> : <span className="text-white">{h.horse}</span>}
+                              </span>
+                              <span className="text-[12.5px] tabular-nums"><b className="text-white">{h.total}</b> <span className="text-faint">pts · {entries.length} round{entries.length === 1 ? '' : 's'}</span></span>
+                            </div>
+                            {Object.values(groups).map((g) => (
+                              <div key={g.event || 'Other'} className="mt-1.5">
+                                <div className="mb-1 text-[12px] font-semibold">
+                                  {g.event && eventIds[g.event]
+                                    ? <Link href={`/events/${eventIds[g.event]}`} className="text-sky hover:underline">{g.event}</Link>
+                                    : <span className="text-muted">{g.event || 'Other'}</span>}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {g.rows.map(({ cls, pts, dropped }) => (
+                                    <span key={`${cls}-${pts}`} title={`${g.event ? `${g.event} — ` : ''}${cls}: ${pts} pts${dropped ? ' (dropped)' : ''}`}
+                                      className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[12px] tabular-nums ${dropped ? 'border-line text-faint line-through' : 'border-gold/40 text-white'}`}>
+                                      {pts}<span className="max-w-[220px] truncate font-normal opacity-70">{cls}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                            {!entries.length && <p className="mt-1 text-[12px] text-faint">No counting rounds.</p>}
+                          </div>
+                        );
+                      })}
                     </div>
                   </td>
                 </tr>

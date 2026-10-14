@@ -28,7 +28,8 @@ export default async function SeriesPage({ params }) {
   const name = info?.display_name || standings[0]?.series_name || key;
 
   // Series ranks riders, not combinations: merge every horse's points
-  // into the rider's total.
+  // into the rider's total. The per-round score maps ride along so the
+  // table can drill down to where each point was scored (event + class).
   const byRider = {};
   for (const r of standings || []) {
     const k = r.rider || 'Unknown rider';
@@ -41,12 +42,19 @@ export default async function SeriesPage({ params }) {
     g.horses.push({
       horse: r.horse,
       total: Number(r.total) || 0,
+      dropped: Number(r.dropped) || 0,
+      scores: r.events || {},
       h: r.horse_id ? { id: r.horse_id, horse_slug: r.horse_slug } : null,
     });
   }
   const table = Object.values(byRider)
     .map((g) => ({ ...g, horses: g.horses.sort((a, b) => b.total - a.total) }))
     .sort((a, b) => b.total - a.total);
+  // Event name → id for drill-down links (official series have no ids).
+  const eventIds = {};
+  for (const e of events || []) {
+    if (e?.event && e?.event_id) eventIds[e.event] = e.event_id;
+  }
 
   return (
     <div className="text-[14px] text-slate-100">
@@ -61,9 +69,9 @@ export default async function SeriesPage({ params }) {
       </div>
 
       <h2 className="text-[15px] font-bold">Standings</h2>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rider totals across all horses — click a row for the per-horse breakdown.</p>
+      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rider totals across all horses — click a row for the per-horse breakdown, then per event.</p>
       <section className="mb-6 rounded border border-line bg-card p-4">
-        <SeriesRiderTable riders={table} />
+        <SeriesRiderTable riders={table} eventIds={eventIds} />
         {!table.length && (
           <EmptyState
             icon="🏆"
