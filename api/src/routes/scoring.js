@@ -459,7 +459,7 @@ async function recomputeSeason(pool, season, params, version) {
   const cap = Number.isFinite(Number(P.classMax)) ? Number(P.classMax) : 20;
   const r = await pool.query(
     `UPDATE round_results rr SET
-       points = CASE WHEN rr.status <> 'finished' OR rr.finish_place IS NULL THEN 0 ELSE LEAST(
+       points = CASE WHEN rr.finish_place IS NULL THEN 0 ELSE LEAST(
          (CASE WHEN rr.clear_round THEN $2 ELSE 0 END) +
          (CASE WHEN rr.clear_round
            AND ((rr.jumpoff_faults IS NOT NULL AND rr.jumpoff_faults = 0)
