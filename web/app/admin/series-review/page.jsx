@@ -77,7 +77,8 @@ export default function AdminSeriesReview() {
     try {
       const d = await call('/admin/series/heights/apply', { method: 'POST', body: JSON.stringify({}) });
       const parts = Object.entries(d.bySeries || {}).map(([k, v]) => `${k}: ${v}`).join(', ');
-      setMsg(`Filled ${d.classes} classe(s)${parts ? ` (${parts})` : ''}.`);
+      const left = Object.entries(d.noRule || {}).map(([k, v]) => `${k} (${v})`).join(', ');
+      setMsg(`Filled ${d.classes} classe(s)${parts ? ` (${parts})` : ''}.${left ? ` Still no rule: ${left}.` : ''}`);
       load();
     } catch (e) { setMsg(e.message); }
     setBusy(false);
@@ -155,7 +156,7 @@ export default function AdminSeriesReview() {
         <>
           <section className={CARD}>
             <h2 className="text-[14px] font-bold mb-1">Per-series standard heights</h2>
-            <p className="text-[12.5px] text-muted mb-3">Applied to classes with no height ("as per series conditions"). Source should cite the official conditions or schedule.</p>
+            <p className="text-[12.5px] text-muted mb-3">Applied to classes with no height ("as per series conditions"). Rows below are manual overrides — without them, the official ESNZ bands apply automatically (Premier shows upper band, 5/6YO by calendar, 7YO by championship status, tertiary never).</p>
             <div className={TABLEWRAP}>
             <table className={TABLE}>
               <thead><tr><th className={TH}>Series</th><th className={`${TH} ${NUM}`}>Height (cm)</th><th className={TH}>Source</th><th className={TH}><span className="sr-only">Actions</span></th></tr></thead>

@@ -97,17 +97,62 @@ async function upsertHeightSpec({ series_key, default_height_cm, source }) {
   return rows[0];
 }
 
+// Official per-series height bands (ESNZ Jumping Series Conditions).
+// Premier Shows run the upper band; all other shows the lower one.
+// 5/6YO split by calendar (before Jan 1 vs from Jan 1); 7YO splits by
+// championship majors vs ordinary shows. Tertiary has no fixed height
+// (runs inside a host class) — always null here.
+// Returns cm or null when indeterminable. Upper bound convention,
+// matching the importer's range handling ("1.25-1.35m" → 135).
+const MAJOR_KINDS = ['national_championship', 'series_final', 'islands', 'hoy', 'national_young_horse'];
+
+function officialSpecHeight(seriesKey, { tier, classDate, eventKind } = {}) {
+  const premier = String(tier || '').toLowerCase() === 'premier';
+  const major = MAJOR_KINDS.includes(String(eventKind || '').toLowerCase());
+  let d = null;
+  if (classDate) { const t = new Date(classDate); if (!Number.isNaN(t.getTime())) d = t; }
+  switch (String(seriesKey || '')) {
+    case 'young-rider-series': return premier ? 140 : 135;
+    case 'junior-rider-series': return premier ? 130 : 125;
+    case 'pro-am-series': return 130;
+    case 'amateur-rider-series': return 120;
+    case 'grand-prix-series': return 150;
+    case 'premier-league-series': return 160;
+    case 'pony-grand-prix-series': return premier ? 135 : 130;
+    case 'tertiary-series': return null;
+    case 'five-yo-series': return d ? (d.getMonth() >= 7 ? 110 : 115) : null;
+    case 'six-yo-series': return d ? (d.getMonth() >= 7 ? 120 : 125) : null;
+    case 'seven-yo-series': return major ? 135 : 130;
+    default: return null;
+  }
+}
+
 async function applyHeightSpecs() {
-  // Fill null heights from their series spec. Returns per-series counts.
-  // Points recalc is automatic via the class trigger on UPDATE.
+  // Explicit admin overrides first, official bands for the rest (see
+  // officialSpecHeight). Only NULL heights are filled, never overwritten.
+  // Height feeds Model B views live; series points are unaffected.
+  const specs = await listHeightSpecs();
+  const over = Object.fromEntries(specs.map((s) => [s.series_key, s.default_height_cm]));
   const { rows } = await pool.query(
-    `UPDATE classes c SET height_cm = s.default_height_cm
-     FROM series_height_specs s
-     WHERE c.series_key = s.series_key AND c.height_cm IS NULL
-     RETURNING c.series_key`);
+    `SELECT c.id, c.series_key, COALESCE(c.class_date, e.date_start) AS class_date, e.tier, e.event_kind
+     FROM classes c JOIN events e ON e.id = c.event_id
+     WHERE c.height_cm IS NULL AND c.series_key IS NOT NULL`);
   const bySeries = {};
-  for (const r of rows) bySeries[r.series_key] = (bySeries[r.series_key] || 0) + 1;
-  return { classes: rows.length, bySeries };
+  let filled = 0;
+  const noRule = {};
+  for (const c of rows) {
+    const h = over[c.series_key] ?? officialSpecHeight(c.series_key, {
+      tier: c.tier, classDate: c.class_date, eventKind: c.event_kind,
+    });
+    if (!Number.isInteger(h)) {
+      noRule[c.series_key] = (noRule[c.series_key] || 0) + 1;
+      continue;
+    }
+    await pool.query('UPDATE classes SET height_cm = $2 WHERE id = $1', [c.id, h]);
+    filled++;
+    bySeries[c.series_key] = (bySeries[c.series_key] || 0) + 1;
+  }
+  return { classes: filled, bySeries, noRule };
 }
 
 // ---- official board parsing (ESNZ resultClass pages or pasted text) ----
