@@ -8,6 +8,17 @@ import { EmptyState, TableEmpty } from './EmptyState';
 
 const fmt1 = (v) => (v === null || v === undefined ? '–' : Number(v).toFixed(1));
 
+// Series badge replaces the generic type badge wherever a series exists:
+// "Open" tells nothing, "Young Rider" tells everything.
+const SERIES_SHORT = {
+  'pro-am-series': 'Pro Am', 'five-yo-series': '5YO', 'six-yo-series': '6YO',
+  'seven-yo-series': '7YO', 'pony-grand-prix-series': 'Pony GP',
+  'amateur-rider-series': 'Amateur',
+};
+const seriesLabel = (key) => SERIES_SHORT[key]
+  || String(key || '').replace(/-series$/, '').split('-')
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(' ');
+
 function placeCell(r) {
   // A classified-but-not-finished round (e.g. retired in the jump-off but
   // officially 2nd) shows its placing plainly; the status lives in the
@@ -88,9 +99,11 @@ export default function ClassResults({ groups }) {
               <span className="font-bold text-[14px] text-white">{g.name}</span>
               {g.height_cm && <span className={badge(BADGE.goldfill)}>{(Number(g.height_cm) / 100).toFixed(2)}m</span>}
               {g.format && <span className={badge(g.format === 'Two-phase' ? BADGE.goldfill : BADGE.gray)}>{g.format}</span>}
-              {g.class_type && g.class_type !== 'Standard' && (
-                <span className={badge(BADGE.blue)}>{g.class_type}</span>
-              )}
+              {g.series_key
+                ? <span className={badge(BADGE.gold)} title={`Series: ${g.series_key}`}>{seriesLabel(g.series_key)}</span>
+                : g.class_type && g.class_type !== 'Standard' && (
+                  <span className={badge(BADGE.blue)}>{g.class_type}</span>
+                )}
               {(g.surface || g.arena_type) && (
                 <span className="text-[11px] text-muted">{[g.arena_type, g.surface].filter(Boolean).join(' · ')}</span>
               )}
