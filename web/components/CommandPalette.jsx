@@ -20,6 +20,8 @@ const COMMANDS = [
   ['Rider Claims', '/admin/claims', '✔', 'Approve ownership'],
   ['Corrections', '/admin/corrections', '✉', 'Triage public reports'],
   ['Users', '/admin/users', '●', 'Roles & sessions'],
+  ['Transactions', '/admin/sales', '◈', 'Sales & settlement report'],
+  ['Pricing', '/admin/pricing', '◆', 'License tiers & packages'],
   ['Audit Log', '/admin/activity', '☰', 'Every change'],
   ['Data Tools', '/admin/data', '▣', 'Backup & wipe'],
   ['Settings', '/admin/settings', '⚙', 'Workspace'],

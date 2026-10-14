@@ -33,6 +33,11 @@ const GROUPS = [
     ['✔', 'Rider claims', 'Ownership claims awaiting approval', '/admin/claims', 'pendingClaims'],
     ['✉', 'Corrections inbox', 'Public reports awaiting triage', '/admin/corrections', false],
   ]],
+  ['Commerce', [
+    ['◈', 'Transactions', 'Sales, revenue report & settlement', '/admin/sales', false],
+    ['◆', 'Pricing', 'License tiers & photo packages', '/admin/pricing', false],
+    ['◍', 'Media library', 'Photos, reels & publishing', '/admin/media', false],
+  ]],
   ['System', [
     ['●', 'Users', 'Roles and session control', '/admin/users', 'users'],
     ['▣', 'Data tools', 'Backup export & danger-zone wipe', '/admin/data', false],

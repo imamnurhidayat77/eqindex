@@ -646,27 +646,116 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows });
   }));
 
-  // Admin: sales CSV export (plan §9 settlement).
+  // ---- Admin sales: transactions list, summary + filtered CSV export ----
+  // One shared filter set (best practice: the export and the KPIs always
+  // honor exactly what the table shows):
+  //   status=paid|pending|refunded · tier=<license id> · kind=photo|package
+  //   q=<buyer email / horse / rider / event / package title>
+  //   event_id=<uuid> · since=YYYY-MM-DD · until=YYYY-MM-DD (inclusive)
+  const SALES_JOIN = `
+    FROM purchases pu
+    LEFT JOIN media m ON m.id = pu.media_id
+    LEFT JOIN events e ON e.id = m.event_id
+    LEFT JOIN horses h ON h.id = m.horse_id
+    LEFT JOIN riders r ON r.id = m.rider_id
+    LEFT JOIN packages pk ON pk.id = pu.package_id
+    LEFT JOIN photographers ph ON ph.id = COALESCE(m.photographer_id, pk.photographer_id)`;
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  function salesWhere(query, params) {
+    const conds = [];
+    if (query.status && ['pending', 'paid', 'refunded'].includes(String(query.status))) {
+      params.push(String(query.status));
+      conds.push(`pu.status = $${params.length}`);
+    }
+    if (query.tier) {
+      // Packages check out with license_tier NULL — the 'bundle' pseudo-tier
+      // selects them so the filter actually matches.
+      if (String(query.tier) === 'bundle') conds.push('pu.package_id IS NOT NULL');
+      else {
+        params.push(String(query.tier).slice(0, 32));
+        conds.push(`pu.license_tier = $${params.length}`);
+      }
+    }
+    if (query.kind === 'photo') conds.push('pu.media_id IS NOT NULL');
+    else if (query.kind === 'package') conds.push('pu.package_id IS NOT NULL');
+    if (query.event_id) {
+      if (!UUID_RE.test(String(query.event_id))) {
+        const e = new Error('bad event_id');
+        e.status = 400;
+        throw e;
+      }
+      params.push(String(query.event_id), String(query.event_id));
+      conds.push(`(m.event_id = $${params.length - 1} OR pk.event_id = $${params.length})`);
+    }
+    if (query.q && String(query.q).trim()) {
+      const like = `%${String(query.q).trim().slice(0, 80)}%`;
+      params.push(like, like, like, like, like);
+      const n = params.length;
+      conds.push(`(pu.buyer_email ILIKE $${n - 4} OR h.name ILIKE $${n - 3} OR r.name ILIKE $${n - 2} OR e.name ILIKE $${n - 1} OR pk.title ILIKE $${n})`);
+    }
+    if (query.since) {
+      if (!DATE_RE.test(String(query.since))) {
+        const e = new Error('since must be YYYY-MM-DD');
+        e.status = 400;
+        throw e;
+      }
+      params.push(String(query.since));
+      conds.push(`pu.created_at >= $${params.length}::date`);
+    }
+    if (query.until) {
+      if (!DATE_RE.test(String(query.until))) {
+        const e = new Error('until must be YYYY-MM-DD');
+        e.status = 400;
+        throw e;
+      }
+      params.push(String(query.until));
+      conds.push(`pu.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+    }
+    return conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  }
+
+  // Admin: sales CSV export (plan §9 settlement). Honors the same filters
+  // as the table; adds photographer + platform-fee/payout columns so the
+  // file doubles as the monthly settlement + GST record.
   app.get('/admin/sales.csv', needRole('ADMIN'), asyncH(async (req, res) => {
+    const params = [];
+    const where = salesWhere(req.query, params);
     const { rows } = await pool.query(
-      `SELECT pu.created_at, pu.buyer_email, pu.license_tier, pu.amount_cents, pu.currency, pu.status,
-          e.name AS event_name, h.name AS horse, r.name AS rider, pk.title AS package_title
-        FROM purchases pu LEFT JOIN media m ON m.id = pu.media_id
-        LEFT JOIN events e ON e.id = m.event_id
-        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
-        LEFT JOIN packages pk ON pk.id = pu.package_id
-        ORDER BY pu.created_at DESC LIMIT 5000`
+      `SELECT pu.id, pu.created_at, pu.buyer_email, pu.license_tier, pu.amount_cents,
+          pu.currency, pu.status, pu.stripe_session_id,
+          CASE WHEN pu.media_id IS NOT NULL THEN 'photo' ELSE 'package' END AS kind,
+          e.name AS event_name, h.name AS horse, r.name AS rider, pk.title AS package_title,
+          ph.name AS photographer, ph.commission_rate
+        ${SALES_JOIN} ${where}
+        ORDER BY pu.created_at DESC LIMIT 5000`,
+      params
     );
     const q = (v) => {
       let s = String(v ?? '');
       if (/^[=+\-@\t]/.test(s)) s = `'${s}`;
       return `"${s.replace(/"/g, '""')}"`;
     };
-    audit(req, 'sales.export', 'purchase', null, {});
-    const csv = ['created_at,buyer_email,license_tier,amount_cents,currency,status,event,horse,rider,package',
-      ...rows.map((r) => [r.created_at, r.buyer_email, r.license_tier, r.amount_cents, r.currency, r.status, r.event_name, r.horse, r.rider, r.package_title].map(q).join(','))].join('\n');
+    const feeOf = (r) => {
+      if (r.status !== 'paid') return 0;
+      const rate = Number(r.commission_rate ?? 0) || 0;
+      return Math.round(Number(r.amount_cents || 0) * rate);
+    };
+    audit(req, 'sales.export', 'purchase', null, { filters: req.query, rows: rows.length });
+    const day = new Date().toISOString().slice(0, 10);
+    const csv = ['purchase_id,created_at,buyer_email,item_type,item,event,horse,rider,license_tier,amount_cents,currency,status,photographer,platform_fee_cents,payout_cents,stripe_session_id',
+      ...rows.map((r) => {
+        const item = r.kind === 'photo'
+          ? [r.horse, r.rider].filter(Boolean).join(' × ') || r.event_name || 'Photo'
+          : r.package_title || 'Package';
+        const fee = feeOf(r);
+        const payout = r.status === 'paid' ? Number(r.amount_cents || 0) - fee : 0;
+        return [r.id, r.created_at, r.buyer_email, r.kind, item, r.event_name, r.horse,
+          r.rider, r.license_tier || (r.kind === 'package' ? 'bundle' : ''),
+          r.amount_cents, r.currency, r.status, r.photographer, fee, payout,
+          r.stripe_session_id].map(q).join(',');
+      })].join('\n');
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="eqindex-sales.csv"');
+    res.setHeader('Content-Disposition', `attachment; filename="eqindex-sales-${day}.csv"`);
     res.send(csv);
   }));
 
@@ -684,23 +773,103 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows[0] });
   }));
 
-  // Admin sales table.
+  // Admin sales table: filterable + paginated. `totals` is filter-aware
+  // (sales = matching rows incl. pending/refunded; gross = paid only).
   app.get('/admin/sales', needRole('ADMIN'), asyncH(async (req, res) => {
-    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+    const params = [];
+    const where = salesWhere(req.query, params);
+    const pageParams = [...params, limit, offset];
     const { rows } = await pool.query(
-      `SELECT pu.*, e.name AS event_name, h.name AS horse, r.name AS rider, pk.title AS package_title
-        FROM purchases pu LEFT JOIN media m ON m.id = pu.media_id
-        LEFT JOIN events e ON e.id = m.event_id
-        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
-        LEFT JOIN packages pk ON pk.id = pu.package_id
-        ORDER BY pu.created_at DESC LIMIT $1`,
-      [limit]
+      `SELECT pu.id, pu.created_at, pu.buyer_email, pu.buyer_user_id, pu.media_id, pu.package_id,
+          pu.license_tier, pu.amount_cents, pu.currency, pu.status, pu.stripe_session_id,
+          pu.stripe_payment_intent,
+          e.name AS event_name, h.name AS horse, r.name AS rider, pk.title AS package_title,
+          ph.name AS photographer,
+          CASE WHEN pu.media_id IS NOT NULL THEN 'photo' ELSE 'package' END AS kind
+        ${SALES_JOIN} ${where}
+        ORDER BY pu.created_at DESC LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
+      pageParams
     );
-    const totals = await pool.query(
-      `SELECT COUNT(*)::INT AS sales, COALESCE(SUM(amount_cents), 0)::INT AS gross_cents
-        FROM purchases WHERE status = 'paid'`
-    );
-    res.json({ data: rows, totals: totals.rows[0] });
+    const [total, totals] = await Promise.all([
+      pool.query(`SELECT COUNT(*)::INT AS n ${SALES_JOIN} ${where}`, params),
+      pool.query(
+        `SELECT COUNT(*)::INT AS sales,
+            COALESCE(SUM(CASE WHEN pu.status = 'paid' THEN pu.amount_cents ELSE 0 END), 0)::INT AS gross_cents
+          ${SALES_JOIN} ${where}`,
+        params
+      ),
+    ]);
+    res.json({
+      data: rows,
+      totals: totals.rows[0],
+      pagination: { total: total.rows[0].n, limit, offset },
+    });
+  }));
+
+  // Admin sales summary: filter-aware KPIs + revenue-by-tier + daily trend +
+  // photographer settlement (plan §9: payout = gross − platform fee).
+  app.get('/admin/sales/summary', needRole('ADMIN'), asyncH(async (req, res) => {
+    const params = [];
+    const where = salesWhere(req.query, params);
+    const [kpis, tiers, days, settle] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*) FILTER (WHERE pu.status = 'paid')::INT AS paid,
+            COUNT(*) FILTER (WHERE pu.status = 'pending')::INT AS pending,
+            COUNT(*) FILTER (WHERE pu.status = 'refunded')::INT AS refunded,
+            COALESCE(SUM(pu.amount_cents) FILTER (WHERE pu.status = 'paid'), 0)::INT AS gross_cents,
+            COALESCE(SUM(pu.amount_cents) FILTER (WHERE pu.status = 'pending'), 0)::INT AS pending_cents
+          ${SALES_JOIN} ${where}`,
+        params
+      ),
+      pool.query(
+        `SELECT COALESCE(pu.license_tier, 'bundle') AS tier,
+            COUNT(*)::INT AS sales, COALESCE(SUM(pu.amount_cents), 0)::INT AS gross_cents
+          ${SALES_JOIN} ${where ? `${where} AND` : 'WHERE'} pu.status = 'paid'
+          GROUP BY 1 ORDER BY gross_cents DESC`,
+        params
+      ),
+      pool.query(
+        `SELECT to_char(pu.created_at, 'YYYY-MM-DD') AS day,
+            COUNT(*)::INT AS sales, COALESCE(SUM(pu.amount_cents), 0)::INT AS gross_cents
+          ${SALES_JOIN} ${where ? `${where} AND` : 'WHERE'} pu.status = 'paid'
+          GROUP BY 1 ORDER BY 1 DESC LIMIT 31`,
+        params
+      ),
+      pool.query(
+        `SELECT ph.id AS photographer_id, ph.name AS photographer, ph.commission_rate,
+            COUNT(*)::INT AS sales, COALESCE(SUM(pu.amount_cents), 0)::INT AS gross_cents
+          ${SALES_JOIN} ${where ? `${where} AND` : 'WHERE'} pu.status = 'paid'
+          GROUP BY ph.id, ph.name, ph.commission_rate ORDER BY gross_cents DESC`,
+        params
+      ),
+    ]);
+    const k = kpis.rows[0];
+    const settlement = settle.rows.map((s) => {
+      const rate = Number(s.commission_rate ?? 0) || 0;
+      const fee = Math.round(Number(s.gross_cents || 0) * rate);
+      return {
+        photographer_id: s.photographer_id,
+        photographer: s.photographer || '—',
+        commission_rate: rate,
+        sales: s.sales,
+        gross_cents: s.gross_cents,
+        fee_cents: fee,
+        payout_cents: Number(s.gross_cents || 0) - fee,
+      };
+    });
+    res.json({
+      data: {
+        kpis: {
+          ...k,
+          avg_cents: k.paid > 0 ? Math.round(Number(k.gross_cents) / Number(k.paid)) : 0,
+        },
+        by_tier: tiers.rows,
+        by_day: days.rows.reverse(),
+        settlement,
+      },
+    });
   }));
 
   // ---- Packages: auto-create per event × horse/rider (plan §3.4) ----
