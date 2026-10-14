@@ -35,6 +35,9 @@ function createApp() {
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
     console.error('[api]', err.message);
+    // Deliberate client errors carry .status (message is safe by convention);
+    // everything else stays a generic 500 so internals never leak.
+    if (err.status) return res.status(err.status).json({ error: err.message });
     res.status(500).json({ error: 'internal error' });
   });
   return app;

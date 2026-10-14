@@ -10,7 +10,7 @@ const mediaStore = require('../lib/mediaStore');
 
 const stripe = () => {
   if (!process.env.STRIPE_SECRET_KEY) {
-    const err = new Error('stripe unconfigured (STRIPE_SECRET_KEY)');
+    const err = new Error('checkout unavailable — payments not configured yet');
     err.status = 503;
     throw err;
   }
@@ -250,6 +250,26 @@ module.exports = function mountMediaRoutes(app) {
       params
     );
     withUrls(rows);
+    res.json({ data: rows });
+  }));
+
+  // NOTE: static sub-paths must be registered BEFORE '/photos/:id',
+  // otherwise Express matches ":id" first ("packages" is not a UUID).
+  // Public: packages for a photo's event × subject (upsell block).
+  app.get('/photos/packages', asyncH(async (req, res) => {
+    const { event_id, horse_id, rider_id } = req.query;
+    if (!event_id || (!horse_id && !rider_id)) {
+      return res.status(400).json({ error: 'need {event_id} + {horse_id|rider_id}' });
+    }
+    const conds = [`pk.status = 'published'`, 'pk.event_id = $1'];
+    const params = [event_id];
+    if (horse_id) { params.push(horse_id); conds.push(`pk.horse_id = $${params.length}`); }
+    else { params.push(rider_id); conds.push(`pk.rider_id = $${params.length}`); }
+    const { rows } = await pool.query(
+      `SELECT pk.*, (SELECT COUNT(*)::INT FROM package_items WHERE package_id = pk.id) AS items
+        FROM packages pk WHERE ${conds.join(' AND ')} ORDER BY pk.price_cents LIMIT 10`,
+      params
+    );
     res.json({ data: rows });
   }));
 
@@ -803,24 +823,6 @@ module.exports = function mountMediaRoutes(app) {
     if (!rows.length) return res.status(404).json({ error: 'package not found' });
     audit(req, 'package.delete', 'package', req.params.id, {});
     res.json({ ok: true });
-  }));
-
-  // Public: packages for a photo's event × subject (upsell block).
-  app.get('/photos/packages', asyncH(async (req, res) => {
-    const { event_id, horse_id, rider_id } = req.query;
-    if (!event_id || (!horse_id && !rider_id)) {
-      return res.status(400).json({ error: 'need {event_id} + {horse_id|rider_id}' });
-    }
-    const conds = [`pk.status = 'published'`, 'pk.event_id = $1'];
-    const params = [event_id];
-    if (horse_id) { params.push(horse_id); conds.push(`pk.horse_id = $${params.length}`); }
-    else { params.push(rider_id); conds.push(`pk.rider_id = $${params.length}`); }
-    const { rows } = await pool.query(
-      `SELECT pk.*, (SELECT COUNT(*)::INT FROM package_items WHERE package_id = pk.id) AS items
-        FROM packages pk WHERE ${conds.join(' AND ')} ORDER BY pk.price_cents LIMIT 10`,
-      params
-    );
-    res.json({ data: rows });
   }));
 
   // ---- Delete: DB row is source of truth; R2 keys removed best-effort.
