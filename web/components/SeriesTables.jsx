@@ -122,14 +122,13 @@ function placingBadge(place) {
 }
 
 function HorseScoreCard({ h, rider, seriesKey }) {
-  const [open, setOpen] = useState(false);
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState('');
   const nDrop = Number(h.dropped) || 0;
   const horseName = h.horse || 'Horse';
 
   useEffect(() => {
-    if (!open || rows !== null) return;
+    if (rows !== null) return;
     const p = new URLSearchParams();
     if (h.h?.id && rider?.id) { p.set('rider_id', rider.id); p.set('horse_id', h.h.id); }
     else { p.set('rider', rider?.name || ''); p.set('horse', horseName); }
@@ -141,7 +140,7 @@ function HorseScoreCard({ h, rider, seriesKey }) {
       })
       .catch(() => { setErr('Could not load rounds.'); setRows([]); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open ]);
+  }, []);
 
   // Dropped = lowest N by pts (mirrors the standings calc); display grouped
   // by event, best scores first.
@@ -161,19 +160,13 @@ function HorseScoreCard({ h, rider, seriesKey }) {
         <span className="text-faint text-[12px]">
           {(rows?.length ?? Object.keys(h.scores || {}).length)} class{(rows?.length ?? 0) === 1 ? '' : 'es'} · <span className="text-white font-semibold">{h.total} pts</span>
         </span>
-        <span className="flex-1" />
-        <button onClick={() => setOpen((o) => !o)} aria-expanded={open}
-          className="text-[12px] text-muted hover:text-white bg-none border border-line rounded px-2.5 py-1 cursor-pointer">
-          {open ? 'Hide classes ▲' : `Show classes ▼`}
-        </button>
       </div>
-      {open && (
-        <div className="mt-2 border-t border-rowline pt-2 overflow-x-auto">
-          {err ? (
-            <p className="text-[12px] text-blood py-1">{err}</p>
-          ) : rows === null ? (
-            <p className="text-[12px] text-faint py-1">Loading…</p>
-          ) : flagged.length ? (
+      <div className="mt-2 border-t border-rowline pt-2 overflow-x-auto">
+        {err ? (
+          <p className="text-[12px] text-blood py-1">{err}</p>
+        ) : rows === null ? (
+          <p className="text-[12px] text-faint py-1">Loading…</p>
+        ) : flagged.length ? (
             <table className="w-full border-collapse text-[12.5px] min-w-[600px]">
               <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
                 <th className="border-b border-line px-2 py-1.5 font-semibold">Class</th>
@@ -205,7 +198,6 @@ function HorseScoreCard({ h, rider, seriesKey }) {
             <p className="text-[12px] text-faint py-1">No counting classes.</p>
           )}
         </div>
-      )}
     </div>
   );
 }
