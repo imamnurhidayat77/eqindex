@@ -4,6 +4,7 @@ import { getJSON } from '../../../lib/api';
 import { CARD, H1, SUB } from '../../../lib/tokens';
 import BuyBox from '../../../components/BuyBox';
 import PackageUpsell from '../../../components/PackageUpsell';
+import PhotoViewer from '../../../components/PhotoViewer';
 import ProtectedImage from '../../../components/ProtectedImage';
 import ShareCard from '../../../components/ShareCard';
 
@@ -53,16 +54,14 @@ export default async function PhotoDetail({ params }) {
       <p className={SUB}>{d.event_name || ''}{d.class_name ? ` · ${d.class_name}` : ''}</p>
 
       <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr] items-start">
-        <section className={CARD}>
-          <div className="rounded-lg overflow-hidden bg-ink flex items-center justify-center min-h-[280px] border border-line">
-            {d.preview_url
-              ? <ProtectedImage src={d.preview_url} alt={title} className="w-full h-auto" />
-              : <span className="text-4xl py-16">{d.kind === 'reel' ? '🎬' : '📷'}</span>}
+        <section className="bg-card border border-line rounded overflow-hidden lg:mb-0">
+          <PhotoViewer src={d.preview_url} alt={title} width={d.width} height={d.height} />
+          <div className="px-5 py-4">
+            <p className="text-[11px] text-faint">Watermarked preview — full resolution unlocks after purchase.</p>
+            <ShareCard title={title} text={`${d.event_name || ''}${d.class_name ? ` · ${d.class_name}` : ''}`} />
           </div>
-          <p className="text-[11px] text-faint mt-2">Watermarked preview — full resolution unlocks after purchase.</p>
-          <ShareCard title={title} text={`${d.event_name || ''}${d.class_name ? ` · ${d.class_name}` : ''}`} />
         </section>
-        <div className="lg:sticky lg:top-[76px]">
+        <div className="lg:sticky lg:top-[76px] lg:row-span-2">
           <section className={CARD} style={{ marginBottom: 0 }}>
             <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-2">Details</div>
             <dl className="text-[13px] space-y-2">
@@ -85,35 +84,35 @@ export default async function PhotoDetail({ params }) {
             <PackageUpsell eventId={d.event_id} horseId={d.horse_id} riderId={d.rider_id} horse={d.horse} rider={d.rider} />
           </section>
         </div>
+        {!!related.length && (
+          <div className="min-w-0">
+            <div className="mt-2 lg:mt-0 mb-2.5 flex items-center gap-2.5">
+              <h2 className="text-[15px] font-bold">Related photos</h2>
+              <span className="rounded-full border border-line px-2 py-px text-[11px] font-bold text-muted">{related.length}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 xl:grid-cols-3">
+              {related.map((x) => {
+                const price = nzd(x.price_cents);
+                const caption = [x.horse, x.rider].filter(Boolean).join(' × ') || 'Photo';
+                return (
+                  <Link key={x.id} href={`/photos/${x.id}`}
+                    className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
+                    <div className="aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
+                      {x.thumb_url
+                        ? <ProtectedImage src={x.thumb_url} alt={caption} loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.04] transition duration-300" />
+                        : <span className="text-2xl">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
+                    </div>
+                    <div className="flex items-center justify-between gap-2 p-2">
+                      <span className="text-[12px] font-bold text-white truncate group-hover:text-gold transition">{caption}</span>
+                      {price && <span className="shrink-0 text-[11.5px] font-bold text-gold tabular-nums">from {price}</span>}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
-      {!!related.length && (
-        <>
-          <div className="mt-6 mb-2.5 flex items-center gap-2.5">
-            <h2 className="text-[15px] font-bold">Related photos</h2>
-            <span className="rounded-full border border-line px-2 py-px text-[11px] font-bold text-muted">{related.length}</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
-            {related.map((x) => {
-              const price = nzd(x.price_cents);
-              const caption = [x.horse, x.rider].filter(Boolean).join(' × ') || 'Photo';
-              return (
-                <Link key={x.id} href={`/photos/${x.id}`}
-                  className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
-                  <div className="aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
-                    {x.thumb_url
-                      ? <ProtectedImage src={x.thumb_url} alt={caption} loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.04] transition duration-300" />
-                      : <span className="text-2xl">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
-                  </div>
-                  <div className="flex items-center justify-between gap-2 p-2">
-                    <span className="text-[12px] font-bold text-white truncate group-hover:text-gold transition">{caption}</span>
-                    {price && <span className="shrink-0 text-[11.5px] font-bold text-gold tabular-nums">from {price}</span>}
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </>
-      )}
     </>
   );
 }
