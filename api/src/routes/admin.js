@@ -378,6 +378,31 @@ module.exports = function mountAdminRoutes(app) {
     return { reply, analysis: null };
   }
 
+  // Fallback height from the class name when no height column/field came
+  // through ("Pony Points Prize 1.10 Championship" → 110). Unit-based
+  // first (upper bound of ranges), then bare "1.10" style — never Article
+  // numbers (238.2.2), years, or money. JS-import-only (the Python mirror
+  // has its own parser); returns cm or null.
+  function parseClassHeight(name) {
+    const s = String(name || '');
+    let m = s.match(/(\d+(?:\.\d+)?)\s*[-/]\s*(\d+(?:\.\d+)?)\s*(cm|m)\b/i);
+    if (m) {
+      const v = Number(m[2]) * (m[3].toLowerCase() === 'm' ? 100 : 1);
+      if (v >= 50 && v <= 200) return Math.round(v);
+    }
+    m = s.match(/(\d+(?:\.\d+)?)\s*(cm|m)\b/i);
+    if (m) {
+      const v = Number(m[1]) * (m[2].toLowerCase() === 'm' ? 100 : 1);
+      if (v >= 50 && v <= 200) return Math.round(v);
+    }
+    m = s.match(/(?<![\d.])(\d)\.(\d{2})(?!\.\d)/);
+    if (m) {
+      const v = Number(`${m[1]}.${m[2]}`) * 100;
+      if (v >= 50 && v <= 200) return Math.round(v);
+    }
+    return null;
+  }
+
   // ---- Admin CSV import (spec §8A): paste/upload → validate → preview → commit.
   // Body: { event_id?, event?: {name,date_start,date_end,venue,region,arena_type},
   //         csv, filename?, source?, dry_run? }
@@ -612,8 +637,16 @@ module.exports = function mountAdminRoutes(app) {
       }
 
       const out = [];
-      let okCount = 0, enriched = 0, seriesTagged = 0;
+      let okCount = 0, enriched = 0, seriesTagged = 0, seriesMemory = 0, heightInferred = 0;
       const seriesVerify = new Map(); // class name -> rows, series-like but no key match
+      const heightMissing = new Set(); // new class names still without height
+      // Remembered series mappings (per admin) fill gaps the name rules miss.
+      const memMaps = await loadSeriesMap(req.authUser?.id).catch(() => []);
+      const memHit = (cls) => {
+        const name = String(cls || '').toLowerCase();
+        const hit = memMaps.find((m) => name.includes(m.pattern));
+        return hit ? hit.series_key : null;
+      };
       const evFills = {};
       for (let li = 1; li < grid.length; li++) {
         const r = grid[li];
@@ -746,9 +779,11 @@ module.exports = function mountAdminRoutes(app) {
         } else {
           enriched += await fillNull('riders', rId, rEn);
         }
-        const seriesKey = g(ci.series) || suggestSeriesKey(cls);
+        const memKey = !g(ci.series) ? memHit(cls) : null;
+        const seriesKey = g(ci.series) || memKey || suggestSeriesKey(cls);
         const seriesSuggested = !g(ci.series) && !!seriesKey;
         if (seriesSuggested) seriesTagged++;
+        if (memKey) seriesMemory++;
         if (!seriesKey && cls && seriesLike(cls)) seriesVerify.set(cls, (seriesVerify.get(cls) || 0) + 1);
         const ck = `${rEvId}|${cls}|${cdate || ''}`;
         let cRow = classCache.get(ck);
@@ -763,9 +798,12 @@ module.exports = function mountAdminRoutes(app) {
           continue;
         }
         if (!cRow) {
+          const classHcm = hcm ?? parseClassHeight(cls);
+          if ((hcm === null || hcm === undefined) && classHcm === null) heightMissing.add(cls);
+          if ((hcm === null || hcm === undefined) && classHcm !== null) heightInferred++;
           cRow = (await client.query(
             'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, format, series_key, arena_name, arena_type, surface, start_time, is_world_cup, field_size, source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,\'MANUAL\') RETURNING id',
-            [rEvId, cls, cdate || null, hcm, ctype, fmt, seriesKey, cArenaName, cArenaType, cSurface, cStart, worldCup === true, fsize])).rows[0];
+            [rEvId, cls, cdate || null, classHcm, ctype, fmt, seriesKey, cArenaName, cArenaType, cSurface, cStart, worldCup === true, fsize])).rows[0];
           classCache.set(ck, cRow);
         } else {
           if (seriesKey && !cRow.series_key) {
@@ -861,14 +899,31 @@ module.exports = function mountAdminRoutes(app) {
         }
       }
       const evList = Object.entries(perEvent).map(([id, v]) => ({ id, ...v }));
+      // Series gate (anti-Sophia): series-like classes without a key block
+      // the commit unless explicitly acknowledged or previously judged
+      // non-series. Judged names live in series_verdicts (exact match).
+      const { loadVerdicts, normClass } = require('../lib/seriesVerify');
+      const verdicts = await loadVerdicts();
+      const blocking = [...seriesVerify.entries()]
+        .filter(([name]) => !verdicts.has(normClass(name)))
+        .map(([name, rows]) => ({ name, rows }));
       const summary = {
         total: grid.length - 1, ok: okCount, failed: out.filter((x) => !x.ok).length,
-        enriched, events: evList, series_tagged: seriesTagged,
+        enriched, events: evList, series_tagged: seriesTagged, series_memory: seriesMemory,
         series_verify: [...seriesVerify.entries()].map(([name, rows]) => ({ name, rows })),
+        series_blocking: blocking,
+        height_inferred: heightInferred, height_missing: [...heightMissing],
       };
       if (dry_run) {
         await client.query('ROLLBACK');
         return res.json({ data: { dry_run: true, rows: out, summary } });
+      }
+      if (blocking.length && !req.body.series_ack) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: `${blocking.length} classe(s) look like series classes but have no series tag — tag them or confirm they are not series`,
+          verify: blocking,
+        });
       }
       for (const ev of evList) {
         await client.query(
@@ -887,6 +942,66 @@ module.exports = function mountAdminRoutes(app) {
     } finally {
       client.release();
     }
+  }));
+
+  // ---- Series Review (verify workflow): untagged classes, verdicts,
+  // height specs, official-board diff. Nothing here scores — tagging and
+  // height fills recalc automatically via class triggers.
+  app.get('/admin/series/untagged', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { listUntaggedClasses, loadVerdicts } = require('../lib/seriesVerify');
+    const rows = await listUntaggedClasses({ limit: Math.min(parseInt(req.query.limit, 10) || 200, 500) });
+    const verdicts = await loadVerdicts();
+    res.json({ data: rows, verdicts: verdicts.size });
+  }));
+
+  app.post('/admin/series/verdicts', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { tagClasses, recordVerdicts, normClass } = require('../lib/seriesVerify');
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    const toTag = items.filter((it) => it.series_key && it.series_key !== 'non_series');
+    const toJudge = items.filter((it) => it.series_key === 'non_series').map((it) => it.name || it.class_name);
+    const { tagged } = await tagClasses(toTag.map((it) => ({
+      class_id: it.class_id || null, name: it.name || it.class_name, series_key: it.series_key,
+    })));
+    const judged = await recordVerdicts(toJudge, req.authUser?.id, req.body?.note || null);
+    for (const it of toTag) audit(req, 'series.tag', 'class', it.class_id || it.name, { series_key: it.series_key });
+    if (toJudge.length) audit(req, 'series.judge', 'series', 'non_series', { names: toJudge });
+    bustCache('/events');
+    res.json({ data: { tagged, judged } });
+  }));
+
+  app.get('/admin/series/heights', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { listHeightSpecs } = require('../lib/seriesVerify');
+    res.json({ data: await listHeightSpecs() });
+  }));
+
+  app.post('/admin/series/heights', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { upsertHeightSpec } = require('../lib/seriesVerify');
+    const row = await upsertHeightSpec(req.body || {});
+    audit(req, 'series.height', 'series', row.series_key, { cm: row.default_height_cm });
+    res.status(201).json({ data: row });
+  }));
+
+  app.delete('/admin/series/heights/:key', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows } = await pool.query('DELETE FROM series_height_specs WHERE series_key = $1 RETURNING series_key', [req.params.key]);
+    if (!rows.length) return res.status(404).json({ error: 'spec not found' });
+    audit(req, 'series.height.delete', 'series', req.params.key, {});
+    res.json({ ok: true });
+  }));
+
+  app.post('/admin/series/heights/apply', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { applyHeightSpecs } = require('../lib/seriesVerify');
+    const out = await applyHeightSpecs();
+    audit(req, 'series.height.apply', 'series', 'all', out.bySeries);
+    bustCache('/events');
+    res.json({ data: out });
+  }));
+
+  app.post('/admin/series/check', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { fetchOfficialBoard, parseOfficialText, diffSeriesBoard } = require('../lib/seriesVerify');
+    const { series_key, official_url, official_text } = req.body || {};
+    if (!series_key) return res.status(400).json({ error: 'need {series_key} + {official_url} or {official_text}' });
+    const official = official_url ? await fetchOfficialBoard(official_url) : parseOfficialText(official_text);
+    res.json({ data: { ...(await diffSeriesBoard(series_key, official)), officialEvents: official.events || [] } });
   }));
 
   app.get('/admin/overview', needRole('ADMIN'), asyncH(async (req, res) => {

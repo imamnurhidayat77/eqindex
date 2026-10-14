@@ -8,7 +8,8 @@ import DataTable from '../../../components/DataTable';
 import EntityPicker from '../../../components/EntityPicker';
 
 // Media Library — every photo/reel as admin datatable rows.
-// Upload lives on /admin/media/upload. Tag via bulk bar or per-row Edit.
+// Upload + tagging + publish live on /admin/media/upload (wizard).
+// Here: filter, per-row Edit, per-row Delete.
 export default function AdminMediaLibrary() {
   const call = useAdminApi();
   const [rows, setRows] = useState([]);
@@ -21,15 +22,6 @@ export default function AdminMediaLibrary() {
   const [fHorse, setFHorse] = useState(null);
   const [fRider, setFRider] = useState(null);
   const [fUntagged, setFUntagged] = useState(false);
-  // selection + bulk
-  const [selected, setSelected] = useState([]);
-  const [bulkHorse, setBulkHorse] = useState(null);
-  const [bulkRider, setBulkRider] = useState(null);
-  const [bulkClass, setBulkClass] = useState('');
-  const [bulkPrice, setBulkPrice] = useState('');
-  const [bulkMoment, setBulkMoment] = useState('');
-  const [bulkStatus, setBulkStatus] = useState('');
-  const [applying, setApplying] = useState(false);
   // candidate classes for the filtered event
   const [classes, setClasses] = useState([]);
   // edit modal
@@ -55,7 +47,6 @@ export default function AdminMediaLibrary() {
       if (fRider) p.set('rider_id', fRider.id);
       if (fUntagged) p.set('untagged', '1');
       setRows(await call(`/admin/media?limit=200&${p}`) || []);
-      setSelected([]);
     } catch (e) { setMsg(e.message); }
     setLoading(false);
   }
@@ -72,51 +63,13 @@ export default function AdminMediaLibrary() {
   }, [fStatus, fEvent, fHorse, fRider, fUntagged]);
 
   useEffect(() => {
-    if (!fEvent) { setClasses([]); setBulkClass(''); return; }
+    if (!fEvent) { setClasses([]); return; }
     fetch(`${API}/admin/media/suggest-tags`, {
       method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ event_id: fEvent }),
     }).then((r) => r.json()).then((j) => setClasses(j.data || [])).catch(() => setClasses([]));
-    setBulkClass('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fEvent]);
-
-  const toggle = (id) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  const toggleAll = (ids) => setSelected((s) => (s.length === ids.length ? [] : ids));
-
-  async function applyTags() {
-    if (!selected.length) { setMsg('Tick at least one photo first.'); return; }
-    const body = {};
-    if (bulkHorse) body.horse_id = bulkHorse.id;
-    if (bulkRider) body.rider_id = bulkRider.id;
-    if (bulkClass) body.class_id = bulkClass;
-    if (bulkPrice !== '') body.price_cents = bulkPrice;
-    if (bulkMoment) body.moment = bulkMoment;
-    if (bulkStatus) body.status = bulkStatus;
-    if (!Object.keys(body).length) { setMsg('Pick a horse, rider, class, price, moment or status first.'); return; }
-    setApplying(true); setMsg('');
-    let ok = 0, fail = 0, firstErr = '';
-    for (const id of selected) {
-      try { await call(`/admin/media/${id}`, { method: 'PATCH', body: JSON.stringify(body) }); ok += 1; }
-      catch (e) { fail += 1; if (!firstErr) firstErr = e.message; }
-    }
-    setMsg(`Applied to ${ok}/${selected.length}${fail ? ` (${fail} failed${firstErr ? `: ${firstErr}` : ''})` : ''}.`);
-    setBulkHorse(null); setBulkRider(null); setBulkClass(''); setBulkPrice(''); setBulkMoment(''); setBulkStatus('');
-    load();
-    setApplying(false);
-  }
-
-  async function removeSelected() {
-    if (!selected.length) return;
-    if (!window.confirm(`Delete ${selected.length} photos permanently (files too)?`)) return;
-    let ok = 0, fail = 0;
-    for (const id of selected) {
-      try { await call(`/admin/media/${id}`, { method: 'DELETE' }); ok += 1; }
-      catch { fail += 1; }
-    }
-    setMsg(`Deleted ${ok}/${selected.length}${fail ? ` (${fail} blocked — paid purchases, archive instead)` : ''}.`);
-    load();
-  }
 
   async function removeOne(id) {
     if (!window.confirm('Delete this photo permanently (files too)?')) return;
@@ -158,13 +111,6 @@ export default function AdminMediaLibrary() {
     setSaving(false);
   }
 
-  function useCandidate(cls, pair) {
-    setBulkHorse({ id: pair.horse_id, name: pair.horse });
-    setBulkRider({ id: pair.rider_id, name: pair.rider });
-    setBulkClass(cls.class_id);
-    setMsg(`Picked ${pair.horse} × ${pair.rider} (${cls.name}) — tick photos, then Apply.`);
-  }
-
   const nzd = (c) => (c === null || c === undefined ? '—' : `$${(Number(c) / 100).toFixed(2)}`);
 
   return (
@@ -173,7 +119,7 @@ export default function AdminMediaLibrary() {
         <h1 className={H1}>Media Library</h1>
         <Link href="/admin/media/upload" className={`${BTN_PRIMARY} no-underline ml-auto`}>+ Upload photos</Link>
       </div>
-      <p className={SUB}>Every photo & reel, filterable by event / horse / rider. Tick rows to tag in bulk, or Edit one by one.{totals ? ` · ${totals.sales} paid · $${(totals.gross_cents / 100).toFixed(2)} gross` : ''}</p>
+      <p className={SUB}>Every photo & reel, filterable by event / horse / rider. New uploads are tagged on the upload page — here you Edit or Delete one by one.{totals ? ` · ${totals.sales} paid · $${(totals.gross_cents / 100).toFixed(2)} gross` : ''}</p>
       {msg && <section className={CARD}><p className="text-sm text-gold">{msg}</p></section>}
 
       {/* filters */}
@@ -201,76 +147,6 @@ export default function AdminMediaLibrary() {
         </div>
       </section>
 
-      {/* bulk bar */}
-      <section className={CARD}>
-        <h2 className="text-[15px] font-bold mb-1">Tag selected {selected.length ? `(${selected.length})` : ''}</h2>
-        <p className="text-[13px] text-muted mb-3">Tick rows below, pick horse & rider by name, then Apply. Or click a start-list candidate to fill this in.</p>
-        <div className="grid gap-2.5 md:grid-cols-3">
-          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Horse
-            <EntityPicker kind="horse" value={bulkHorse} onPick={setBulkHorse} placeholder="Type horse name…" /></label>
-          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Rider
-            <EntityPicker kind="rider" value={bulkRider} onPick={setBulkRider} placeholder="Type rider name…" /></label>
-          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Class
-            <select value={bulkClass} onChange={(e) => setBulkClass(e.target.value)} className={INP} disabled={!fEvent}>
-              <option value="">{fEvent ? 'Keep / no class' : 'Filter an event first'}</option>
-              {classes.map((c) => <option key={c.class_id} value={c.class_id}>{c.name} ({c.rounds} rounds)</option>)}
-            </select></label>
-          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Price (cents)
-            <input value={bulkPrice} onChange={(e) => setBulkPrice(e.target.value)} placeholder="e.g. 3500" inputMode="numeric" className={INP} /></label>
-          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Moment
-            <select value={bulkMoment} onChange={(e) => setBulkMoment(e.target.value)} className={INP}>
-              <option value="">Keep</option>
-              <option value="win">win</option>
-              <option value="clear">clear</option>
-              <option value="debut">debut</option>
-              <option value="pb">pb</option>
-            </select></label>
-          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Status
-            <select value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)} className={INP}>
-              <option value="">Keep</option>
-              <option value="draft">draft</option>
-              <option value="published">published</option>
-              <option value="archived">archived</option>
-            </select></label>
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5 mt-3">
-          <button onClick={applyTags} disabled={applying || !selected.length} className={BTN_PRIMARY}>
-            {applying ? 'Applying…' : `Apply to selected (${selected.length})`}
-          </button>
-          {!!selected.length && (
-            <>
-              <button onClick={() => setSelected([])} className="text-faint text-[13px] hover:text-white bg-none border-0 cursor-pointer">Clear</button>
-              <button onClick={removeSelected} className="text-blood text-[13px] hover:underline bg-none border-0 cursor-pointer ml-auto">
-                Delete selected ({selected.length})
-              </button>
-            </>
-          )}
-        </div>
-        {!!classes.length && (
-          <details className="mt-3">
-            <summary className="text-[13px] text-sky cursor-pointer hover:underline">Start-list candidates for this event ({classes.length} classes)</summary>
-            <div className="space-y-2 mt-2 max-h-[240px] overflow-y-auto pr-1">
-              {classes.slice(0, 12).map((c) => (
-                <div key={c.class_id} className="rounded border border-line bg-card2 p-2.5 text-[13px]">
-                  <b>{c.name}</b>
-                  <div className="flex flex-wrap gap-1.5 mt-1.5">
-                    {(c.candidates || []).slice(0, 8).map((p) => (
-                      <button key={`${p.horse_id}-${p.rider_id}`} onClick={() => useCandidate(c, p)}
-                        className={`rounded-full border px-2.5 py-1 text-[12px] cursor-pointer transition
-                          ${bulkHorse?.id === p.horse_id && bulkRider?.id === p.rider_id
-                            ? 'border-gold bg-goldbg text-gold font-bold' : 'border-line text-muted hover:text-white hover:border-gold/50'}`}>
-                        {p.horse} × {p.rider}
-                      </button>
-                    ))}
-                    {!(c.candidates || []).length && <span className="text-faint text-[12px]">No candidates yet — results not imported.</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </details>
-        )}
-      </section>
-
       {/* datatable */}
       <section className={CARD}>
         <DataTable
@@ -280,14 +156,10 @@ export default function AdminMediaLibrary() {
           initialPerPage={15}
           loading={loading}
           emptyText="No photos match these filters."
-          tableMinWidth="860px"
-          colSpan={8}
+          tableMinWidth="820px"
+          colSpan={7}
           thead={
             <tr className="text-left text-[11px] uppercase tracking-wide text-muted">
-              <th className="border-b border-line px-2 py-2.5 font-semibold w-8">
-                <input type="checkbox" checked={rows.length > 0 && selected.length === rows.length}
-                  onChange={() => toggleAll(rows.map((r) => r.id))} title="Select all on this filter" />
-              </th>
               <th className="border-b border-line px-2 py-2.5 font-semibold">Photo</th>
               <th className="border-b border-line px-2 py-2.5 font-semibold">Event</th>
               <th className="border-b border-line px-2 py-2.5 font-semibold">Horse × Rider</th>
@@ -298,8 +170,7 @@ export default function AdminMediaLibrary() {
             </tr>
           }
           renderRow={(r) => (
-            <tr key={r.id} className={`border-b border-rowline last:border-0 hover:bg-white/[0.02] ${selected.includes(r.id) ? 'bg-goldbg/20' : ''}`}>
-              <td className="px-2 py-2"><input type="checkbox" checked={selected.includes(r.id)} onChange={() => toggle(r.id)} /></td>
+            <tr key={r.id} className="border-b border-rowline last:border-0 hover:bg-white/[0.02]">
               <td className="px-2 py-2">
                 {r.thumb_url
                   ? <img src={r.thumb_url} alt="" loading="lazy" className="h-11 w-auto rounded border border-line" />
@@ -375,43 +246,4 @@ export default function AdminMediaLibrary() {
       )}
     </>
   );
-
-  function openEdit(r) {
-    setEditing(r);
-    setEHorse(r.horse_id ? { id: r.horse_id, name: r.horse } : null);
-    setERider(r.rider_id ? { id: r.rider_id, name: r.rider } : null);
-    setEClass(r.class_id || '');
-    setEPrice(r.price_cents ?? '');
-    setEMoment(r.moment || '');
-    setEStatus(r.status || 'draft');
-    setEEvent(r.event_id || '');
-  }
-
-  async function saveEdit() {
-    setSaving(true);
-    try {
-      await call(`/admin/media/${editing.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          horse_id: eHorse ? eHorse.id : null,
-          rider_id: eRider ? eRider.id : null,
-          class_id: eClass || null,
-          price_cents: ePrice === '' ? null : ePrice,
-          moment: eMoment || null,
-          status: eStatus,
-          event_id: eEvent || null,
-        }),
-      });
-      setMsg(`Saved — ${eHorse?.name || '?'} × ${eRider?.name || '?'}.`);
-      setEditing(null);
-      load();
-    } catch (e) { setMsg(e.message); }
-    setSaving(false);
-  }
-
-  async function removeOne(id) {
-    if (!window.confirm('Delete this photo permanently (files too)?')) return;
-    try { await call(`/admin/media/${id}`, { method: 'DELETE' }); setMsg('Deleted.'); load(); }
-    catch (e) { setMsg(e.message); }
-  }
 }

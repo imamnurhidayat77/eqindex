@@ -43,6 +43,7 @@ const FLAT_GROUPS = [
     ['/admin/review', '◐', 'Naming Review', 'review'],
     ['/admin/claims', '✔', 'Rider Claims', 'claims'],
     ['/admin/corrections', '✉', 'Corrections', 'corrections'],
+    ['/admin/series-review', '◈', 'Series Review'],
   ]},
   { title: 'System', items: [
     ['/admin/users', '●', 'Users'],

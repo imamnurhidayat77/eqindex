@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
@@ -44,6 +45,7 @@ export default function AdminImport() {
   const [assistUrl, setAssistUrl] = useState('');
   const [assist, setAssist] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [gate, setGate] = useState(null); // 409 series gate: {verify:[{name,rows}]}
   const [history, setHistory] = useState([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -54,7 +56,12 @@ export default function AdminImport() {
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
+    if (!res.ok) {
+      const err = new Error(j.error || `Failed (${res.status})`);
+      err.status = res.status;
+      err.data = j;
+      throw err;
+    }
     return j.data;
   }
   async function loadHistory() {
@@ -108,8 +115,8 @@ export default function AdminImport() {
     setCsv(JSON.stringify(assist.records, null, 1));
     setPreview(null);
   }
-  async function run(dry) {
-    setErr('');
+  async function run(dry, extra) {
+    setErr(''); setGate(null);
     const isNew = eventId === '__new__';
     // No target needed when every row carries its own event_name + date_start —
     // the server rejects clearly otherwise.
@@ -117,7 +124,7 @@ export default function AdminImport() {
     if (!csv.trim()) { setErr('Paste data or choose a file first.'); return; }
     setBusy(true);
     try {
-      let body = { dry_run: dry };
+      let body = { dry_run: dry, ...(extra || {}) };
       if (isNew) {
         body.event = {
           name: evNew.name.trim(), date_start: evNew.date_start,
@@ -140,7 +147,12 @@ export default function AdminImport() {
         setCsv(''); loadHistory(); loadEvents();
         if (body.event) { setEventId(''); setEvNew({ name: '', date_start: '', date_end: '', venue: '', region: '', arena_type: '' }); }
       }
-    } catch (e) { setErr(e.message); }
+    } catch (e) {
+      // Series gate (409): untagged series-like classes block the commit
+      // until tagged in Series Review or explicitly acknowledged here.
+      if (!dry && e.status === 409 && e.data?.verify?.length) setGate(e.data);
+      else setErr(e.message);
+    }
     setBusy(false);
   }
 
@@ -221,6 +233,20 @@ export default function AdminImport() {
           <button className={BTN_PRIMARY} disabled={busy} onClick={() => run(true)}>{busy ? 'Working…' : 'Validate & preview →'}</button>
           <button className={BTN_DANGER} disabled={busy || !preview || preview.dry_run === false} onClick={() => run(false)}>Commit import</button>
         </div>
+        {!!gate?.verify?.length && (
+          <div className="mt-3 rounded border border-blood/60 bg-redbg/20 p-3">
+            <p className="text-[13px] font-bold text-blood mb-1">Commit blocked — {gate.verify.length} classe(s) look like series classes but have no series tag (they would score 0).</p>
+            <ul className="text-[12.5px] text-muted space-y-0.5 mb-2.5">
+              {gate.verify.slice(0, 8).map((v) => <li key={v.name}>“{String(v.name).slice(0, 70)}” ({v.rows} row(s))</li>)}
+            </ul>
+            <div className="flex flex-wrap gap-2">
+              <button className={BTN_DANGER} disabled={busy} onClick={() => run(false, { series_ack: true })}>
+                {busy ? 'Working…' : 'Commit anyway (they score 0)'}
+              </button>
+              <Link href="/admin/series-review" className="text-sky text-[13px] self-center no-underline hover:underline">Tag them in Series Review first →</Link>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className={CARD}>
@@ -250,7 +276,13 @@ export default function AdminImport() {
             )}
           </h2>
           {!!preview.summary.series_tagged && (
-            <p className="mb-1 text-[12px] text-gold font-semibold">Auto-tagged {preview.summary.series_tagged} row(s) to a series from the class name — check the Series column before committing.</p>
+            <p className="mb-1 text-[12px] text-gold font-semibold">Auto-tagged {preview.summary.series_tagged} row(s) to a series from the class name{!!preview.summary.series_memory && ` (${preview.summary.series_memory} from your remembered mappings)`} — check the Series column before committing.</p>
+          )}
+          {!!(preview.summary.height_inferred || preview.summary.height_missing?.length) && (
+            <p className="mb-1 text-[12px] text-gold font-semibold">
+              {!!preview.summary.height_inferred && `Heights read from ${preview.summary.height_inferred} class name(s). `}
+              {!!preview.summary.height_missing?.length && `No height found for: ${preview.summary.height_missing.slice(0, 4).map((n) => `“${String(n).slice(0, 50)}”`).join(', ')}${preview.summary.height_missing.length > 4 ? ` (+${preview.summary.height_missing.length - 4} more)` : ''} — those rounds skip Model B standings.`}
+            </p>
           )}
           {(preview.summary.series_verify || []).slice(0, 5).map((v) => (
             <p key={v.name} className="mb-1 text-[12px] text-blood font-semibold">Verify series link: “{v.name.slice(0, 70)}” ({v.rows} row(s)) — set a series_key or confirm non-series (scores 0 without one).</p>
