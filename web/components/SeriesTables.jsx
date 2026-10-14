@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { API } from '../lib/api';
 import DataTable from './DataTable';
 import { NUM, TD, TH } from '../lib/tokens';
 import { statusBadge } from '../lib/tokens';
@@ -112,65 +113,100 @@ export function SeriesMatrixTable({ table, evLabels, hasDropped }) {
 }
 
 // One horse's series scores as a watchlist-style card: summary line with
-// an explicit show/hide button, expanding to one table row per class.
-function HorseScoreCard({ h, eventMeta = {} }) {
+// an explicit show/hide button, expanding to a rounds table — one row per
+// class: date, class, event, height, horse, series pts, placing.
+function placingBadge(place) {
+  const p = Number(place);
+  if (p) return <span className="font-semibold text-gold">{p === 1 ? '1st' : p === 2 ? '2nd' : p === 3 ? '3rd' : `${p}th`}</span>;
+  return <span className="text-faint">—</span>;
+}
+
+function HorseScoreCard({ h, rider, seriesKey }) {
   const [open, setOpen] = useState(false);
-  const entries = Object.entries(h.scores || {}).sort((a, b) => b[1] - a[1]);
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState('');
   const nDrop = Number(h.dropped) || 0;
-  const droppedFrom = entries.length - nDrop;
-  const names = Object.keys(eventMeta || {});
-  const split = (lbl) => {
-    const ev = names.find((n) => lbl === n || lbl.startsWith(`${n} — `)) || null;
-    return { event: ev, cls: ev ? lbl.slice(ev.length + 3) || lbl : lbl };
-  };
+  const horseName = h.horse || 'Horse';
+
+  useEffect(() => {
+    if (!open || rows !== null) return;
+    const p = new URLSearchParams();
+    if (h.h?.id && rider?.id) { p.set('rider_id', rider.id); p.set('horse_id', h.h.id); }
+    else { p.set('rider', rider?.name || ''); p.set('horse', horseName); }
+    fetch(`${API}/series/${encodeURIComponent(seriesKey)}/rounds?${p}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (!Array.isArray(j?.data?.rows)) throw new Error('Bad response');
+        setRows(j.data.rows);
+      })
+      .catch(() => { setErr('Could not load rounds.'); setRows([]); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open ]);
+
+  // Dropped = lowest N by pts (mirrors the standings calc); display stays
+  // chronological like the watchlist.
+  const flagged = (rows || [])
+    .map((r) => ({ ...r }))
+    .sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0))
+    .map((r, i, arr) => ({ ...r, dropped: nDrop > 0 && i >= arr.length - nDrop }))
+    .sort((a, b) => String(a.date || '') < String(b.date || '') ? -1 : 1);
+
   return (
     <div className="rounded bg-card2 border border-rowline px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-moss">Horse</span>
         {h.h
-          ? <Link href={`/horses/${h.h.horse_slug || h.h.id}`} className="text-white font-semibold text-[13.5px] no-underline hover:text-gold">{h.horse}</Link>
-          : <span className="text-white font-semibold text-[13.5px]">{h.horse}</span>}
+          ? <Link href={`/horses/${h.h.horse_slug || h.h.id}`} className="text-white font-semibold text-[13.5px] no-underline hover:text-gold">{horseName}</Link>
+          : <span className="text-white font-semibold text-[13.5px]">{horseName}</span>}
         <span className="text-faint text-[12px]">
-          {entries.length} class{entries.length === 1 ? '' : 'es'} · <span className="text-white font-semibold">{h.total} pts</span>
+          {(rows?.length ?? Object.keys(h.scores || {}).length)} class{(rows?.length ?? 0) === 1 ? '' : 'es'} · <span className="text-white font-semibold">{h.total} pts</span>
         </span>
         <span className="flex-1" />
         <button onClick={() => setOpen((o) => !o)} aria-expanded={open}
           className="text-[12px] text-muted hover:text-white bg-none border border-line rounded px-2.5 py-1 cursor-pointer">
-          {open ? 'Hide classes ▲' : `Show classes (${entries.length}) ▼`}
+          {open ? 'Hide classes ▲' : `Show classes ▼`}
         </button>
       </div>
       {open && (
-        entries.length ? (
-          <div className="mt-2 border-t border-rowline pt-2 overflow-x-auto">
-            <table className="w-full border-collapse text-[12.5px] min-w-[420px]">
+        <div className="mt-2 border-t border-rowline pt-2 overflow-x-auto">
+          {err ? (
+            <p className="text-[12px] text-blood py-1">{err}</p>
+          ) : rows === null ? (
+            <p className="text-[12px] text-faint py-1">Loading…</p>
+          ) : flagged.length ? (
+            <table className="w-full border-collapse text-[12.5px] min-w-[720px]">
               <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
-                <th className="border-b border-line px-2 py-1.5 font-semibold">Event</th>
+                <th className="border-b border-line px-2 py-1.5 font-semibold">Date</th>
                 <th className="border-b border-line px-2 py-1.5 font-semibold">Class</th>
+                <th className="border-b border-line px-2 py-1.5 font-semibold">Event</th>
+                <th className="border-b border-line px-2 py-1.5 font-semibold">Height</th>
+                <th className="border-b border-line px-2 py-1.5 font-semibold">Horse</th>
                 <th className="border-b border-line px-2 py-1.5 font-semibold text-right">Pts</th>
+                <th className="border-b border-line px-2 py-1.5 font-semibold text-right">Placing</th>
               </tr></thead>
               <tbody>
-                {entries.map(([lbl, pts], i) => {
-                  const { event, cls } = split(lbl);
-                  const id = event ? eventMeta[event]?.id : null;
-                  const dropped = nDrop > 0 && i >= droppedFrom;
-                  return (
-                    <tr key={`${lbl}-${pts}`} title={dropped ? 'Dropped from total' : undefined}
-                      className={`border-b border-line/50 last:border-0 hover:bg-white/[0.02] ${dropped ? 'opacity-55' : ''}`}>
-                      <td className="px-2 py-1.5 text-slate-200">
-                        {id
-                          ? <Link href={`/events/${id}`} className="text-sky hover:underline">{event}</Link>
-                          : (event || <span className="text-faint">Other</span>)}
-                      </td>
-                      <td className={`px-2 py-1.5 ${dropped ? 'text-faint line-through' : 'text-slate-200'}`}>{cls}</td>
-                      <td className={`px-2 py-1.5 text-right font-bold tabular-nums ${dropped ? 'text-faint line-through' : 'text-gold'}`}>{pts}</td>
-                    </tr>
-                  );
-                })}
+                {flagged.map((r, i) => (
+                  <tr key={i} title={r.dropped ? 'Dropped from total' : undefined}
+                    className={`border-b border-line/50 last:border-0 hover:bg-white/[0.02] ${r.dropped ? 'opacity-55' : ''}`}>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-muted">{r.date ? String(r.date).slice(0, 10) : '–'}</td>
+                    <td className={`px-2 py-1.5 ${r.dropped ? 'text-faint line-through' : 'text-slate-200'}`}>{r.class || '—'}</td>
+                    <td className="px-2 py-1.5 text-slate-200">
+                      {r.event_id
+                        ? <Link href={`/events/${r.event_id}`} className="text-sky hover:underline">{r.event}</Link>
+                        : (r.event || <span className="text-faint">—</span>)}
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-muted">{r.height_cm ? `${(Number(r.height_cm) / 100).toFixed(2)}m` : '—'}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 text-white">{horseName}</td>
+                    <td className={`px-2 py-1.5 text-right font-bold tabular-nums ${r.dropped ? 'text-faint line-through' : 'text-gold'}`}>{r.pts ?? '–'}</td>
+                    <td className="px-2 py-1.5 text-right">{placingBadge(r.place)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-          </div>
-        ) : (
-          <p className="mt-2 border-t border-rowline pt-2 text-[12px] text-faint">No counting classes.</p>
-        )
+          ) : (
+            <p className="text-[12px] text-faint py-1">No counting classes.</p>
+          )}
+        </div>
       )}
     </div>
   );
@@ -179,7 +215,7 @@ function HorseScoreCard({ h, eventMeta = {} }) {
 // Standings aggregated per rider (all horses combined). Expands on demand:
 // rider → per-horse cards → per-class table rows, mirroring the watchlist
 // pattern (one row per class, explicit show/hide buttons).
-export function SeriesRiderTable({ riders, eventMeta = {} }) {
+export function SeriesRiderTable({ riders, seriesKey }) {
   const [open, setOpen] = useState(null);
   const [q, setQ] = useState('');
   const s = q.trim().toLowerCase();
@@ -225,7 +261,7 @@ export function SeriesRiderTable({ riders, eventMeta = {} }) {
                   <td colSpan={4} className="px-3 py-2.5">
                     <div className="space-y-1.5">
                       {(r.horses || []).map((h) => (
-                        <HorseScoreCard key={h.horse} h={h} eventMeta={eventMeta} />
+                        <HorseScoreCard key={h.horse} h={h} rider={{ id: r.rd?.id, name: r.rider }} seriesKey={seriesKey} />
                       ))}
                     </div>
                   </td>
