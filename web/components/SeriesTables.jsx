@@ -121,17 +121,18 @@ function placingBadge(place) {
   return <span className="text-faint">—</span>;
 }
 
-function HorseScoreCard({ h, rider, seriesKey }) {
+// All of one rider's scoring classes as a single flat table (one row per
+// class), fetched once when the rider expands. Dropped scores are flagged
+// per horse, mirroring the standings calc.
+function RiderRoundsTable({ rider, horses, seriesKey }) {
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState('');
-  const nDrop = Number(h.dropped) || 0;
-  const horseName = h.horse || 'Horse';
 
   useEffect(() => {
     if (rows !== null) return;
     const p = new URLSearchParams();
-    if (h.h?.id && rider?.id) { p.set('rider_id', rider.id); p.set('horse_id', h.h.id); }
-    else { p.set('rider', rider?.name || ''); p.set('horse', horseName); }
+    if (rider?.id) p.set('rider_id', rider.id);
+    else p.set('rider', rider?.name || '');
     fetch(`${API}/series/${encodeURIComponent(seriesKey)}/rounds?${p}`)
       .then((r) => r.json())
       .then((j) => {
@@ -142,62 +143,56 @@ function HorseScoreCard({ h, rider, seriesKey }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Dropped = lowest N by pts (mirrors the standings calc); display grouped
-  // by event, best scores first.
-  const flagged = (rows || [])
-    .map((r) => ({ ...r }))
-    .sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0))
-    .map((r, i, arr) => ({ ...r, dropped: nDrop > 0 && i >= arr.length - nDrop }))
-    .sort((a, b) => String(a.event || '') < String(b.event || '') ? -1 : 1);
+  const dropByHorse = {};
+  for (const h of horses || []) {
+    const id = h.h?.id || h.horse;
+    dropByHorse[id] = Number(h.dropped) || 0;
+  }
+  const byHorse = {};
+  for (const r of rows || []) {
+    const id = r.horse_id || r.horse;
+    (byHorse[id] ||= []).push(r);
+  }
+  const flagged = [];
+  for (const list of Object.values(byHorse)) {
+    const ranked = [...list].sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0));
+    const nDrop = dropByHorse[list[0].horse_id || list[0].horse] || 0;
+    ranked.forEach((r, i) => flagged.push({ ...r, dropped: nDrop > 0 && i >= ranked.length - nDrop }));
+  }
+  flagged.sort((a, b) => String(a.event || '') < String(b.event || '') ? -1 : 1);
 
+  if (err) return <p className="text-[12px] text-blood py-1">{err}</p>;
+  if (rows === null) return <p className="text-[12px] text-faint py-1">Loading…</p>;
+  if (!flagged.length) return <p className="text-[12px] text-faint py-1">No counting classes.</p>;
   return (
-    <div className="rounded bg-card2 border border-rowline px-3 py-2.5">
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-        <span className="text-[10px] font-bold uppercase tracking-wide text-moss">Horse</span>
-        {h.h
-          ? <Link href={`/horses/${h.h.horse_slug || h.h.id}`} className="text-white font-semibold text-[13.5px] no-underline hover:text-gold">{horseName}</Link>
-          : <span className="text-white font-semibold text-[13.5px]">{horseName}</span>}
-        <span className="text-faint text-[12px]">
-          {(rows?.length ?? Object.keys(h.scores || {}).length)} class{(rows?.length ?? 0) === 1 ? '' : 'es'} · <span className="text-white font-semibold">{h.total} pts</span>
-        </span>
-      </div>
-      <div className="mt-2 border-t border-rowline pt-2 overflow-x-auto">
-        {err ? (
-          <p className="text-[12px] text-blood py-1">{err}</p>
-        ) : rows === null ? (
-          <p className="text-[12px] text-faint py-1">Loading…</p>
-        ) : flagged.length ? (
-            <table className="w-full border-collapse text-[12.5px] min-w-[600px]">
-              <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
-                <th className="border-b border-line px-2 py-1.5 font-semibold">Class</th>
-                <th className="border-b border-line px-2 py-1.5 font-semibold">Event</th>
-                <th className="border-b border-line px-2 py-1.5 font-semibold">Height</th>
-                <th className="border-b border-line px-2 py-1.5 font-semibold">Horse</th>
-                <th className="border-b border-line px-2 py-1.5 font-semibold text-right">Pts</th>
-                <th className="border-b border-line px-2 py-1.5 font-semibold text-right">Placing</th>
-              </tr></thead>
-              <tbody>
-                {flagged.map((r, i) => (
-                  <tr key={i} title={r.dropped ? 'Dropped from total' : undefined}
-                    className={`border-b border-line/50 last:border-0 hover:bg-white/[0.02] ${r.dropped ? 'opacity-55' : ''}`}>
-                    <td className={`px-2 py-1.5 ${r.dropped ? 'text-faint line-through' : 'text-slate-200'}`}>{r.class || '—'}</td>
-                    <td className="px-2 py-1.5 text-slate-200">
-                      {r.event_id
-                        ? <Link href={`/events/${r.event_id}`} className="text-sky hover:underline">{r.event}</Link>
-                        : (r.event || <span className="text-faint">—</span>)}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-1.5 text-muted">{r.height_cm ? `${(Number(r.height_cm) / 100).toFixed(2)}m` : '—'}</td>
-                    <td className="whitespace-nowrap px-2 py-1.5 text-white">{horseName}</td>
-                    <td className={`px-2 py-1.5 text-right font-bold tabular-nums ${r.dropped ? 'text-faint line-through' : 'text-gold'}`}>{r.pts ?? '–'}</td>
-                    <td className="px-2 py-1.5 text-right">{placingBadge(r.place)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="text-[12px] text-faint py-1">No counting classes.</p>
-          )}
-        </div>
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-[12.5px] min-w-[640px]">
+        <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
+          <th className="border-b border-line px-2 py-1.5 font-semibold">Class</th>
+          <th className="border-b border-line px-2 py-1.5 font-semibold">Event</th>
+          <th className="border-b border-line px-2 py-1.5 font-semibold">Height</th>
+          <th className="border-b border-line px-2 py-1.5 font-semibold">Horse</th>
+          <th className="border-b border-line px-2 py-1.5 font-semibold text-right">Pts</th>
+          <th className="border-b border-line px-2 py-1.5 font-semibold text-right">Placing</th>
+        </tr></thead>
+        <tbody>
+          {flagged.map((r, i) => (
+            <tr key={i} title={r.dropped ? 'Dropped from total' : undefined}
+              className={`border-b border-line/50 last:border-0 hover:bg-white/[0.02] ${r.dropped ? 'opacity-55' : ''}`}>
+              <td className={`px-2 py-1.5 ${r.dropped ? 'text-faint line-through' : 'text-slate-200'}`}>{r.class || '—'}</td>
+              <td className="px-2 py-1.5 text-slate-200">
+                {r.event_id
+                  ? <Link href={`/events/${r.event_id}`} className="text-sky hover:underline">{r.event}</Link>
+                  : (r.event || <span className="text-faint">—</span>)}
+              </td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-muted">{r.height_cm ? `${(Number(r.height_cm) / 100).toFixed(2)}m` : '—'}</td>
+              <td className="whitespace-nowrap px-2 py-1.5 text-white">{r.horse || '—'}</td>
+              <td className={`px-2 py-1.5 text-right font-bold tabular-nums ${r.dropped ? 'text-faint line-through' : 'text-gold'}`}>{r.pts ?? '–'}</td>
+              <td className="px-2 py-1.5 text-right">{placingBadge(r.place)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -249,11 +244,7 @@ export function SeriesRiderTable({ riders, seriesKey }) {
                 <tr key={`${r.rider}-horses`}>
                   <td />
                   <td colSpan={4} className="px-3 py-2.5">
-                    <div className="space-y-1.5">
-                      {(r.horses || []).map((h) => (
-                        <HorseScoreCard key={h.horse} h={h} rider={{ id: r.rd?.id, name: r.rider }} seriesKey={seriesKey} />
-                      ))}
-                    </div>
+                    <RiderRoundsTable rider={{ id: r.rd?.id, name: r.rider }} horses={r.horses} seriesKey={seriesKey} />
                   </td>
                 </tr>
               ),

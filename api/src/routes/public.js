@@ -1600,47 +1600,63 @@ module.exports = function mountPublicRoutes(app) {
     res.json({ data: { key, info, standings, events, rounds: typeof roundLabels !== 'undefined' ? roundLabels : [], source, last_calculated: lastCalc } });
   }));
 
-  // ---- Series scoring rounds: one row per class for a rider × horse combo
-  // (powers the watchlist-style drill-down: date, class, event, height,
-  // series pts, placing — no fault columns).
-  // GET /series/:key/rounds?rider_id=&horse_id= (calculated series)
-  //   | ?rider=&horse= (official/imported series, event-level rows)
+  // ---- Series scoring rounds: one row per class for a rider (all horses)
+  // or a single rider × horse combo (powers the watchlist-style drill-down:
+  // class, event, height, horse, series pts, placing — no fault columns).
+  // GET /series/:key/rounds?rider_id=[&horse_id=] (calculated series)
+  //   | ?rider=[&horse=] (official/imported series, event-level rows)
   app.get('/series/:key/rounds', asyncH(async (req, res) => {
     const key = req.params.key;
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const info = (await pool.query('SELECT * FROM series_info WHERE series_key = $1', [key])).rows[0] || null;
     if (info && info.auto_calc) {
       const { rider_id, horse_id } = req.query;
-      if (!UUID_RE.test(String(rider_id || '')) || !UUID_RE.test(String(horse_id || ''))) {
-        return res.status(400).json({ error: 'need {rider_id, horse_id}' });
+      if (!UUID_RE.test(String(rider_id || ''))) {
+        return res.status(400).json({ error: 'need {rider_id}' });
+      }
+      if (horse_id !== undefined && !UUID_RE.test(String(horse_id))) {
+        return res.status(400).json({ error: 'bad horse_id' });
       }
       const vis = await visSql();
       const cfg = ((await loadEsnzSeries()) || {})[key] || {};
       const keys = Array.isArray(cfg.sources) && cfg.sources.length ? cfg.sources : [key];
       const { rows } = await pool.query(
         `SELECT e.name AS event, e.id AS event_id,
-            c.class_date AS date, c.name AS class,
+            c.name AS class,
             COALESCE(rr.height_cm, c.height_cm) AS height_cm,
+            h.name AS horse, h.id AS horse_id,
             rr.finish_place AS place, rr.points AS pts
           FROM round_results rr
           JOIN classes c ON c.id = rr.class_id
           JOIN events e ON e.id = rr.event_id
-          WHERE c.series_key = ANY($1) AND rr.rider_id = $2 AND rr.horse_id = $3 AND ${vis}
-          ORDER BY c.class_date NULLS LAST, e.name, c.name`,
-        [keys, String(rider_id), String(horse_id)]);
+          JOIN horses h ON h.id = rr.horse_id
+          WHERE c.series_key = ANY($1) AND rr.rider_id = $2
+            AND ($3::UUID IS NULL OR rr.horse_id = $3) AND ${vis}
+          ORDER BY e.name, c.name`,
+        [keys, String(rider_id), horse_id ? String(horse_id) : null]);
       return res.json({ data: { key, source: 'independent', rows } });
     }
     const { rider, horse } = req.query;
-    if (!String(rider || '').trim() || !String(horse || '').trim()) {
-      return res.status(400).json({ error: 'need {rider, horse}' });
+    if (!String(rider || '').trim()) {
+      return res.status(400).json({ error: 'need {rider}' });
+    }
+    const params = [key, String(rider).trim()];
+    let extra = '';
+    if (String(horse || '').trim()) {
+      params.push(String(horse).trim());
+      extra = `AND horse_name = $${params.length}`;
     }
     const { rows } = await pool.query(
-      `SELECT points FROM series_standings WHERE series_key = $1 AND rider_name = $2 AND horse_name = $3 LIMIT 1`,
-      [key, String(rider).trim(), String(horse).trim()]);
-    const points = rows[0]?.points || {};
-    const out = Object.entries(points)
-      .filter(([, v]) => v !== null && v !== '' && v !== undefined)
-      .map(([event, v]) => ({ event, event_id: null, date: null, class: null, height_cm: null, place: null, pts: Number(v) || 0 }));
+      `SELECT rider_name AS rider, horse_name AS horse, points FROM series_standings
+        WHERE series_key = $1 AND rider_name = $2 ${extra}`,
+      params);
+    const out = [];
+    for (const r of rows) {
+      for (const [event, v] of Object.entries(r.points || {})) {
+        if (v === null || v === '' || v === undefined) continue;
+        out.push({ event, event_id: null, class: null, height_cm: null, horse: r.horse, horse_id: null, place: null, pts: Number(v) || 0 });
+      }
+    }
     res.json({ data: { key, source: info && info.is_official ? 'official' : 'independent', rows: out } });
   }));
 };
