@@ -143,13 +143,13 @@ function HorseScoreCard({ h, rider, seriesKey }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open ]);
 
-  // Dropped = lowest N by pts (mirrors the standings calc); display stays
-  // chronological like the watchlist.
+  // Dropped = lowest N by pts (mirrors the standings calc); display grouped
+  // by event, best scores first.
   const flagged = (rows || [])
     .map((r) => ({ ...r }))
     .sort((a, b) => (Number(b.pts) || 0) - (Number(a.pts) || 0))
     .map((r, i, arr) => ({ ...r, dropped: nDrop > 0 && i >= arr.length - nDrop }))
-    .sort((a, b) => String(a.date || '') < String(b.date || '') ? -1 : 1);
+    .sort((a, b) => String(a.event || '') < String(b.event || '') ? -1 : 1);
 
   return (
     <div className="rounded bg-card2 border border-rowline px-3 py-2.5">
@@ -174,9 +174,8 @@ function HorseScoreCard({ h, rider, seriesKey }) {
           ) : rows === null ? (
             <p className="text-[12px] text-faint py-1">Loading…</p>
           ) : flagged.length ? (
-            <table className="w-full border-collapse text-[12.5px] min-w-[720px]">
+            <table className="w-full border-collapse text-[12.5px] min-w-[600px]">
               <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
-                <th className="border-b border-line px-2 py-1.5 font-semibold">Date</th>
                 <th className="border-b border-line px-2 py-1.5 font-semibold">Class</th>
                 <th className="border-b border-line px-2 py-1.5 font-semibold">Event</th>
                 <th className="border-b border-line px-2 py-1.5 font-semibold">Height</th>
@@ -188,7 +187,6 @@ function HorseScoreCard({ h, rider, seriesKey }) {
                 {flagged.map((r, i) => (
                   <tr key={i} title={r.dropped ? 'Dropped from total' : undefined}
                     className={`border-b border-line/50 last:border-0 hover:bg-white/[0.02] ${r.dropped ? 'opacity-55' : ''}`}>
-                    <td className="whitespace-nowrap px-2 py-1.5 text-muted">{r.date ? String(r.date).slice(0, 10) : '–'}</td>
                     <td className={`px-2 py-1.5 ${r.dropped ? 'text-faint line-through' : 'text-slate-200'}`}>{r.class || '—'}</td>
                     <td className="px-2 py-1.5 text-slate-200">
                       {r.event_id
