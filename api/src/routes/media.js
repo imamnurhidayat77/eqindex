@@ -288,6 +288,26 @@ module.exports = function mountMediaRoutes(app) {
     );
     if (!rows.length) return res.status(404).json({ error: 'photo not found' });
     withUrls(rows);
+    // Ownership flag for the logged-in buyer (anonymous → owned:false).
+    // Mirrors the download entitlement: direct purchase OR via a package.
+    const data = rows[0];
+    data.owned = false;
+    if (req.authUser) {
+      try {
+        const ent = await pool.query(
+          `SELECT id, license_tier FROM purchases
+            WHERE status = 'paid' AND buyer_user_id = $2
+              AND (media_id = $1 OR package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))
+            LIMIT 1`,
+          [req.params.id, req.authUser.id]
+        );
+        if (ent.rows.length) {
+          data.owned = true;
+          data.owned_tier = ent.rows[0].license_tier;
+          data.owned_purchase_id = ent.rows[0].id;
+        }
+      } catch { /* ownership optional — never break the detail page */ }
+    }
     const rel = await pool.query(
       `SELECT id, thumb_key, kind FROM media
         WHERE status = 'published' AND id <> $1
@@ -365,6 +385,37 @@ module.exports = function mountMediaRoutes(app) {
       if (!Number.isInteger(amount) || amount <= 0) return res.status(409).json({ error: 'no price set for this package' });
       title = pk.rows[0].title;
       packageId = pk.rows[0].id;
+    }
+    // ---- Already-owned guard: a paid entitlement grants lifetime re-downloads,
+    // so selling the same photo/package twice just double-charges the buyer.
+    // Single photo: owned directly OR via any paid package containing it.
+    // Package: owned directly (same package_id, paid).
+    if (mediaId) {
+      const owned = await pool.query(
+        `SELECT id, license_tier FROM purchases
+          WHERE status = 'paid' AND buyer_user_id = $2
+            AND (media_id = $1 OR package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))
+          LIMIT 1`,
+        [mediaId, req.authUser.id]
+      );
+      if (owned.rows.length) {
+        return res.status(409).json({
+          error: 'you already own this photo — download it from My photos',
+          owned: true, license_tier: owned.rows[0].license_tier, purchase_id: owned.rows[0].id,
+        });
+      }
+    } else if (packageId) {
+      const owned = await pool.query(
+        `SELECT id FROM purchases
+          WHERE status = 'paid' AND buyer_user_id = $2 AND package_id = $1 LIMIT 1`,
+        [packageId, req.authUser.id]
+      );
+      if (owned.rows.length) {
+        return res.status(409).json({
+          error: 'you already own this package — download it from My photos',
+          owned: true, purchase_id: owned.rows[0].id,
+        });
+      }
     }
     if (idempotency_key) {
       const prior = await pool.query(

@@ -13,6 +13,8 @@ const keyFor = () => (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '').
 // Effective price mirrors POST /api/checkout exactly:
 //   chosen tier price, except when the tier is the photo's default AND the
 //   photo has its own price — then the lower of the two wins.
+// If the logged-in buyer already owns the photo (direct or via package),
+// the box collapses to an Owned state with a download link — no second sale.
 export default function BuyBox({ id, priceCents, tier, tierLabel }) {
   const { user } = useAuth();
   const [email, setEmail] = useState('');
@@ -21,6 +23,7 @@ export default function BuyBox({ id, priceCents, tier, tierLabel }) {
   const [tiers, setTiers] = useState(null);
   const [picked, setPicked] = useState(null);
   const [idem] = useState(() => keyFor);
+  const [owned, setOwned] = useState(null);
 
   const defaultTier = tier || 'web';
   useEffect(() => {
@@ -30,8 +33,13 @@ export default function BuyBox({ id, priceCents, tier, tierLabel }) {
       if (!picked && list.some((t) => t.id === defaultTier)) setPicked(defaultTier);
       else if (!picked && list.length) setPicked(list[0].id);
     }).catch(() => setTiers([]));
+    // Ownership check (session cookie, first-party via /api proxy).
+    // GET /photos/:id returns {owned, owned_tier} for the logged-in buyer.
+    fetch(`${API}/photos/${id}`, { credentials: 'include' }).then((r) => r.json()).then((j) => {
+      if (j?.data?.owned) setOwned(j.data);
+    }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [id]);
 
   const pickedTier = (tiers || []).find((t) => t.id === picked);
   let amount = null;
@@ -56,10 +64,28 @@ export default function BuyBox({ id, priceCents, tier, tierLabel }) {
         body: JSON.stringify({ media_id: id, email: em, license_tier: picked, idempotency_key: idem() }),
       });
       const j = await res.json().catch(() => ({}));
+      if (res.status === 409 && j.owned) {
+        // Race: bought in another tab between page load and click.
+        setOwned({ owned: true, owned_tier: j.license_tier });
+        throw new Error(j.error || 'You already own this photo.');
+      }
       if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
       if (!j.data?.checkout_url) throw new Error('Checkout already started — check your email for the payment link.');
       window.location.assign(j.data.checkout_url);
     } catch (e) { setErr(e.message); setBusy(false); }
+  }
+
+  if (owned?.owned) {
+    return (
+      <div className="mt-4 rounded border border-gold/50 bg-goldbg/20 p-3">
+        <div className="text-[13px] font-bold text-gold">✓ You own this photo{owned.owned_tier ? ` · ${owned.owned_tier}` : ''}</div>
+        <p className="text-[12px] text-muted mt-1">Full resolution unlocked — re-download any time.</p>
+        <a href={`${API}/api/media/${id}/download`} className={`${BTN_PRIMARY} no-underline text-center block w-full mt-2`}>
+          Download full-res
+        </a>
+        <a href="/photos/library" className="block text-center text-sky text-[12px] no-underline hover:underline mt-2">My photos →</a>
+      </div>
+    );
   }
 
   return (
