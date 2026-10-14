@@ -142,7 +142,11 @@ export default function AdminMediaUpload() {
     if (tagHorse) body.horse_id = tagHorse.id;
     if (tagRider) body.rider_id = tagRider.id;
     if (tagClass) body.class_id = tagClass;
-    if (tagPrice !== '') body.price_cents = tagPrice;
+    if (tagPrice.trim() !== '') {
+      const n = Number(tagPrice.trim().replace(/^\$/, ''));
+      if (!Number.isFinite(n) || n < 0) { setMsg('Photo price must be a non-negative NZ$ amount.'); return; }
+      body.price_cents = Math.round(n * 100);
+    }
     if (tagMoment) body.moment = tagMoment;
     if (Object.keys(body).length <= (eventId ? 1 : 0)) {
       setMsg('Pick a horse, rider, class, price or moment first (event is already set).');
@@ -309,8 +313,8 @@ export default function AdminMediaUpload() {
                 <option value="">{eventId ? 'No class' : 'Pick an event first'}</option>
                 {classes.map((c) => <option key={c.class_id} value={c.class_id}>{c.name} ({c.rounds} rounds)</option>)}
               </select></label>
-            <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Price (cents)
-              <input value={tagPrice} onChange={(e) => setTagPrice(e.target.value)} placeholder="e.g. 3500" inputMode="numeric" className={INP} /></label>
+            <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Photo price override (NZ$, blank = tier price)
+              <input value={tagPrice} onChange={(e) => setTagPrice(e.target.value)} placeholder="e.g. 35.00" inputMode="decimal" className={INP} /></label>
             <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Moment
               <select value={tagMoment} onChange={(e) => setTagMoment(e.target.value)} className={INP}>
                 <option value="">None</option>

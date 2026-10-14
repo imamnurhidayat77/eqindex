@@ -6,6 +6,13 @@ import { useAdminApi } from '../../../components/useAdminApi';
 import EntityPicker from '../../../components/EntityPicker';
 
 const nzd = (c) => (c === null || c === undefined || c === '' ? '—' : `NZ$${(Number(c) / 100).toFixed(2)}`);
+// Settings display NZD; the API + Stripe stay in integer cents.
+const toNZD = (c) => (c === null || c === undefined || c === '' ? '' : (Number(c) / 100).toFixed(2));
+const toCents = (s) => {
+  if (s === null || s === undefined || String(s).trim() === '') return null;
+  const n = Number(String(s).trim().replace(/^\$/, ''));
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : NaN;
+};
 
 // Pricing Settings — license tiers (what buyers pick on every photo) and
 // packages (bundles per event × horse/rider). Prices surface on BuyBox
@@ -43,10 +50,15 @@ export default function AdminPricing() {
 
   const setEdit = (id, k, v) => setEdits((p) => ({ ...p, [id]: { ...(p[id] || {}), [k]: v } }));
   const val = (t, k) => (edits[t.id]?.[k] ?? t[k] ?? '');
+  const valNZD = (t) => (edits[t.id]?.price_cents ?? toNZD(t.price_cents));
 
   async function saveTier(t) {
-    const e = edits[t.id] || {};
+    const e = { ...(edits[t.id] || {}) };
     if (!Object.keys(e).length) { setMsg('No changes to save.'); return; }
+    if ('price_cents' in e) {
+      e.price_cents = toCents(e.price_cents);
+      if (Number.isNaN(e.price_cents)) { setMsg('Price must be a non-negative NZ$ amount.'); return; }
+    }
     setBusy(true);
     try {
       await call(`/admin/license-tiers/${t.id}`, { method: 'PATCH', body: JSON.stringify(e) });
@@ -58,13 +70,15 @@ export default function AdminPricing() {
 
   async function addTier() {
     if (!newTier.id.trim() || !newTier.label.trim()) { setMsg('New tier needs an id and a label.'); return; }
+    const newPrice = toCents(newTier.price_cents);
+    if (Number.isNaN(newPrice)) { setMsg('Price must be a non-negative NZ$ amount.'); return; }
     setBusy(true);
     try {
       await call('/admin/license-tiers', {
         method: 'POST',
         body: JSON.stringify({
           id: newTier.id.trim().toLowerCase(), label: newTier.label.trim(),
-          price_cents: newTier.price_cents === '' ? null : newTier.price_cents,
+          price_cents: newPrice,
           max_resolution: newTier.max_resolution.trim() || null,
           printable: !!newTier.printable,
           sort_order: newTier.sort_order === '' ? null : newTier.sort_order,
@@ -88,10 +102,15 @@ export default function AdminPricing() {
 
   const setPkg = (id, k, v) => setPkgEdits((p) => ({ ...p, [id]: { ...(p[id] || {}), [k]: v } }));
   const pval = (p, k) => (pkgEdits[p.id]?.[k] ?? p[k] ?? '');
+  const pvalNZD = (p) => (pkgEdits[p.id]?.price_cents ?? toNZD(p.price_cents));
 
   async function savePackage(p) {
-    const e = pkgEdits[p.id] || {};
+    const e = { ...(pkgEdits[p.id] || {}) };
     if (!Object.keys(e).length) { setMsg('No changes to save.'); return; }
+    if ('price_cents' in e) {
+      e.price_cents = toCents(e.price_cents);
+      if (Number.isNaN(e.price_cents)) { setMsg('Price must be a non-negative NZ$ amount.'); return; }
+    }
     setBusy(true);
     try {
       await call(`/admin/packages/${p.id}`, { method: 'PATCH', body: JSON.stringify(e) });
@@ -118,7 +137,11 @@ export default function AdminPricing() {
       const body = { event_id: pEvent };
       if (pHorse) body.horse_id = pHorse.id;
       if (pRider) body.rider_id = pRider.id;
-      if (pPrice !== '') body.price_cents = pPrice;
+      if (pPrice.trim() !== '') {
+        const pc = toCents(pPrice);
+        if (Number.isNaN(pc)) { setMsg('Price must be a non-negative NZ$ amount.'); setBusy(false); return; }
+        body.price_cents = pc;
+      }
       if (pTitle.trim()) body.title = pTitle.trim();
       const d = await call('/admin/packages', { method: 'POST', body: JSON.stringify(body) });
       setMsg(`Created "${d.title}" with ${d.items} photos at ${nzd(d.price_cents)}.`);
@@ -141,7 +164,7 @@ export default function AdminPricing() {
         <table className={TABLE}>
           <thead><tr>
             <th className={TH}>ID</th><th className={TH}>Label</th><th className={TH}>Max resolution</th>
-            <th className={TH}>Printable</th><th className={`${TH} ${NUM}`}>Price</th><th className={`${TH} ${NUM}`}>Sort</th>
+            <th className={TH}>Printable</th><th className={`${TH} ${NUM}`}>Price (NZ$)</th><th className={`${TH} ${NUM}`}>Sort</th>
             <th className={TH}><span className="sr-only">Actions</span></th>
           </tr></thead>
           <tbody>
@@ -151,7 +174,7 @@ export default function AdminPricing() {
                 <td className={TD}><input value={val(t, 'label')} onChange={(e) => setEdit(t.id, 'label', e.target.value)} className={INP} style={{ width: 170 }} /></td>
                 <td className={TD}><input value={val(t, 'max_resolution') ?? ''} onChange={(e) => setEdit(t.id, 'max_resolution', e.target.value)} placeholder="e.g. 1417×945" className={INP} style={{ width: 130 }} /></td>
                 <td className={TD}><input type="checkbox" checked={!!(edits[t.id]?.printable ?? t.printable)} onChange={(e) => setEdit(t.id, 'printable', e.target.checked)} /></td>
-                <td className={`${TD} ${NUM}`}><input value={val(t, 'price_cents') ?? ''} onChange={(e) => setEdit(t.id, 'price_cents', e.target.value)} inputMode="numeric" placeholder="cents" className={INP} style={{ width: 90 }} /></td>
+                <td className={`${TD} ${NUM}`}><input value={valNZD(t)} onChange={(e) => setEdit(t.id, 'price_cents', e.target.value)} inputMode="decimal" placeholder="NZ$" className={INP} style={{ width: 90 }} /></td>
                 <td className={`${TD} ${NUM}`}><input value={val(t, 'sort_order') ?? ''} onChange={(e) => setEdit(t.id, 'sort_order', e.target.value)} inputMode="numeric" className={INP} style={{ width: 60 }} /></td>
                 <td className={`${TD} whitespace-nowrap text-right`}>
                   <button onClick={() => saveTier(t)} disabled={busy} className="text-sky text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2">Save</button>
@@ -164,7 +187,7 @@ export default function AdminPricing() {
               <td className={TD}><input value={newTier.label} onChange={(e) => setNewTier({ ...newTier, label: e.target.value })} placeholder="Label" className={INP} style={{ width: 170 }} /></td>
               <td className={TD}><input value={newTier.max_resolution} onChange={(e) => setNewTier({ ...newTier, max_resolution: e.target.value })} placeholder="e.g. 1417×945" className={INP} style={{ width: 130 }} /></td>
               <td className={TD}><input type="checkbox" checked={newTier.printable} onChange={(e) => setNewTier({ ...newTier, printable: e.target.checked })} /></td>
-              <td className={`${TD} ${NUM}`}><input value={newTier.price_cents} onChange={(e) => setNewTier({ ...newTier, price_cents: e.target.value })} inputMode="numeric" placeholder="cents" className={INP} style={{ width: 90 }} /></td>
+                <td className={`${TD} ${NUM}`}><input value={newTier.price_cents} onChange={(e) => setNewTier({ ...newTier, price_cents: e.target.value })} inputMode="decimal" placeholder="NZ$" className={INP} style={{ width: 90 }} /></td>
               <td className={`${TD} ${NUM}`}><input value={newTier.sort_order} onChange={(e) => setNewTier({ ...newTier, sort_order: e.target.value })} inputMode="numeric" className={INP} style={{ width: 60 }} /></td>
               <td className={`${TD} text-right`}><button onClick={addTier} disabled={busy} className={BTN_PRIMARY}>Add</button></td>
             </tr>
@@ -188,8 +211,8 @@ export default function AdminPricing() {
             <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Rider
               <EntityPicker kind="rider" value={pRider} onPick={(r) => { setPRider(r); setPHorse(null); }} placeholder="or pick…" /></label>
           </div>
-          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Price override (cents, blank = auto)
-            <input value={pPrice} onChange={(e) => setPPrice(e.target.value)} inputMode="numeric" placeholder="e.g. 9900" className={INP} /></label>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Price override (NZ$, blank = auto)
+            <input value={pPrice} onChange={(e) => setPPrice(e.target.value)} inputMode="decimal" placeholder="e.g. 99.00" className={INP} /></label>
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Title override (blank = auto)
             <input value={pTitle} onChange={(e) => setPTitle(e.target.value)} placeholder="e.g. All finals photos" className={INP} /></label>
         </div>
@@ -199,7 +222,7 @@ export default function AdminPricing() {
         <table className={TABLE}>
           <thead><tr>
             <th className={TH}>Title</th><th className={TH}>Event</th><th className={`${TH} ${NUM}`}>Photos</th>
-            <th className={`${TH} ${NUM}`}>Price</th><th className={TH}>Status</th>
+            <th className={`${TH} ${NUM}`}>Price (NZ$)</th><th className={TH}>Status</th>
             <th className={TH}><span className="sr-only">Actions</span></th>
           </tr></thead>
           <tbody>
@@ -208,7 +231,7 @@ export default function AdminPricing() {
                 <td className={TD}><input value={pval(p, 'title')} onChange={(e) => setPkg(p.id, 'title', e.target.value)} className={INP} style={{ minWidth: 220 }} /></td>
                 <td className={`${TD} text-muted text-[13px]`}>{p.event_name || '—'}</td>
                 <td className={`${TD} ${NUM}`}>{p.items}</td>
-                <td className={`${TD} ${NUM}`}><input value={pval(p, 'price_cents') ?? ''} onChange={(e) => setPkg(p.id, 'price_cents', e.target.value)} inputMode="numeric" className={INP} style={{ width: 100 }} /></td>
+                <td className={`${TD} ${NUM}`}><input value={pvalNZD(p)} onChange={(e) => setPkg(p.id, 'price_cents', e.target.value)} inputMode="decimal" placeholder="NZ$" className={INP} style={{ width: 100 }} /></td>
                 <td className={TD}>
                   <select value={pval(p, 'status')} onChange={(e) => setPkg(p.id, 'status', e.target.value)} className={INP}>
                     <option value="draft">draft</option>

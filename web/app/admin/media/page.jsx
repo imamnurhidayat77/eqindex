@@ -82,7 +82,7 @@ export default function AdminMediaLibrary() {
     setEHorse(r.horse_id ? { id: r.horse_id, name: r.horse } : null);
     setERider(r.rider_id ? { id: r.rider_id, name: r.rider } : null);
     setEClass(r.class_id || '');
-    setEPrice(r.price_cents ?? '');
+    setEPrice(r.price_cents === null || r.price_cents === undefined ? '' : (Number(r.price_cents) / 100).toFixed(2));
     setEMoment(r.moment || '');
     setEStatus(r.status || 'draft');
     setEEvent(r.event_id || '');
@@ -90,6 +90,12 @@ export default function AdminMediaLibrary() {
 
   async function saveEdit() {
     if (!editing) return;
+    let price = null;
+    if (String(ePrice).trim() !== '') {
+      const n = Number(String(ePrice).trim().replace(/^\$/, ''));
+      if (!Number.isFinite(n) || n < 0) { setMsg('Price must be a non-negative NZ$ amount, or blank.'); return; }
+      price = Math.round(n * 100);
+    }
     setSaving(true);
     try {
       await call(`/admin/media/${editing.id}`, {
@@ -98,7 +104,7 @@ export default function AdminMediaLibrary() {
           horse_id: eHorse ? eHorse.id : null,
           rider_id: eRider ? eRider.id : null,
           class_id: eClass || null,
-          price_cents: ePrice === '' ? null : ePrice,
+          price_cents: price,
           moment: eMoment || null,
           status: eStatus,
           event_id: eEvent || null,
@@ -183,7 +189,7 @@ export default function AdminMediaLibrary() {
                   : <span className="text-gold font-semibold">Untagged</span>}
               </td>
               <td className="px-2 py-2 text-muted text-[12px] max-w-[160px] truncate" title={r.class_name}>{r.class_name || '—'}</td>
-              <td className="px-2 py-2 text-right tabular-nums">{r.price_cents ?? '—'}</td>
+              <td className="px-2 py-2 text-right tabular-nums">{r.price_cents === null || r.price_cents === undefined ? <span className="text-faint">tier</span> : `$${(Number(r.price_cents) / 100).toFixed(2)}`}</td>
               <td className="px-2 py-2"><span className={`text-[11px] font-bold rounded px-1.5 py-0.5 ${r.status === 'published' ? 'bg-greenbg text-moss' : r.status === 'archived' ? 'bg-redbg text-blood' : 'bg-card2 text-faint border border-line'}`}>{r.status}</span></td>
               <td className="px-2 py-2 whitespace-nowrap text-right">
                 <button onClick={() => openEdit(r)} className="text-sky text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2">Edit</button>
@@ -220,8 +226,8 @@ export default function AdminMediaLibrary() {
                 ) : (
                   <span className="text-[13px] text-muted normal-case py-2">{editing?.class_name || 'No class'} <button onClick={() => setEClass('')} className="text-faint text-[12px] hover:text-white bg-none border-0 cursor-pointer ml-1">clear</button></span>
                 )}</label>
-              <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Price (cents)
-                <input value={ePrice} onChange={(e) => setEPrice(e.target.value)} inputMode="numeric" className={INP} /></label>
+              <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Photo price override (NZ$, blank = tier price)
+                <input value={ePrice} onChange={(e) => setEPrice(e.target.value)} inputMode="decimal" placeholder="e.g. 35.00" className={INP} /></label>
               <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Moment
                 <select value={eMoment} onChange={(e) => setEMoment(e.target.value)} className={INP}>
                   <option value="">None</option>
