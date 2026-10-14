@@ -10,12 +10,10 @@ const keyFor = () => (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '').
   : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 20)}`);
 
 // Buy box with license-tier picker (Sportfot-style categories).
-// Effective price mirrors POST /api/checkout exactly:
-//   chosen tier price, except when the tier is the photo's default AND the
-//   photo has its own price — then the lower of the two wins.
+// Pricing is tier-only: the amount is always the picked tier's price.
 // If the logged-in buyer already owns the photo (direct or via package),
 // the box collapses to an Owned state with a download link — no second sale.
-export default function BuyBox({ id, priceCents, tier, tierLabel }) {
+export default function BuyBox({ id, tier, tierLabel }) {
   const { user } = useAuth();
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
@@ -42,15 +40,9 @@ export default function BuyBox({ id, priceCents, tier, tierLabel }) {
   }, [id]);
 
   const pickedTier = (tiers || []).find((t) => t.id === picked);
-  let amount = null;
-  if (pickedTier && Number.isInteger(pickedTier.price_cents) && pickedTier.price_cents > 0) {
-    amount = pickedTier.price_cents;
-    if (priceCents !== null && priceCents !== undefined && picked === defaultTier) {
-      amount = Math.min(amount, Number(priceCents));
-    }
-  } else if (picked === defaultTier && priceCents !== null && priceCents !== undefined) {
-    amount = Number(priceCents);
-  }
+  const amount = pickedTier && Number.isInteger(pickedTier.price_cents) && pickedTier.price_cents > 0
+    ? pickedTier.price_cents
+    : null;
 
   async function buy() {
     if (busy || !Number.isInteger(amount) || amount <= 0) return;
@@ -96,7 +88,7 @@ export default function BuyBox({ id, priceCents, tier, tierLabel }) {
       ) : !tiers.length ? (
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-[11px] uppercase tracking-wide text-faint font-bold">Digital download{tierLabel ? ` · ${tierLabel}` : ''}</span>
-          <b className="text-gold text-[16px]">{nzd(priceCents)}</b>
+          <b className="text-gold text-[16px]">—</b>
         </div>
       ) : (
         <div className="flex flex-col gap-1" role="radiogroup" aria-label="License">

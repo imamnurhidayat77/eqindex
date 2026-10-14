@@ -58,7 +58,7 @@ export default async function PhotoDetail({ params }) {
               </div>
             ))}
           </dl>
-          <BuyBox id={d.id} priceCents={d.price_cents} tier={d.license_default} tierLabel={d.tier_label} />
+          <BuyBox id={d.id} tier={d.license_default} tierLabel={d.tier_label} />
           <PackageUpsell eventId={d.event_id} horseId={d.horse_id} riderId={d.rider_id} horse={d.horse} rider={d.rider} />
         </section>
       </div>

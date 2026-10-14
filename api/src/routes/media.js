@@ -180,7 +180,8 @@ module.exports = function mountMediaRoutes(app) {
       set('rider_id', b.rider_id ? await resolveId('riders', b.rider_id, res) : null);
       if (b.rider_id && !vals[vals.length - 1]) return;
     }
-    if (b.price_cents !== undefined) set('price_cents', b.price_cents === null ? null : Math.max(0, parseInt(b.price_cents, 10) || 0));
+    // Per-photo price overrides are retired (migration 059, tier-only
+    // pricing) — silently ignore legacy clients still sending the field.
     if (b.license_default !== undefined) set('license_default', b.license_default || null);
     if (b.moment !== undefined) {
       if (b.moment !== null && !['win', 'clear', 'debut', 'pb'].includes(b.moment)) {
@@ -239,12 +240,13 @@ module.exports = function mountMediaRoutes(app) {
     const { rows } = await pool.query(
       `SELECT m.id, m.kind, m.event_id, m.class_id, m.horse_id, m.rider_id,
           m.thumb_key, m.preview_key, m.width, m.height, m.taken_at,
-          m.price_cents, m.license_default, m.moment, m.created_at,
+          t.price_cents AS price_cents, m.license_default, m.moment, m.created_at,
           e.name AS event_name, h.name AS horse, r.name AS rider,
           p.name AS photographer
         FROM media m LEFT JOIN events e ON e.id = m.event_id
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
         JOIN photographers p ON p.id = m.photographer_id
+        LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
         WHERE ${conds.join(' AND ')}
         ORDER BY m.created_at DESC LIMIT $${params.length}`,
       params
@@ -370,11 +372,10 @@ module.exports = function mountMediaRoutes(app) {
       if (!tierId) {
         const dflt = await pool.query('SELECT * FROM license_tiers WHERE id = $1', [row.license_default || 'web']);
         tierId = dflt.rows[0]?.id || 'web';
-        amount = dflt.rows[0]?.price_cents ?? row.price_cents;
+        amount = dflt.rows[0]?.price_cents;
       } else {
         amount = row.tier_price;
       }
-      if (row.price_cents !== null && tierId === row.license_default) amount = Math.min(amount ?? Infinity, row.price_cents);
       if (!Number.isInteger(amount) || amount <= 0) return res.status(409).json({ error: 'no price set for this photo' });
       title = `${row.horse_id || row.rider_id ? '' : 'Event '}photo${row.moment ? ` (${row.moment})` : ''} · ${tierId}`;
       mediaId = row.id;
@@ -895,8 +896,9 @@ module.exports = function mountMediaRoutes(app) {
     }
     const photographer = await activePhotographer(pool, req.body?.photographer_id);
     const items = await pool.query(
-      `SELECT id, COALESCE(price_cents, 0) AS price_cents FROM media
-        WHERE status = 'published' AND event_id = $1 AND ${who.col} = $2`,
+      `SELECT m.id, COALESCE(t.price_cents, 0) AS price_cents FROM media m
+        LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
+        WHERE m.status = 'published' AND m.event_id = $1 AND m.${who.col} = $2`,
       [event_id, who.id]
     );
     if (!items.rows.length) return res.status(409).json({ error: 'no published photos for this event × subject' });
