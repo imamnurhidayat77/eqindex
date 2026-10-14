@@ -14,7 +14,7 @@ export default function PackageUpsell({ eventId, horseId, riderId, horse, rider 
   const [busyId, setBusyId] = useState(null);
   const [email, setEmail] = useState('');
   const [err, setErr] = useState('');
-  const [idem] = useState(keyFor);
+  const [idem] = useState(() => keyFor);
   useEffect(() => {
     if (!eventId || (!horseId && !riderId)) return;
     const p = new URLSearchParams({ event_id: eventId });

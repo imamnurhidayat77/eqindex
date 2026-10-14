@@ -20,7 +20,7 @@ export default function BuyBox({ id, priceCents, tier, tierLabel }) {
   const [err, setErr] = useState('');
   const [tiers, setTiers] = useState(null);
   const [picked, setPicked] = useState(null);
-  const [idem] = useState(keyFor);
+  const [idem] = useState(() => keyFor);
 
   const defaultTier = tier || 'web';
   useEffect(() => {
