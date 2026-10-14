@@ -9,6 +9,22 @@ const nzd = (c) => (c === null || c === undefined ? '—' : `NZ$${(Number(c) / 1
 const keyFor = () => (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '').slice(0, 32)
   : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 20)}`);
 
+// Short usage hints per tier id (admin-editable labels stay untouched).
+// Unknown tiers fall back to resolution/printable facts from the API.
+const TIER_HINT = {
+  social: 'Social media posts',
+  web: 'Websites & presentations',
+  print: 'Full file · printable',
+  commercial: 'Full file · commercial use',
+};
+const tierHint = (t) => {
+  if (TIER_HINT[t.id]) return TIER_HINT[t.id];
+  const bits = [];
+  if (t.max_resolution) bits.push(t.max_resolution);
+  if (t.printable) bits.push('printable');
+  return bits.join(' · ') || 'Digital download';
+};
+
 // Buy box with license-tier picker (Sportfot-style categories).
 // Pricing is tier-only: the amount is always the picked tier's price.
 // If the logged-in buyer already owns the photo (direct or via package),
@@ -94,13 +110,26 @@ export default function BuyBox({ id, tier, tierLabel }) {
         <div className="flex flex-col gap-1" role="radiogroup" aria-label="License">
           {tiers.map((t) => (
             <button key={t.id} role="radio" aria-checked={picked === t.id} onClick={() => setPicked(t.id)}
-              className={`flex items-baseline justify-between gap-2 rounded-lg border px-2.5 py-2 text-left cursor-pointer transition ${picked === t.id ? 'border-gold/70 bg-goldbg/30' : 'border-line hover:border-gold/40'}`}>
-              <span className={`text-[13px] ${picked === t.id ? 'text-white font-bold' : 'text-muted'}`}>{t.label || t.id}</span>
-              <span className={`text-[13px] font-bold tabular-nums ${picked === t.id ? 'text-gold' : 'text-faint'}`}>{nzd(t.price_cents)}</span>
+              className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left cursor-pointer transition ${picked === t.id ? 'border-gold/70 bg-goldbg/30' : 'border-line hover:border-gold/40'}`}>
+              <span className="min-w-0">
+                <span className={`flex items-center gap-1.5 text-[13px] ${picked === t.id ? 'text-white font-bold' : 'text-muted'}`}>
+                  {t.label || t.id}
+                  {t.id === defaultTier && (
+                    <span className="rounded-full bg-gold px-1.5 py-px text-[9.5px] font-extrabold uppercase tracking-wide text-black">Popular</span>
+                  )}
+                </span>
+                <span className="block text-[11px] text-faint truncate">{tierHint(t)}</span>
+              </span>
+              <span className={`shrink-0 text-[13px] font-bold tabular-nums ${picked === t.id ? 'text-gold' : 'text-faint'}`}>{nzd(t.price_cents)}</span>
             </button>
           ))}
         </div>
       )}
+      <ul className="mt-2.5 space-y-1 text-[11.5px] text-muted">
+        {['Watermark-free full resolution', 'Instant download after payment', 'Re-download any time from My photos'].map((x) => (
+          <li key={x} className="flex items-center gap-1.5"><span className="text-moss" aria-hidden="true">✓</span>{x}</li>
+        ))}
+      </ul>
       {!user?.email && (
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email for delivery"
           type="email" className={`${INP} w-full mt-2 !text-[13px]`} />

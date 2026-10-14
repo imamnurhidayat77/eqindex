@@ -212,7 +212,7 @@ module.exports = function mountMediaRoutes(app) {
   // License tiers with prices (public by design — buyers pick one, Sportfot-style).
   app.get('/api/license-tiers', asyncH(async (req, res) => {
     const { rows } = await pool.query(
-      `SELECT id, label, price_cents FROM license_tiers ORDER BY price_cents NULLS LAST, id`);
+      `SELECT id, label, price_cents, max_resolution, printable FROM license_tiers ORDER BY price_cents NULLS LAST, id`);
     res.json({ data: rows });
   }));
 
@@ -311,10 +311,15 @@ module.exports = function mountMediaRoutes(app) {
       } catch { /* ownership optional — never break the detail page */ }
     }
     const rel = await pool.query(
-      `SELECT id, thumb_key, kind FROM media
-        WHERE status = 'published' AND id <> $1
-          AND (event_id = $2 OR horse_id = $3 OR rider_id = $4)
-        ORDER BY created_at DESC LIMIT 8`,
+      `SELECT m.id, m.thumb_key, m.kind, m.moment,
+          t.price_cents AS price_cents, h.name AS horse, r.name AS rider
+        FROM media m
+        LEFT JOIN horses h ON h.id = m.horse_id
+        LEFT JOIN riders r ON r.id = m.rider_id
+        LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
+        WHERE m.status = 'published' AND m.id <> $1
+          AND (m.event_id = $2 OR m.horse_id = $3 OR m.rider_id = $4)
+        ORDER BY m.created_at DESC LIMIT 8`,
       [req.params.id, rows[0].event_id, rows[0].horse_id, rows[0].rider_id]
     );
     withUrls(rel.rows);
