@@ -187,7 +187,10 @@ function RiderRoundsTable({ rider, horses, seriesKey }) {
               </td>
               <td className="whitespace-nowrap px-2 py-1.5 text-muted">{r.height_cm ? `${(Number(r.height_cm) / 100).toFixed(2)}m` : '—'}</td>
               <td className="whitespace-nowrap px-2 py-1.5 text-white">{r.horse || '—'}</td>
-              <td className={`px-2 py-1.5 text-right font-bold tabular-nums ${r.dropped ? 'text-faint line-through' : 'text-gold'}`}>{r.pts ?? '–'}</td>
+              <td className={`px-2 py-1.5 text-right font-bold tabular-nums ${r.dropped ? 'text-faint line-through' : 'text-gold'}`}>
+                {r.pts ?? '–'}
+                {r.note && <span className="block text-[10px] font-normal text-faint no-underline">{r.note}</span>}
+              </td>
               <td className="px-2 py-1.5 text-right">{placingBadge(r.place)}</td>
             </tr>
           ))}

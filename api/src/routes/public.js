@@ -1625,7 +1625,10 @@ module.exports = function mountPublicRoutes(app) {
             c.name AS class,
             COALESCE(rr.height_cm, c.height_cm) AS height_cm,
             h.name AS horse, h.id AS horse_id,
-            rr.finish_place AS place, rr.points AS pts
+            rr.finish_place AS place, rr.points AS pts,
+            rr.status AS status,
+            rr.nominated_auto AS nominated_auto,
+            rr.nominated_manual AS nominated_manual
           FROM round_results rr
           JOIN classes c ON c.id = rr.class_id
           JOIN events e ON e.id = rr.event_id
@@ -1634,6 +1637,13 @@ module.exports = function mountPublicRoutes(app) {
             AND ($3::UUID IS NULL OR rr.horse_id = $3) AND ${vis}
           ORDER BY e.name, c.name`,
         [keys, String(rider_id), horse_id ? String(horse_id) : null]);
+      // Plain-English reason for scoreless rounds (saves "why 0 pts?" questions).
+      for (const r of rows) {
+        r.note = (Number(r.pts) || 0) > 0 ? null
+          : r.status && r.status !== 'finished' ? r.status
+          : r.nominated_manual === false || (r.nominated_manual == null && r.nominated_auto === false) ? 'not nominated'
+          : 'no points';
+      }
       return res.json({ data: { key, source: 'independent', rows } });
     }
     const { rider, horse } = req.query;
