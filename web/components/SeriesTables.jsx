@@ -160,10 +160,12 @@ function RiderRoundsTable({ rider, horses, seriesKey }) {
     ranked.forEach((r, i) => flagged.push({ ...r, dropped: nDrop > 0 && i >= ranked.length - nDrop }));
   }
   flagged.sort((a, b) => String(a.event || '') < String(b.event || '') ? -1 : 1);
+  // Only counting rounds are shown — dropped and scoreless rows are hidden.
+  const visible = flagged.filter((r) => !r.dropped && (Number(r.pts) || 0) > 0);
 
   if (err) return <p className="text-[12px] text-blood py-1">{err}</p>;
   if (rows === null) return <p className="text-[12px] text-faint py-1">Loading…</p>;
-  if (!flagged.length) return <p className="text-[12px] text-faint py-1">No counting classes.</p>;
+  if (!visible.length) return <p className="text-[12px] text-faint py-1">No counting classes.</p>;
   return (
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-[12.5px] min-w-[640px]">
@@ -175,11 +177,11 @@ function RiderRoundsTable({ rider, horses, seriesKey }) {
           <th className="border-b border-line px-2 py-1.5 font-semibold text-right">Pts</th>
           <th className="border-b border-line px-2 py-1.5 font-semibold text-right">Placing</th>
         </tr></thead>
-        <tbody>
-          {flagged.map((r, i) => (
-            <tr key={i} title={r.dropped ? 'Dropped from total' : undefined}
-              className={`border-b border-line/50 last:border-0 hover:bg-white/[0.02] ${r.dropped ? 'opacity-55' : ''}`}>
-              <td className={`px-2 py-1.5 ${r.dropped ? 'text-faint line-through' : 'text-slate-200'}`}>{r.class || '—'}</td>
+              <tbody>
+                {visible.map((r, i) => (
+            <tr key={i}
+              className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
+              <td className="px-2 py-1.5 text-slate-200">{r.class || '—'}</td>
               <td className="px-2 py-1.5 text-slate-200">
                 {r.event_id
                   ? <Link href={`/events/${r.event_id}`} className="text-sky hover:underline">{r.event}</Link>
@@ -187,9 +189,8 @@ function RiderRoundsTable({ rider, horses, seriesKey }) {
               </td>
               <td className="whitespace-nowrap px-2 py-1.5 text-muted">{r.height_cm ? `${(Number(r.height_cm) / 100).toFixed(2)}m` : '—'}</td>
               <td className="whitespace-nowrap px-2 py-1.5 text-white">{r.horse || '—'}</td>
-              <td className={`px-2 py-1.5 text-right font-bold tabular-nums ${r.dropped ? 'text-faint line-through' : 'text-gold'}`}>
+              <td className="px-2 py-1.5 text-right font-bold tabular-nums text-gold">
                 {r.pts ?? '–'}
-                {r.note && <span className="block text-[10px] font-normal text-faint no-underline">{r.note}</span>}
               </td>
               <td className="px-2 py-1.5 text-right">{placingBadge(r.place)}</td>
             </tr>
