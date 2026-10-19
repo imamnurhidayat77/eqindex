@@ -26,6 +26,7 @@ export default function ManageRiders() {
         { k: 'series_category', label: 'Category', render: (r) => keyLabel(list, r.series_category) },
         { k: 'starts', label: 'Starts', num: true },
         { k: 'visibility', label: 'Visibility', toggle: { field: 'visibility', on: 'public', off: 'anonymous', onLabel: 'PUBLIC', offLabel: 'HIDDEN' } },
+        { k: 'photo_hidden', label: 'Photos (opt-out hides from public galleries)', toggle: { field: 'photo_hidden', on: false, off: true, onLabel: 'PUBLIC', offLabel: 'HIDDEN' } },
       ]}
       fields={[
         { k: 'name', label: 'Name' }, { k: 'region', label: 'Region' },

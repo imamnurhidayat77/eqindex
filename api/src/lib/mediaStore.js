@@ -4,7 +4,7 @@
 // Optional: R2_PUBLIC_BASE (public CDN base for previews/thumbs).
 // Layout: {originals,previews,thumbs}/{event_id}/{media_id}.{ext}
 // Throws a clear error when unconfigured (P0 wires config only; P1 uploads).
-const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 let client = null;
@@ -43,6 +43,38 @@ async function signedDownloadUrl(key, seconds = 900) {
   return getSignedUrl(s3(), new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }), { expiresIn: seconds });
 }
 
+// Direct browser-to-R2 upload (P2B): videos bypass the API/proxy entirely
+// (Vercel proxy ~30s limit can't carry 50–200MB). The browser PUTs bytes to
+// this URL with Content-Type set, then calls POST /admin/media/:id/finalize.
+// DEPLOY: the R2 bucket needs a CORS rule allowing PUT from the web origin.
+async function presignedPutUrl(key, contentType, seconds = 900) {
+  const { R2_BUCKET } = cfg();
+  return getSignedUrl(
+    s3(),
+    new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, ContentType: contentType }),
+    { expiresIn: seconds }
+  );
+}
+
+// Stream an object back (finalize reads the original without buffering it;
+// R2 egress is $0 so API-side processing costs nothing extra).
+async function getStream(key) {
+  const { R2_BUCKET } = cfg();
+  const out = await s3().send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+  if (!out.Body) throw new Error(`storage object missing: ${key}`);
+  return { stream: out.Body, size: Number(out.ContentLength) || null, contentType: out.ContentType || null };
+}
+
+async function headKey(key) {
+  const { R2_BUCKET } = cfg();
+  try {
+    const out = await s3().send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    return { size: Number(out.ContentLength) || 0, contentType: out.ContentType || '' };
+  } catch {
+    return null;
+  }
+}
+
 // Public CDN URL for previews/thumbs (no signature).
 function publicUrl(key) {
   const base = (process.env.R2_PUBLIC_BASE || '').replace(/\/$/, '');
@@ -61,4 +93,4 @@ async function deleteKeys(keys) {
   return (out.Deleted || []).length;
 }
 
-module.exports = { keyFor, putBuffer, signedDownloadUrl, publicUrl, deleteKeys };
+module.exports = { keyFor, putBuffer, signedDownloadUrl, presignedPutUrl, getStream, headKey, publicUrl, deleteKeys };

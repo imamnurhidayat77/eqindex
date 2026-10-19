@@ -5,6 +5,18 @@ import { INP } from '../lib/tokens';
 import { useAuth } from './auth';
 
 const nzd = (c) => `NZ$${(Number(c || 0) / 100).toFixed(2)}`;
+// Early-bird (P1b): admin-set discounted price honored while active.
+const earlyOf = (pk) => {
+  if (pk.early_price_cents === null || pk.early_price_cents === undefined) return null;
+  if (pk.early_until && new Date(pk.early_until) <= new Date()) return null;
+  return Number(pk.early_price_cents);
+};
+const earlyLeft = (pk) => {
+  if (!pk.early_until) return '';
+  const days = Math.ceil((new Date(pk.early_until) - new Date()) / 86400000);
+  if (days <= 0) return '';
+  return days === 1 ? 'ends tomorrow' : `ends in ${days} days`;
+};
 const keyFor = () => (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '').slice(0, 32)
   : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 20)}`);
 
@@ -48,7 +60,14 @@ export default function PackageUpsell({ eventId, horseId, riderId, horse, rider 
         <div key={pk.id} className="flex items-center justify-between gap-2 py-1">
           <div className="text-[13px]">
             <b>{pk.title}</b>
-            <div className="text-[11px] text-faint">{pk.items} photos · {nzd(pk.price_cents)}</div>
+            <div className="text-[11px] text-faint">
+              {Number(pk.reels) > 0
+                ? `${Number(pk.items) - Number(pk.reels)} photos · ${pk.reels} reel${Number(pk.reels) === 1 ? '' : 's'} · `
+                : `${pk.items} photos · `}
+              {earlyOf(pk) !== null ? (
+                <><s>{nzd(pk.price_cents)}</s> <b className="text-gold">{nzd(earlyOf(pk))}</b> <span className="text-gold">early-bird{earlyLeft(pk) ? ` · ${earlyLeft(pk)}` : ''}</span></>
+              ) : nzd(pk.price_cents)}
+            </div>
           </div>
           <button onClick={() => buy(pk)} disabled={!!busyId}
             className="bg-gold text-black font-bold rounded px-3.5 py-2 text-[13px] hover:brightness-110 shrink-0">

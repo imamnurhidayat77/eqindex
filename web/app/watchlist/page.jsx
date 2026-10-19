@@ -244,20 +244,45 @@ export default async function Watchlist() {
     })
     .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 
-  // New-photo feed: latest published media for watched horses/riders.
-  let photoFeed = [];
+  // My Photos: published media for watched horses/riders, grouped
+  // Event -> Horse (rider-centric buying: riders want photos of themselves).
+  // One catalog request per watched subject (same count as before, higher
+  // limit so groups have depth); package/credit upsells fetch client-side
+  // per rendered group via the existing PackageUpsell + CreditBuyButton.
+  let photoGroups = [];
   try {
-    const ids = { horses: horses.map((h) => h.id), riders: riders.map((r) => r.id) };
     const seen = new Map();
-    for (const h of horses.slice(0, 10)) {
-      const r = await getJSON(`/photos?horse_id=${h.id}&limit=3`).catch(() => ({ data: [] }));
+    // mine=1 keeps opted-out subjects visible to their own followers
+    // (followership enforced server-side); everyone else loses them.
+    const fetchFor = async (kind, id) => {
+      const r = await getPrivateJSON(`/photos?${kind}_id=${id}&limit=12&mine=1`, token).catch(() => ({ data: [] }));
       for (const m of r.data || []) if (!seen.has(m.id)) seen.set(m.id, m);
+    };
+    await Promise.all([
+      ...horses.slice(0, 10).map((h) => fetchFor('horse', h.id)),
+      ...riders.slice(0, 10).map((r) => fetchFor('rider', r.id)),
+    ]);
+    const groups = new Map();
+    for (const m of seen.values()) {
+      const key = `${m.event_id || 'noevent'}|${m.horse_id ? `h:${m.horse_id}` : `r:${m.rider_id || 'none'}`}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          event_id: m.event_id || null,
+          event_name: m.event_name || 'Unknown event',
+          horse_id: m.horse_id || null,
+          horse: m.horse || null,
+          rider_id: m.rider_id || null,
+          rider: m.rider || null,
+          photos: [],
+        });
+      }
+      groups.get(key).photos.push(m);
     }
-    for (const r of riders.slice(0, 10)) {
-      const x = await getJSON(`/photos?rider_id=${r.id}&limit=3`).catch(() => ({ data: [] }));
-      for (const m of x.data || []) if (!seen.has(m.id)) seen.set(m.id, m);
-    }
-    photoFeed = [...seen.values()].slice(0, 6);
+    photoGroups = [...groups.values()]
+      .map((g) => ({ ...g, latest: g.photos[0]?.created_at || '' }))
+      .sort((a, b) => String(b.latest).localeCompare(String(a.latest)))
+      .slice(0, 8);
   } catch { /* photos optional */ }
 
   // Stable pulse: what actually happened in the last 30 days.
@@ -296,7 +321,7 @@ export default async function Watchlist() {
           timeline={timeline}
           pulse={pulse}
           byEvent={byEvent}
-          photoFeed={photoFeed}
+          photoGroups={photoGroups}
         />
       )}
     </>

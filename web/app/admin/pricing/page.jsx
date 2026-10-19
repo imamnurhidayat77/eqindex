@@ -24,6 +24,12 @@ export default function AdminPricing() {
   const [newTier, setNewTier] = useState({ id: '', label: '', price_cents: '', max_resolution: '', printable: true, sort_order: '' });
   const [packages, setPackages] = useState([]);
   const [pkgEdits, setPkgEdits] = useState({});
+  const [reels, setReels] = useState([]);
+  const [reelEdits, setReelEdits] = useState({});
+  const [newReel, setNewReel] = useState({ event_id: '', name: '', scope: 'round', coverage: 'ring', includes_raw: false, description: '', price_cents: '' });
+  const [credits, setCredits] = useState([]);
+  const [creditEdits, setCreditEdits] = useState({});
+  const [newCredit, setNewCredit] = useState({ event_id: '', scope_type: 'rider', slots: '5', price_cents: '' });
   const [events, setEvents] = useState([]);
   const [pEvent, setPEvent] = useState('');
   const [pHorse, setPHorse] = useState(null);
@@ -35,11 +41,18 @@ export default function AdminPricing() {
 
   async function load() {
     try {
-      const [t, p] = await Promise.all([call('/admin/license-tiers'), call('/admin/packages')]);
+      const [t, p, r, c] = await Promise.all([
+        call('/admin/license-tiers'), call('/admin/packages'),
+        call('/admin/reel-products'), call('/admin/credit-packs'),
+      ]);
       setTiers(t || []);
       setPackages(p || []);
+      setReels(r || []);
+      setCredits(c || []);
       setEdits({});
       setPkgEdits({});
+      setReelEdits({});
+      setCreditEdits({});
     } catch (e) { setMsg(e.message); }
   }
   useEffect(() => {
@@ -107,9 +120,11 @@ export default function AdminPricing() {
   async function savePackage(p) {
     const e = { ...(pkgEdits[p.id] || {}) };
     if (!Object.keys(e).length) { setMsg('No changes to save.'); return; }
-    if ('price_cents' in e) {
-      e.price_cents = toCents(e.price_cents);
-      if (Number.isNaN(e.price_cents)) { setMsg('Price must be a non-negative NZ$ amount.'); return; }
+    for (const k of ['price_cents', 'early_price_cents']) {
+      if (k in e) {
+        e[k] = toCents(e[k]);
+        if (Number.isNaN(e[k])) { setMsg('Price must be a non-negative NZ$ amount.'); return; }
+      }
     }
     setBusy(true);
     try {
@@ -129,6 +144,106 @@ export default function AdminPricing() {
     } catch (err) { setMsg(err.message); }
   }
 
+  // ---- Reel products: tiered per-event prices, set here (no deploy). ----
+  const setReel = (id, k, v) => setReelEdits((p) => ({ ...p, [id]: { ...(p[id] || {}), [k]: v } }));
+  const rval = (r, k) => (reelEdits[r.id]?.[k] ?? r[k] ?? '');
+  const rvalNZD = (r) => (reelEdits[r.id]?.price_cents ?? toNZD(r.price_cents));
+
+  async function saveReel(r) {
+    const e = { ...(reelEdits[r.id] || {}) };
+    if (!Object.keys(e).length) { setMsg('No changes to save.'); return; }
+    if ('price_cents' in e) {
+      e.price_cents = toCents(e.price_cents);
+      if (Number.isNaN(e.price_cents)) { setMsg('Price must be a non-negative NZ$ amount.'); return; }
+    }
+    setBusy(true);
+    try {
+      await call(`/admin/reel-products/${r.id}`, { method: 'PATCH', body: JSON.stringify(e) });
+      setMsg(`Saved reel product "${r.name}".`);
+      load();
+    } catch (err) { setMsg(err.message); }
+    setBusy(false);
+  }
+
+  async function addReel() {
+    if (!newReel.name.trim()) { setMsg('New reel product needs a name.'); return; }
+    const price = toCents(newReel.price_cents);
+    if (Number.isNaN(price)) { setMsg('Price must be a non-negative NZ$ amount.'); return; }
+    setBusy(true);
+    try {
+      const body = {
+        name: newReel.name.trim(), scope: newReel.scope, coverage: newReel.coverage,
+        includes_raw: !!newReel.includes_raw,
+        description: newReel.description.trim() || undefined, price_cents: price,
+      };
+      if (newReel.event_id) body.event_id = newReel.event_id;
+      await call('/admin/reel-products', { method: 'POST', body: JSON.stringify(body) });
+      setMsg(`Added reel product "${newReel.name.trim()}" at ${nzd(price)}.`);
+      setNewReel({ event_id: '', name: '', scope: 'round', coverage: 'ring', includes_raw: false, description: '', price_cents: '' });
+      load();
+    } catch (err) { setMsg(err.message); }
+    setBusy(false);
+  }
+
+  async function removeReel(r) {
+    if (!window.confirm(`Delete reel product "${r.name}"? Blocked while it has live orders — archive instead.`)) return;
+    try {
+      await call(`/admin/reel-products/${r.id}`, { method: 'DELETE' });
+      setMsg(`Deleted reel product "${r.name}".`);
+      load();
+    } catch (err) { setMsg(err.message); }
+  }
+
+  // ---- Credit packs: 5-pack bundles (pick any N photos in 1 event x subject).
+  // Blank event = global default price; per-event rows override it.
+  const setCredit = (id, k, v) => setCreditEdits((p) => ({ ...p, [id]: { ...(p[id] || {}), [k]: v } }));
+  const cval = (c, k) => (creditEdits[c.id]?.[k] ?? c[k] ?? '');
+  const cvalNZD = (c) => (creditEdits[c.id]?.price_cents ?? toNZD(c.price_cents));
+
+  async function saveCredit(c) {
+    const e = { ...(creditEdits[c.id] || {}) };
+    if (!Object.keys(e).length) { setMsg('No changes to save.'); return; }
+    for (const k of ['price_cents', 'early_price_cents']) {
+      if (k in e) {
+        e[k] = toCents(e[k]);
+        if (Number.isNaN(e[k])) { setMsg('Price must be a non-negative NZ$ amount.'); return; }
+      }
+    }
+    setBusy(true);
+    try {
+      await call(`/admin/credit-packs/${c.id}`, { method: 'PATCH', body: JSON.stringify(e) });
+      setMsg(`Saved ${e.slots || c.slots}-photo credit pack.`);
+      load();
+    } catch (err) { setMsg(err.message); }
+    setBusy(false);
+  }
+
+  async function addCredit() {
+    const slots = parseInt(newCredit.slots, 10);
+    if (!Number.isInteger(slots) || slots <= 0) { setMsg('Slots must be a positive integer.'); return; }
+    const price = toCents(newCredit.price_cents);
+    if (Number.isNaN(price)) { setMsg('Price must be a non-negative NZ$ amount.'); return; }
+    setBusy(true);
+    try {
+      const body = { scope_type: newCredit.scope_type, slots, price_cents: price };
+      if (newCredit.event_id) body.event_id = newCredit.event_id;
+      await call('/admin/credit-packs', { method: 'POST', body: JSON.stringify(body) });
+      setMsg(`Added ${slots}-photo credit pack at ${nzd(price)}.`);
+      setNewCredit({ event_id: '', scope_type: 'rider', slots: '5', price_cents: '' });
+      load();
+    } catch (err) { setMsg(err.message); }
+    setBusy(false);
+  }
+
+  async function removeCredit(c) {
+    if (!window.confirm(`Delete this credit pack? Blocked while it has live bundles — archive instead.`)) return;
+    try {
+      await call(`/admin/credit-packs/${c.id}`, { method: 'DELETE' });
+      setMsg('Deleted credit pack.');
+      load();
+    } catch (err) { setMsg(err.message); }
+  }
+
   async function createPackage() {
     if (!pEvent) { setMsg('Pick an event first.'); return; }
     if (!!pHorse === !!pRider) { setMsg('Pick exactly one: a horse or a rider.'); return; }
@@ -144,7 +259,7 @@ export default function AdminPricing() {
       }
       if (pTitle.trim()) body.title = pTitle.trim();
       const d = await call('/admin/packages', { method: 'POST', body: JSON.stringify(body) });
-      setMsg(`Created "${d.title}" with ${d.items} photos at ${nzd(d.price_cents)}.`);
+      setMsg(`Created "${d.title}" with ${d.items} items at ${nzd(d.price_cents)}.`);
       setPHorse(null); setPRider(null); setPPrice(''); setPTitle('');
       load();
     } catch (err) { setMsg(err.message); }
@@ -154,7 +269,7 @@ export default function AdminPricing() {
   return (
     <>
       <h1 className={H1}>Pricing</h1>
-      <p className={SUB}>License tiers buyers pick on every photo, plus photo packages per event × horse/rider. All prices NZD.</p>
+      <p className={SUB}>License tiers buyers pick on every photo, photo packages and 5-pack credits per event × horse/rider, plus reel products. All prices NZD.</p>
       {msg && <section className={CARD} role="alert"><p className="text-sm text-gold">{msg}</p></section>}
 
       <section className={CARD}>
@@ -222,7 +337,7 @@ export default function AdminPricing() {
         <table className={TABLE}>
           <thead><tr>
             <th className={TH}>Title</th><th className={TH}>Event</th><th className={`${TH} ${NUM}`}>Photos</th>
-            <th className={`${TH} ${NUM}`}>Price (NZ$)</th><th className={TH}>Status</th>
+            <th className={`${TH} ${NUM}`}>Price (NZ$)</th><th className={`${TH} ${NUM}`}>Early (NZ$)</th><th className={TH}>Early until</th><th className={TH}>Status</th>
             <th className={TH}><span className="sr-only">Actions</span></th>
           </tr></thead>
           <tbody>
@@ -232,6 +347,8 @@ export default function AdminPricing() {
                 <td className={`${TD} text-muted text-[13px]`}>{p.event_name || '—'}</td>
                 <td className={`${TD} ${NUM}`}>{p.items}</td>
                 <td className={`${TD} ${NUM}`}><input value={pvalNZD(p)} onChange={(e) => setPkg(p.id, 'price_cents', e.target.value)} inputMode="decimal" placeholder="NZ$" className={INP} style={{ width: 100 }} /></td>
+                <td className={`${TD} ${NUM}`}><input value={pkgEdits[p.id]?.early_price_cents ?? toNZD(p.early_price_cents)} onChange={(e) => setPkg(p.id, 'early_price_cents', e.target.value)} inputMode="decimal" placeholder="—" className={INP} style={{ width: 90 }} /></td>
+                <td className={TD}><input type="date" value={pkgEdits[p.id]?.early_until ?? (p.early_until || '').slice(0, 10)} onChange={(e) => setPkg(p.id, 'early_until', e.target.value)} className={INP} style={{ width: 140 }} /></td>
                 <td className={TD}>
                   <select value={pval(p, 'status')} onChange={(e) => setPkg(p.id, 'status', e.target.value)} className={INP}>
                     <option value="draft">draft</option>
@@ -246,7 +363,153 @@ export default function AdminPricing() {
               </tr>
             ))}
             {!packages.length && (
-              <tr><td colSpan={6} className="px-2 py-4 text-[13px] text-faint">No packages yet — create one above.</td></tr>
+              <tr><td colSpan={8} className="px-2 py-4 text-[13px] text-faint">No packages yet — create one above.</td></tr>
+            )}
+          </tbody>
+        </table>
+        </div>
+      </section>
+
+      <section className={CARD}>
+        <h2 className="text-[15px] font-bold mb-1">Reel products</h2>
+        <p className="text-[12.5px] text-muted mb-3">Tiered reel prices per event (Sportfot-style Silver/Gold × raw). Blank event = global default shown on every event. Buyers pick music on the order form (choose for me / track / none).</p>
+        <div className="grid gap-2.5 md:grid-cols-3 mb-3">
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Event (blank = all)
+            <select value={newReel.event_id} onChange={(e) => setNewReel({ ...newReel, event_id: e.target.value })} className={INP}>
+              <option value="">All events…</option>
+              {events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select></label>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Name
+            <input value={newReel.name} onChange={(e) => setNewReel({ ...newReel, name: e.target.value })} placeholder="e.g. Gold + raw" className={INP} /></label>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Price (NZ$)
+            <input value={newReel.price_cents} onChange={(e) => setNewReel({ ...newReel, price_cents: e.target.value })} inputMode="decimal" placeholder="e.g. 219.00" className={INP} /></label>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Scope
+            <select value={newReel.scope} onChange={(e) => setNewReel({ ...newReel, scope: e.target.value })} className={INP}>
+              <option value="clip">clip (raw ~5s)</option>
+              <option value="round">round edit + music</option>
+              <option value="event">event edit</option>
+            </select></label>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Coverage
+            <select value={newReel.coverage} onChange={(e) => setNewReel({ ...newReel, coverage: e.target.value })} className={INP}>
+              <option value="ring">ring only</option>
+              <option value="full">full (warm-up + ring + BTS)</option>
+            </select></label>
+          <label className="flex flex-row items-center gap-2 text-[12px] text-muted pt-5">
+            <input type="checkbox" checked={newReel.includes_raw} onChange={(e) => setNewReel({ ...newReel, includes_raw: e.target.checked })} /> + raw footage</label>
+        </div>
+        <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint mb-3">Description
+          <input value={newReel.description} onChange={(e) => setNewReel({ ...newReel, description: e.target.value })} placeholder="e.g. Warm-up, ring and behind the scenes, edited with music" className={INP} /></label>
+        <button onClick={addReel} disabled={busy} className={BTN_PRIMARY}>Add reel product</button>
+
+        <div className={`${TABLEWRAP} mt-4`}>
+        <table className={TABLE}>
+          <thead><tr>
+            <th className={TH}>Name</th><th className={TH}>Event</th><th className={TH}>Scope</th>
+            <th className={TH}>Coverage</th><th className={TH}>+Raw</th>
+            <th className={`${TH} ${NUM}`}>Price (NZ$)</th><th className={TH}>Status</th>
+            <th className={TH}><span className="sr-only">Actions</span></th>
+          </tr></thead>
+          <tbody>
+            {reels.map((r) => (
+              <tr key={r.id} className="border-b border-rowline last:border-0">
+                <td className={TD}><input value={rval(r, 'name')} onChange={(e) => setReel(r.id, 'name', e.target.value)} className={INP} style={{ minWidth: 140 }} /></td>
+                <td className={`${TD} text-muted text-[13px]`}>{r.event_name || 'All'}</td>
+                <td className={TD}>
+                  <select value={rval(r, 'scope')} onChange={(e) => setReel(r.id, 'scope', e.target.value)} className={INP}>
+                    <option value="clip">clip</option>
+                    <option value="round">round</option>
+                    <option value="event">event</option>
+                  </select>
+                </td>
+                <td className={TD}>
+                  <select value={rval(r, 'coverage')} onChange={(e) => setReel(r.id, 'coverage', e.target.value)} className={INP}>
+                    <option value="ring">ring</option>
+                    <option value="full">full</option>
+                  </select>
+                </td>
+                <td className={TD}><input type="checkbox" checked={!!(reelEdits[r.id]?.includes_raw ?? r.includes_raw)} onChange={(e) => setReel(r.id, 'includes_raw', e.target.checked)} /></td>
+                <td className={`${TD} ${NUM}`}><input value={rvalNZD(r)} onChange={(e) => setReel(r.id, 'price_cents', e.target.value)} inputMode="decimal" placeholder="NZ$" className={INP} style={{ width: 100 }} /></td>
+                <td className={TD}>
+                  <select value={rval(r, 'status')} onChange={(e) => setReel(r.id, 'status', e.target.value)} className={INP}>
+                    <option value="draft">draft</option>
+                    <option value="published">published</option>
+                    <option value="archived">archived</option>
+                  </select>
+                </td>
+                <td className={`${TD} whitespace-nowrap text-right`}>
+                  <button onClick={() => saveReel(r)} disabled={busy} className="text-sky text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2">Save</button>
+                  <button onClick={() => removeReel(r)} className="text-faint text-[13px] hover:text-blood bg-none border-0 cursor-pointer">Delete</button>
+                </td>
+              </tr>
+            ))}
+            {!reels.length && (
+              <tr><td colSpan={8} className="px-2 py-4 text-[13px] text-faint">No reel products yet — add one above.</td></tr>
+            )}
+          </tbody>
+        </table>
+        </div>
+      </section>
+
+      <section className={CARD}>
+        <h2 className="text-[15px] font-bold mb-1">Credit packs (5-pack)</h2>
+        <p className="text-[12.5px] text-muted mb-3">Pick-any-N photo credits for 1 event × rider/horse. Blank event = global default; per-event rows override it. Buyers unlock photos one by one, re-downloads free.</p>
+        <div className="grid gap-2.5 md:grid-cols-4 mb-3">
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Event (blank = all)
+            <select value={newCredit.event_id} onChange={(e) => setNewCredit({ ...newCredit, event_id: e.target.value })} className={INP}>
+              <option value="">All events…</option>
+              {events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select></label>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Applies to
+            <select value={newCredit.scope_type} onChange={(e) => setNewCredit({ ...newCredit, scope_type: e.target.value })} className={INP}>
+              <option value="rider">rider</option>
+              <option value="horse">horse</option>
+            </select></label>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Photos (slots)
+            <input value={newCredit.slots} onChange={(e) => setNewCredit({ ...newCredit, slots: e.target.value })} inputMode="numeric" placeholder="5" className={INP} /></label>
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Price (NZ$)
+            <input value={newCredit.price_cents} onChange={(e) => setNewCredit({ ...newCredit, price_cents: e.target.value })} inputMode="decimal" placeholder="e.g. 129.00" className={INP} /></label>
+        </div>
+        <button onClick={addCredit} disabled={busy} className={BTN_PRIMARY}>Add credit pack</button>
+
+        <div className={`${TABLEWRAP} mt-4`}>
+        <table className={TABLE}>
+          <thead><tr>
+            <th className={TH}>Event</th><th className={TH}>Applies to</th>
+            <th className={`${TH} ${NUM}`}>Photos</th><th className={`${TH} ${NUM}`}>Price (NZ$)</th>
+            <th className={`${TH} ${NUM}`}>Early (NZ$)</th><th className={TH}>Early until</th>
+            <th className={TH}>Status</th><th className={`${TH} ${NUM}`}>Bundles</th>
+            <th className={TH}><span className="sr-only">Actions</span></th>
+          </tr></thead>
+          <tbody>
+            {credits.map((c) => (
+              <tr key={c.id} className="border-b border-rowline last:border-0">
+                <td className={`${TD} text-muted text-[13px]`}>{c.event_name || 'All'}</td>
+                <td className={TD}>
+                  <select value={cval(c, 'scope_type')} onChange={(e) => setCredit(c.id, 'scope_type', e.target.value)} className={INP}>
+                    <option value="rider">rider</option>
+                    <option value="horse">horse</option>
+                  </select>
+                </td>
+                <td className={`${TD} ${NUM}`}><input value={cval(c, 'slots') ?? ''} onChange={(e) => setCredit(c.id, 'slots', e.target.value)} inputMode="numeric" className={INP} style={{ width: 60 }} /></td>
+                <td className={`${TD} ${NUM}`}><input value={cvalNZD(c)} onChange={(e) => setCredit(c.id, 'price_cents', e.target.value)} inputMode="decimal" placeholder="NZ$" className={INP} style={{ width: 100 }} /></td>
+                <td className={`${TD} ${NUM}`}><input value={creditEdits[c.id]?.early_price_cents ?? toNZD(c.early_price_cents)} onChange={(e) => setCredit(c.id, 'early_price_cents', e.target.value)} inputMode="decimal" placeholder="—" className={INP} style={{ width: 90 }} /></td>
+                <td className={TD}><input type="date" value={creditEdits[c.id]?.early_until ?? (c.early_until || '').slice(0, 10)} onChange={(e) => setCredit(c.id, 'early_until', e.target.value)} className={INP} style={{ width: 140 }} /></td>
+                <td className={TD}>
+                  <select value={cval(c, 'status')} onChange={(e) => setCredit(c.id, 'status', e.target.value)} className={INP}>
+                    <option value="draft">draft</option>
+                    <option value="published">published</option>
+                    <option value="archived">archived</option>
+                  </select>
+                </td>
+                <td className={`${TD} ${NUM}`}>{c.bundles}</td>
+                <td className={`${TD} whitespace-nowrap text-right`}>
+                  <button onClick={() => saveCredit(c)} disabled={busy} className="text-sky text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2">Save</button>
+                  <button onClick={() => removeCredit(c)} className="text-faint text-[13px] hover:text-blood bg-none border-0 cursor-pointer">Delete</button>
+                </td>
+              </tr>
+            ))}
+            {!credits.length && (
+              <tr><td colSpan={9} className="px-2 py-4 text-[13px] text-faint">No credit packs yet — add one above.</td></tr>
             )}
           </tbody>
         </table>

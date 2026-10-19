@@ -207,6 +207,11 @@ UUIDs avoid collision work; revisit if SEO demands).
 - Catalog prices in NZD, GST-inclusive display; receipt states GST component.
   Photographer is the seller of record; platform fee = `commission_rate`
   (config, no split-payment plumbing in v1 — monthly settlement + report).
+- **Family operation (Oct 2026):** the photographer is family, so
+  `commission_rate` = 0 (migration 062) — the only real cost is the Stripe fee
+  (~1.75% + 30¢ domestic, shown as `stripe_fee_est` in Transactions/CSV), and
+  `payout = gross − platform_fee − stripe_fee_est`. The commission mechanism is
+  retained untouched for future external photographers.
 - Stripe Checkout Sessions (no card data touches our servers) →
   `checkout.session.completed` webhook → `purchases.status='paid'` (guarded by
   `stripe_session_id` uniqueness = idempotent retries safe).

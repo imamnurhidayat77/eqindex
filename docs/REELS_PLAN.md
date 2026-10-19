@@ -1,6 +1,6 @@
 # Reels Plan — custom highlight reels ala Sportfot
 
-Status: planned, not built. Consolidated from research + discussion (Oct 2026).
+Status: Fase A built (Oct 2026), Fase B/C planned. Consolidated from research + discussion (Oct 2026).
 
 ## 1. Referensi: cara kerja reels di Sportfot (terverifikasi)
 
@@ -77,15 +77,19 @@ Selfie hanya dibuka admin via signed URL + kebijakan hapus setelah N hari.
 4. **Player** — halaman detail media pakai `<video>` bila `kind='reel'`
    (sumber: file asli via signed URL untuk yang berhak).
 
-**Fase B (processing video, setelah MVP jalan):**
-- Tambah `ffmpeg` ke image API (sekarang hanya `sharp`, tak bisa sentuh
-  video).
-- Saat upload reel: ekstrak **poster frame** → `thumb_key`; render
-  **preview resolusi rendah ber-watermark** → `preview_key` (teaser gratis
-  yang bisa diputar, meniru preview foto).
-- **Batasan teknis:** upload browser lewat proxy Vercel (~30 dtk) — video
-  50–200MB pasti 502. Butuh upload langsung ke Cloud Run atau chunked
-  upload + limit khusus video (mis. 200MB), bukan 15MB.
+**Fase B (processing video, setelah MVP jalan):** ✅ built Oct 2026 —
+- `ffmpeg-static` (binary statis, tanpa apt di node:20-slim) + `api/src/lib/reelProcess.js`
+  (probe dims early-kill, preview 640px H.264 + watermark overlay + faststart,
+  poster JPG dari preview). Pipeline diverifikasi dengan video sintetis
+  (1280×720 → teaser + poster). Bug MP4 non-seekable pipe ditemukan & diperbaiki
+  (render via temp file).
+- Upload besar: alur baru `POST /admin/media/upload-url` (presigned PUT langsung
+  browser→R2, ≤200MB, melewati limit ~30 dtk proxy) → `POST /admin/media/:id/finalize`
+  (202 + background job, halaman upload polling `GET /admin/media/:id` sampai
+  thumb muncul). DEPLOY: bucket R2 butuh CORS rule PUT dari origin web.
+- **Player:** `ReelPlayer.jsx` (teaser ber-watermark, publik) di detail;
+  original via entitlement yang sudah ada + pembeli reel-order (`ready/delivered`)
+  kini lolos download & tampil Owned.
 
 **Fase C (discovery & monetisasi):** rak reel per event/horse, bundel
 foto+reel via `package_items`, harga per fotografer, notifikasi email
@@ -117,7 +121,11 @@ tulis di syarat layanan.
 
 ## 9. Keputusan yang masih terbuka
 
-1. ~~Harga~~ → tiered per event ala Sportfot (Silver/Gold × +raw).
-2. ~~Waktu bayar~~ → di muka (default).
+1. ~~Harga~~ → tiered per event ala Sportfot (Silver/Gold × +raw). **Built:** tabel
+   `reel_products` (migrasi 060), CRUD di `/admin/pricing`, scope
+   `clip|round|event` × coverage `ring|full` × `includes_raw`.
+2. ~~Waktu bayar~~ → di muka (default). **Built:** `POST /api/reel-orders`
+   membuat order + purchase + Stripe session; webhook melunaskan order ke
+   `pending`; antrean fulfillment di `/admin/reels`.
 3. Siapa yang mengedit (internal vs eksternal)?
 4. Batas ukuran video + berapa lama selfie disimpan?

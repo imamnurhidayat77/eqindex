@@ -5,6 +5,7 @@ import RouteProgress from '../components/RouteProgress';
 import { SeasonProvider } from '../components/global';
 import { AuthProvider } from '../components/auth';
 import UserMenu from '../components/UserMenu';
+import NotificationBell from '../components/NotificationBell';
 
 export const metadata = { title: 'EQIndex — Horse Intelligence' };
 export const viewport = { width: 'device-width', initialScale: 1 };
@@ -33,6 +34,7 @@ export default function RootLayout({ children }) {
             <Navbar />
             <div className="flex-1" />
             <NavSearch />
+            <NotificationBell />
             <UserMenu />
           </div>
         </header>

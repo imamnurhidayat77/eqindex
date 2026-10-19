@@ -145,7 +145,7 @@ export default function AdminSales() {
     setExporting(false);
   }
 
-  const tierLabel = (id) => (id === 'bundle' ? 'Package bundle' : tiers.find((t) => t.id === id)?.label || id || '—');
+  const tierLabel = (id) => (id === 'bundle' ? 'Package bundle' : id === 'reel' ? 'Reel service' : id === 'credit' ? 'Photo credits' : tiers.find((t) => t.id === id)?.label || id || '—');
   const k = summary?.kpis;
   const maxDay = Math.max(1, ...(summary?.by_day || []).map((d) => Number(d.gross_cents) || 0));
   const maxTier = Math.max(1, ...(summary?.by_tier || []).map((t) => Number(t.gross_cents) || 0));
@@ -154,9 +154,18 @@ export default function AdminSales() {
   const pages = Math.max(1, Math.ceil(total / LIMIT));
   const page = Math.floor(offset / LIMIT) + 1;
 
-  const itemOf = (r) => (r.kind === 'photo'
-    ? { title: [r.horse, r.rider].filter(Boolean).join(' × ') || r.event_name || 'Photo', sub: r.event_name || '' }
-    : { title: r.package_title || 'Package', sub: r.event_name ? `${r.event_name} · bundle` : 'Bundle' });
+  const itemOf = (r) => {
+    if (r.kind === 'photo') {
+      return { title: [r.horse, r.rider].filter(Boolean).join(' × ') || r.event_name || 'Photo', sub: r.event_name || '' };
+    }
+    if (r.kind === 'reel') {
+      return { title: 'Reel order', sub: r.event_name ? `${r.event_name} · service` : 'Service' };
+    }
+    if (r.kind === 'credit') {
+      return { title: 'Photo credits', sub: r.event_name ? `${r.event_name} · credits` : 'Credits' };
+    }
+    return { title: r.package_title || 'Package', sub: r.event_name ? `${r.event_name} · bundle` : 'Bundle' };
+  };
 
   return (
     <>
@@ -213,8 +222,8 @@ export default function AdminSales() {
               options={[{ value: '', label: 'All licenses' }, { value: 'bundle', label: 'Package bundle' }, ...tiers.map((t) => ({ value: t.id, label: t.label || t.id }))]}
               onSelect={(o) => set('tier')(o.value)} buttonClassName="min-w-[150px]" menuClassName="min-w-[180px]" /></label>
           <label className="text-xs text-muted flex flex-col gap-1.5">Type
-            <Dropdown ariaLabel="Type filter" value={f.kind} placeholder="Photos + packages"
-              options={[{ value: '', label: 'Photos + packages' }, ['photo', 'Photos'], ['package', 'Packages']]}
+            <Dropdown ariaLabel="Type filter" value={f.kind} placeholder="All types"
+              options={[{ value: '', label: 'All types' }, ['photo', 'Photos'], ['package', 'Packages'], ['reel', 'Reels'], ['credit', 'Credits']]}
               onSelect={(o) => set('kind')(o.value)} buttonClassName="min-w-[150px]" /></label>
           <label className="text-xs text-muted flex flex-col gap-1.5">Event
             <Dropdown ariaLabel="Event filter" value={f.event_id} placeholder="All events" searchable
@@ -255,7 +264,7 @@ export default function AdminSales() {
                       {!!item.sub && <span className="block text-[11.5px] text-faint truncate max-w-[260px]">{item.sub}</span>}
                     </td>
                     <td className={`${TD} text-muted capitalize`}>{r.kind}</td>
-                    <td className={TD}>{r.kind === 'package' ? <span className="text-muted">Bundle</span> : tierLabel(r.license_tier)}</td>
+                    <td className={TD}>{r.kind === 'package' ? <span className="text-muted">Bundle</span> : r.kind === 'reel' ? <span className="text-muted">Reel service</span> : r.kind === 'credit' ? <span className="text-muted">Credits</span> : tierLabel(r.license_tier)}</td>
                     <td className={`${TD} ${NUM} font-bold tabular-nums`}>{nzd(r.amount_cents)}</td>
                     <td className={TD}><span className={badge(STATUS_PILL[r.status] || BADGE.gray)}>{r.status}</span></td>
                   </tr>,
@@ -269,6 +278,8 @@ export default function AdminSales() {
                             ['Buyer user', r.buyer_user_id ? <code key="v" className="font-mono text-[11.5px]">{String(r.buyer_user_id).slice(0, 8)}…</code> : 'guest checkout'],
                             ['Photographer', r.photographer || '—'],
                             ['Event', r.event_name || '—'],
+                            ['Amount', nzd(r.amount_cents)],
+                            ['Stripe fee (est.)', nzd(r.stripe_fee_est_cents)],
                             ['Stripe session', r.stripe_session_id ? <code key="v" className="font-mono text-[11.5px]">{r.stripe_session_id}</code> : '—'],
                             ['Currency', r.currency || 'NZD'],
                           ].map(([k, v]) => (
@@ -345,13 +356,13 @@ export default function AdminSales() {
           <span className="flex-1" />
           <button onClick={exportCSV} disabled={exporting || loading} className={BTN}>⭳ Settlement CSV</button>
         </div>
-        <p className="text-[12px] text-muted mb-3">Payout = gross − platform fee (photographer commission rate). Settle monthly; the CSV is the GST record.</p>
+        <p className="text-[12px] text-muted mb-3">Payout = gross − platform fee − Stripe fee (est. 1.75% + 30¢). Family operation: platform fee is 0 — Stripe is the only real cost. Settle monthly; the CSV is the GST record.</p>
         <div className={TABLEWRAP}>
           <table className={TABLE}>
             <thead><tr>
               <th className={TH}>Photographer</th>
               <th className={`${TH} ${NUM}`}>Sales</th><th className={`${TH} ${NUM}`}>Gross</th>
-              <th className={`${TH} ${NUM}`}>Platform fee</th><th className={`${TH} ${NUM}`}>Payout</th>
+              <th className={`${TH} ${NUM}`}>Platform fee</th><th className={`${TH} ${NUM}`}>Stripe fee (est.)</th><th className={`${TH} ${NUM}`}>Payout</th>
             </tr></thead>
             <tbody>
               {(summary?.settlement || []).map((s) => (
@@ -360,10 +371,11 @@ export default function AdminSales() {
                   <td className={`${TD} ${NUM}`}>{s.sales}</td>
                   <td className={`${TD} ${NUM} tabular-nums`}>{nzd(s.gross_cents)}</td>
                   <td className={`${TD} ${NUM} tabular-nums text-muted`}>{nzd(s.fee_cents)} <span className="text-faint">({Math.round(Number(s.commission_rate) * 100)}%)</span></td>
+                  <td className={`${TD} ${NUM} tabular-nums text-muted`}>{nzd(s.stripe_fee_cents)}</td>
                   <td className={`${TD} ${NUM} tabular-nums font-bold text-gold`}>{nzd(s.payout_cents)}</td>
                 </tr>
               ))}
-              {!(summary?.settlement || []).length && !loading && <tr><td colSpan={5} className={EMPTY}>No paid sales to settle in this range.</td></tr>}
+              {!(summary?.settlement || []).length && !loading && <tr><td colSpan={6} className={EMPTY}>No paid sales to settle in this range.</td></tr>}
             </tbody>
           </table>
         </div>

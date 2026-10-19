@@ -34,6 +34,7 @@ const MANAGE_GROUPS = [
   { title: 'Media', items: [
     ['/admin/media', '◍', 'Media Library'],
     ['/admin/media/upload', '⇪', 'Media Upload'],
+    ['/admin/reels', '▶', 'Reel Orders'],
     ['/admin/sales', '◈', 'Transactions'],
   ]},
 ];

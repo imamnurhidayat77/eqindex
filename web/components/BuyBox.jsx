@@ -38,6 +38,8 @@ export default function BuyBox({ id, tier, tierLabel }) {
   const [picked, setPicked] = useState(null);
   const [idem] = useState(() => keyFor);
   const [owned, setOwned] = useState(null);
+  const [credit, setCredit] = useState(null);
+  const [unlocking, setUnlocking] = useState(false);
 
   const defaultTier = tier || 'web';
   useEffect(() => {
@@ -48,9 +50,11 @@ export default function BuyBox({ id, tier, tierLabel }) {
       else if (!picked && list.length) setPicked(list[0].id);
     }).catch(() => setTiers([]));
     // Ownership check (session cookie, first-party via /api proxy).
-    // GET /photos/:id returns {owned, owned_tier} for the logged-in buyer.
+    // GET /photos/:id returns {owned, owned_tier} for the logged-in buyer,
+    // plus a {credit: {slots_left}} hint when 5-pack credits cover this photo.
     fetch(`${API}/photos/${id}`, { credentials: 'include' }).then((r) => r.json()).then((j) => {
       if (j?.data?.owned) setOwned(j.data);
+      else if (Number(j?.data?.credit?.slots_left) > 0) setCredit(j.data.credit);
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -83,6 +87,22 @@ export default function BuyBox({ id, tier, tierLabel }) {
     } catch (e) { setErr(e.message); setBusy(false); }
   }
 
+  async function unlock() {
+    if (unlocking) return;
+    setErr('');
+    setUnlocking(true);
+    try {
+      const res = await fetch(`${API}/api/credits/unlock`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ media_id: id }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
+      setOwned({ owned: true, owned_tier: 'credit' });
+      setCredit(null);
+    } catch (e) { setErr(e.message); setUnlocking(false); }
+  }
+
   if (owned?.owned) {
     return (
       <div className="mt-4 rounded border border-gold/50 bg-goldbg/20 p-3">
@@ -98,6 +118,15 @@ export default function BuyBox({ id, tier, tierLabel }) {
 
   return (
     <div className="mt-4 rounded border border-line bg-card2 p-3">
+      {credit && Number(credit.slots_left) > 0 && (
+        <button onClick={unlock} disabled={unlocking}
+          className="mb-3 w-full rounded-lg border border-sky/60 bg-sky/10 px-2.5 py-2 text-left cursor-pointer hover:bg-sky/20 transition">
+          <span className="block text-[13px] font-bold text-white">
+            {unlocking ? 'Unlocking…' : `Unlock with 5-pack credit (${credit.slots_left} left)`}
+          </span>
+          <span className="block text-[11px] text-faint">Uses 1 credit — full resolution, no extra charge.</span>
+        </button>
+      )}
       <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-2">License</div>
       {!tiers ? (
         <p className="text-[12px] text-faint">Loading licenses…</p>

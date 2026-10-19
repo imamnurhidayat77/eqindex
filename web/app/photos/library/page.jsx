@@ -22,17 +22,21 @@ function ImageIcon({ className }) {
 export default function PhotoLibrary() {
   const { user, loading } = useAuth();
   const [rows, setRows] = useState(null);
+  const [claimed, setClaimed] = useState([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   async function load() {
     setBusy(true); setErr('');
     try {
-      const r = await fetch(`${API}/api/my/photos`, { credentials: 'include' });
-      const j = await r.json().catch(() => ({}));
-      if (r.status === 401) throw new Error('Log in to see your photos.');
-      if (!r.ok) throw new Error(j.error || `Failed (${r.status})`);
-      setRows(j.data || []);
+      const [a, b] = await Promise.all([
+        fetch(`${API}/api/my/photos`, { credentials: 'include' }).then((r) => r.json().then((j) => ({ r, j }))),
+        fetch(`${API}/api/my/claimed`, { credentials: 'include' }).then((r) => r.json().then((j) => ({ r, j }))).catch(() => null),
+      ]);
+      if (a.r.status === 401) throw new Error('Log in to see your photos.');
+      if (!a.r.ok) throw new Error(a.j.error || `Failed (${a.r.status})`);
+      setRows(a.j.data || []);
+      setClaimed(b && b.r.ok ? b.j.data || [] : []);
     } catch (e) { setErr(e.message); }
     setBusy(false);
   }
@@ -54,6 +58,7 @@ export default function PhotoLibrary() {
           </span>
         )}
         <span className="flex-1" />
+        <Link href="/reels" className="text-sky text-[13px] no-underline hover:underline">My reels →</Link>
         <Link href="/photos" className={`${BTN_PRIMARY} no-underline`}>Buy more photos</Link>
       </div>
       <p className={SUB}>Paid downloads, re-downloadable any time. Purchases are linked to your login.</p>
@@ -104,6 +109,33 @@ export default function PhotoLibrary() {
             </article>
           ))}
         </div>
+      )}
+      {!!claimed.length && (
+        <>
+          <h2 className="mt-7 mb-1 text-[15px] font-bold text-white">Claimed by you</h2>
+          <p className={`${SUB} !mt-0 mb-3`}>Photos you saved as yourself — buy them to unlock full resolution.</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {claimed.map((x) => (
+              <Link key={x.id} href={`/photos/${x.id}`}
+                className="flex flex-col rounded-xl border border-sky/40 bg-card overflow-hidden no-underline hover:border-gold/50 transition">
+                <div className="aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
+                  {x.thumb_url || x.preview_url
+                    ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                    : <ImageIcon className="h-8 w-8 text-faint" />}
+                </div>
+                <div className="flex grow flex-col gap-1 p-3">
+                  <div className="text-[13.5px] font-bold text-white truncate">
+                    {[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Photo'}
+                  </div>
+                  <div className="text-[11.5px] text-faint truncate">
+                    Saved as {x.claimed_horse || x.claimed_rider || 'you'} · {fmtDate(x.created_at)}
+                  </div>
+                  <span className="text-sky text-[12.5px] font-bold">Buy to unlock →</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </>
       )}
     </>
   );

@@ -4,6 +4,10 @@ import { getJSON } from '../../../lib/api';
 import { CARD, H1, SUB } from '../../../lib/tokens';
 import BuyBox from '../../../components/BuyBox';
 import PackageUpsell from '../../../components/PackageUpsell';
+import ClaimButton from '../../../components/ClaimButton';
+import TakedownButton from '../../../components/TakedownButton';
+import MomentBundle from '../../../components/MomentBundle';
+import ReelPlayer from '../../../components/ReelPlayer';
 import PhotoViewer from '../../../components/PhotoViewer';
 import ShareCard from '../../../components/ShareCard';
 
@@ -52,9 +56,15 @@ export default async function PhotoDetail({ params }) {
 
       <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr] items-start">
         <section className="bg-card border border-line rounded overflow-hidden lg:mb-0">
-          <PhotoViewer src={d.preview_url} alt={title} width={d.width} height={d.height} />
+          {d.kind === 'reel' ? (
+            <ReelPlayer previewUrl={d.preview_url} posterUrl={d.thumb_url} title={title} />
+          ) : (
+            <PhotoViewer src={d.preview_url} alt={title} width={d.width} height={d.height} />
+          )}
           <div className="px-5 py-4">
             <p className="text-[11px] text-faint">Watermarked preview — full resolution unlocks after purchase.</p>
+            <ClaimButton mediaId={d.id} />
+            <TakedownButton mediaId={d.id} />
             <ShareCard title={title} text={`${d.event_name || ''}${d.class_name ? ` · ${d.class_name}` : ''}`} />
           </div>
         </section>
@@ -79,6 +89,7 @@ export default async function PhotoDetail({ params }) {
             </dl>
             <BuyBox id={d.id} tier={d.license_default} tierLabel={d.tier_label} />
             <PackageUpsell eventId={d.event_id} horseId={d.horse_id} riderId={d.rider_id} horse={d.horse} rider={d.rider} />
+            <MomentBundle eventId={d.event_id} horseId={d.horse_id} riderId={d.rider_id} currentId={d.id} currentKind={d.kind} />
           </section>
         </div>
       </div>

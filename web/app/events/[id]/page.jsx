@@ -7,6 +7,7 @@ import ClassResults from '../../../components/ClassResults';
 import { EventDifficultyTable } from '../../../components/EventTables';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 import PhotoStrip from '../../../components/PhotoStrip';
+import ReelOrderForm from '../../../components/ReelOrderForm';
 
 export const revalidate = 30;
 
@@ -237,6 +238,12 @@ export default async function EventDetail({ params }) {
       </section>
 
       <PhotoStrip query={{ event_id: params.id }} title="Event photos" moreHref={`/photos?event=${params.id}`} />
+
+      <PhotoStrip query={{ event_id: params.id, kind: 'reel' }} title="Event reels" moreHref={`/photos?event=${params.id}&kind=reel`} />
+
+      <div className="mb-6">
+        <ReelOrderForm eventId={e.id || params.id} eventName={e.name} />
+      </div>
 
     </>
   );

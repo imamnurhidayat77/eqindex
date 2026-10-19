@@ -294,6 +294,8 @@ export default async function HorseProfile({ params, searchParams }) {
 
       <PhotoStrip query={{ horse_id: h.id }} title="Photos" moreHref={`/photos?horse=${h.slug || h.id}`} />
 
+      <PhotoStrip query={{ horse_id: h.id, kind: 'reel' }} title="Reels" moreHref={`/photos?horse=${h.slug || h.id}&kind=reel`} />
+
       <section className="rounded border border-line bg-card p-5">
         <h2 className="mb-2 text-[15px] font-bold">Registry</h2>
         <dl>

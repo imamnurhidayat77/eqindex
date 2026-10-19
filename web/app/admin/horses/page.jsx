@@ -10,6 +10,7 @@ export default function ManageHorses() {
         { k: 'name', label: 'Horse' }, { k: 'breed', label: 'Breed' },
         { k: 'sire', label: 'Sire' }, { k: 'starts', label: 'Starts', num: true },
         { k: 'visibility', label: 'Visibility', toggle: { field: 'visibility', on: 'public', off: 'anonymous', onLabel: 'PUBLIC', offLabel: 'HIDDEN' } },
+        { k: 'photo_hidden', label: 'Photos (opt-out hides from public galleries)', toggle: { field: 'photo_hidden', on: false, off: true, onLabel: 'PUBLIC', offLabel: 'HIDDEN' } },
       ]}
       fields={[
         { k: 'name', label: 'Name' }, { k: 'breed', label: 'Breed' },

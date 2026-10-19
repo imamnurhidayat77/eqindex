@@ -405,6 +405,8 @@ export default async function RiderProfile({ params, searchParams }) {
 
       <PhotoStrip query={{ rider_id: r.id }} title="Photos" moreHref={`/photos?rider=${r.slug || r.id}`} />
 
+      <PhotoStrip query={{ rider_id: r.id, kind: 'reel' }} title="Reels" moreHref={`/photos?rider=${r.slug || r.id}&kind=reel`} />
+
     </div>
   );
 }

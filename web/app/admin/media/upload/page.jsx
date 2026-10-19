@@ -9,6 +9,7 @@ import EntityPicker from '../../../../components/EntityPicker';
 
 const MAX_FILES = 20;
 const MAX_BYTES = 15 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const OK_TYPES = [
   'image/jpeg', 'image/png', 'image/webp',
   'video/mp4', 'video/quicktime', 'video/webm',
@@ -90,8 +91,9 @@ export default function AdminMediaUpload() {
         setMsg(`"${f.name}" was skipped — supported formats are JPG, PNG, WebP and MP4.`);
         continue;
       }
-      if (f.size > MAX_BYTES) {
-        setMsg(`"${f.name}" was skipped — file size is ${fmtMB(f.size)} (limit 15 MB).`);
+      const cap = f.type.startsWith('video/') ? MAX_VIDEO_BYTES : MAX_BYTES;
+      if (f.size > cap) {
+        setMsg(`"${f.name}" was skipped — file size is ${fmtMB(f.size)} (limit ${fmtMB(cap)}). Videos upload direct to storage.`);
         continue;
       }
       kept.push(f);
@@ -113,19 +115,57 @@ export default function AdminMediaUpload() {
   }
 
   // ---- step 1: upload ----
+  // Photos ride the classic multipart path (small, fast). Videos go direct:
+  // browser PUTs bytes straight to R2 (bypasses the ~30s proxy limit), then
+  // finalize renders poster + teaser in the background — poll until thumbs land.
+  async function uploadVideoDirect(f) {
+    const init = await call('/admin/media/upload-url', {
+      method: 'POST',
+      body: JSON.stringify({
+        filename: f.name, mimetype: f.type, size_bytes: f.size,
+        ...(eventId ? { event_id: eventId } : {}),
+      }),
+    });
+    const put = await fetch(init.upload_url, { method: 'PUT', body: f, headers: { 'Content-Type': f.type } });
+    if (!put.ok) throw new Error(`Direct upload failed (${put.status}) — check the R2 CORS rule.`);
+    await call(`/admin/media/${init.media_id}/finalize`, { method: 'POST', body: '{}' });
+    const deadline = Date.now() + 8 * 60 * 1000;
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 8000));
+      try {
+        const row = await call(`/admin/media/${init.media_id}`);
+        if (row?.thumb_key) return { file: f.name, ok: true, id: init.media_id, kind: 'reel' };
+      } catch { /* keep polling */ }
+      if (Date.now() > deadline) return { file: f.name, ok: true, id: init.media_id, kind: 'reel', slow: true };
+    }
+  }
+
   async function upload() {
     if (!files.length) { setMsg('Choose files first — drag them into the drop zone or browse.'); return; }
     setBusy(true); setMsg('');
     try {
-      const fd = new FormData();
-      if (eventId) fd.append('event_id', eventId);
-      for (const f of files) fd.append('files', f);
-      const res = await fetch(`${API}/admin/media/upload`, { method: 'POST', credentials: 'include', body: fd });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
-      const ok = (j.data || []).filter((x) => x.ok && x.id);
-      const bad = (j.data || []).filter((x) => !x.ok);
-      if (bad.length) setMsg(`Uploaded ${ok.length}/${(j.data || []).length} — ${bad[0].file}: ${bad[0].error}${bad.length > 1 ? ` (+${bad.length - 1} more)` : ''}`);
+      const videos = files.filter((f) => f.type.startsWith('video/'));
+      const photos = files.filter((f) => !f.type.startsWith('video/'));
+      const results = [];
+      if (photos.length) {
+        const fd = new FormData();
+        if (eventId) fd.append('event_id', eventId);
+        for (const f of photos) fd.append('files', f);
+        const res = await fetch(`${API}/admin/media/upload`, { method: 'POST', credentials: 'include', body: fd });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
+        results.push(...(j.data || []));
+      }
+      for (const v of videos) {
+        setMsg(`Uploading video ${v.name} directly (${fmtMB(v.size)}) — teaser renders after…`);
+        try { results.push(await uploadVideoDirect(v)); }
+        catch (e) { results.push({ file: v.name, ok: false, error: e.message }); }
+      }
+      const ok = results.filter((x) => x.ok && x.id);
+      const bad = results.filter((x) => !x.ok);
+      const slow = results.filter((x) => x.ok && x.slow);
+      if (bad.length) setMsg(`Uploaded ${ok.length}/${results.length} — ${bad[0].file}: ${bad[0].error}${bad.length > 1 ? ` (+${bad.length - 1} more)` : ''}`);
+      else if (slow.length) setMsg(`Uploaded ${ok.length}/${results.length} — teaser still rendering for ${slow.length}, it will appear in the library shortly.`);
       if (!ok.length) { setBusy(false); return; }
       setUploadedIds(ok.map((x) => x.id));
       setFiles([]);
@@ -238,7 +278,7 @@ export default function AdminMediaUpload() {
                 <div className="mt-0.5 text-[12.5px] text-muted">
                   or <span className="text-gold underline underline-offset-2">browse files</span>
                   <span className="mx-1.5 text-faint">·</span>JPG / PNG / WebP / MP4
-                  <span className="mx-1.5 text-faint">·</span>≤ 15 MB each
+                  <span className="mx-1.5 text-faint">·</span>photos ≤ 15 MB, video ≤ 200 MB
                   <span className="mx-1.5 text-faint">·</span>max {MAX_FILES} files
                 </div>
                 <input ref={fileRef} type="file" multiple className="hidden"

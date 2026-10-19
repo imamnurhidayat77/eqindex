@@ -121,6 +121,115 @@ module.exports = function mountMediaRoutes(app) {
     res.status(201).json({ data: out });
   }));
 
+  // ---- Direct video upload (P2B): browser -> R2 -> finalize ----
+  // Photos keep the multipart path above. Videos bypass the API/proxy
+  // entirely (Vercel proxy ~30s limit can't carry 50–200MB): the browser
+  // PUTs bytes straight to R2, then calls finalize, which streams the object
+  // back through ffmpeg (never fully buffered) and renders poster + teaser.
+  // DEPLOY: R2 bucket needs a CORS rule allowing PUT from the web origin.
+  const REEL_MAX_BYTES = 200 * 1024 * 1024;
+
+  app.post('/admin/media/upload-url', needRole('ADMIN'), asyncH(async (req, res) => {
+    const b = req.body || {};
+    const mimetype = String(b.mimetype || '');
+    if (!REEL_MIMES.includes(mimetype)) {
+      return res.status(400).json({ error: 'upload-url is for video only (mp4/mov/webm)' });
+    }
+    const size = Number(b.size_bytes);
+    if (!Number.isFinite(size) || size <= 0 || size > REEL_MAX_BYTES) {
+      return res.status(400).json({ error: 'size_bytes must be 1–200MB' });
+    }
+    const photographer = await activePhotographer(pool, b.photographer_id);
+    let eventId = null;
+    if (b.event_id) {
+      const ev = await pool.query('SELECT id FROM events WHERE id = $1', [String(b.event_id)]);
+      if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
+      eventId = String(b.event_id);
+    }
+    const ext = (String(b.filename || 'video.mp4').split('.').pop() || 'mp4').toLowerCase().slice(0, 8);
+    const { rows } = await pool.query(
+      `INSERT INTO media (photographer_id, event_id, kind, status) VALUES ($1, $2, 'reel', 'draft') RETURNING id`,
+      [photographer.id, eventId]
+    );
+    const id = rows[0].id;
+    const origKey = mediaStore.keyFor('originals', eventId, id, ext);
+    await pool.query('UPDATE media SET storage_key = $2 WHERE id = $1', [id, origKey]);
+    const uploadUrl = await mediaStore.presignedPutUrl(origKey, mimetype);
+    audit(req, 'media.upload-url', 'media', id, { mimetype, size_bytes: size });
+    res.status(201).json({ data: { media_id: id, upload_url: uploadUrl, max_bytes: REEL_MAX_BYTES } });
+  }));
+
+  // Single admin media row (finalize polling target).
+  app.get('/admin/media/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows } = await pool.query('SELECT * FROM media WHERE id = $1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'media not found' });
+    const r = rows[0];
+    try {
+      if (r.preview_key) r.preview_url = mediaStore.publicUrl(r.preview_key);
+      if (r.thumb_key) r.thumb_url = mediaStore.publicUrl(r.thumb_key);
+    } catch { /* R2 public base unconfigured */ }
+    res.json({ data: r });
+  }));
+
+  // Render poster + watermarked teaser for an uploaded reel. Returns 202
+  // immediately and works in the background (transcodes take minutes — far
+  // beyond any proxy timeout); the upload page polls GET /admin/media/:id
+  // until thumb_key appears. Safe to retry: skips when already done.
+  app.post('/admin/media/:id/finalize', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows } = await pool.query('SELECT * FROM media WHERE id = $1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'media not found' });
+    const m = rows[0];
+    if (m.kind !== 'reel') return res.status(400).json({ error: 'finalize is for reels only' });
+    if (m.thumb_key && m.preview_key) return res.status(200).json({ data: { media_id: m.id, done: true } });
+    if (!m.storage_key) return res.status(409).json({ error: 'no uploaded original yet (PUT to the upload URL first)' });
+    const head = await mediaStore.headKey(m.storage_key).catch(() => null);
+    if (!head) return res.status(409).json({ error: 'original not found in storage yet' });
+    if (head.size > REEL_MAX_BYTES) return res.status(413).json({ error: 'file exceeds 200MB' });
+    setImmediate(() => finalizeReel(m.id).catch((e) => console.error('[finalize] failed:', e.message)));
+    res.status(202).json({ data: { media_id: m.id, processing: true } });
+  }));
+
+  async function finalizeReel(mediaId) {
+    const os = require('node:os');
+    const path = require('node:path');
+    const fs = require('node:fs');
+    const { probeDims, renderPreview, renderPoster } = require('../lib/reelProcess');
+    const { rows } = await pool.query('SELECT * FROM media WHERE id = $1', [mediaId]);
+    const m = rows[0];
+    if (!m || m.thumb_key) return; // done or gone
+    const ev = await pool.query('SELECT name FROM events WHERE id = $1', [m.event_id]).catch(() => ({ rows: [] }));
+    const photographer = await pool.query('SELECT name FROM photographers WHERE id = $1', [m.photographer_id])
+      .catch(() => ({ rows: [] }));
+    // 1. Probe dimensions (fresh stream; the probe kills its input early).
+    const s1 = await mediaStore.getStream(m.storage_key);
+    const dims = await probeDims(s1.stream);
+    const pvH = Math.max(2, Math.round((640 * dims.height) / Math.max(1, dims.width)));
+    // 2. Watermark tile PNG (same diagonal style as photo previews).
+    const wmPng = await sharp(watermarkSvg(640, pvH, `${photographer.rows[0]?.name || 'EQINDEX'} • EQINDEX PREVIEW`))
+      .png().toBuffer();
+    const wmPath = path.join(os.tmpdir(), `eqindex-wm-${mediaId}.png`);
+    await fs.promises.writeFile(wmPath, wmPng);
+    try {
+      // 3. Preview transcode (fresh stream; only small outputs buffered).
+      const s2 = await mediaStore.getStream(m.storage_key);
+      const preview = await renderPreview(s2.stream, wmPath);
+      const poster = await renderPoster(preview.buffer);
+      const thumbKey = mediaStore.keyFor('thumbs', m.event_id, m.id, 'jpg');
+      const previewKey = mediaStore.keyFor('previews', m.event_id, m.id, 'mp4');
+      await mediaStore.putBuffer(thumbKey, poster, 'image/jpeg');
+      await mediaStore.putBuffer(previewKey, preview.buffer, 'video/mp4');
+      await pool.query(
+        `UPDATE media SET thumb_key = $2, preview_key = $3, width = $4, height = $5 WHERE id = $1`,
+        [m.id, thumbKey, previewKey, dims.width, dims.height]
+      );
+      audit({ authUser: { name: 'job', id: 'finalize' }, body: {}, query: {} },
+        'media.finalize', 'media', m.id,
+        { width: dims.width, height: dims.height, event: ev.rows[0]?.name || null });
+    } finally {
+      await fs.promises.unlink(wmPath).catch(() => {});
+    }
+  }
+
   // ---- Review queue ----
   app.get('/admin/media', needRole('ADMIN'), asyncH(async (req, res) => {
     const conds = [], params = [];
@@ -205,8 +314,98 @@ module.exports = function mountMediaRoutes(app) {
       `UPDATE media SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, [req.params.id, ...vals]);
     if (!rows.length) return res.status(404).json({ error: 'media not found' });
     audit(req, 'media.edit', 'media', req.params.id, { fields: sets.map((s) => s.split(' = ')[0]) });
+    const final = rows[0];
+    // Publish side-effects (P1b): auto-packages absorb newly published photos
+    // (Sportograf-style post-purchase matching), buyers + watchers get one
+    // digested in-app notification each (never one row per photo).
+    if (final.status === 'published') {
+      try {
+        await refreshAutoPackages(pool, final);
+        if (b.status === 'published') {
+          await notifyPublish(pool, final);
+        }
+      } catch (e) { console.error('[media.publish-hook] non-fatal:', e.message); }
+    }
     res.json({ data: rows[0] });
   }));
+
+  // Insert a published photo into every matching auto package
+  // (same event × same horse and/or same rider). Idempotent.
+  async function refreshAutoPackages(poolQ, media) {
+    if (!media.event_id || (!media.horse_id && !media.rider_id)) return [];
+    const { rows } = await poolQ.query(
+      `SELECT id FROM packages
+        WHERE status = 'published' AND auto = true AND event_id = $1
+          AND ((horse_id IS NOT NULL AND horse_id = $2)
+            OR (rider_id IS NOT NULL AND rider_id = $3))`,
+      [media.event_id, media.horse_id, media.rider_id]
+    );
+    for (const p of rows) {
+      await poolQ.query(
+        'INSERT INTO package_items (package_id, media_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [p.id, media.id]
+      );
+    }
+    return rows.map((r) => r.id);
+  }
+
+  // One digested notification per user per ref (upsert): bulk publishing 500
+  // photos still yields a single unread row ("N new photos…").
+  async function upsertNotif(poolQ, userId, kind, refKey, title, body, link) {
+    await poolQ.query(
+      `INSERT INTO notifications (user_id, kind, title, body, link, ref_key, count)
+        VALUES ($1, $2, $3, $4, $5, $6, 1)
+        ON CONFLICT (user_id, kind, ref_key) DO UPDATE SET
+          count = notifications.count + 1,
+          body = $4 || ' (' || (notifications.count + 1) || ' new)',
+          updated_at = NOW(), read_at = NULL`,
+      [userId, kind, title, body, link, refKey]
+    );
+  }
+
+  async function notifyPublish(poolQ, media) {
+    // 1. Buyers of affected auto packages ("your bundle grew").
+    const pkgs = await poolQ.query(
+      `SELECT pk.id, pk.title FROM packages pk
+        JOIN package_items pi ON pi.package_id = pk.id AND pi.media_id = $1
+        WHERE pk.auto = true AND pk.status = 'published'`,
+      [media.id]
+    );
+    for (const pk of pkgs.rows) {
+      const buyers = await poolQ.query(
+        `SELECT DISTINCT buyer_user_id AS uid FROM purchases
+          WHERE status = 'paid' AND package_id = $1 AND buyer_user_id IS NOT NULL`,
+        [pk.id]
+      );
+      for (const b of buyers.rows) {
+        await upsertNotif(poolQ, b.uid, 'package-topup', `package:${pk.id}`,
+          'New photo in your package', `"${pk.title}" grew by a photo`,
+          '/photos/library');
+      }
+    }
+    // 2. Watchers of the horse/rider ("photos are live"), honoring opt-in.
+    if (!media.horse_id && !media.rider_id) return;
+    const watchers = await poolQ.query(
+      `SELECT DISTINCT w.user_id AS uid FROM watchlist_items w
+        LEFT JOIN alert_prefs ap ON ap.user_id = w.user_id
+        WHERE COALESCE(ap.new_photos, TRUE)
+          AND ((w.entity_type = 'horse' AND w.entity_id = $1)
+            OR (w.entity_type = 'rider' AND w.entity_id = $2)
+            OR (w.entity_type = 'combination'
+              AND (($1::UUID IS NOT NULL AND w.horse_id = $1) OR ($2::UUID IS NOT NULL AND w.rider_id = $2))))`,
+      [media.horse_id, media.rider_id]
+    );
+    const qp = new URLSearchParams();
+    if (media.event_id) qp.set('event', media.event_id);
+    if (media.horse_id) qp.set('horse', media.horse_id);
+    else if (media.rider_id) qp.set('rider', media.rider_id);
+    const link = `/photos?${qp}`;
+    const subject = media.horse_id || media.rider_id;
+    for (const w of watchers.rows) {
+      await upsertNotif(poolQ, w.uid, 'photos-live', `photos:${media.event_id}:${subject}`,
+        'New photos of your stable', 'Fresh photos just published', link);
+    }
+  }
 
   // ---- Public catalog (published only; previews/thumbs are CDN-public) ----
   // License tiers with prices (public by design — buyers pick one, Sportfot-style).
@@ -217,8 +416,23 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   app.get('/photos', asyncH(async (req, res) => {
-    const conds = [`m.status = 'published'`], params = [];
+    const conds = [`m.status = 'published'`, ORDER_PRIVATE_SQL], params = [];
     const push = (sql, v) => { params.push(v); conds.push(sql.replace('?', `$${params.length}`)); };
+    // Photo opt-out (migration 066): hidden subjects vanish from public
+    // browsing but stay reachable via direct link, purchase, and the owner's
+    // own watchlist (?mine=1 enforces followership in SQL below).
+    const HIDDEN_SQL = `NOT (COALESCE(h.photo_hidden, FALSE) OR COALESCE(r.photo_hidden, FALSE))`;
+    if (req.query.mine === '1' && req.authUser) {
+      params.push(req.authUser.id);
+      const n = params.length;
+      conds.push(`(${HIDDEN_SQL} OR EXISTS (SELECT 1 FROM watchlist_items w
+        WHERE w.user_id = $${n}
+          AND ((w.entity_type = 'horse' AND w.entity_id = m.horse_id)
+            OR (w.entity_type = 'rider' AND w.entity_id = m.rider_id)
+            OR (w.entity_type = 'combination' AND w.horse_id = m.horse_id AND w.rider_id = m.rider_id)))`);
+    } else {
+      conds.push(HIDDEN_SQL);
+    }
     if (req.query.event_id) {
       const evid = await resolveId('events', req.query.event_id, res);
       if (!evid) return;
@@ -268,7 +482,9 @@ module.exports = function mountMediaRoutes(app) {
     if (horse_id) { params.push(horse_id); conds.push(`pk.horse_id = $${params.length}`); }
     else { params.push(rider_id); conds.push(`pk.rider_id = $${params.length}`); }
     const { rows } = await pool.query(
-      `SELECT pk.*, (SELECT COUNT(*)::INT FROM package_items WHERE package_id = pk.id) AS items
+      `SELECT pk.*, (SELECT COUNT(*)::INT FROM package_items WHERE package_id = pk.id) AS items,
+          (SELECT COUNT(*)::INT FROM package_items pi JOIN media m ON m.id = pi.media_id
+            WHERE pi.package_id = pk.id AND m.kind = 'reel') AS reels
         FROM packages pk WHERE ${conds.join(' AND ')} ORDER BY pk.price_cents LIMIT 10`,
       params
     );
@@ -290,8 +506,24 @@ module.exports = function mountMediaRoutes(app) {
     );
     if (!rows.length) return res.status(404).json({ error: 'photo not found' });
     withUrls(rows);
+    // Private order reels: invisible to everyone except the buyer (who gets
+    // signed teaser URLs instead of the public CDN ones).
+    try {
+      const buyerUid = await privateOrderBuyer(pool, req.params.id);
+      if (buyerUid && (!req.authUser || req.authUser.id !== buyerUid)) {
+        return res.status(404).json({ error: 'photo not found' });
+      }
+      if (buyerUid && req.authUser) {
+        const r0 = rows[0];
+        try {
+          if (r0.preview_key) r0.preview_url = await mediaStore.signedDownloadUrl(r0.preview_key);
+          if (r0.thumb_key) r0.thumb_url = await mediaStore.signedDownloadUrl(r0.thumb_key);
+        } catch { /* fall back to public URLs */ }
+      }
+    } catch { /* privacy gate optional — never break the detail page */ }
     // Ownership flag for the logged-in buyer (anonymous → owned:false).
-    // Mirrors the download entitlement: direct purchase OR via a package.
+    // Mirrors the download entitlement: direct purchase OR via a package
+    // OR unlocked with photo credits.
     const data = rows[0];
     data.owned = false;
     if (req.authUser) {
@@ -307,6 +539,41 @@ module.exports = function mountMediaRoutes(app) {
           data.owned = true;
           data.owned_tier = ent.rows[0].license_tier;
           data.owned_purchase_id = ent.rows[0].id;
+        } else {
+          const cred = await pool.query(
+            `SELECT 1 WHERE ${creditOwnedSql('$2', '$1')} LIMIT 1`,
+            [req.params.id, req.authUser.id]
+          );
+          if (cred.rows.length) {
+            data.owned = true;
+            data.owned_tier = 'credit';
+          } else {
+            const reel = await pool.query(
+              `SELECT 1 FROM reel_orders ro JOIN purchases p3 ON p3.id = ro.purchase_id
+                WHERE p3.status = 'paid' AND p3.buyer_user_id = $2 AND ro.media_id = $1
+                  AND ro.status IN ('ready', 'delivered') LIMIT 1`,
+              [req.params.id, req.authUser.id]
+            );
+            if (reel.rows.length) {
+              data.owned = true;
+              data.owned_tier = 'reel';
+            }
+          }
+        }
+        if (!data.owned) {
+          // Hint for the BuyBox: credits available in this photo's scope?
+          const bal = await pool.query(
+            `SELECT COALESCE(SUM(cb.slots_total - (SELECT COUNT(*) FROM credit_redemptions WHERE bundle_id = cb.id)), 0)::INT AS slots_left
+              FROM credit_bundles cb JOIN purchases pu ON pu.id = cb.purchase_id
+              WHERE cb.status = 'active' AND pu.status = 'paid' AND pu.buyer_user_id = $1
+                AND cb.event_id = $2
+                AND ((cb.rider_id IS NOT NULL AND cb.rider_id = $3)
+                  OR (cb.horse_id IS NOT NULL AND cb.horse_id = $4))`,
+            [req.authUser.id, rows[0].event_id, rows[0].rider_id, rows[0].horse_id]
+          );
+          if (Number(bal.rows[0]?.slots_left) > 0) {
+            data.credit = { slots_left: Number(bal.rows[0].slots_left) };
+          }
         }
       } catch { /* ownership optional — never break the detail page */ }
     }
@@ -317,7 +584,9 @@ module.exports = function mountMediaRoutes(app) {
         LEFT JOIN horses h ON h.id = m.horse_id
         LEFT JOIN riders r ON r.id = m.rider_id
         LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
-        WHERE m.status = 'published' AND m.id <> $1
+        WHERE m.status = 'published' AND ${ORDER_PRIVATE_SQL}
+          AND NOT (COALESCE(h.photo_hidden, FALSE) OR COALESCE(r.photo_hidden, FALSE))
+          AND m.id <> $1
           AND (m.event_id = $2 OR m.horse_id = $3 OR m.rider_id = $4)
         ORDER BY m.created_at DESC LIMIT 8`,
       [req.params.id, rows[0].event_id, rows[0].horse_id, rows[0].rider_id]
@@ -372,6 +641,13 @@ module.exports = function mountMediaRoutes(app) {
         [media_id, tierId]
       );
       if (!m.rows.length) return res.status(404).json({ error: 'photo not found or not for sale' });
+      // Private order reels can't be bought by anyone but their buyer.
+      try {
+        const buyerUid = await privateOrderBuyer(pool, String(media_id));
+        if (buyerUid && buyerUid !== req.authUser.id) {
+          return res.status(404).json({ error: 'photo not found or not for sale' });
+        }
+      } catch { /* gate optional */ }
       const row = m.rows[0];
       if (tierId && !row.tier_label) return res.status(400).json({ error: 'unknown license tier' });
       if (!tierId) {
@@ -387,7 +663,7 @@ module.exports = function mountMediaRoutes(app) {
     } else {
       const pk = await pool.query(`SELECT * FROM packages WHERE id = $1 AND status = 'published'`, [package_id]);
       if (!pk.rows.length) return res.status(404).json({ error: 'package not found or not for sale' });
-      amount = pk.rows[0].price_cents;
+      amount = earlyPriceOf(pk.rows[0]) ?? pk.rows[0].price_cents;
       if (!Number.isInteger(amount) || amount <= 0) return res.status(409).json({ error: 'no price set for this package' });
       title = pk.rows[0].title;
       packageId = pk.rows[0].id;
@@ -408,6 +684,16 @@ module.exports = function mountMediaRoutes(app) {
         return res.status(409).json({
           error: 'you already own this photo — download it from My photos',
           owned: true, license_tier: owned.rows[0].license_tier, purchase_id: owned.rows[0].id,
+        });
+      }
+      const credOwned = await pool.query(
+        `SELECT 1 WHERE ${creditOwnedSql('$2', '$1')} LIMIT 1`,
+        [mediaId, req.authUser.id]
+      );
+      if (credOwned.rows.length) {
+        return res.status(409).json({
+          error: 'you already unlocked this photo with credits — download it from My photos',
+          owned: true, license_tier: 'credit',
         });
       }
     } else if (packageId) {
@@ -524,6 +810,18 @@ module.exports = function mountMediaRoutes(app) {
           [r.media_id, r.package_id]
         );
         audit(req, 'media.purchase', 'purchase', purchaseId, { session: session.id });
+        // Reel service orders: payment completed -> ready for production.
+        await pool.query(
+          `UPDATE reel_orders SET status = 'pending'
+            WHERE purchase_id = $1 AND status = 'awaiting_payment'`,
+          [purchaseId]
+        ).catch(() => {});
+        // Credit bundles: payment completed -> credits become usable.
+        await pool.query(
+          `UPDATE credit_bundles SET status = 'active'
+            WHERE purchase_id = $1 AND status = 'awaiting_payment'`,
+          [purchaseId]
+        ).catch(() => {});
       }
       return ok();
     }
@@ -603,7 +901,20 @@ module.exports = function mountMediaRoutes(app) {
         LIMIT 1`,
       [req.params.id, req.authUser.id]
     );
-    if (!ent.rows.length) return res.status(402).json({ error: 'purchase required' });
+    const credEnt = ent.rows.length ? { rows: [] } : await pool.query(
+      `SELECT 1 WHERE ${creditOwnedSql('$2', '$1')} LIMIT 1`,
+      [req.params.id, req.authUser.id]
+    );
+    // Finished reel of the buyer's own reel order (linked at delivery).
+    const reelEnt = (ent.rows.length || credEnt.rows.length) ? { rows: [] } : await pool.query(
+      `SELECT 1 FROM reel_orders ro JOIN purchases p3 ON p3.id = ro.purchase_id
+        WHERE p3.status = 'paid' AND p3.buyer_user_id = $2 AND ro.media_id = $1
+          AND ro.status IN ('ready', 'delivered') LIMIT 1`,
+      [req.params.id, req.authUser.id]
+    );
+    if (!ent.rows.length && !credEnt.rows.length && !reelEnt.rows.length) {
+      return res.status(402).json({ error: 'purchase required' });
+    }
     res.setHeader('Cache-Control', 'private, no-store');
     res.redirect(303, await mediaStore.signedDownloadUrl(m.rows[0].storage_key));
   }));
@@ -614,10 +925,15 @@ module.exports = function mountMediaRoutes(app) {
     if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
     const { rows } = await pool.query(
       `SELECT p.id, p.status, p.license_tier, p.amount_cents, p.created_at,
-          m.id AS media_id, m.kind, e.name AS event_name, h.name AS horse, r.name AS rider
+          m.id AS media_id, m.kind, COALESCE(e.name, re.name) AS event_name,
+          COALESCE(h.name, ro.horse_name) AS horse, r.name AS rider,
+          rp.name AS reel_product, ro.status AS reel_status
         FROM purchases p LEFT JOIN media m ON m.id = p.media_id
         LEFT JOIN events e ON e.id = m.event_id
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        LEFT JOIN reel_orders ro ON ro.id = p.reel_order_id
+        LEFT JOIN reel_products rp ON rp.id = ro.product_id
+        LEFT JOIN events re ON re.id = ro.event_id
         WHERE p.id = $1 AND p.buyer_user_id = $2`,
       [req.params.id, req.authUser.id]
     );
@@ -644,7 +960,18 @@ module.exports = function mountMediaRoutes(app) {
         LEFT JOIN events e ON e.id = m.event_id
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
         WHERE pu.buyer_user_id = $1 AND pu.status = 'paid'
-        ORDER BY pu.created_at DESC LIMIT 200`,
+        UNION ALL
+        SELECT pu.id AS purchase_id, 'credit' AS license_tier, pu.amount_cents, pu.status, cr.created_at,
+          m.id AS media_id, m.kind, m.thumb_key, m.preview_key, m.event_id,
+          e.name AS event_name, h.name AS horse, r.name AS rider
+        FROM credit_redemptions cr
+        JOIN credit_bundles cb ON cb.id = cr.bundle_id
+        JOIN purchases pu ON pu.id = cb.purchase_id
+        JOIN media m ON m.id = cr.media_id
+        LEFT JOIN events e ON e.id = m.event_id
+        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        WHERE pu.buyer_user_id = $1 AND pu.status = 'paid' AND cb.status = 'active'
+        ORDER BY created_at DESC LIMIT 200`,
       [req.authUser.id]
     );
     withUrls(rows);
@@ -655,7 +982,7 @@ module.exports = function mountMediaRoutes(app) {
   // ---- Admin sales: transactions list, summary + filtered CSV export ----
   // One shared filter set (best practice: the export and the KPIs always
   // honor exactly what the table shows):
-  //   status=paid|pending|refunded · tier=<license id> · kind=photo|package
+  //   status=paid|pending|refunded · tier=<license id> · kind=photo|package|reel|credit
   //   q=<buyer email / horse / rider / event / package title>
   //   event_id=<uuid> · since=YYYY-MM-DD · until=YYYY-MM-DD (inclusive)
   const SALES_JOIN = `
@@ -665,7 +992,18 @@ module.exports = function mountMediaRoutes(app) {
     LEFT JOIN horses h ON h.id = m.horse_id
     LEFT JOIN riders r ON r.id = m.rider_id
     LEFT JOIN packages pk ON pk.id = pu.package_id
-    LEFT JOIN photographers ph ON ph.id = COALESCE(m.photographer_id, pk.photographer_id)`;
+    LEFT JOIN reel_orders ro ON ro.id = pu.reel_order_id
+    LEFT JOIN reel_products rp ON rp.id = ro.product_id
+    LEFT JOIN credit_bundles cb ON cb.id = pu.credit_bundle_id
+    LEFT JOIN credit_packs cp ON cp.id = cb.pack_id
+    LEFT JOIN events ce ON ce.id = cb.event_id
+    LEFT JOIN horses ch ON ch.id = cb.horse_id
+    LEFT JOIN riders crr ON crr.id = cb.rider_id
+    LEFT JOIN photographers ph ON ph.id = COALESCE(m.photographer_id, pk.photographer_id, rp.photographer_id, cp.photographer_id)`;
+  const KIND_CASE = `CASE WHEN pu.media_id IS NOT NULL THEN 'photo'
+               WHEN pu.package_id IS NOT NULL THEN 'package'
+               WHEN pu.reel_order_id IS NOT NULL THEN 'reel'
+               ELSE 'credit' END`;
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
   function salesWhere(query, params) {
     const conds = [];
@@ -684,6 +1022,8 @@ module.exports = function mountMediaRoutes(app) {
     }
     if (query.kind === 'photo') conds.push('pu.media_id IS NOT NULL');
     else if (query.kind === 'package') conds.push('pu.package_id IS NOT NULL');
+    else if (query.kind === 'reel') conds.push('pu.reel_order_id IS NOT NULL');
+    else if (query.kind === 'credit') conds.push('pu.credit_bundle_id IS NOT NULL');
     if (query.event_id) {
       if (!UUID_RE.test(String(query.event_id))) {
         const e = new Error('bad event_id');
@@ -729,8 +1069,12 @@ module.exports = function mountMediaRoutes(app) {
     const { rows } = await pool.query(
       `SELECT pu.id, pu.created_at, pu.buyer_email, pu.license_tier, pu.amount_cents,
           pu.currency, pu.status, pu.stripe_session_id,
-          CASE WHEN pu.media_id IS NOT NULL THEN 'photo' ELSE 'package' END AS kind,
-          e.name AS event_name, h.name AS horse, r.name AS rider, pk.title AS package_title,
+          ${KIND_CASE} AS kind,
+          COALESCE(e.name, ce.name) AS event_name,
+          COALESCE(h.name, ch.name) AS horse, COALESCE(r.name, crr.name) AS rider,
+          pk.title AS package_title,
+          ro.horse_name AS reel_horse, rp.name AS reel_product,
+          cp.slots AS credit_slots,
           ph.name AS photographer, ph.commission_rate
         ${SALES_JOIN} ${where}
         ORDER BY pu.created_at DESC LIMIT 5000`,
@@ -741,23 +1085,37 @@ module.exports = function mountMediaRoutes(app) {
       if (/^[=+\-@\t]/.test(s)) s = `'${s}`;
       return `"${s.replace(/"/g, '""')}"`;
     };
+      // Settlement math (family operation: commission is 0, see migration 062).
+    // payout = gross − platform_fee − stripe_fee_est. Stripe NZ domestic is
+    // 1.75% + 30¢ per successful charge; international cards differ, hence "est".
+    // If the fee ever needs exactness, read it from Stripe Balance Transactions.
     const feeOf = (r) => {
       if (r.status !== 'paid') return 0;
       const rate = Number(r.commission_rate ?? 0) || 0;
       return Math.round(Number(r.amount_cents || 0) * rate);
     };
+    const stripeFeeOf = (r) => {
+      if (r.status !== 'paid') return 0;
+      return Math.round(Number(r.amount_cents || 0) * 0.0175) + 30;
+    };
     audit(req, 'sales.export', 'purchase', null, { filters: req.query, rows: rows.length });
     const day = new Date().toISOString().slice(0, 10);
-    const csv = ['purchase_id,created_at,buyer_email,item_type,item,event,horse,rider,license_tier,amount_cents,currency,status,photographer,platform_fee_cents,payout_cents,stripe_session_id',
+    const csv = ['purchase_id,created_at,buyer_email,item_type,item,event,horse,rider,license_tier,amount_cents,currency,status,photographer,platform_fee_cents,stripe_fee_est_cents,payout_cents,stripe_session_id',
       ...rows.map((r) => {
         const item = r.kind === 'photo'
           ? [r.horse, r.rider].filter(Boolean).join(' × ') || r.event_name || 'Photo'
-          : r.package_title || 'Package';
+          : r.kind === 'reel'
+            ? `${r.reel_product || 'Reel'} — ${r.reel_horse || ''}`.trim()
+            : r.kind === 'credit'
+              ? `${r.credit_slots || 5}-photo credits — ${[r.horse, r.rider].filter(Boolean).join(' × ') || ''}`.trim()
+              : r.package_title || 'Package';
         const fee = feeOf(r);
-        const payout = r.status === 'paid' ? Number(r.amount_cents || 0) - fee : 0;
+        const stripeFee = stripeFeeOf(r);
+        const payout = r.status === 'paid' ? Number(r.amount_cents || 0) - fee - stripeFee : 0;
+        const tierLabel = (k) => k === 'photo' ? '' : k === 'package' ? 'bundle' : k;
         return [r.id, r.created_at, r.buyer_email, r.kind, item, r.event_name, r.horse,
-          r.rider, r.license_tier || (r.kind === 'package' ? 'bundle' : ''),
-          r.amount_cents, r.currency, r.status, r.photographer, fee, payout,
+          r.rider, r.license_tier || tierLabel(r.kind),
+          r.amount_cents, r.currency, r.status, r.photographer, fee, stripeFee, payout,
           r.stripe_session_id].map(q).join(',');
       })].join('\n');
     res.setHeader('Content-Type', 'text/csv');
@@ -791,9 +1149,12 @@ module.exports = function mountMediaRoutes(app) {
       `SELECT pu.id, pu.created_at, pu.buyer_email, pu.buyer_user_id, pu.media_id, pu.package_id,
           pu.license_tier, pu.amount_cents, pu.currency, pu.status, pu.stripe_session_id,
           pu.stripe_payment_intent,
-          e.name AS event_name, h.name AS horse, r.name AS rider, pk.title AS package_title,
+          CASE WHEN pu.status = 'paid' THEN (ROUND(pu.amount_cents * 0.0175) + 30)::INT ELSE 0 END AS stripe_fee_est_cents,
+          COALESCE(e.name, ce.name) AS event_name,
+          COALESCE(h.name, ch.name) AS horse, COALESCE(r.name, crr.name) AS rider,
+          pk.title AS package_title,
           ph.name AS photographer,
-          CASE WHEN pu.media_id IS NOT NULL THEN 'photo' ELSE 'package' END AS kind
+          ${KIND_CASE} AS kind
         ${SALES_JOIN} ${where}
         ORDER BY pu.created_at DESC LIMIT $${pageParams.length - 1} OFFSET $${pageParams.length}`,
       pageParams
@@ -830,7 +1191,9 @@ module.exports = function mountMediaRoutes(app) {
         params
       ),
       pool.query(
-        `SELECT COALESCE(pu.license_tier, 'bundle') AS tier,
+        `SELECT CASE WHEN pu.reel_order_id IS NOT NULL THEN 'reel'
+               WHEN pu.credit_bundle_id IS NOT NULL THEN 'credit'
+               ELSE COALESCE(pu.license_tier, 'bundle') END AS tier,
             COUNT(*)::INT AS sales, COALESCE(SUM(pu.amount_cents), 0)::INT AS gross_cents
           ${SALES_JOIN} ${where ? `${where} AND` : 'WHERE'} pu.status = 'paid'
           GROUP BY 1 ORDER BY gross_cents DESC`,
@@ -845,7 +1208,8 @@ module.exports = function mountMediaRoutes(app) {
       ),
       pool.query(
         `SELECT ph.id AS photographer_id, ph.name AS photographer, ph.commission_rate,
-            COUNT(*)::INT AS sales, COALESCE(SUM(pu.amount_cents), 0)::INT AS gross_cents
+            COUNT(*)::INT AS sales, COALESCE(SUM(pu.amount_cents), 0)::INT AS gross_cents,
+            COALESCE(SUM(ROUND(pu.amount_cents * 0.0175) + 30), 0)::INT AS stripe_fee_cents
           ${SALES_JOIN} ${where ? `${where} AND` : 'WHERE'} pu.status = 'paid'
           GROUP BY ph.id, ph.name, ph.commission_rate ORDER BY gross_cents DESC`,
         params
@@ -855,6 +1219,7 @@ module.exports = function mountMediaRoutes(app) {
     const settlement = settle.rows.map((s) => {
       const rate = Number(s.commission_rate ?? 0) || 0;
       const fee = Math.round(Number(s.gross_cents || 0) * rate);
+      const stripeFee = Number(s.stripe_fee_cents || 0);
       return {
         photographer_id: s.photographer_id,
         photographer: s.photographer || '—',
@@ -862,7 +1227,8 @@ module.exports = function mountMediaRoutes(app) {
         sales: s.sales,
         gross_cents: s.gross_cents,
         fee_cents: fee,
-        payout_cents: Number(s.gross_cents || 0) - fee,
+        stripe_fee_cents: stripeFee,
+        payout_cents: Number(s.gross_cents || 0) - fee - stripeFee,
       };
     });
     res.json({
@@ -1023,6 +1389,16 @@ module.exports = function mountMediaRoutes(app) {
       if (price !== null && !(price >= 0)) return res.status(400).json({ error: 'price_cents must be a non-negative integer or null' });
       set('price_cents', price);
     }
+    if (b.early_price_cents !== undefined) {
+      const early = b.early_price_cents === '' || b.early_price_cents === null ? null : parseInt(b.early_price_cents, 10);
+      if (early !== null && !(early >= 0)) return res.status(400).json({ error: 'early_price_cents must be a non-negative integer or null' });
+      set('early_price_cents', early);
+    }
+    if (b.early_until !== undefined) {
+      const until = !b.early_until ? null : new Date(b.early_until);
+      if (until !== null && Number.isNaN(until.getTime())) return res.status(400).json({ error: 'early_until must be ISO datetime' });
+      set('early_until', until ? until.toISOString() : null);
+    }
     if (b.status !== undefined) {
       if (!['draft', 'published', 'archived'].includes(b.status)) {
         return res.status(400).json({ error: 'status must be draft|published|archived' });
@@ -1074,6 +1450,879 @@ module.exports = function mountMediaRoutes(app) {
     audit(req, 'media.delete', 'media', req.params.id, { event_id: m.event_id });
     res.json({ ok: true });
   }));
+
+  // ---- Reels: products (admin-set tiered prices per event) + request-based orders ----
+  // Privacy model (migration 065): a finished custom reel is PRIVATE to its
+  // buyer by default — excluded from catalog/detail/search unless the order
+  // has showcase=true (buyer opt-in at order time). Direct-upload reels with
+  // no order are unaffected. Storage posture: unlisted keys are unguessable
+  // (UUID); private teasers are additionally served via signed URLs.
+  const ORDER_PRIVATE_SQL =
+    `NOT EXISTS (SELECT 1 FROM reel_orders ro
+       WHERE ro.media_id = m.id AND COALESCE(ro.showcase, FALSE) = FALSE)`;
+  // Is this media the private (non-showcase) product of someone's order?
+  // Returns the order's buyer when private, else null.
+  async function privateOrderBuyer(poolQ, mediaId) {
+    const { rows } = await poolQ.query(
+      `SELECT pu.buyer_user_id AS uid FROM reel_orders ro
+        JOIN purchases pu ON pu.id = ro.purchase_id
+        WHERE ro.media_id = $1 AND COALESCE(ro.showcase, FALSE) = FALSE
+          AND pu.status = 'paid' LIMIT 1`,
+      [mediaId]
+    );
+    return rows[0]?.uid || null;
+  }
+  const REEL_SCOPE = ['clip', 'round', 'event'];
+  const REEL_COVERAGE = ['ring', 'full'];
+  const REEL_MUSIC = ['choose_for_me', 'title', 'none'];
+  const REEL_ORDER_FLOW = {
+    awaiting_payment: ['pending', 'cancelled'],
+    pending: ['in_production', 'cancelled'],
+    in_production: ['ready', 'cancelled'],
+    ready: ['delivered', 'cancelled'],
+    delivered: [],
+    cancelled: [],
+  };
+
+  // Public: published reel products for an event (event-specific + global defaults).
+  app.get('/api/reel-products', asyncH(async (req, res) => {
+    const params = [];
+    let eventFilter = '';
+    if (req.query.event_id) {
+      if (!UUID_RE.test(String(req.query.event_id))) return res.status(400).json({ error: 'bad event_id' });
+      params.push(String(req.query.event_id));
+      eventFilter = `AND (rp.event_id = $1 OR rp.event_id IS NULL)`;
+    }
+    const { rows } = await pool.query(
+      `SELECT rp.*, e.name AS event_name, p.name AS photographer
+        FROM reel_products rp
+        LEFT JOIN events e ON e.id = rp.event_id
+        JOIN photographers p ON p.id = rp.photographer_id
+        WHERE rp.status = 'published' ${eventFilter}
+        ORDER BY rp.event_id NULLS LAST, rp.sort_order, rp.price_cents`,
+      params
+    );
+    res.json({ data: rows });
+  }));
+
+  // Buyer creates a reel order + pays up front (Sportfot: add to cart -> pay -> produce).
+  // One horse per order (Sportfot rule). Login required, like photo checkout.
+  app.post('/api/reel-orders', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (throttled(req.ip, 'reel-order')) return res.status(429).json({ error: 'too many requests, try again later' });
+    const b = req.body || {};
+    if (!b.product_id || !UUID_RE.test(String(b.product_id))) {
+      return res.status(400).json({ error: 'need {product_id}' });
+    }
+    const horseName = String(b.horse_name || '').trim().slice(0, 120);
+    if (!horseName) return res.status(400).json({ error: 'need {horse_name} (one horse per order)' });
+    const musicMode = String(b.music_mode || 'choose_for_me');
+    if (!REEL_MUSIC.includes(musicMode)) return res.status(400).json({ error: 'music_mode must be choose_for_me|title|none' });
+    const musicTitle = String(b.music_title || '').trim().slice(0, 160);
+    if (musicMode === 'title' && !musicTitle) {
+      return res.status(400).json({ error: 'music_title is required when music_mode=title' });
+    }
+    if (b.idempotency_key !== undefined && b.idempotency_key !== null &&
+      !/^[A-Za-z0-9_-]{8,128}$/.test(String(b.idempotency_key))) {
+      return res.status(400).json({ error: 'bad idempotency_key' });
+    }
+    const buyerEmail = normEmail(b.email || req.authUser.email);
+    if (!EMAIL_RE.test(buyerEmail)) return res.status(400).json({ error: 'need a valid {email}' });
+
+    const prod = await pool.query(
+      `SELECT rp.*, e.name AS event_name FROM reel_products rp
+        LEFT JOIN events e ON e.id = rp.event_id WHERE rp.id = $1`, [String(b.product_id)]);
+    if (!prod.rows.length || prod.rows[0].status !== 'published') {
+      return res.status(404).json({ error: 'reel product not found or not for sale' });
+    }
+    const product = prod.rows[0];
+    // Event-scoped products can only be ordered for their own event.
+    let eventId = null;
+    if (product.event_id) {
+      eventId = product.event_id;
+    } else if (b.event_id) {
+      if (!UUID_RE.test(String(b.event_id))) return res.status(400).json({ error: 'bad event_id' });
+      const ev = await pool.query('SELECT id FROM events WHERE id = $1', [String(b.event_id)]);
+      if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
+      eventId = String(b.event_id);
+    }
+    if (!Number.isInteger(product.price_cents) || product.price_cents <= 0) {
+      return res.status(409).json({ error: 'no price set for this reel product' });
+    }
+    let shootingDate = null;
+    if (b.shooting_date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.shooting_date))) {
+        return res.status(400).json({ error: 'shooting_date must be YYYY-MM-DD' });
+      }
+      shootingDate = String(b.shooting_date);
+    }
+    if (b.idempotency_key) {
+      const prior = await pool.query(
+        `SELECT ro.id AS order_id, p.id AS purchase_id FROM reel_orders ro
+          JOIN purchases p ON p.id = ro.purchase_id
+          WHERE p.idempotency_key = $1 AND p.buyer_user_id = $2`,
+        [String(b.idempotency_key), req.authUser.id]
+      ).catch(() => ({ rows: [] }));
+      if (prior.rows.length) {
+        return res.status(200).json({ data: { ...prior.rows[0], reused: true } });
+      }
+    }
+    const { rows: orows } = await pool.query(
+      `INSERT INTO reel_orders
+        (product_id, event_id, buyer_user_id, buyer_email, shooting_date, ring, class_name,
+         back_number, horse_name, music_mode, music_title, phone, price_cents, showcase, status)
+        VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'awaiting_payment')
+        RETURNING id`,
+      [product.id, eventId, req.authUser.id, buyerEmail, shootingDate,
+        String(b.ring || '').slice(0, 80) || null,
+        String(b.class_name || '').slice(0, 160) || null,
+        String(b.back_number || '').slice(0, 40) || null,
+        horseName, musicMode, musicMode === 'title' ? musicTitle : null,
+        String(b.phone || '').slice(0, 40) || null, product.price_cents,
+        // Showcase opt-in: buyer allows the finished teaser in public galleries.
+        // Unticked (default) = private to the buyer. Full file is always buyer-only.
+        b.showcase === true || String(b.showcase).toLowerCase() === 'true']
+    );
+    const orderId = orows[0].id;
+    let purchaseId;
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO purchases (reel_order_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key)
+          VALUES ($1, $2, $3, NULL, $4, 'NZD', 'pending', $5) RETURNING id`,
+        [orderId, buyerEmail, req.authUser.id, product.price_cents, b.idempotency_key || null]
+      );
+      purchaseId = rows[0].id;
+    } catch (e) {
+      await pool.query(`UPDATE reel_orders SET status = 'cancelled' WHERE id = $1`, [orderId]);
+      throw e;
+    }
+    await pool.query(`UPDATE reel_orders SET purchase_id = $2 WHERE id = $1`, [orderId, purchaseId]);
+    const label = `${product.name} — ${horseName}`.slice(0, 120);
+    const session = await stripe().checkout.sessions.create({
+      mode: 'payment',
+      customer_email: buyerEmail,
+      line_items: [{
+        price_data: { currency: 'nzd', product_data: { name: label }, unit_amount: product.price_cents },
+        quantity: 1,
+      }],
+      success_url: `${APP_URL}/photos/success?purchase=${purchaseId}`,
+      cancel_url: `${APP_URL}/photos`,
+      metadata: { purchase_id: purchaseId },
+    }, { idempotencyKey: b.idempotency_key ? `reel-${b.idempotency_key}` : `reel-${purchaseId}` });
+    await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = $1', [purchaseId, session.id]);
+    res.status(201).json({ data: { order_id: orderId, purchase_id: purchaseId, checkout_url: session.url } });
+  }));
+
+  // Buyer: own reel orders (the "My medias" service side).
+  app.get('/api/my/reels', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    const { rows } = await pool.query(
+      `SELECT ro.*, rp.name AS product_name, rp.scope, e.name AS event_name,
+          m.thumb_key, m.preview_key, m.status AS media_status
+        FROM reel_orders ro JOIN reel_products rp ON rp.id = ro.product_id
+        LEFT JOIN events e ON e.id = ro.event_id
+        LEFT JOIN media m ON m.id = ro.media_id
+        WHERE ro.buyer_user_id = $1 ORDER BY ro.created_at DESC LIMIT 100`,
+      [req.authUser.id]
+    );
+    // Teaser URLs: public CDN when showcased, signed 15-min when private
+    // (owner-only endpoint, so signing here is safe).
+    for (const o of rows) {
+      try {
+        if (!o.preview_key) continue;
+        if (o.showcase) {
+          o.preview_url = mediaStore.publicUrl(o.preview_key);
+          if (o.thumb_key) o.thumb_url = mediaStore.publicUrl(o.thumb_key);
+        } else {
+          o.preview_url = await mediaStore.signedDownloadUrl(o.preview_key);
+          if (o.thumb_key) o.thumb_url = await mediaStore.signedDownloadUrl(o.thumb_key);
+        }
+      } catch { /* URLs optional */ }
+    }
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ data: rows });
+  }));
+
+  // ---- Admin: reel product catalog (prices set here, per event, no deploy) ----
+  app.get('/admin/reel-products', needRole('ADMIN'), asyncH(async (req, res) => {
+    const params = [];
+    let where = '';
+    if (req.query.event_id) {
+      if (!UUID_RE.test(String(req.query.event_id))) return res.status(400).json({ error: 'bad event_id' });
+      params.push(String(req.query.event_id));
+      where = `WHERE rp.event_id = $1`;
+    }
+    const { rows } = await pool.query(
+      `SELECT rp.*, e.name AS event_name,
+          (SELECT COUNT(*)::INT FROM reel_orders WHERE product_id = rp.id AND status <> 'cancelled') AS orders
+        FROM reel_products rp LEFT JOIN events e ON e.id = rp.event_id
+        ${where} ORDER BY rp.event_id NULLS LAST, rp.sort_order, rp.created_at DESC LIMIT 200`,
+      params
+    );
+    res.json({ data: rows });
+  }));
+
+  app.post('/admin/reel-products', needRole('ADMIN'), asyncH(async (req, res) => {
+    const b = req.body || {};
+    const name = String(b.name || '').trim().slice(0, 120);
+    if (!name) return res.status(400).json({ error: 'need {name}' });
+    const scope = String(b.scope || 'round');
+    if (!REEL_SCOPE.includes(scope)) return res.status(400).json({ error: 'scope must be clip|round|event' });
+    const coverage = String(b.coverage || 'ring');
+    if (!REEL_COVERAGE.includes(coverage)) return res.status(400).json({ error: 'coverage must be ring|full' });
+    const price = b.price_cents === '' || b.price_cents === null || b.price_cents === undefined
+      ? null : parseInt(b.price_cents, 10);
+    if (!(price >= 0)) return res.status(400).json({ error: 'price_cents must be a non-negative integer' });
+    let eventId = null;
+    if (b.event_id) {
+      if (!UUID_RE.test(String(b.event_id))) return res.status(400).json({ error: 'bad event_id' });
+      const ev = await pool.query('SELECT id FROM events WHERE id = $1', [String(b.event_id)]);
+      if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
+      eventId = String(b.event_id);
+    }
+    const photographer = await activePhotographer(pool, b.photographer_id);
+    const { rows } = await pool.query(
+      `INSERT INTO reel_products
+        (photographer_id, event_id, name, scope, coverage, includes_raw, description, price_cents, sort_order, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, COALESCE($10, 'published')) RETURNING *`,
+      [photographer.id, eventId, name, scope, coverage, !!b.includes_raw,
+        String(b.description || '').slice(0, 500) || null,
+        price, Number.isInteger(parseInt(b.sort_order, 10)) ? parseInt(b.sort_order, 10) : 0,
+        ['draft', 'published', 'archived'].includes(b.status) ? b.status : 'published']
+    );
+    audit(req, 'reelproduct.create', 'reel_product', rows[0].id, { name, price_cents: price });
+    res.status(201).json({ data: rows[0] });
+  }));
+
+  app.patch('/admin/reel-products/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    const b = req.body || {};
+    const sets = [], vals = [];
+    const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
+    if (b.name !== undefined) {
+      const name = String(b.name).trim().slice(0, 120);
+      if (!name) return res.status(400).json({ error: 'name must not be empty' });
+      set('name', name);
+    }
+    if (b.scope !== undefined) {
+      if (!REEL_SCOPE.includes(String(b.scope))) return res.status(400).json({ error: 'scope must be clip|round|event' });
+      set('scope', String(b.scope));
+    }
+    if (b.coverage !== undefined) {
+      if (!REEL_COVERAGE.includes(String(b.coverage))) return res.status(400).json({ error: 'coverage must be ring|full' });
+      set('coverage', String(b.coverage));
+    }
+    if (b.includes_raw !== undefined) set('includes_raw', !!b.includes_raw);
+    if (b.description !== undefined) set('description', String(b.description).slice(0, 500) || null);
+    if (b.price_cents !== undefined) {
+      const price = b.price_cents === '' || b.price_cents === null ? null : parseInt(b.price_cents, 10);
+      if (!(price >= 0)) return res.status(400).json({ error: 'price_cents must be a non-negative integer' });
+      set('price_cents', price);
+    }
+    if (b.sort_order !== undefined) {
+      const so = parseInt(b.sort_order, 10);
+      if (!Number.isInteger(so)) return res.status(400).json({ error: 'sort_order must be an integer' });
+      set('sort_order', so);
+    }
+    if (b.status !== undefined) {
+      if (!['draft', 'published', 'archived'].includes(b.status)) {
+        return res.status(400).json({ error: 'status must be draft|published|archived' });
+      }
+      set('status', b.status);
+    }
+    if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
+    vals.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE reel_products SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
+    if (!rows.length) return res.status(404).json({ error: 'reel product not found' });
+    audit(req, 'reelproduct.edit', 'reel_product', req.params.id, { fields: sets.map((s) => s.split(' = ')[0]) });
+    res.json({ data: rows[0] });
+  }));
+
+  app.delete('/admin/reel-products/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    const live = await pool.query(
+      `SELECT COUNT(*)::INT AS n FROM reel_orders WHERE product_id = $1 AND status <> 'cancelled'`,
+      [req.params.id]);
+    if (live.rows[0].n > 0) {
+      return res.status(409).json({ error: 'has live orders — archive instead of deleting' });
+    }
+    await pool.query(`DELETE FROM reel_orders WHERE product_id = $1 AND status = 'cancelled'`, [req.params.id]);
+    const { rows } = await pool.query('DELETE FROM reel_products WHERE id = $1 RETURNING id', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'reel product not found' });
+    audit(req, 'reelproduct.delete', 'reel_product', req.params.id, {});
+    res.json({ ok: true });
+  }));
+
+  // ---- Admin: reel order fulfillment queue ----
+  app.get('/admin/reel-orders', needRole('ADMIN'), asyncH(async (req, res) => {
+    const conds = [], params = [];
+    if (req.query.status && REEL_ORDER_FLOW[req.query.status]) {
+      params.push(String(req.query.status));
+      conds.push(`ro.status = $${params.length}`);
+    }
+    if (req.query.event_id) {
+      if (!UUID_RE.test(String(req.query.event_id))) return res.status(400).json({ error: 'bad event_id' });
+      params.push(String(req.query.event_id));
+      conds.push(`ro.event_id = $${params.length}`);
+    }
+    const { rows } = await pool.query(
+      `SELECT ro.*, rp.name AS product_name, e.name AS event_name, pu.status AS payment_status
+        FROM reel_orders ro JOIN reel_products rp ON rp.id = ro.product_id
+        LEFT JOIN events e ON e.id = ro.event_id
+        LEFT JOIN purchases pu ON pu.id = ro.purchase_id
+        ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
+        ORDER BY ro.created_at DESC LIMIT 200`,
+      params
+    );
+    res.json({ data: rows });
+  }));
+
+  app.patch('/admin/reel-orders/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    const cur = await pool.query('SELECT * FROM reel_orders WHERE id = $1', [req.params.id]);
+    if (!cur.rows.length) return res.status(404).json({ error: 'reel order not found' });
+    const b = req.body || {};
+    const from = cur.rows[0].status;
+    if (b.status !== undefined) {
+      if (!REEL_ORDER_FLOW[from].includes(b.status)) {
+        return res.status(409).json({ error: `cannot move ${from} -> ${b.status}` });
+      }
+      if (['pending', 'in_production'].includes(b.status)) {
+        const pay = await pool.query('SELECT status FROM purchases WHERE id = $1', [cur.rows[0].purchase_id]);
+        if (pay.rows[0]?.status !== 'paid') {
+          return res.status(409).json({ error: 'payment not completed yet' });
+        }
+      }
+      if (b.status === 'ready' && !b.media_id && !cur.rows[0].media_id) {
+        return res.status(400).json({ error: 'link {media_id} of the finished reel first' });
+      }
+    }
+    const sets = [], vals = [];
+    const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
+    if (b.status !== undefined) set('status', b.status);
+    // Showcase consent flag (set with buyer consent; independent of flow state).
+    if (b.showcase !== undefined) set('showcase', !!b.showcase);
+    if (b.media_id !== undefined) {
+      if (b.media_id) {
+        if (!UUID_RE.test(String(b.media_id))) return res.status(400).json({ error: 'bad media_id' });
+        const m = await pool.query(`SELECT id FROM media WHERE id = $1 AND kind = 'reel'`, [String(b.media_id)]);
+        if (!m.rows.length) return res.status(404).json({ error: 'reel media not found' });
+        set('media_id', String(b.media_id));
+      } else set('media_id', null);
+    }
+    if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
+    vals.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE reel_orders SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
+    audit(req, 'reelorder.edit', 'reel_order', req.params.id, { from, to: b.status || from });
+    res.json({ data: rows[0] });
+  }));
+
+  // ---- Photo credits (5-pack bundles): buy credits for 1 event x subject,
+  // then unlock any N photos in that scope (no cart). Stills only.
+  // Tables: credit_packs (admin price list, global + per-event) ->
+  // credit_bundles (issued per buyer per subject) -> credit_redemptions.
+  // See docs/MASTER_PLAN.md P1. Pack scope mirrors the subject it applies to.
+  const CREDIT_SCOPE = ['rider', 'horse'];
+
+  // Shared: does this buyer own this media via a credit redemption?
+  // Inline EXISTS fragment; $uid = buyer_user_id param index, $mid = media id expression.
+  const creditOwnedSql = ($uid, $mid) =>
+    `EXISTS (SELECT 1 FROM credit_redemptions cr
+       JOIN credit_bundles cb ON cb.id = cr.bundle_id
+       JOIN purchases p2 ON p2.id = cb.purchase_id
+       WHERE p2.status = 'paid' AND p2.buyer_user_id = ${$uid} AND cr.media_id = ${$mid})`;
+
+  // Public: applicable credit pack for one event x subject (event-specific
+  // first, global default fallback). Prices are admin-set (MASTER_PLAN §2).
+  app.get('/api/credit-packs', asyncH(async (req, res) => {
+    const { event_id, horse_id, rider_id } = req.query;
+    if (!event_id || !UUID_RE.test(String(event_id))) return res.status(400).json({ error: 'need {event_id}' });
+    if (!!horse_id === !!rider_id) {
+      return res.status(400).json({ error: 'need exactly one of {horse_id, rider_id}' });
+    }
+    const scope = horse_id ? 'horse' : 'rider';
+    const subjectId = String(horse_id || rider_id);
+    if (!UUID_RE.test(subjectId)) return res.status(400).json({ error: 'bad subject id' });
+    const { rows } = await pool.query(
+      `SELECT * FROM credit_packs
+        WHERE status = 'published' AND scope_type = $2
+          AND (event_id = $1 OR event_id IS NULL)
+        ORDER BY event_id NULLS LAST, sort_order LIMIT 1`,
+      [String(event_id), scope]
+    );
+    res.json({ data: rows });
+  }));
+
+  // Buyer purchases a credit bundle (pay up front, same pattern as reel orders).
+  app.post('/api/credit-orders', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (throttled(req.ip, 'credit-order')) return res.status(429).json({ error: 'too many requests, try again later' });
+    const b = req.body || {};
+    if (!b.pack_id || !UUID_RE.test(String(b.pack_id))) return res.status(400).json({ error: 'need {pack_id}' });
+    if (!b.event_id || !UUID_RE.test(String(b.event_id))) return res.status(400).json({ error: 'need {event_id}' });
+    if (!!b.horse_id === !!b.rider_id) {
+      return res.status(400).json({ error: 'need exactly one of {horse_id, rider_id}' });
+    }
+    if (b.idempotency_key !== undefined && b.idempotency_key !== null &&
+      !/^[A-Za-z0-9_-]{8,128}$/.test(String(b.idempotency_key))) {
+      return res.status(400).json({ error: 'bad idempotency_key' });
+    }
+    const buyerEmail = normEmail(b.email || req.authUser.email);
+    if (!EMAIL_RE.test(buyerEmail)) return res.status(400).json({ error: 'need a valid {email}' });
+    const pack = await pool.query('SELECT * FROM credit_packs WHERE id = $1', [String(b.pack_id)]);
+    if (!pack.rows.length || pack.rows[0].status !== 'published') {
+      return res.status(404).json({ error: 'credit pack not found or not for sale' });
+    }
+    const p = pack.rows[0];
+    if (p.event_id && p.event_id !== String(b.event_id)) {
+      return res.status(400).json({ error: 'pack is for a different event' });
+    }
+    const scope = p.scope_type;
+    const subjectCol = scope === 'horse' ? 'horse_id' : 'rider_id';
+    const subjectId = String(b[subjectCol] || '');
+    if (!UUID_RE.test(subjectId)) {
+      return res.status(400).json({ error: `pack is ${scope}-scoped: need {${subjectCol}}` });
+    }
+    const ev = await pool.query('SELECT id FROM events WHERE id = $1', [String(b.event_id)]);
+    if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
+    const subj = await pool.query(
+      `SELECT id FROM ${scope === 'horse' ? 'horses' : 'riders'} WHERE id = $1`, [subjectId]);
+    if (!subj.rows.length) return res.status(404).json({ error: `${scope} not found` });
+    if (!Number.isInteger(p.price_cents) || p.price_cents <= 0 || !Number.isInteger(p.slots) || p.slots <= 0) {
+      return res.status(409).json({ error: 'pack has no valid price/slots' });
+    }
+    const amount = earlyPriceOf(p) ?? p.price_cents;
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return res.status(409).json({ error: 'no price set for this pack' });
+    }
+    if (b.idempotency_key) {
+      const prior = await pool.query(
+        `SELECT cb.id AS bundle_id, pu.id AS purchase_id FROM credit_bundles cb
+          JOIN purchases pu ON pu.id = cb.purchase_id
+          WHERE pu.idempotency_key = $1 AND pu.buyer_user_id = $2`,
+        [String(b.idempotency_key), req.authUser.id]
+      ).catch(() => ({ rows: [] }));
+      if (prior.rows.length) return res.status(200).json({ data: { ...prior.rows[0], reused: true } });
+    }
+    // subjectCol is pack scope validated against the CHECK constraint ('horse'|'rider').
+    const { rows: brows } = await pool.query(
+      `INSERT INTO credit_bundles
+        (pack_id, event_id, ${subjectCol}, buyer_user_id, buyer_email, slots_total, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 'awaiting_payment') RETURNING id`,
+      [p.id, String(b.event_id), subjectId, req.authUser.id, buyerEmail, p.slots]
+    );
+    const bundleId = brows[0].id;
+    let purchaseId;
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO purchases (credit_bundle_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key)
+          VALUES ($1, $2, $3, NULL, $4, 'NZD', 'pending', $5) RETURNING id`,
+        [bundleId, buyerEmail, req.authUser.id, amount, b.idempotency_key || null]
+      );
+      purchaseId = rows[0].id;
+    } catch (e) {
+      await pool.query(`UPDATE credit_bundles SET status = 'cancelled' WHERE id = $1`, [bundleId]);
+      throw e;
+    }
+    await pool.query(`UPDATE credit_bundles SET purchase_id = $2 WHERE id = $1`, [bundleId, purchaseId]);
+    const label = `${p.slots}-photo credits`.slice(0, 120);
+    const session = await stripe().checkout.sessions.create({
+      mode: 'payment',
+      customer_email: buyerEmail,
+      line_items: [{
+        price_data: { currency: 'nzd', product_data: { name: label }, unit_amount: amount },
+        quantity: 1,
+      }],
+      success_url: `${APP_URL}/photos/success?purchase=${purchaseId}`,
+      cancel_url: `${APP_URL}/photos`,
+      metadata: { purchase_id: purchaseId },
+    }, { idempotencyKey: b.idempotency_key ? `cr-${b.idempotency_key}` : `cr-${purchaseId}` });
+    await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = $1', [purchaseId, session.id]);
+    res.status(201).json({ data: { bundle_id: bundleId, purchase_id: purchaseId, checkout_url: session.url } });
+  }));
+
+  // Buyer unlocks one photo with credits (re-downloads stay free afterwards).
+  app.post('/api/credits/unlock', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (throttled(req.ip, 'credit-unlock')) return res.status(429).json({ error: 'too many requests, try again later' });
+    const { media_id } = req.body || {};
+    if (!media_id || !UUID_RE.test(String(media_id))) return res.status(400).json({ error: 'need {media_id}' });
+    const m = await pool.query(
+      `SELECT id, kind, status, event_id, horse_id, rider_id FROM media WHERE id = $1`, [String(media_id)]);
+    if (!m.rows.length || m.rows[0].status !== 'published' || m.rows[0].kind !== 'photo') {
+      return res.status(404).json({ error: 'photo not found' });
+    }
+    const media = m.rows[0];
+    if (!media.event_id || (!media.horse_id && !media.rider_id)) {
+      return res.status(409).json({ error: 'photo has no event/subject scope for credits' });
+    }
+    const dupe = await pool.query(
+      `SELECT 1 FROM credit_redemptions cr JOIN credit_bundles cb ON cb.id = cr.bundle_id
+        JOIN purchases pu ON pu.id = cb.purchase_id
+        WHERE pu.status = 'paid' AND pu.buyer_user_id = $2 AND cr.media_id = $1 LIMIT 1`,
+      [media.id, req.authUser.id]
+    );
+    if (dupe.rows.length) return res.status(200).json({ data: { unlocked: true, reused: true } });
+    const { rows } = await pool.query(
+      `SELECT cb.id, cb.slots_total,
+          (SELECT COUNT(*)::INT FROM credit_redemptions WHERE bundle_id = cb.id) AS used
+        FROM credit_bundles cb JOIN purchases pu ON pu.id = cb.purchase_id
+        WHERE cb.status = 'active' AND pu.status = 'paid' AND pu.buyer_user_id = $1
+          AND cb.event_id = $2
+          AND ((cb.rider_id IS NOT NULL AND cb.rider_id = $3)
+            OR (cb.horse_id IS NOT NULL AND cb.horse_id = $4))
+        ORDER BY cb.created_at LIMIT 20`,
+      [req.authUser.id, media.event_id, media.rider_id, media.horse_id]
+    );
+    const bundle = rows.find((r) => Number(r.slots_total) - Number(r.used) > 0);
+    if (!bundle) return res.status(409).json({ error: 'no credits left for this event × subject (buy a 5-pack first)' });
+    try {
+      await pool.query(
+        'INSERT INTO credit_redemptions (bundle_id, media_id) VALUES ($1, $2)', [bundle.id, media.id]);
+    } catch (e) {
+      if (e.code === '23505') return res.status(200).json({ data: { unlocked: true, reused: true } });
+      throw e;
+    }
+    const left = Number(bundle.slots_total) - Number(bundle.used) - 1;
+    res.status(201).json({ data: { unlocked: true, bundle_id: bundle.id, slots_left: left } });
+  }));
+
+  // Buyer: remaining credit balance per bundle (powers "n left" hints).
+  app.get('/api/my/credits', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    const { rows } = await pool.query(
+      `SELECT cb.id, cb.slots_total, cb.status, cb.event_id, cb.rider_id, cb.horse_id,
+          e.name AS event_name, h.name AS horse, r.name AS rider,
+          (SELECT COUNT(*)::INT FROM credit_redemptions WHERE bundle_id = cb.id) AS used
+        FROM credit_bundles cb
+        LEFT JOIN purchases pu ON pu.id = cb.purchase_id
+        LEFT JOIN events e ON e.id = cb.event_id
+        LEFT JOIN horses h ON h.id = cb.horse_id
+        LEFT JOIN riders r ON r.id = cb.rider_id
+        WHERE cb.buyer_user_id = $1 AND pu.status = 'paid' AND cb.status = 'active'
+        ORDER BY cb.created_at DESC LIMIT 50`,
+      [req.authUser.id]
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ data: rows.map((x) => ({ ...x, slots_left: Number(x.slots_total) - Number(x.used) })) });
+  }));
+
+  // ---- Admin: credit pack price list (all prices set here, no deploy) ----
+  app.get('/admin/credit-packs', needRole('ADMIN'), asyncH(async (req, res) => {
+    const params = [];
+    let where = '';
+    if (req.query.event_id) {
+      if (!UUID_RE.test(String(req.query.event_id))) return res.status(400).json({ error: 'bad event_id' });
+      params.push(String(req.query.event_id));
+      where = `WHERE cp.event_id = $1`;
+    }
+    const { rows } = await pool.query(
+      `SELECT cp.*, e.name AS event_name,
+          (SELECT COUNT(*)::INT FROM credit_bundles WHERE pack_id = cp.id AND status <> 'cancelled') AS bundles
+        FROM credit_packs cp LEFT JOIN events e ON e.id = cp.event_id
+        ${where} ORDER BY cp.event_id NULLS LAST, cp.sort_order LIMIT 200`,
+      params
+    );
+    res.json({ data: rows });
+  }));
+
+  app.post('/admin/credit-packs', needRole('ADMIN'), asyncH(async (req, res) => {
+    const b = req.body || {};
+    if (!CREDIT_SCOPE.includes(String(b.scope_type))) {
+      return res.status(400).json({ error: 'scope_type must be rider|horse' });
+    }
+    const slots = parseInt(b.slots, 10);
+    if (!Number.isInteger(slots) || slots <= 0) return res.status(400).json({ error: 'slots must be a positive integer' });
+    const price = b.price_cents === '' || b.price_cents === null || b.price_cents === undefined
+      ? null : parseInt(b.price_cents, 10);
+    if (!(price >= 0)) return res.status(400).json({ error: 'price_cents must be a non-negative integer' });
+    let eventId = null;
+    if (b.event_id) {
+      if (!UUID_RE.test(String(b.event_id))) return res.status(400).json({ error: 'bad event_id' });
+      const ev = await pool.query('SELECT id FROM events WHERE id = $1', [String(b.event_id)]);
+      if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
+      eventId = String(b.event_id);
+    }
+    const photographer = await activePhotographer(pool, b.photographer_id);
+    const { rows } = await pool.query(
+      `INSERT INTO credit_packs (photographer_id, event_id, scope_type, slots, price_cents, sort_order, status)
+        VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'published')) RETURNING *`,
+      [photographer.id, eventId, String(b.scope_type), slots, price,
+        Number.isInteger(parseInt(b.sort_order, 10)) ? parseInt(b.sort_order, 10) : 0,
+        ['draft', 'published', 'archived'].includes(b.status) ? b.status : 'published']
+    );
+    audit(req, 'creditpack.create', 'credit_pack', rows[0].id, { slots, price_cents: price });
+    res.status(201).json({ data: rows[0] });
+  }));
+
+  app.patch('/admin/credit-packs/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    const b = req.body || {};
+    const sets = [], vals = [];
+    const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
+    if (b.scope_type !== undefined) {
+      if (!CREDIT_SCOPE.includes(String(b.scope_type))) return res.status(400).json({ error: 'scope_type must be rider|horse' });
+      set('scope_type', String(b.scope_type));
+    }
+    if (b.slots !== undefined) {
+      const slots = parseInt(b.slots, 10);
+      if (!Number.isInteger(slots) || slots <= 0) return res.status(400).json({ error: 'slots must be a positive integer' });
+      set('slots', slots);
+    }
+    if (b.price_cents !== undefined) {
+      const price = b.price_cents === '' || b.price_cents === null ? null : parseInt(b.price_cents, 10);
+      if (!(price >= 0)) return res.status(400).json({ error: 'price_cents must be a non-negative integer' });
+      set('price_cents', price);
+    }
+    if (b.early_price_cents !== undefined) {
+      const early = b.early_price_cents === '' || b.early_price_cents === null ? null : parseInt(b.early_price_cents, 10);
+      if (early !== null && !(early >= 0)) return res.status(400).json({ error: 'early_price_cents must be a non-negative integer or null' });
+      set('early_price_cents', early);
+    }
+    if (b.early_until !== undefined) {
+      const until = !b.early_until ? null : new Date(b.early_until);
+      if (until !== null && Number.isNaN(until.getTime())) return res.status(400).json({ error: 'early_until must be ISO datetime' });
+      set('early_until', until ? until.toISOString() : null);
+    }
+    if (b.sort_order !== undefined) {
+      const so = parseInt(b.sort_order, 10);
+      if (!Number.isInteger(so)) return res.status(400).json({ error: 'sort_order must be an integer' });
+      set('sort_order', so);
+    }
+    if (b.status !== undefined) {
+      if (!['draft', 'published', 'archived'].includes(b.status)) {
+        return res.status(400).json({ error: 'status must be draft|published|archived' });
+      }
+      set('status', b.status);
+    }
+    if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
+    vals.push(req.params.id);
+    const { rows } = await pool.query(
+      `UPDATE credit_packs SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
+    if (!rows.length) return res.status(404).json({ error: 'credit pack not found' });
+    audit(req, 'creditpack.edit', 'credit_pack', req.params.id, { fields: sets.map((s) => s.split(' = ')[0]) });
+    res.json({ data: rows[0] });
+  }));
+
+  app.delete('/admin/credit-packs/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    const live = await pool.query(
+      `SELECT COUNT(*)::INT AS n FROM credit_bundles WHERE pack_id = $1 AND status <> 'cancelled'`,
+      [req.params.id]);
+    if (live.rows[0].n > 0) {
+      return res.status(409).json({ error: 'has live bundles — archive instead of deleting' });
+    }
+    await pool.query(`DELETE FROM credit_bundles WHERE pack_id = $1 AND status = 'cancelled'`, [req.params.id]);
+    const { rows } = await pool.query('DELETE FROM credit_packs WHERE id = $1 RETURNING id', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'credit pack not found' });
+    audit(req, 'creditpack.delete', 'credit_pack', req.params.id, {});
+    res.json({ ok: true });
+  }));
+
+  // ---- In-app notifications (header bell now, email digests in P3) ----
+  app.get('/api/my/notifications', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    const { rows } = await pool.query(
+      `SELECT *, (SELECT COUNT(*)::INT FROM notifications WHERE user_id = $1 AND read_at IS NULL) AS unread
+        FROM notifications WHERE user_id = $1
+        ORDER BY read_at NULLS FIRST, updated_at DESC LIMIT $2`,
+      [req.authUser.id, limit]
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ data: rows, unread: rows[0]?.unread ?? 0 });
+  }));
+
+  app.post('/api/my/notifications/read', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((x) => UUID_RE.test(String(x))) : [];
+    if (ids.length) {
+      await pool.query(
+        'UPDATE notifications SET read_at = NOW() WHERE user_id = $1 AND id = ANY($2::UUID[])',
+        [req.authUser.id, ids]
+      );
+    } else {
+      await pool.query(
+        'UPDATE notifications SET read_at = NOW() WHERE user_id = $1 AND read_at IS NULL',
+        [req.authUser.id]
+      );
+    }
+    res.json({ ok: true });
+  }));
+
+  // ---- Takedown request (P3 privacy): anyone logged in can ask for a photo
+  // to come down. Lands in correction_reports (existing /admin/corrections
+  // triage, SLA 48h per privacy page); the admin archives the media and
+  // resolves the report. Withdrawing consent always works — see privacy page.
+  app.post('/api/media/:id/takedown', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (throttled(req.ip, 'media-takedown')) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
+    const m = await pool.query(
+      `SELECT m.id, m.status, e.name AS event_name, h.name AS horse, r.name AS rider
+        FROM media m LEFT JOIN events e ON e.id = m.event_id
+        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        WHERE m.id = $1`,
+      [req.params.id]
+    );
+    if (!m.rows.length) return res.status(404).json({ error: 'photo not found' });
+    const reason = String(req.body?.reason || '').trim().slice(0, 500);
+    const who = req.authUser.name || req.authUser.email || 'a user';
+    const { rows } = await pool.query(
+      `INSERT INTO correction_reports (name, email, subject, entity_type, entity_id, message)
+        VALUES ($1, $2, 'Takedown request', 'photo', $3, $4) RETURNING id, created_at`,
+      [who, req.authUser.email || '', String(req.params.id),
+        `${who} (${req.authUser.email || 'no email'}) requests takedown of photo ${req.params.id} ` +
+        `(${[m.rows[0].horse, m.rows[0].rider].filter(Boolean).join(' × ') || m.rows[0].event_name || 'untitled'}, status ${m.rows[0].status}). ` +
+        `Reason: ${reason || '(none given)'}. SLA: review within 48h; archive the media if valid, then resolve.`]
+    );
+    audit(req, 'media.takedown', 'media', String(req.params.id), { report: rows[0].id });
+    res.status(201).json({ data: { ok: true, report_id: rows[0].id } });
+  }));
+
+  // ---- "That's me" claim: personal shelf, never touches canonical tags ----
+  // Family decision: claiming only saves the photo into the CLAIMANT's own
+  // gallery (library "Claimed" section) so they can find and buy it. The
+  // canonical horse_id/rider_id stays with the photographer/admin.
+  // Guardrails: login + throttle + audit. No visibility/ownership change.
+  // ---- Maintenance (P3): retention + checkout nudges ----
+  // No cron infra in the stack: trigger from Admin → Data Tools, or schedule
+  // Cloud Scheduler against this endpoint with MAINTENANCE_SECRET
+  // (header x-maintenance-secret). Tasks:
+  //   retention: delete R2 originals of draft/archived media older than 90
+  //     days (DB rows stay; published work is never touched).
+  //   nudges: one in-app reminder per stale pending purchase (>24h, logged-in
+  //     buyer, never nudged before) linking back to the item.
+  app.post('/admin/maintenance/run', asyncH(async (req, res) => {
+    const okSecret = process.env.MAINTENANCE_SECRET &&
+      req.headers['x-maintenance-secret'] === process.env.MAINTENANCE_SECRET;
+    if (!okSecret && (!req.authUser || req.authUser.role !== 'ADMIN')) {
+      return res.status(401).json({ error: 'admin login required' });
+    }
+    const tasks = Array.isArray(req.body?.tasks) && req.body.tasks.length
+      ? req.body.tasks : ['retention', 'nudges'];
+    const out = {};
+    if (tasks.includes('retention')) {
+      const { rows } = await pool.query(
+        `SELECT id, storage_key, preview_key, thumb_key FROM media
+          WHERE status <> 'published' AND storage_key IS NOT NULL
+            AND created_at < NOW() - INTERVAL '90 days' LIMIT 500`
+      );
+      let cleaned = 0;
+      for (const r of rows) {
+        try {
+          await mediaStore.deleteKeys([r.storage_key, r.preview_key, r.thumb_key]);
+          await pool.query(
+            'UPDATE media SET storage_key = NULL, preview_key = NULL, thumb_key = NULL WHERE id = $1',
+            [r.id]
+          );
+          cleaned += 1;
+        } catch { /* best-effort per row */ }
+      }
+      audit(req, 'maint.retention', 'media', null, { cleaned });
+      out.retention = { cleaned, scanned: rows.length };
+    }
+    if (tasks.includes('nudges')) {
+      const { rows } = await pool.query(
+        `SELECT pu.id, pu.buyer_user_id, pu.media_id, pu.package_id,
+            pu.amount_cents, m.id AS mid, e.name AS event_name,
+            h.name AS horse, r.name AS rider, pk.title AS package_title
+          FROM purchases pu
+          LEFT JOIN media m ON m.id = pu.media_id
+          LEFT JOIN events e ON e.id = m.event_id
+          LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+          LEFT JOIN packages pk ON pk.id = pu.package_id
+          WHERE pu.status = 'pending' AND pu.buyer_user_id IS NOT NULL
+            AND pu.created_at < NOW() - INTERVAL '24 hours'
+            AND NOT EXISTS (SELECT 1 FROM notifications n
+              WHERE n.user_id = pu.buyer_user_id AND n.kind = 'order-update'
+                AND n.ref_key = ('purchase:' || pu.id::TEXT))
+          LIMIT 200`
+      );
+      let nudged = 0;
+      for (const p of rows) {
+        const title = p.mid
+          ? [p.horse, p.rider].filter(Boolean).join(' × ') || p.event_name || 'your photo'
+          : p.package_title || 'your order';
+        const link = p.mid ? `/photos/${p.mid}` : '/photos/library';
+        await pool.query(
+          `INSERT INTO notifications (user_id, kind, title, body, link, ref_key, count)
+            VALUES ($1, 'order-update', 'Still interested?', $2, $3, $4, 1)
+            ON CONFLICT DO NOTHING`,
+          [p.buyer_user_id, `"${title}" is waiting for payment`, link, `purchase:${p.id}`]
+        );
+        nudged += 1;
+      }
+      audit(req, 'maint.nudges', 'purchase', null, { nudged });
+      out.nudges = { nudged };
+    }
+    res.json({ data: out });
+  }));
+
+  app.post('/api/media/:id/claim', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (throttled(req.ip, 'media-claim')) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
+    const b = req.body || {};
+    if (!!b.horse_id === !!b.rider_id) {
+      return res.status(400).json({ error: 'claim exactly one of {horse_id, rider_id}' });
+    }
+    const m = await pool.query('SELECT id, status FROM media WHERE id = $1', [req.params.id]);
+    if (!m.rows.length || m.rows[0].status !== 'published') {
+      return res.status(404).json({ error: 'photo not found' });
+    }
+    const kind = b.horse_id ? 'horse' : 'rider';
+    const sid = String(b.horse_id || b.rider_id);
+    if (!UUID_RE.test(sid)) return res.status(400).json({ error: 'bad subject id' });
+    const subj = await pool.query(
+      `SELECT name FROM ${kind === 'horse' ? 'horses' : 'riders'} WHERE id = $1`, [sid]);
+    if (!subj.rows.length) return res.status(404).json({ error: `${kind} not found` });
+    const horseCol = kind === 'horse' ? sid : null;
+    const riderCol = kind === 'rider' ? sid : null;
+    const { rowCount } = await pool.query(
+      `INSERT INTO claimed_photos (user_id, media_id, claimed_horse_id, claimed_rider_id)
+        VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+      [req.authUser.id, String(req.params.id), horseCol, riderCol]
+    );
+    audit(req, 'media.claim', 'media', String(req.params.id),
+      { kind, as: sid, personal: true, by: req.authUser.id });
+    res.status(rowCount ? 201 : 200).json({
+      data: { ok: true, kind, name: subj.rows[0].name, reused: !rowCount },
+    });
+  }));
+
+  // Claimant's personal shelf (powers the library "Claimed" section).
+  app.get('/api/my/claimed', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    const { rows } = await pool.query(
+      `SELECT m.id, m.kind, m.thumb_key, m.preview_key, m.event_id,
+          e.name AS event_name, h.name AS horse, r.name AS rider,
+          ch.name AS claimed_horse, cr.name AS claimed_rider, cp.created_at
+        FROM claimed_photos cp
+        JOIN media m ON m.id = cp.media_id AND m.status = 'published'
+        LEFT JOIN events e ON e.id = m.event_id
+        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        LEFT JOIN horses ch ON ch.id = cp.claimed_horse_id
+        LEFT JOIN riders cr ON cr.id = cp.claimed_rider_id
+        WHERE cp.user_id = $1 ORDER BY cp.created_at DESC LIMIT 100`,
+      [req.authUser.id]
+    );
+    for (const x of rows) {
+      try {
+        if (x.preview_key) x.preview_url = mediaStore.publicUrl(x.preview_key);
+        if (x.thumb_key) x.thumb_url = mediaStore.publicUrl(x.thumb_key);
+      } catch { /* R2 public base unconfigured */ }
+    }
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ data: rows });
+  }));
+
+  // Early-bird pricing (P1b): an admin-set discounted price honored while
+  // active (early_until null = no deadline). Applied to packages + credits.
+  const earlyPriceOf = (row) => {
+    if (row.early_price_cents === null || row.early_price_cents === undefined) return null;
+    const early = parseInt(row.early_price_cents, 10);
+    if (!(early >= 0)) return null;
+    if (row.early_until && new Date(row.early_until) <= new Date()) return null;
+    return early;
+  };
 
   // ---- Assisted tagging: rank classes by taken_at proximity, with candidates ----
   app.post('/admin/media/suggest-tags', needRole('ADMIN'), asyncH(async (req, res) => {

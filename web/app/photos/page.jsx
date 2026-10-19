@@ -40,11 +40,10 @@ export default function Photos() {
 
 function PhotosInner() {
   const [rows, setRows] = useState([]);
-  const [kind, setKind] = useState('');
+  const sp = useSearchParams();
+  const [kind, setKind] = useState(sp.get('kind') || '');
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
-
-  const sp = useSearchParams();
   const fHorse = sp.get('horse') || '';
   const fRider = sp.get('rider') || '';
   const fEvent = sp.get('event') || '';

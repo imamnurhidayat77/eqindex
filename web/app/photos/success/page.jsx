@@ -58,8 +58,11 @@ function Inner() {
   }, [purchase]);
 
   const title = detail
-    ? [detail.horse, detail.rider].filter(Boolean).join(' × ') || detail.event_name || 'Photo'
+    ? detail.reel_product
+      ? `${detail.reel_product} — ${detail.horse || ''}`.trim()
+      : [detail.horse, detail.rider].filter(Boolean).join(' × ') || detail.event_name || 'Photo'
     : 'Photo';
+  const isReelOrder = !!(detail && detail.reel_product);
 
   return (
     <>
@@ -70,14 +73,16 @@ function Inner() {
               <CheckIcon className="h-9 w-9" />
             </span>
             <h1 className={`${H1} mt-4`}>Payment successful</h1>
-            <p className={SUB}>Your full-resolution file is unlocked below — re-downloadable any time from My photos.</p>
+            <p className={SUB}>{isReelOrder
+              ? 'Your reel is booked — we’ll film and edit it after the event, then it lands in your account.'
+              : 'Your full-resolution file is unlocked below — re-downloadable any time from My photos.'}</p>
           </div>
           <section className={`${CARD} mx-auto max-w-[560px]`}>
             <div className="mb-1 text-[11px] uppercase tracking-wide text-faint font-bold">Order summary</div>
             <dl className="text-[13.5px]">
               {[
                 ['Item', title],
-                ['License', detail.license_tier || '—'],
+                ['License', detail.license_tier || (isReelOrder ? 'Reel service' : '—')],
                 ['Paid', `${nzd(detail.amount_cents)}${detail.created_at ? ` · ${fmtDate(detail.created_at)}` : ''}`],
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-3 border-b border-rowline last:border-0 py-2">
@@ -91,6 +96,11 @@ function Inner() {
                 <a href={`${API}/api/media/${detail.media_id}/download`} className={`${BTN_PRIMARY} no-underline text-center`}>
                   Download full-res now
                 </a>
+              )}
+              {isReelOrder && (
+                <Link href="/reels" className={`${BTN_PRIMARY} no-underline text-center`}>
+                  Track in My reels →
+                </Link>
               )}
               <div className="flex gap-3 justify-center">
                 <Link href="/photos/library" className="text-sky text-sm no-underline hover:underline">My photos →</Link>

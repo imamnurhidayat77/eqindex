@@ -24,6 +24,22 @@ export default function Privacy() {
         themselves from their profile page; otherwise contact us via the
         Contact page and an administrator will apply it.</p>
       </section>
+      <section className={CARD}>
+        <h2 className="text-[15px] font-bold mb-2">Event photos & reels</h2>
+        <p>Photos and reels from events are taken by our photographer and sold here.
+        They stay visible in galleries while published. Two rights apply to everyone,
+        especially parents/guardians of young riders:</p>
+        <p><b>Photo opt-out.</b> Ask us (or toggle via an administrator) to hide a
+        rider&apos;s or horse&apos;s photos from all public galleries. Hidden photos stay
+        purchasable via direct link and stay visible in the owner&apos;s own watchlist
+        and library — they simply stop appearing while browsing.</p>
+        <p><b>Takedown.</b> Anyone logged in can request takedown from the photo&apos;s
+        own page (&ldquo;Request takedown&rdquo;). We review within <b>48 hours</b>;
+        valid requests are archived (buyers keep files they already paid for).</p>
+        <p className={MUT}>Retention: unpublished drafts are deleted after 90 days.
+        Order reference selfies (reels) are deleted 30 days after delivery.
+        Withdrawing consent always works — including for previously published photos.</p>
+      </section>
     </>
   );
 }
