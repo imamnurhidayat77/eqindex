@@ -1,10 +1,10 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { API } from '../lib/api';
-import { CARD, H1, SUB, BTN_PRIMARY } from '../lib/tokens';
-import { useAuth } from '../components/auth';
-import ReelPlayer from '../components/ReelPlayer';
+import { API } from '../../lib/api';
+import { CARD, H1, SUB, BTN_PRIMARY } from '../../lib/tokens';
+import { useAuth } from '../../components/auth';
+import ReelPlayer from '../../components/ReelPlayer';
 
 const nzd = (c) => (c === null || c === undefined ? '—' : `NZ$${(Number(c) / 100).toFixed(2)}`);
 const STATUS_HINT = {
