@@ -123,10 +123,10 @@ function EventAthleteCard({ a, photos, eventId, viewAllHref, onUnwatch }) {
               <Link href={viewAllHref} className="text-sky text-[11.5px] no-underline hover:underline">View all →</Link>
             )}
           </div>
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
             {shots.map((x) => (
               <Link key={x.id} href={`/photos/${x.id}`} className="block rounded border border-line bg-card overflow-hidden no-underline hover:border-gold/50">
-                <div className="aspect-[4/3] flex items-center justify-center overflow-hidden">
+                <div className="aspect-square flex items-center justify-center overflow-hidden">
                   {x.thumb_url || x.preview_url
                     ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover" />
                     : <span className="text-lg">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
@@ -297,15 +297,18 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
             const key = g.event_id || g.event;
             const rate = g.entries.length ? (100 * g.clears) / g.entries.length : null;
             const shots = eventShots.get(key) || [];
+            // Match photos to athletes FIRST (before computing leftovers),
+            // otherwise every photo also lands in the leftover strip.
             const matched = new Set();
-            const shotsFor = (a) => {
+            const shotsByAth = new Map();
+            for (const a of g.athletes) {
               const list = shots.filter((x) => {
                 const hit = (a.kind === 'horse' ? x.horse_id : x.rider_id) === a.id;
                 if (hit) matched.add(x.id);
                 return hit;
               });
-              return list;
-            };
+              shotsByAth.set(`${a.kind}:${a.id}`, list);
+            }
             const leftover = shots.filter((x) => !matched.has(x.id) && matchQ([x.horse, x.rider, x.event_name].filter(Boolean).join(' ')));
             const evHref = (() => {
               const qp = new URLSearchParams();
@@ -336,8 +339,7 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
                 <div className="space-y-1.5">
                   {g.athletes.map((a) => (
                     <EventAthleteCard key={`${a.kind}-${a.id}`} a={a}
-                      photos={shotsFor(a)} eventId={g.event_id} viewAllHref={athleteHref(g, a)}
-                      onUnwatch={handleUnwatch} />
+                      photos={shotsByAth.get(`${a.kind}:${a.id}`) || []} eventId={g.event_id} viewAllHref={athleteHref(g, a)} />
                   ))}
                 </div>
                 {!!leftover.length && (
