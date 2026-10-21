@@ -67,7 +67,7 @@ export default async function BreederProfile({ params }) {
         <>
           <h2 className="text-[15px] font-bold">Division summary</h2>
           <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rounds and clears per division across all offspring.</p>
-          <section className="mb-6 rounded border border-line bg-card p-4">
+          <section className="mb-6 rounded-lg border border-line bg-card p-4">
             <div className="overflow-x-auto">
             <table className="w-full border-collapse text-[13px]">
               <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">

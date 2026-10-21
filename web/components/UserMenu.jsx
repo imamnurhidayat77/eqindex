@@ -30,7 +30,7 @@ export default function UserMenu() {
   if (!user) {
     return (
       <span className="flex items-center gap-2">
-        <Link href="/login" className="text-muted text-[13px] no-underline hover:text-white hidden sm:inline">Log in</Link>
+        <Link href="/login" className="text-muted text-[13px] no-underline hover:text-white hidden sm:inline whitespace-nowrap">Log in</Link>
         <Link href="/register" className="bg-gold text-black font-bold rounded px-3 py-1.5 text-[13px] no-underline">Join</Link>
       </span>
     );

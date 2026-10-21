@@ -23,7 +23,7 @@ export default function ExportCsv({ rows, filename }) {
   if (!rows || !rows.length) return null;
   return (
     <button onClick={download}
-      className="rounded border border-line bg-card2 px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-gold hover:border-gold/50">
+      className="rounded-md border border-line bg-card2 px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-gold hover:border-gold/50">
       ⤓ Export CSV
     </button>
   );

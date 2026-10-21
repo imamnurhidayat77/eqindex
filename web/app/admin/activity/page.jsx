@@ -41,7 +41,7 @@ export default function AdminActivity() {
     <>
       <h1 className={H1}>Activity audit</h1>
       <p className={SUB}>Every material change, who made it, and when.</p>
-      <div className="mb-4 rounded border border-line bg-card p-4 flex flex-wrap gap-2.5 items-end">
+      <div className="mb-4 rounded-lg border border-line bg-card p-4 flex flex-wrap gap-2.5 items-end">
         <label className="text-xs text-muted flex flex-col gap-1.5">Action
           <Dropdown ariaLabel="Action filter" value={f.action} placeholder="All actions" searchable
             options={[{ value: '', label: 'All actions' }, ...actions.map((a) => ({ value: a.action, label: `${a.action} (${a.n})` }))]}

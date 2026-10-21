@@ -188,23 +188,25 @@ function PhotosInner() {
       </div>
       <p className={SUB}>Buy event photos — watermarked previews, full resolution after purchase.</p>
 
-      <section className={`${CARD} !p-3 mb-4`}>
+      <div className="mb-4 max-w-[560px]">
         <EventSearch events={events}
           value={eventSel === undefined ? (urlEvent ? { value: urlEvent, label: urlEvent } : null) : eventSel}
           onPick={goEvent} placeholder="Search event…" />
-      </section>
+      </div>
 
       {browsingEvents ? (
         evGroups === null ? (
           <EventCardSk n={6} />
         ) : evGroups.length ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {evGroups.map((g) => (
+            {evGroups.map((g, i) => (
               <Link key={g.event_id} href={`/photos/${encodeURIComponent(g.event_slug || g.event_id)}`}
-                className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
+                style={{ animationDelay: `${Math.min(i * 40, 240)}ms` }}
+                aria-label={`${g.event_name} — ${g.photos} photos`}
+                className="rise group flex flex-col rounded-lg border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
                 <div className="relative aspect-[16/9] bg-card2 flex items-center justify-center overflow-hidden">
                   {g.thumb_url || g.preview_url
-                    ? <img src={g.thumb_url || g.preview_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
+                    ? <img src={g.thumb_url || g.preview_url} alt={`Cover photo from ${g.event_name}`} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
                     : <ImageIcon className="h-8 w-8 text-faint" />}
                 </div>
                 <div className="flex grow flex-col gap-0.5 p-3">
@@ -236,13 +238,13 @@ function PhotosInner() {
       ) : rows.length ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {rows.map((x) => {
+            {rows.map((x, i) => {
             const price = nzd(x.price_cents);
             return (
-              <Link key={x.id} href={`/photos/${x.id}`} className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
+              <Link key={x.id} href={`/photos/${x.id}`} style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }} aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Photo'} className="rise group flex flex-col rounded-lg border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
                 <div className="relative aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                   {x.thumb_url || x.preview_url
-                    ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
+                    ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
                     : <ImageIcon className="h-8 w-8 text-faint" />}
                   {x.kind === 'reel' && (
                     <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-white">
@@ -272,7 +274,7 @@ function PhotosInner() {
           {hasMore && (
             <div className="mt-4 text-center">
               <button onClick={loadMore} disabled={loadingMore}
-                className="rounded border border-line bg-card2 px-5 py-2.5 text-[13px] font-bold text-white hover:border-gold/50 hover:text-gold cursor-pointer disabled:opacity-60">
+                className="rounded-md border border-line bg-card2 px-5 py-2.5 text-[13px] font-bold text-white hover:border-gold/50 hover:text-gold cursor-pointer disabled:opacity-60">
                 {loadingMore ? 'Loading…' : `Load more (${rows.length} shown)`}
               </button>
             </div>

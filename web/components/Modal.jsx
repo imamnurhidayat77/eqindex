@@ -28,7 +28,7 @@ export default function Modal({ title, sub, onClose, children, footer, wide = fa
               {sub && <p className="text-muted text-[13px] mt-0.5">{sub}</p>}
             </div>
             <button onClick={onClose} aria-label="Close dialog"
-              className="shrink-0 w-8 h-8 rounded border border-line bg-card2 text-muted hover:text-white hover:border-faint text-[14px] cursor-pointer">
+              className="shrink-0 w-8 h-8 rounded-md border border-line bg-card2 text-muted hover:text-white hover:border-faint text-[14px] cursor-pointer">
               ✕
             </button>
           </div>

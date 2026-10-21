@@ -22,7 +22,7 @@ export default function AdminCharts({ rows = [], summary = null }) {
         {summary && (
           <span className="text-[12px] text-muted">
             Last {summary.days}d · <b className="text-gold">{summary.totalRounds.toLocaleString()}</b> rounds
-            {' · '}<b className="text-sky">{summary.totalImported.toLocaleString()}</b> imported rows
+            {' · '}<b className="text-muted">{summary.totalImported.toLocaleString()}</b> imported rows
             {' · '}~{avg}/day
           </span>
         )}
@@ -36,7 +36,7 @@ export default function AdminCharts({ rows = [], summary = null }) {
               <YAxis tick={{ fill: '#888', fontSize: 11 }} allowDecimals={false} />
               <Tooltip contentStyle={tip} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="imported" name="Imported rows" fill="#4FC3F7" opacity={0.55} />
+              <Bar dataKey="imported" name="Imported rows" fill="#555555" opacity={0.8} />
               <Area type="monotone" dataKey="rounds" name="Rounds" stroke="#FFD700" fill="#FFD700" fillOpacity={0.18} strokeWidth={2} />
             </ComposedChart>
           </ResponsiveContainer>

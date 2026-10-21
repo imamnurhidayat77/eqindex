@@ -33,7 +33,7 @@ const shade = (hex, amt) => {
 const MedalIcon = ({ color, elite, label, detail }) => {
   const c = color || '#888888';
   return (
-    <span className="group relative inline-block leading-none cursor-default">
+    <span tabIndex={0} role="img" aria-label={elite ? `Elite ${label} Medal — ${detail}` : `${label} Medal — ${detail}`} className="group relative inline-block leading-none cursor-default rounded focus:outline-none">
       <svg width="24" height="32" viewBox="0 0 24 32" aria-hidden="true">
         <polygon points="7,0 11.5,0 10,12 5.5,12" fill={shade(c, -45)} />
         <polygon points="13,0 17.5,0 19,12 14.5,12" fill={shade(c, -45)} />
@@ -44,7 +44,7 @@ const MedalIcon = ({ color, elite, label, detail }) => {
         <circle cx="12" cy="23.5" r="5" fill={shade(c, 35)} opacity="0.55" />
         <circle cx="10" cy="21.5" r="1.6" fill="#ffffff" opacity="0.5" />
       </svg>
-      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-card2 px-2.5 py-1.5 text-center opacity-0 transition-opacity duration-100 group-hover:opacity-100">
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-card2 px-2.5 py-1.5 text-center opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100">
         <span className="block text-[12px] font-bold text-white">{elite ? `Elite ${label} Medal` : `${label} Medal`}</span>
         <span className="block text-[10px] text-muted">{detail}</span>
       </span>
@@ -285,7 +285,7 @@ export default async function RiderProfile({ params, searchParams }) {
   ];
 
   return (
-    <div className="text-[14px] text-slate-100">
+    <div className="text-[14px] text-body">
       {/* breadcrumb + title */}
       <div className="mb-1 text-[12px] text-faint">
         <Link href="/riders" className="text-muted hover:text-white">Riders</Link>
@@ -294,11 +294,11 @@ export default async function RiderProfile({ params, searchParams }) {
       </div>
       {/* hero */}
       <div className="mb-6">
-        <section className="rounded border border-line bg-card p-5">
+        <section className="rounded-lg border border-line bg-card p-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Showjumping Athlete</div>
-              <div className="mt-1 text-[30px] font-extrabold leading-none break-words">{r.name}</div>
+              <div className="mt-1 text-[24px] font-extrabold leading-none break-words">{r.name}</div>
               {!!earnedBadges.length && (
                 <div className="mt-2.5 flex flex-wrap gap-2" role="img" aria-label={`Division medals: ${earnedBadges.map((d) => d.label).join(', ')}`}>
                   {earnedBadges.map((d) => (
@@ -312,7 +312,7 @@ export default async function RiderProfile({ params, searchParams }) {
               <div className="mt-2"><WatchButton entityType="rider" entityId={params.id} /></div>
             </div>
             <div className="text-center">
-              <div className="text-[26px] font-extrabold leading-none tabular-nums text-gold">{riderRating === null || !formEligible ? '–' : riderRating.toFixed(1)}</div>
+              <div className="text-[22px] font-extrabold leading-none tabular-nums text-gold">{riderRating === null || !formEligible ? '–' : riderRating.toFixed(1)}</div>
               <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Rating{formRank ? ` · #${formRank}` : ''}</div>
               {!!roundsNeeded && (
                 <div className="mt-1 text-[10px] text-faint">needs {roundsNeeded} more round{roundsNeeded === 1 ? '' : 's'} to rank</div>
@@ -341,7 +341,7 @@ export default async function RiderProfile({ params, searchParams }) {
         <>
           <h2 className="text-[15px] font-bold">Division Summary</h2>
           <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rounds and clears per division across the full record.</p>
-          <section className="mb-6 rounded border border-line bg-card p-4">
+          <section className="mb-6 rounded-lg border border-line bg-card p-4">
             <div className="overflow-x-auto">
             <table className="w-full border-collapse text-[13px]">
               <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
@@ -390,7 +390,7 @@ export default async function RiderProfile({ params, searchParams }) {
 
       <h2 className="text-[15px] font-bold">Season Timeline</h2>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Every result on every horse at a glance — place, clear/faults, height and horse.</p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
+      <section className="mb-6 rounded-lg border border-line bg-card p-4">
         <SeasonTimeline history={history} partnerKey="horse" partnerTitle="Horse" />
       </section>
 
@@ -400,7 +400,7 @@ export default async function RiderProfile({ params, searchParams }) {
         <ExportCsv rows={history} filename={`${r.name}-record.csv`} />
       </div>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rider performance logs from official New Zealand showjumping rounds.</p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
+      <section className="mb-6 rounded-lg border border-line bg-card p-4">
         <HistoryTable rows={history} mode="rider" />
       </section>
 

@@ -144,8 +144,8 @@ export default function AdminNav({ user }) {
     const n = badgeKey ? counts[badgeKey] : null;
     return (
       <Link key={href} href={href}
-        className={`flex items-center gap-2.5 rounded px-2.5 py-2 text-[13px] no-underline whitespace-nowrap transition-colors border-l-2 ${sub ? 'lg:pl-6' : ''} ${
-            on ? 'bg-goldbg/50 border-gold text-gold font-bold' : 'border-transparent text-muted hover:bg-white/5 hover:text-white'
+        className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] no-underline whitespace-nowrap transition-colors ${sub ? 'lg:pl-6' : ''} ${
+            on ? 'bg-white/[0.07] text-white font-semibold' : 'text-muted hover:bg-white/5 hover:text-white'
           }`}>
         <span className="w-4 text-center text-[13px]">{icon}</span>
         {label}
@@ -156,7 +156,7 @@ export default function AdminNav({ user }) {
     );
   };
   return (
-    <aside className="rounded border border-line bg-card lg:sticky lg:top-[76px] overflow-hidden">
+    <aside className="rounded-lg border border-line bg-card lg:sticky lg:top-[76px] overflow-hidden">
       <div className="px-4 pt-3.5 pb-1 flex items-center gap-2.5">
         <span className="w-8 h-8 rounded bg-gold text-black font-extrabold inline-flex items-center justify-center text-[15px]">E</span>
         <div className="min-w-0">
@@ -173,7 +173,7 @@ export default function AdminNav({ user }) {
       </div>
       <nav className="p-2 flex lg:flex-col gap-0.5 overflow-x-auto">
         <div className="min-w-fit">
-          <div className="hidden lg:block px-2.5 pt-3 pb-1 text-[10px] uppercase tracking-[0.8px] text-faint font-bold">Manage</div>
+          <div className="hidden lg:block px-2.5 pt-3 pb-1 text-[12px] text-faint font-semibold">Manage</div>
           {top.map((item) => row(item))}
           {groups.map((g) => {
             const isOpen = !!open[g.title];
@@ -181,7 +181,7 @@ export default function AdminNav({ user }) {
             return (
               <div key={g.title} className="contents lg:block">
                 <button onClick={() => toggle(g.title)} aria-expanded={isOpen}
-                  className={`hidden lg:flex w-full items-center gap-1.5 rounded px-2.5 pt-2.5 pb-1 text-[10px] uppercase tracking-[0.8px] font-bold cursor-pointer transition-colors ${hasActive ? 'text-gold' : 'text-faint hover:text-muted'}`}>
+                  className={`hidden lg:flex w-full items-center gap-1.5 rounded-md px-2.5 pt-2.5 pb-1 text-[12px] font-semibold cursor-pointer transition-colors ${hasActive ? 'text-white' : 'text-faint hover:text-muted'}`}>
                   <span aria-hidden="true" className="text-[9px] w-3">{isOpen ? '▾' : '▸'}</span>
                   {g.title}
                 </button>
@@ -194,7 +194,7 @@ export default function AdminNav({ user }) {
         </div>
         {flat.map((g) => (
           <div key={g.title} className="min-w-fit">
-            <div className="hidden lg:block px-2.5 pt-3 pb-1 text-[10px] uppercase tracking-[0.8px] text-faint font-bold">{g.title}</div>
+            <div className="hidden lg:block px-2.5 pt-3 pb-1 text-[12px] text-faint font-semibold">{g.title}</div>
             {g.items.map((item) => row(item))}
           </div>
         ))}

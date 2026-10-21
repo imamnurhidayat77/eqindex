@@ -5,6 +5,7 @@ import { API } from '../../lib/api';
 import { CARD, H1, NUM, SUB, TABLE, TD, TH } from '../../lib/tokens';
 import { FilterBar, Pagination } from '../../components/list-controls';
 import { TableEmpty } from '../../components/EmptyState';
+import FormCell from '../../components/FormCell';
 import { heightParams } from '../../lib/heights';
 import { useSeason } from '../../components/global';
 
@@ -110,10 +111,10 @@ export default function Horses() {
         </div>
       </div>
       {tab === 'rating' ? (
-        <div className="mb-3 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
+        <div className="mb-3 flex flex-wrap items-end gap-2.5 rounded-lg border border-line bg-card p-4">
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
             <input value={f.q} onChange={(e) => setF({ ...f, q: e.target.value })} placeholder="Horse…"
-              className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 200 }} /></label>
+              className="rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 200 }} /></label>
           <span className="ml-auto text-[12px] text-faint">Best-12 · min 10 rounds to rank · <Link href="/standings" className="text-sky no-underline hover:underline">Combination standings →</Link></span>
         </div>
       ) : (
@@ -124,7 +125,7 @@ export default function Horses() {
         <table className={TABLE}>
           <thead><tr>
             <th className={TH}>Rank</th><th className={TH}>Horse</th><th className={`${TH} ${NUM}`}>Age</th>
-            {tab === 'rating' && (<><th className={`${TH} ${NUM}`}>Rating</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Form</th></>)}
+            {tab === 'rating' && (<><th className={`${TH} ${NUM}`}>Rating</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH} title="Last 10 rounds, 3 worst dropped">Form</th></>)}
             {tab === 'clear' && (<><th className={`${TH} ${NUM}`}>Clear %</th><th className={`${TH} ${NUM}`}>Avg</th><th className={`${TH} ${NUM}`}>Starts</th></>)}
           </tr></thead>
           <tbody>
@@ -139,7 +140,7 @@ export default function Horses() {
                   {tab === 'rating' && (<>
                     <td className={`${TD} ${NUM}`}><b className={rank === 1 && safePage === 1 && x.eligible ? 'text-gold' : ''}>{x.eligible ? Number(x.best12).toFixed(1) : '–'}</b></td>
                     <td className={`${TD} ${NUM} text-muted`}>{x.rounds}</td>
-                    <td className={`${TD} text-muted text-[12px]`}>{x.eligible ? (x.form_score === null ? '' : `form ${Number(x.form_score).toFixed(1)}`) : `needs ${Math.max(1, 10 - Number(x.rounds || 0))} more rounds to rank`}</td>
+                    <td className={TD}><FormCell eligible={x.eligible} formScore={x.form_score} rounds={x.rounds} minRounds={10} windowNote="Last 10 rounds, 3 worst dropped" /></td>
                   </>)}
                   {tab === 'clear' && (<>
                     <td className={`${TD} ${NUM} text-moss`}>{x.clear_pct === null || x.clear_pct === undefined ? '–' : `${Number(x.clear_pct).toFixed(1)}%`}</td>

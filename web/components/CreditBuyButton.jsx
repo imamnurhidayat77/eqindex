@@ -80,12 +80,12 @@ export default function CreditBuyButton({ eventId, horseId, riderId }) {
             <span className="text-faint"> · keep forever</span>
           </div>
         </div>
-        <div className="flex items-center pr-2.5">
-          <button onClick={buy} disabled={busy}
-            className="rounded bg-sky px-4 py-2 text-[13px] font-extrabold text-black hover:brightness-110 shrink-0 disabled:opacity-60">
-            {busy ? '…' : `GET ${pack.slots || 5}`}
-          </button>
-        </div>
+          <div className="flex items-center pr-2.5">
+            <button onClick={buy} disabled={busy}
+              className="rounded-md bg-sky px-4 py-2 text-[13px] font-extrabold text-black hover:brightness-110 active:brightness-95 active:scale-[0.99] transition shrink-0 disabled:opacity-60">
+              {busy ? '…' : `GET ${pack.slots || 5}`}
+            </button>
+          </div>
       </div>
       {(showEmail && !user?.email) && (
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email for delivery"

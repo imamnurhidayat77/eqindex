@@ -1,4 +1,4 @@
-import { CARD, H1, MUT, SUB } from '../../lib/tokens';
+import { CARD, H1, H2, MUT, SUB } from '../../lib/tokens';
 export default function Privacy() {
   return (
     <>
@@ -13,7 +13,7 @@ export default function Privacy() {
         via the Contact page.</p>
       </section>
       <section className={CARD}>
-        <h2 className="text-[15px] font-bold mb-2">Name opt-out (privacy blur)</h2>
+        <h2 className={`${H2} mb-2`}>Name opt-out (privacy blur)</h2>
         <p>Riders (or parents/guardians of young riders) can ask for a name to be
         withheld from public display — for example junior and pony riders. An
         opted-out rider or horse appears under a stable pseudonym
@@ -25,7 +25,7 @@ export default function Privacy() {
         Contact page and an administrator will apply it.</p>
       </section>
       <section className={CARD}>
-        <h2 className="text-[15px] font-bold mb-2">Event photos & reels</h2>
+        <h2 className={`${H2} mb-2`}>Event photos & reels</h2>
         <p>Photos and reels from events are taken by our photographer and sold here.
         They stay visible in galleries while published. Two rights apply to everyone,
         especially parents/guardians of young riders:</p>

@@ -436,13 +436,13 @@ export default function AdminAssistant() {
                         <button className={BTN_DANGER} disabled={!!busy || !preview || preview.dry_run === false} onClick={() => run(false)}>{busy === 'commit' ? `Committing… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Commit'}</button>
                       </div>
                       {!!progress && progress.total > 0 && (
-                        <div className="mt-2 h-1.5 rounded bg-[#2A2A2A]"><div className="h-1.5 rounded bg-gold transition-all" style={{ width: `${Math.round((100 * progress.done) / progress.total)}%` }} /></div>
+                        <div className="mt-2 h-1.5 rounded bg-[#2A2A2A]"><div className="h-1.5 rounded bg-gold transition-[width] duration-300" style={{ width: `${Math.round((100 * progress.done) / progress.total)}%` }} /></div>
                       )}
                       {eventId === '__new__' && (
                         <div className="grid sm:grid-cols-3 gap-2 mt-2">
                           {[['name', 'Event name*'], ['date_start', 'Start date* (YYYY-MM-DD)'], ['venue', 'Venue']].map(([k, lbl]) => (
                             <input key={k} value={evNew[k]} onChange={(e) => setEvNew({ ...evNew, [k]: e.target.value })} placeholder={lbl}
-                              className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" />
+                              className="rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" />
                           ))}
                         </div>
                       )}

@@ -40,7 +40,7 @@ function Pager({ page, pages, total, mkHref }) {
   const nums = [];
   const lo = Math.max(1, Math.min(page - 2, pages - 4));
   for (let n = lo; n <= Math.min(pages, lo + 4); n++) nums.push(n);
-  const btn = 'min-w-[32px] rounded border px-2 py-1 text-[12px] no-underline';
+  const btn = 'min-w-[32px] rounded-md border px-2 py-1 text-[12px] no-underline';
   return (
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
       <span className="text-[12px] text-muted">{total} ranked · Page {page} of {pages}</span>
@@ -430,21 +430,21 @@ export default async function Rankings({ searchParams }) {
       <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-5">
         <section id="elite" className={CARD}>
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-[15px] font-bold">🏅 Elite Performance Rankings</h2>
+            <h2 className="text-[15px] font-bold">Elite Performance Rankings</h2>
             <span className="text-[11px] font-bold border border-gold text-gold rounded-full px-2.5 py-[3px]">Supreme Class</span>
           </div>
           {feat ? (
             <>
               <div className="flex gap-4 items-center my-3">
                 <div className="text-center shrink-0">
-                  <div className="text-[34px] font-extrabold leading-none text-gold tabular-nums">{Number(feat[ptsCol])}</div>
+                  <div className="text-[28px] font-extrabold leading-none text-gold tabular-nums">{Number(feat[ptsCol])}</div>
                   <div className="mt-1 text-[10px] tracking-wide text-muted">POINTS ({winLabel.toUpperCase()})</div>
                 </div>
                 <div>
                   <div className="text-[20px] font-extrabold">{feat.horse}</div>
                   <div className="flex gap-8 mt-1.5">
                     <div><div className="text-[11px] text-muted">Current Circuit Rank</div><b className="text-[13px]">#1 Nationally</b></div>
-                    <div><div className="text-[11px] text-muted">Owner</div><b className="text-[13px]">{details[feat.horse_id]?.data?.breeder || 'Elite Equine Ltd'}</b></div>
+                    <div><div className="text-[11px] text-muted">Owner</div><b className="text-[13px]">{details[feat.horse_id]?.data?.breeder || '–'}</b></div>
                   </div>
                 </div>
               </div>

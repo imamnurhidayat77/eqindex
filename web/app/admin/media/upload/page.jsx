@@ -269,7 +269,7 @@ export default function AdminMediaUpload() {
                 onDrop={(e) => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer?.files); }}
                 onClick={() => fileRef.current?.click()}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileRef.current?.click(); } }}
-                className={`cursor-pointer rounded-xl border-2 border-dashed px-6 py-8 text-center transition focus:outline-none focus:border-gold/70 ${dragging ? 'border-gold bg-goldbg/30' : 'border-line hover:border-gold/50'}`}
+                className={`cursor-pointer rounded-lg border-2 border-dashed px-6 py-8 text-center transition focus:outline-none focus:border-gold/70 ${dragging ? 'border-gold bg-goldbg/30' : 'border-line hover:border-gold/50'}`}
               >
                 <UploadIcon className={`mx-auto h-8 w-8 ${dragging ? 'text-gold' : 'text-faint'}`} />
                 <div className="mt-2 text-[14px] font-bold text-white">
@@ -366,7 +366,7 @@ export default function AdminMediaUpload() {
               <summary className="text-[13px] text-sky cursor-pointer hover:underline">Start-list candidates for this event ({classes.length} classes)</summary>
               <div className="space-y-2 mt-2 max-h-[240px] overflow-y-auto pr-1">
                 {classes.slice(0, 12).map((c) => (
-                  <div key={c.class_id} className="rounded border border-line bg-card2 p-2.5 text-[13px]">
+                  <div key={c.class_id} className="rounded-lg border border-line bg-card2 p-2.5 text-[13px]">
                     <b>{c.name}</b>
                     <div className="flex flex-wrap gap-1.5 mt-1.5">
                       {(c.candidates || []).slice(0, 8).map((p) => (

@@ -14,7 +14,7 @@
     "db:pull": "prisma db pull"
   },
   "engines": {
-    "node": ">=18"
+    "node": "24.22.1"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1150.0",

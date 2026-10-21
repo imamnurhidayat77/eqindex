@@ -42,19 +42,18 @@ export default function RootLayout({ children }) {
         </AuthProvider>
         </SeasonProvider>
         <footer className="border-t border-rowline mt-12 flex justify-center">
-          <div className="w-full max-w-shell mx-auto px-7 pt-[26px] pb-[30px] flex justify-between items-start gap-4 text-muted text-xs flex-wrap">
+          <div className="w-full max-w-shell mx-auto px-4 md:px-7 pt-[26px] pb-[30px] flex justify-between items-end gap-4 flex-wrap">
             <div>
-              <div><b className="text-gold">EQIndex</b></div>
+              <div className="font-display text-[15px] font-bold uppercase tracking-tight"><span className="text-white">EQ</span><span className="text-gold">Index</span></div>
+              <p className="text-faint text-xs mt-1">New Zealand show-jumping results &amp; photos · © 2026</p>
             </div>
-            <div className="text-right">
-              <nav className="flex gap-5 justify-end mb-2.5">
-                <Link className="text-muted no-underline" href="/about">About</Link>
-                <Link className="text-muted no-underline" href="/privacy">Privacy</Link>
-                <Link className="text-muted no-underline" href="/terms">Terms</Link>
-                <Link className="text-muted no-underline" href="/glossary">Glossary</Link>
-                <Link className="text-muted no-underline" href="/contact">Contact</Link>
-              </nav>
-            </div>
+            <nav className="flex gap-5 text-[13px]">
+              <Link className="text-muted no-underline" href="/about">About</Link>
+              <Link className="text-muted no-underline" href="/privacy">Privacy</Link>
+              <Link className="text-muted no-underline" href="/terms">Terms</Link>
+              <Link className="text-muted no-underline" href="/glossary">Glossary</Link>
+              <Link className="text-muted no-underline" href="/contact">Contact</Link>
+            </nav>
           </div>
         </footer>
       </body>

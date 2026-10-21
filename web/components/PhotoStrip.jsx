@@ -34,8 +34,8 @@ export default function PhotoStrip({ query, title = 'Photos', moreHref = '/photo
           const price = nzd(x.price_cents);
           const caption = [x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Untagged';
           return (
-            <Link key={x.id} href={`/photos/${x.id}`}
-              className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
+            <Link key={x.id} href={`/photos/${x.id}`} aria-label={caption}
+              className="group flex flex-col rounded-lg border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
               <div className="relative aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                 {x.thumb_url || x.preview_url
                   ? <img src={x.thumb_url || x.preview_url} alt={caption} loading="lazy" decoding="async"
@@ -64,7 +64,7 @@ export default function PhotoStrip({ query, title = 'Photos', moreHref = '/photo
         })}
         {!!extra && (
           <Link href={moreHref}
-            className="group flex min-h-[120px] flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-gold/40 bg-goldbg/10 no-underline hover:border-gold hover:bg-goldbg/20 transition">
+              className="group flex min-h-[120px] flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-gold/40 bg-goldbg/10 no-underline hover:border-gold hover:bg-goldbg/20 transition">
             <span className="text-[20px] font-extrabold text-gold">+{extra}</span>
             <span className="text-[11.5px] font-bold text-muted group-hover:text-gold">View all →</span>
           </Link>

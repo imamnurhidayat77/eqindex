@@ -166,14 +166,14 @@ export default function AdminImport() {
         <div className="flex flex-wrap gap-2 items-end mb-2">
           <label className="text-xs text-muted flex flex-col gap-1 grow">Show link (Equipe or EvoEvents) or paste results below
             <input value={assistUrl} onChange={(e) => setAssistUrl(e.target.value)} placeholder="https://online.equipe.com/shows/… or https://www.evoevents.co.nz/results/…"
-              className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" /></label>
+              className="rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" /></label>
           <button className={BTN_PRIMARY} disabled={busy} onClick={analyze}>{busy ? 'Reading…' : 'Analyze →'}</button>
           {!!assist?.records?.length && (
             <button className="rounded border border-gold/60 px-4 py-2 text-sm font-bold text-gold bg-none cursor-pointer hover:bg-goldbg/40" onClick={loadAssist}>Load {assist.records.length} rows into editor ↓</button>
           )}
         </div>
         {assist && (
-          <div className="rounded border border-line bg-card2/50 p-3 text-[13px]">
+          <div className="rounded-lg border border-line bg-card2/50 p-3 text-[13px]">
             <b>Detected: {assist.detected.type}</b>
             {assist.detected.meeting ? ` · ${assist.detected.meeting}` : ''}
             {assist.detected.filename ? ` · ${assist.detected.filename}` : ''}
@@ -218,7 +218,7 @@ export default function AdminImport() {
               <label key={k} className="text-xs text-muted flex flex-col gap-1">{lbl}
                 <input type={t} value={evNew[k]} placeholder={ph}
                   onChange={(e) => setEvNew({ ...evNew, [k]: e.target.value })}
-                  className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" />
+                  className="rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" />
               </label>
             ))}
           </div>
@@ -228,7 +228,7 @@ export default function AdminImport() {
           placeholder={mode === 'csv'
             ? 'class_name,class_type,class_date,rider_name,horse_name,placing,faults,time,time_faults\nGrand Prix,Grand Prix,2026-03-01,Sophie Bennett,Kiwi Spirit,1,0,65.2,0'
             : '[{"class_name":"Grand Prix","rider_name":"Sophie Bennett","horse_name":"Kiwi Spirit","placing":1,...}]'}
-          className="w-full rounded border border-line bg-ink text-body text-[13px] font-mono p-3 focus:border-gold/60 focus:outline-none" />
+          className="w-full rounded-md border border-line bg-ink text-body text-[13px] font-mono p-3 focus:border-gold/60 focus:outline-none" />
         <div className="flex gap-2 mt-3">
           <button className={BTN_PRIMARY} disabled={busy} onClick={() => run(true)}>{busy ? 'Working…' : 'Validate & preview →'}</button>
           <button className={BTN_DANGER} disabled={busy || !preview || preview.dry_run === false} onClick={() => run(false)}>Commit import</button>

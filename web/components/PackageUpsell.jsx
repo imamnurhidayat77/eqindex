@@ -86,7 +86,7 @@ export default function PackageUpsell({ eventId, horseId, riderId, horse, rider 
             </div>
             <div className="flex items-center pr-2.5">
               <button onClick={() => buy(pk)} disabled={!!busyId}
-                className="rounded bg-gold px-4 py-2 text-[13px] font-extrabold text-black hover:brightness-110 shrink-0 disabled:opacity-60">
+                className="rounded-md bg-gold px-4 py-2 text-[13px] font-extrabold text-black hover:brightness-110 active:brightness-95 active:scale-[0.99] transition shrink-0 disabled:opacity-60">
                 {busyId === pk.id ? '…' : 'PACKAGES'}
               </button>
             </div>
@@ -167,7 +167,7 @@ export function EventPackageUpsell({ eventId, eventName }) {
             </div>
             <div className="flex items-center pr-2.5">
               <button onClick={() => buy(pk)} disabled={!!busyId}
-                className="rounded bg-gold px-4 py-2 text-[13px] font-extrabold text-black hover:brightness-110 shrink-0 disabled:opacity-60">
+                className="rounded-md bg-gold px-4 py-2 text-[13px] font-extrabold text-black hover:brightness-110 active:brightness-95 active:scale-[0.99] transition shrink-0 disabled:opacity-60">
                 {busyId === pk.id ? '…' : 'GET ALL'}
               </button>
             </div>

@@ -7,6 +7,7 @@ import { useAuth } from '../../components/auth';
 import MyPhotosPanel from '../../components/MyPhotosPanel';
 import MyReelsPanel from '../../components/MyReelsPanel';
 import MyCreditsPanel from '../../components/MyCreditsPanel';
+import { MyMediaSk } from '../../components/Skeletons';
 
 const TABS = [['photos', 'Photos'], ['reels', 'Reels'], ['credits', 'Credits']];
 
@@ -29,7 +30,7 @@ function MyMediaInner() {
   const [reelCount, setReelCount] = useState(null);
   const [creditTotal, setCreditTotal] = useState(null);
 
-  if (loading) return <p className="text-muted text-sm">Loading…</p>;
+  if (loading) return <MyMediaSk />;
   if (!user) return (
     <>
       <h1 className={H1}>My media</h1>

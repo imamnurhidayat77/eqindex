@@ -14,7 +14,7 @@ export default function Switch({ on, onFlip, label, disabled = false, size = 'md
         on ? 'bg-moss' : 'bg-barbg hover:bg-line'
       }`}
     >
-      <span className={`block ${knob} rounded-full bg-white mt-[2px] transition-all ${on ? slide : 'ml-[2px]'}`} />
+      <span className={`block ${knob} rounded-full bg-white mt-[2px] transition-[margin-left] duration-150 ${on ? slide : 'ml-[2px]'}`} />
     </button>
   );
 }

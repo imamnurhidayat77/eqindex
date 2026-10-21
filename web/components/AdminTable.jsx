@@ -9,6 +9,22 @@ import { Pagination } from './list-controls';
 import { TableEmpty } from './EmptyState';
 import Switch, { LabeledSwitch } from './Switch';
 
+// Small outline action glyphs (replacing ✎/🗑 text glyphs).
+export function PencilIcon({ className = 'h-3.5 w-3.5' }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    </svg>
+  );
+}
+export function TrashIcon({ className = 'h-3.5 w-3.5' }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M3 6h18" /><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    </svg>
+  );
+}
+
 // Generic admin CRUD table.
 //   base: 'horses'|'riders'|'events'|'series' (drives /admin/<base> endpoints)
 //   idKey: row id field (default 'id'; series uses 'series_key')
@@ -327,10 +343,10 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
                   <span className="inline-flex gap-1.5">
                     <button title={`Edit ${rowName(r)}`} aria-label={`Edit ${rowName(r)}`}
                       onClick={() => startEdit(r)}
-                      className="w-7 h-7 inline-flex items-center justify-center rounded border border-line bg-card2 text-sky hover:text-white hover:border-sky/60 text-[13px] cursor-pointer transition-colors">✎</button>
+                      className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-line bg-card2 text-sky hover:text-white hover:border-sky/60 cursor-pointer transition-colors"><PencilIcon /></button>
                     <button title={`Delete ${rowName(r)}`} aria-label={`Delete ${rowName(r)}`}
                       disabled={busy} onClick={() => { setConfirming(r); setErr(''); }}
-                      className="w-7 h-7 inline-flex items-center justify-center rounded border border-line bg-card2 text-blood hover:border-blood/70 text-[13px] cursor-pointer disabled:opacity-40 transition-colors">🗑</button>
+                      className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-line bg-card2 text-blood hover:border-blood/70 cursor-pointer disabled:opacity-40 transition-colors"><TrashIcon /></button>
                   </span>
                 </td>
               </tr>

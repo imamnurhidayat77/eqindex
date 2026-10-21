@@ -107,7 +107,7 @@ export default async function PhotoDetail({ params, searchParams }) {
       <p className={SUB}>{d.event_name || ''}{d.class_name ? ` · ${d.class_name}` : ''}</p>
 
       <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr] items-start">
-        <section className="bg-card border border-line rounded overflow-hidden lg:mb-0">
+        <section className="bg-card border border-line rounded-lg overflow-hidden lg:mb-0">
           {d.kind === 'reel' ? (
             <ReelPlayer previewUrl={d.preview_url} posterUrl={d.thumb_url} title={title} />
           ) : (

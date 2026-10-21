@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getJSON } from '../../../lib/api';
+import { H1 } from '../../../lib/tokens';
 import { SeriesRiderTable } from '../../../components/SeriesTables';
 import { EmptyState } from '../../../components/EmptyState';
 
@@ -14,12 +15,12 @@ export default async function SeriesPage({ params }) {
   ]);
   if (!d) {
     return (
-      <div className="text-[14px] text-slate-100">
+      <div className="text-[14px] text-body">
         <div className="mb-1 text-[12px] text-faint">
           <Link href="/series" className="text-muted hover:text-white">Series</Link>
           <span className="mx-1.5">/</span><span className="text-gold">Not found</span>
         </div>
-        <h1 className="text-[26px] font-extrabold tracking-tight">Series not found</h1>
+        <h1 className={H1}>Series not found</h1>
         <p className="text-muted">No standings published for this key.</p>
       </div>
     );
@@ -52,20 +53,20 @@ export default async function SeriesPage({ params }) {
     .sort((a, b) => b.total - a.total);
 
   return (
-    <div className="text-[14px] text-slate-100">
+    <div className="text-[14px] text-body">
       <div className="mb-1 text-[12px] text-faint">
         <Link href="/series" className="text-muted hover:text-white">Series</Link>
         <span className="mx-1.5">/</span>
         <span className="text-gold">{name}</span>
       </div>
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <h1 className="text-[26px] font-extrabold tracking-tight">{name}</h1>
+        <h1 className={H1}>{name}</h1>
         <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ Points Race</span>
       </div>
 
       <h2 className="text-[15px] font-bold">Standings</h2>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rider totals across all horses — click a row for the per-horse breakdown, then per event.</p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
+      <section className="mb-6 rounded-lg border border-line bg-card p-4">
         <SeriesRiderTable riders={table} seriesKey={key} />
         {!table.length && (
           <EmptyState
