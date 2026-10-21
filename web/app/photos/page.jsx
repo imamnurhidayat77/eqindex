@@ -79,6 +79,18 @@ function PhotosInner() {
     ? (fHorse ? { id: fHorse, name: urlHorseName || fHorse } : null)
     : horseSel;
   const eventId = eventSel === undefined ? urlEvent : (eventSel ? eventSel.value : '');
+
+  // Event cards: the default gallery view. Newest event first, only events
+  // with photos. Any subject/search/event filter switches to the flat
+  // photo grid; the kind tab filters both views.
+  const [evGroups, setEvGroups] = useState(null);
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (kind) p.set('kind', kind);
+    fetch(`${API}/photos/events?${p}`).then((r) => r.json())
+      .then((j) => setEvGroups(Array.isArray(j.data) ? j.data : [])).catch(() => setEvGroups([]));
+  }, [kind]);
+  const browsingEvents = !q.trim() && !horseId && !riderId && !eventId;
   // Rider filter: URL (?rider=) seeds it; the searchable picker overrides it
   // server-side (the text box below stays as a client-side refinement).
   // undefined = follow URL, null = cleared, {id,name} = picked.
@@ -120,11 +132,17 @@ function PhotosInner() {
     <>
       <div className="mb-1 flex flex-wrap items-center gap-3">
         <h1 className={H1}>Photos</h1>
-        {!loading && !!filtered.length && (
-          <span className="rounded-full border border-line px-2.5 py-1 text-[12px] font-bold text-muted">
-            {filtered.length} photo{filtered.length > 1 ? 's' : ''}
-          </span>
-        )}
+        {browsingEvents
+          ? (evGroups !== null && !!evGroups.length && (
+            <span className="rounded-full border border-line px-2.5 py-1 text-[12px] font-bold text-muted">
+              {evGroups.length} event{evGroups.length > 1 ? 's' : ''}
+            </span>
+          ))
+          : (!loading && !!filtered.length && (
+            <span className="rounded-full border border-line px-2.5 py-1 text-[12px] font-bold text-muted">
+              {filtered.length} photo{filtered.length > 1 ? 's' : ''}
+            </span>
+          ))}
         <span className="flex-1" />
         <Link href="/media" className="text-sky text-[13px] no-underline hover:underline">My media →</Link>
       </div>
@@ -154,7 +172,47 @@ function PhotosInner() {
         </div>
       </section>
 
-      {loading ? (
+      {browsingEvents ? (
+        evGroups === null ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[0, 1, 2, 3, 4, 5].map((i) => <span key={i} className="sk h-44 w-full rounded-xl" />)}
+          </div>
+        ) : evGroups.length ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {evGroups.map((g) => (
+              <button key={g.event_id}
+                onClick={() => setEventSel({ value: g.event_id, label: g.event_name })}
+                className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden text-left hover:border-gold/50 transition cursor-pointer">
+                <div className="relative aspect-[16/9] bg-card2 flex items-center justify-center overflow-hidden">
+                  {g.thumb_url || g.preview_url
+                    ? <img src={g.thumb_url || g.preview_url} alt="" loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
+                    : <ImageIcon className="h-8 w-8 text-faint" />}
+                </div>
+                <div className="flex grow flex-col gap-0.5 p-3">
+                  <div className="text-[14px] font-bold text-white truncate group-hover:text-gold transition">{g.event_name}</div>
+                  <div className="text-[11.5px] text-faint">{(g.date_start || '').slice(0, 10) || ''}</div>
+                  <div className="mt-auto flex items-center justify-between pt-1">
+                    <span className="text-[12px] text-muted">
+                      {g.photos} photo{g.photos === 1 ? '' : 's'}{Number(g.reels) > 0 ? ` · ${g.reels} reel${Number(g.reels) === 1 ? '' : 's'}` : ''}
+                    </span>
+                    <span className="text-sky text-[12px] font-bold">Shop →</span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <section className={CARD}>
+            <div className="flex flex-col items-center py-10 text-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full border border-line bg-card2 text-faint">
+                <ImageIcon className="h-6 w-6" />
+              </span>
+              <h2 className="mt-3 text-[16px] font-bold text-white">No photos found</h2>
+              <p className="mt-1 text-[13px] text-muted">Try a different search or filter — new event photos land here after publishing.</p>
+            </div>
+          </section>
+        )
+      ) : loading ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <span key={i} className="sk h-44 w-full rounded-xl" />)}
         </div>

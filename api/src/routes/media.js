@@ -473,6 +473,37 @@ module.exports = function mountMediaRoutes(app) {
 
   // NOTE: static sub-paths must be registered BEFORE '/photos/:id',
   // otherwise Express matches ":id" first ("packages" is not a UUID).
+  // Public: events that have published photos (gallery event cards).
+  // Newest event first, only events with photos. ?kind=photo|reel optional.
+  app.get('/photos/events', asyncH(async (req, res) => {
+    const kind = String(req.query.kind || '');
+    const params = [];
+    let kindFilter = '';
+    if (kind) {
+      if (!['photo', 'reel'].includes(kind)) return res.status(400).json({ error: 'bad kind' });
+      params.push(kind);
+      kindFilter = `AND m.kind = $${params.length}`;
+    }
+    const coverWhere = `m2.event_id = e.id AND m2.status = 'published'${kind ? ` AND m2.kind = $${params.length}` : ''}`;
+    const { rows } = await pool.query(
+      `SELECT e.id AS event_id, e.name AS event_name, e.slug AS event_slug, e.date_start,
+          COUNT(*)::INT AS photos,
+          SUM(CASE WHEN m.kind = 'reel' THEN 1 ELSE 0 END)::INT AS reels,
+          (SELECT m2.thumb_key FROM media m2 WHERE ${coverWhere} ORDER BY m2.created_at DESC LIMIT 1) AS thumb_key,
+          (SELECT m2.preview_key FROM media m2 WHERE ${coverWhere} ORDER BY m2.created_at DESC LIMIT 1) AS preview_key,
+          MAX(m.created_at) AS latest
+        FROM media m JOIN events e ON e.id = m.event_id
+        LEFT JOIN horses h ON h.id = m.horse_id
+        LEFT JOIN riders r ON r.id = m.rider_id
+        WHERE m.status = 'published' ${kindFilter}
+          AND NOT (COALESCE(h.photo_hidden, FALSE) OR COALESCE(r.photo_hidden, FALSE))
+        GROUP BY e.id, e.name, e.slug, e.date_start
+        ORDER BY e.date_start DESC NULLS LAST, latest DESC`,
+      params
+    );
+    withUrls(rows);
+    res.json({ data: rows });
+  }));
   // Public: packages for a photo's event × subject (upsell block).
   app.get('/photos/packages', asyncH(async (req, res) => {
     const { event_id, horse_id, rider_id } = req.query;
