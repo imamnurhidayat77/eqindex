@@ -2013,11 +2013,17 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // Buyer unlocks one photo with credits (re-downloads stay free afterwards).
-  // SECURITY: the pick-and-consume runs in one transaction with the bundle
-  // row locked (SELECT ... FOR UPDATE). Without this, N parallel requests
-  // could all pass the "slots left" check before any INSERT lands and mint
-  // credits out of thin air (classic TOCTOU). The PK on
-  // (bundle_id, media_id) additionally makes double-unlock impossible.
+  // SECURITY: pick-and-consume runs in one transaction with the candidate
+  // bundle rows locked (SELECT ... FOR UPDATE), and the remaining count is
+  // re-read in a SEPARATE statement after the lock is held. Both halves are
+  // load-bearing: the lock alone is not enough, because a SELECT ... FOR
+  // UPDATE re-evaluates its own WHERE on the fresh row version but runs its
+  // subqueries (the redemption count) on the statement's ORIGINAL snapshot —
+  // so N parallel requests would all see "slots left". The second statement
+  // gets a fresh snapshot (READ COMMITTED), which sees already-committed
+  // redemptions. Result proven by race test: 10 parallel unlocks, 1 slot →
+  // exactly 1 win. The PK on (bundle_id, media_id) additionally makes
+  // double-unlock of the SAME photo impossible.
   app.post('/api/credits/unlock', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
     if (throttled(req.ip, 'credit-unlock')) return res.status(429).json({ error: 'too many requests, try again later' });
@@ -2042,10 +2048,10 @@ module.exports = function mountMediaRoutes(app) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const { rows } = await client.query(
-        `SELECT cb.id, cb.slots_total,
-            (SELECT COUNT(*)::INT FROM credit_redemptions WHERE bundle_id = cb.id) AS used
-          FROM credit_bundles cb JOIN purchases pu ON pu.id = cb.purchase_id
+      // Statement 1: lock candidate bundles (blocks concurrent unlocks here).
+      const locked = await client.query(
+        `SELECT cb.id, cb.slots_total FROM credit_bundles cb
+          JOIN purchases pu ON pu.id = cb.purchase_id
           WHERE cb.status = 'active' AND pu.status = 'paid' AND pu.buyer_user_id = $1
             AND cb.event_id = $2
             AND ((cb.rider_id IS NOT NULL AND cb.rider_id = $3)
@@ -2054,7 +2060,16 @@ module.exports = function mountMediaRoutes(app) {
           FOR UPDATE OF cb`,
         [req.authUser.id, media.event_id, media.rider_id, media.horse_id]
       );
-      const bundle = rows.find((r) => Number(r.slots_total) - Number(r.used) > 0);
+      // Statement 2: recount AFTER holding the lock (fresh snapshot — sees
+      // redemptions committed by unlocks that finished while we waited).
+      let bundle = null;
+      for (const cand of locked.rows) {
+        const used = (await client.query(
+          'SELECT COUNT(*)::INT AS n FROM credit_redemptions WHERE bundle_id = $1',
+          [cand.id]
+        )).rows[0].n;
+        if (Number(cand.slots_total) - Number(used) > 0) { bundle = cand; break; }
+      }
       if (!bundle) {
         await client.query('ROLLBACK');
         return res.status(409).json({ error: 'no credits left for this event × subject (buy a 5-pack first)' });
@@ -2068,8 +2083,13 @@ module.exports = function mountMediaRoutes(app) {
         throw e;
       }
       await client.query('COMMIT');
-      const left = Number(bundle.slots_total) - Number(bundle.used) - 1;
-      res.status(201).json({ data: { unlocked: true, bundle_id: bundle.id, slots_left: left } });
+      const usedAfter = (await pool.query(
+        'SELECT COUNT(*)::INT AS n FROM credit_redemptions WHERE bundle_id = $1',
+        [bundle.id]
+      )).rows[0].n;
+      res.status(201).json({
+        data: { unlocked: true, bundle_id: bundle.id, slots_left: Number(bundle.slots_total) - Number(usedAfter) },
+      });
     } catch (e) {
       try { await client.query('ROLLBACK'); } catch { /* already closed */ }
       throw e;

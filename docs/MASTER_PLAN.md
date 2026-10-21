@@ -104,7 +104,10 @@ re-download gratis selamanya. Stills only.
 - UI ✅: section credit packs di `/admin/pricing`; "Unlock with credit (n left)"
   di BuyBox; tombol `Get 5` watchlist (`CreditBuyButton`) kini hidup;
   label reel/credit di Transactions.
-- Verifikasi: sintaks OK, smoke test tanpa regresi. Wajib di staging:
+- Verifikasi: sintaks OK, smoke test tanpa regresi. Race test konkurensi:
+  10 unlock paralel × 1 slot → tepat 1 menang (lock FOR UPDATE + recount
+  terpisah; versi 1-statement bocor 7/10 — diperbaiki & terbukti).
+  Refund membekukan bundle + reel order. Wajib di staging:
   migrasi 060+061, 1 order kredit test-mode → unlock 5 → ke-6 ditolak →
   re-download gratis → refund bekukan sisa.
 
