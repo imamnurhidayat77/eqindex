@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, BTN_PRIMARY, BTN_DANGER } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { TableRowsSk } from '../../../components/Skeletons';
 
 export default function AdminClaims() {
   const [rows, setRows] = useState([]);
@@ -52,7 +53,7 @@ export default function AdminClaims() {
               </tr>
             ))}
             {!rows.length && !loading && <tr><td colSpan={5} className={EMPTY}>No pending claims.</td></tr>}
-            {loading && <tr><td colSpan={5} className={EMPTY}>Loading…</td></tr>}
+            {loading && <TableRowsSk rows={5} />}
           </tbody>
         </table>
         </div>

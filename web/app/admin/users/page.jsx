@@ -5,6 +5,7 @@ import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_DANGER } 
 import Dropdown from '../../../components/Dropdown';
 import { ConfirmDialog } from '../../../components/Modal';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { TableRowsSk } from '../../../components/Skeletons';
 
 const ROLES = ['PUBLIC', 'RIDER', 'COACH', 'OWNER', 'BREEDER', 'ADMIN'];
 
@@ -77,7 +78,7 @@ export default function AdminUsers() {
               </tr>
             ))}
             {!rows.length && !loading && <tr><td colSpan={6} className={EMPTY}>No users found.</td></tr>}
-            {loading && <tr><td colSpan={6} className={EMPTY}>Loading…</td></tr>}
+            {loading && <TableRowsSk rows={6} />}
           </tbody>
         </table>
         </div>

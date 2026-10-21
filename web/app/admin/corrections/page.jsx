@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { AdminCardsSk } from '../../../components/Skeletons';
 
 const STATUSES = ['open', 'in_review', 'resolved', 'rejected'];
 const stBadge = (s) => s === 'open' ? badge(BADGE.goldfill) : s === 'in_review' ? badge(BADGE.blue)
@@ -60,6 +61,7 @@ export default function AdminCorrections() {
         </section>
       ))}
       {!rows.length && !loading && <section className={CARD}><p className={EMPTY}>Nothing in {status.replace('_', ' ')}.</p></section>}
+      {loading && <AdminCardsSk n={3} />}
     </>
   );
 }

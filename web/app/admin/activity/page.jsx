@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, INP, badge, BADGE } from '../../../lib/tokens';
 import Dropdown from '../../../components/Dropdown';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { TableRowsSk } from '../../../components/Skeletons';
 
 const ACT_CLS = { review: 'goldfill', claim: 'blue', training: 'green', health: 'green', watchlist: 'gray', comparison: 'gray', coach: 'blue' };
 const ENTITIES = ['', 'horse', 'rider', 'event', 'series', 'user', 'combination', 'entity'];
@@ -75,7 +76,7 @@ export default function AdminActivity() {
               </tr>
             ))}
             {!rows.length && !loading && !err && <tr><td colSpan={5} className={EMPTY}>No audit entries match these filters.</td></tr>}
-            {loading && <tr><td colSpan={5} className={EMPTY}>Loading…</td></tr>}
+            {loading && <TableRowsSk rows={6} />}
           </tbody>
         </table>
         </div>

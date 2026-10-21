@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { TableRowsSk } from '../../../components/Skeletons';
 import EntityPicker from '../../../components/EntityPicker';
 
 const nzd = (c) => (c === null || c === undefined || c === '' ? '—' : `NZ$${(Number(c) / 100).toFixed(2)}`);
@@ -31,6 +32,7 @@ export default function AdminPricing() {
   const [creditEdits, setCreditEdits] = useState({});
   const [newCredit, setNewCredit] = useState({ event_id: '', scope_type: 'rider', slots: '5', price_cents: '' });
   const [events, setEvents] = useState([]);
+  const [eventPrice, setEventPrice] = useState('');
   const [pEvent, setPEvent] = useState('');
   const [pHorse, setPHorse] = useState(null);
   const [pRider, setPRider] = useState(null);
@@ -38,14 +40,17 @@ export default function AdminPricing() {
   const [pTitle, setPTitle] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [initial, setInitial] = useState(true);
 
   async function load() {
     try {
-      const [t, p, r, c] = await Promise.all([
+      const [t, p, r, c, s] = await Promise.all([
         call('/admin/license-tiers'), call('/admin/packages'),
         call('/admin/reel-products'), call('/admin/credit-packs'),
+        call('/admin/settings').catch(() => ({})),
       ]);
       setTiers(t || []);
+      setEventPrice(toNZD(s?.event_package_price_cents ?? ''));
       setPackages(p || []);
       setReels(r || []);
       setCredits(c || []);
@@ -54,6 +59,7 @@ export default function AdminPricing() {
       setReelEdits({});
       setCreditEdits({});
     } catch (e) { setMsg(e.message); }
+    setInitial(false);
   }
   useEffect(() => {
     load();
@@ -256,9 +262,30 @@ export default function AdminPricing() {
     } catch (err) { setMsg(err.message); }
   }
 
+  async function saveEventPrice() {
+    const raw = String(eventPrice).trim();
+    let cents = '';
+    if (raw !== '') {
+      cents = toCents(raw);
+      if (Number.isNaN(cents)) { setMsg('Price must be a non-negative NZ$ amount.'); return; }
+    }
+    setBusy(true);
+    try {
+      await call('/admin/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ key: 'event_package_price_cents', value: cents === '' ? '' : String(cents) }),
+      });
+      setMsg(cents === ''
+        ? 'Whole-event price cleared — auto rule applies.'
+        : `Whole-event package price set to ${nzd(cents)} for all events.`);
+      load();
+    } catch (err) { setMsg(err.message); }
+    setBusy(false);
+  }
+
   async function createPackage() {
     if (!pEvent) { setMsg('Pick an event first.'); return; }
-    if (!!pHorse === !!pRider) { setMsg('Pick exactly one: a horse or a rider.'); return; }
+    if (!!pHorse && !!pRider) { setMsg('Pick at most one: a horse or a rider — leave both blank for the whole event.'); return; }
     setBusy(true);
     try {
       const body = { event_id: pEvent };
@@ -296,6 +323,7 @@ export default function AdminPricing() {
             <th className={TH}><span className="sr-only">Actions</span></th>
           </tr></thead>
           <tbody>
+            {initial && <TableRowsSk rows={4} />}
             {tiers.map((t) => {
               const hidden = !!(edits[t.id]?.is_hidden ?? t.is_hidden);
               return (
@@ -332,8 +360,18 @@ export default function AdminPricing() {
       </section>
 
       <section className={CARD}>
+        <h2 className="text-[15px] font-bold mb-1">Whole-event package</h2>
+        <p className="text-[12.5px] text-muted mb-3">One price for every event — the FULL EVENT card (all photos of the event in one checkout) shows automatically on all photo pages. No per-event setup needed. Blank = auto rule per event (60% of singles).</p>
+        <div className="flex flex-wrap items-end gap-2.5">
+          <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Price (NZ$, blank = auto)
+            <input value={eventPrice} onChange={(e) => setEventPrice(e.target.value)} inputMode="decimal" placeholder="e.g. 149.00" className={INP} style={{ width: 160 }} /></label>
+          <button onClick={saveEventPrice} disabled={busy} className={BTN_PRIMARY}>Save price</button>
+        </div>
+      </section>
+
+      <section className={CARD}>
         <h2 className="text-[15px] font-bold mb-1">Packages</h2>
-        <p className="text-[12.5px] text-muted mb-3">Bundles of one event × horse/rider, sold as one checkout. Auto-priced unless overridden.</p>
+        <p className="text-[12.5px] text-muted mb-3">Bundles of one event × horse/rider — or the whole event when no horse/rider is picked — sold as one checkout. Auto-priced unless overridden.</p>
         <div className="grid gap-2.5 md:grid-cols-2 mb-3">
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Event
             <select value={pEvent} onChange={(e) => setPEvent(e.target.value)} className={INP}>
@@ -361,6 +399,7 @@ export default function AdminPricing() {
             <th className={TH}><span className="sr-only">Actions</span></th>
           </tr></thead>
           <tbody>
+            {initial && <TableRowsSk rows={3} />}
             {packages.map((p) => (
               <tr key={p.id} className="border-b border-rowline last:border-0">
                 <td className={TD}><input value={pval(p, 'title')} onChange={(e) => setPkg(p.id, 'title', e.target.value)} className={INP} style={{ minWidth: 220 }} /></td>
@@ -387,7 +426,7 @@ export default function AdminPricing() {
                 </td>
               </tr>
             ))}
-            {!packages.length && (
+            {!initial && !packages.length && (
               <tr><td colSpan={8} className="px-2 py-4 text-[13px] text-faint">No packages yet — create one above.</td></tr>
             )}
           </tbody>
@@ -435,6 +474,7 @@ export default function AdminPricing() {
             <th className={TH}><span className="sr-only">Actions</span></th>
           </tr></thead>
           <tbody>
+            {initial && <TableRowsSk rows={3} />}
             {reels.map((r) => (
               <tr key={r.id} className="border-b border-rowline last:border-0">
                 <td className={TD}><input value={rval(r, 'name')} onChange={(e) => setReel(r.id, 'name', e.target.value)} className={INP} style={{ minWidth: 140 }} /></td>
@@ -467,7 +507,7 @@ export default function AdminPricing() {
                 </td>
               </tr>
             ))}
-            {!reels.length && (
+            {!initial && !reels.length && (
               <tr><td colSpan={8} className="px-2 py-4 text-[13px] text-faint">No reel products yet — add one above.</td></tr>
             )}
           </tbody>
@@ -506,6 +546,7 @@ export default function AdminPricing() {
             <th className={TH}><span className="sr-only">Actions</span></th>
           </tr></thead>
           <tbody>
+            {initial && <TableRowsSk rows={3} />}
             {credits.map((c) => (
               <tr key={c.id} className="border-b border-rowline last:border-0">
                 <td className={`${TD} text-muted text-[13px]`}>{c.event_name || 'All'}</td>
@@ -533,7 +574,7 @@ export default function AdminPricing() {
                 </td>
               </tr>
             ))}
-            {!credits.length && (
+            {!initial && !credits.length && (
               <tr><td colSpan={9} className="px-2 py-4 text-[13px] text-faint">No credit packs yet — add one above.</td></tr>
             )}
           </tbody>

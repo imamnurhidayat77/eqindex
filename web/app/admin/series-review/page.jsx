@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { TableRowsSk } from '../../../components/Skeletons';
 
 // Series Review — close the Sophia gap from both ends:
 // 1. Untagged: classes without series_key (tag them or judge non-series;
@@ -27,6 +28,7 @@ export default function AdminSeriesReview() {
   const [checkUrl, setCheckUrl] = useState('');
   const [checkText, setCheckText] = useState('');
   const [diff, setDiff] = useState(null);
+  const [initial, setInitial] = useState(true);
 
   async function load() {
     try {
@@ -38,6 +40,7 @@ export default function AdminSeriesReview() {
       setRows(Array.isArray(u) ? u : []);
       setSpecs(Array.isArray(h) ? h : []);
     } catch (e) { setMsg(e.message); }
+    setInitial(false);
   }
   useEffect(() => {
     load();
@@ -124,6 +127,7 @@ export default function AdminSeriesReview() {
           <table className={TABLE}>
             <thead><tr><th className={TH}>Class</th><th className={TH}>Event</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Signals</th><th className={TH}>Verdict</th></tr></thead>
             <tbody>
+              {initial && <TableRowsSk rows={5} />}
               {rows.map((r) => (
                 <tr key={r.class_id} className="border-b border-rowline last:border-0">
                   <td className={`${TD} max-w-[280px]`}><span className="block truncate" title={r.name}>{r.name}</span>
@@ -145,7 +149,7 @@ export default function AdminSeriesReview() {
                   </td>
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan={5} className="px-2 py-4 text-[13px] text-faint">Everything tagged or judged — clean.</td></tr>}
+              {!initial && !rows.length && <tr><td colSpan={5} className="px-2 py-4 text-[13px] text-faint">Everything tagged or judged — clean.</td></tr>}
             </tbody>
           </table>
           </div>

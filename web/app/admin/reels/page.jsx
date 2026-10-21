@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { TableRowsSk } from '../../../components/Skeletons';
 
 const nzd = (c) => (c === null || c === undefined ? '—' : `NZ$${(Number(c) / 100).toFixed(2)}`);
 const MUSIC = { choose_for_me: 'Choose for me', title: 'Track requested', none: 'No music' };
@@ -24,14 +25,17 @@ export default function AdminReels() {
   const [mediaEdits, setMediaEdits] = useState({});
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   async function load(st) {
+    setLoading(true);
     try {
       const p = new URLSearchParams();
       if (st || status) p.set('status', st || status);
       const d = await call(`/admin/reel-orders?${p}`);
       setRows(d || []);
     } catch (e) { setMsg(e.message); }
+    setLoading(false);
   }
   useEffect(() => { load(''); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -123,9 +127,10 @@ export default function AdminReels() {
                 </td>
               </tr>
             ))}
-            {!rows.length && (
+            {!rows.length && !loading && (
               <tr><td colSpan={9} className="px-2 py-4 text-[13px] text-faint">No reel orders in this view yet.</td></tr>
             )}
+            {loading && <TableRowsSk rows={5} />}
           </tbody>
         </table>
         </div>

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, EMPTY } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { TableRowsSk } from '../../../components/Skeletons';
 
 export default function AdminSeasons() {
   const call = useAdminApi();
@@ -69,6 +70,7 @@ export default function AdminSeasons() {
             {!rows.length && !loading && (
               <tr><td colSpan={6} className={EMPTY}>No seasons yet.</td></tr>
             )}
+            {loading && <TableRowsSk rows={4} />}
           </tbody>
         </table>
         </div>

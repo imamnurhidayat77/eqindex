@@ -567,3 +567,50 @@ export function ReelOrderSk() {
     </>
   );
 }
+
+/* ---------------- admin skeletons ---------------- */
+
+// Admin queue/correction cards (corrections, naming review): title + two
+// text lines + action buttons.
+export function AdminCardsSk({ n = 3 }) {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: n }).map((_, i) => (
+        <section key={i} className={CARD}>
+          <Sk className="h-5 w-2/3" />
+          <Sk className="h-3.5 w-full mt-2" />
+          <Sk className="h-3.5 w-4/5 mt-1.5" />
+          <div className="flex flex-wrap gap-2 mt-3">
+            <Sk className="h-9 w-28 !rounded-md" />
+            <Sk className="h-9 w-28 !rounded-md" />
+            <Sk className="h-9 w-24 !rounded-md" />
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+// Admin settings-style form (scoring draft, rating weights): section title
+// + label/field rows.
+export function AdminFormSk({ rows = 5 }) {
+  return (
+    <section className={CARD}>
+      <Sk className="h-5 w-52" />
+      <Sk className="h-3.5 w-3/4 mt-1.5 mb-4" />
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="flex flex-wrap items-end gap-3 mb-3 last:mb-0">
+          <div>
+            <Sk className="h-2.5 w-28 mb-1.5" />
+            <Sk className="h-9 w-56 !rounded-md" />
+          </div>
+          <div>
+            <Sk className="h-2.5 w-20 mb-1.5" />
+            <Sk className="h-9 w-36 !rounded-md" />
+          </div>
+        </div>
+      ))}
+      <Sk className="h-10 w-44 !rounded-md mt-4" />
+    </section>
+  );
+}

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN, badge, BADGE, EMPTY } from '../../../lib/tokens';
 import Dropdown from '../../../components/Dropdown';
+import { TableRowsSk, Sk } from '../../../components/Skeletons';
 
 const nzd = (c) => (c === null || c === undefined ? '—' : `NZ$${(Number(c) / 100).toLocaleString('en-NZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 const fmtDT = (d) => {
@@ -295,7 +296,7 @@ export default function AdminSales() {
                 ]);
               })}
               {!rows.length && !loading && !err && <tr><td colSpan={8} className={EMPTY}>No transactions match these filters.</td></tr>}
-              {loading && <tr><td colSpan={8} className={EMPTY}>Loading…</td></tr>}
+              {loading && <TableRowsSk rows={8} />}
             </tbody>
           </table>
         </div>
@@ -315,6 +316,11 @@ export default function AdminSales() {
         <section className={CARD} style={{ marginBottom: 0 }}>
           <h2 className="text-[15px] font-bold mb-1">Revenue by license</h2>
           <p className="text-[12px] text-muted mb-3">Paid orders in the current filter.</p>
+          {loading && !summary && (
+            <div className="space-y-2.5" aria-hidden="true">
+              {[0, 1, 2, 3].map((i) => <Sk key={i} className="h-8 w-full" />)}
+            </div>
+          )}
           {(summary?.by_tier || []).map((t) => (
             <div key={t.tier} className="py-2 border-b border-rowline last:border-0">
               <div className="flex items-baseline justify-between gap-2 text-[13px]">
@@ -332,6 +338,12 @@ export default function AdminSales() {
         <section className={CARD} style={{ marginBottom: 0 }}>
           <h2 className="text-[15px] font-bold mb-1">Daily revenue</h2>
           <p className="text-[12px] text-muted mb-3">Paid gross per day{(summary?.by_day || []).length >= 31 ? ' (last 31 days)' : ''}.</p>
+          {loading && !summary && (
+            <div className="space-y-2.5" aria-hidden="true">
+              <Sk className="h-28 w-full !rounded-lg" />
+              <Sk className="h-3.5 w-full" />
+            </div>
+          )}
           {(summary?.by_day || []).length ? (
             <div className="flex items-end gap-[3px] h-28" role="img" aria-label="Daily revenue chart">
               {(summary.by_day || []).map((d) => (

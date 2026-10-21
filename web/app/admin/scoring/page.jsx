@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { AdminFormSk, AdminCardsSk } from '../../../components/Skeletons';
 import Modal, { ConfirmDialog } from '../../../components/Modal';
 import { Sec, Fld, Num, Txt, Check, csvGet, csvSet, parsePairs, fmtSliding, parseSliding, fmtMult, parseMult, fmtOverride, parseOverride, MODELB_DEFAULTS, ModelBSummary } from '../../../components/ScoringForms';
 
@@ -73,7 +74,7 @@ function EsnzSections({ draft, setDraft, tab }) {
   });
   const ez = (draft || {}).esnz || {};
   const series = ez.series || {};
-  if (!draft) return <section className={CARD}><p className={EMPTY}>Loading draft…</p></section>;
+  if (!draft) return <AdminFormSk rows={4} />;
   return (
     <>
       {tab === 'divisions' && <DivisionsEditor draft={draft} set={set} />}
@@ -393,6 +394,7 @@ export default function AdminScoring() {
         <section className={CARD} style={{ marginBottom: 0 }}>
           <h2 className="text-[15px] font-bold mb-2">Versions</h2>
           {!rows.length && !loading && <p className={EMPTY}>No versions yet.</p>}
+          {loading && <AdminCardsSk n={2} />}
           {rows.map((v) => (
             <button key={v.id} onClick={() => select(v.id)}
               className={`block w-full text-left rounded border p-3 mb-2 cursor-pointer transition-colors ${sel?.id === v.id ? 'border-gold/60 bg-goldbg/30' : v.status === 'active' ? 'border-moss/50 bg-greenbg/20 hover:border-moss' : 'border-line hover:border-faint bg-transparent'} ${v.status === 'archived' ? 'opacity-60' : ''}`}>
@@ -425,7 +427,7 @@ export default function AdminScoring() {
         </section>
         <div className="min-w-0">
           {!sel ? (
-            <section className={CARD}><p className={EMPTY}>{loading ? 'Loading…' : 'Select a version.'}</p></section>
+            loading ? <AdminFormSk rows={3} /> : <section className={CARD}><p className={EMPTY}>Select a version.</p></section>
           ) : (
             <>
               <section className={CARD}>

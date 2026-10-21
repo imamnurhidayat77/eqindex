@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { TableRowsSk } from '../../../components/Skeletons';
 import Modal, { ConfirmDialog } from '../../../components/Modal';
 
 const csvGet = (arr) => (arr || []).join(', ');
@@ -122,7 +123,7 @@ export default function AdminCategories() {
               </tr>
             ))}
             {!rows.length && !loading && <tr><td colSpan={5} className={EMPTY}>No categories yet.</td></tr>}
-            {loading && <tr><td colSpan={5} className={EMPTY}>Loading…</td></tr>}
+            {loading && <TableRowsSk rows={5} />}
           </tbody>
         </table>
         </div>

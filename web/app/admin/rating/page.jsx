@@ -3,8 +3,9 @@
 // edit the weights, Save, live immediately. Every save is snapshotted as
 // a new active version behind the scenes (audit trail, rollback via Scoring).
 import { useEffect, useState } from 'react';
-import { CARD, EMPTY, H1, SUB, BTN_PRIMARY } from '../../../lib/tokens';
+import { CARD, H1, SUB, BTN_PRIMARY } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { AdminFormSk } from '../../../components/Skeletons';
 import { ModelBSections } from '../../../components/ScoringForms';
 
 export default function AdminRating() {
@@ -54,7 +55,7 @@ export default function AdminRating() {
           </div>
         </section>
       ) : !err && (
-        <section className={CARD}><p className={EMPTY}>Loading live weights…</p></section>
+        <AdminFormSk rows={4} />
       )}
     </>
   );

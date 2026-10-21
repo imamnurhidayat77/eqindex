@@ -4,6 +4,7 @@ import { API } from '../../../lib/api';
 import { BTN_SECONDARY, BTN_DANGER, BTN_PRIMARY, CARD, EMPTY, H1, H2, INP, MUT, SUB } from '../../../lib/tokens';
 import Dropdown from '../../../components/Dropdown';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { AdminCardsSk } from '../../../components/Skeletons';
 
 export default function ReviewQueue() {
   const [items, setItems] = useState([]);
@@ -46,7 +47,7 @@ export default function ReviewQueue() {
       <h1 className={H1}>Naming review</h1>
       <p className={SUB}>Ambiguous names awaiting a human decision: approve as new record, merge into canonical, or reject.</p>
       {err && <section className={CARD}><p className="text-blood text-sm">{err}</p></section>}
-      {loading && <section className={CARD}><p className={EMPTY}>Loading queue…</p></section>}
+      {loading && <AdminCardsSk n={4} />}
       {items.map((q) => (
         <section className={`${CARD} border-l-2 !border-l-gold/70`} key={q.id}>
           <h2 className={H2}>{q.raw_name} <span className={MUT}>({q.kind}, from {q.source})</span></h2>
