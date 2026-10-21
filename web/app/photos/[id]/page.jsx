@@ -11,6 +11,7 @@ import MomentBundle from '../../../components/MomentBundle';
 import ReelPlayer from '../../../components/ReelPlayer';
 import PhotoViewer from '../../../components/PhotoViewer';
 import ShareCard from '../../../components/ShareCard';
+import EventWallGrid from '../../../components/EventWallGrid';
 
 export const revalidate = 30;
 
@@ -55,35 +56,7 @@ async function EventWall({ event, kind }) {
           </div>
         </section>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {rows.map((x) => (
-            <Link key={x.id} href={`/photos/${x.id}`} className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
-              <div className="relative aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
-                {x.thumb_url || x.preview_url
-                  ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
-                  : <span className="text-xl">📷</span>}
-                {x.kind === 'reel' && (
-                  <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-white">▶ Reel</span>
-                )}
-                {x.moment && MOMENT[x.moment] && (
-                  <span className="absolute right-2 top-2 rounded-full bg-goldbg/80 px-2 py-0.5 text-[10.5px] font-bold text-gold">{MOMENT[x.moment]}</span>
-                )}
-              </div>
-              <div className="flex grow flex-col gap-0.5 p-2.5">
-                <div className="text-[13px] font-bold text-white truncate group-hover:text-gold transition">
-                  {[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Untagged'}
-                </div>
-                <div className="text-[11px] text-faint truncate">{x.class_name || ''}</div>
-                <div className="mt-auto flex items-center justify-between pt-1">
-                  <span className="text-[11px] text-faint">{x.kind === 'reel' ? 'Video' : 'Photo'}</span>
-                  {x.price_cents !== null && x.price_cents !== undefined && (
-                    <span className="text-[12px] font-bold text-gold tabular-nums">from NZ${(Number(x.price_cents) / 100).toFixed(2)}</span>
-                  )}
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
+        <EventWallGrid rows={rows} />
       )}
     </>
   );
