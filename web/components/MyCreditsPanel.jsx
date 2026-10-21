@@ -57,7 +57,7 @@ export default function MyCreditsPanel({ onTotal }) {
             const left = Number(b.slots_left) || 0;
             const used = total - left;
             return (
-              <section key={b.id} className="rounded-xl border border-line bg-card p-4">
+              <section key={b.id} className="rounded-lg border border-line bg-card p-4">
                 <div className="flex items-baseline justify-between gap-2">
                   <div className="text-[14px] font-bold text-white truncate">
                     {[b.horse, b.rider].filter(Boolean).join(' × ') || 'Bundle'}

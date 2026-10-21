@@ -52,7 +52,7 @@ export default function MyReelsPanel({ onCount }) {
       {!!rows?.length && (
         <div className="grid gap-3 md:grid-cols-2">
           {rows.map((o) => (
-            <article key={o.id} className="flex flex-col rounded-xl border border-line bg-card overflow-hidden">
+            <article key={o.id} className="flex flex-col rounded-lg border border-line bg-card overflow-hidden">
               {(o.preview_url && ['ready', 'delivered'].includes(o.status)) ? (
                 <ReelPlayer previewUrl={o.preview_url} posterUrl={o.thumb_url}
                   title={`${o.product_name} — ${o.horse_name}`} />

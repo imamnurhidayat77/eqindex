@@ -300,7 +300,7 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Filter by horse, rider or partner…"
-          className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none w-full sm:w-[260px]"
+          className="rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none w-full sm:w-[260px]"
         />
       </div>
 
@@ -437,7 +437,7 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
         </div>
       )}
       {tab === 'photos' && (eventShots.get('noevent') || []).length > 0 && (
-        <div className="mt-4 rounded border border-line bg-card p-3">
+        <div className="mt-4 rounded-lg border border-line bg-card p-3">
           <div className="mb-1.5 text-[11px] uppercase tracking-wide text-faint font-bold">
             📷 Photos without event ({eventShots.get('noevent').length})
           </div>

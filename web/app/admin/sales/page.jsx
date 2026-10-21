@@ -202,7 +202,7 @@ export default function AdminSales() {
       </div>
 
       {/* Filter bar */}
-      <div className="mb-4 rounded border border-line bg-card p-4">
+      <div className="mb-4 rounded-lg border border-line bg-card p-4">
         <div className="flex gap-1 bg-card2 border border-line rounded p-1 w-fit mb-3" role="tablist" aria-label="Date range">
           {PRESETS.map(([v, lbl]) => (
             <button key={v} role="tab" aria-selected={f.preset === v} onClick={() => pickPreset(v)}

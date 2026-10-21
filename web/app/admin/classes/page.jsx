@@ -88,7 +88,7 @@ export default function AdminClasses() {
         Category-wide switches live under Admin → Settings.
       </p>
       {err && <section className={CARD}><p className="text-blood text-sm">{err}</p></section>}
-      <div className="mb-4 rounded border border-line bg-card p-4">
+      <div className="mb-4 rounded-lg border border-line bg-card p-4">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search class or event… (min 2 chars)"
           className={`${INP} w-full max-w-[320px]`} />
       </div>

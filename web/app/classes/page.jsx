@@ -66,7 +66,7 @@ export default function Classes() {
       <h1 className={H1}>Class Browser</h1>
       <p className={SUB}>Every class on the circuit — by height, type, format and series.</p>
       <FilterBar f={f} set={setF} seasons={opts.seasons} regions={opts.regions} arenas={opts.arenas} showMinStarts={false} />
-      <div className="mb-4 flex flex-wrap gap-2.5 items-end rounded border border-line bg-card p-4">
+      <div className="mb-4 flex flex-wrap gap-2.5 items-end rounded-lg border border-line bg-card p-4">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Class type
           <Dropdown ariaLabel="Class type" value={f.type} placeholder="All types"
             options={[{ value: '', label: 'All types' }, ...TYPES.map((t) => ({ value: t, label: t }))]}

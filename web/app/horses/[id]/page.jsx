@@ -27,7 +27,7 @@ const shade = (hex, amt) => {
 const MedalIcon = ({ color, elite, label, detail }) => {
   const c = color || '#888888';
   return (
-    <span className="group relative inline-block leading-none cursor-default">
+    <span tabIndex={0} role="img" aria-label={elite ? `Elite ${label} Medal — ${detail}` : `${label} Medal — ${detail}`} className="group relative inline-block leading-none cursor-default rounded focus:outline-none">
       <svg width="24" height="32" viewBox="0 0 24 32" aria-hidden="true">
         <polygon points="7,0 11.5,0 10,12 5.5,12" fill={shade(c, -45)} />
         <polygon points="13,0 17.5,0 19,12 14.5,12" fill={shade(c, -45)} />
@@ -38,7 +38,7 @@ const MedalIcon = ({ color, elite, label, detail }) => {
         <circle cx="12" cy="23.5" r="5" fill={shade(c, 35)} opacity="0.55" />
         <circle cx="10" cy="21.5" r="1.6" fill="#ffffff" opacity="0.5" />
       </svg>
-      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-card2 px-2.5 py-1.5 text-center opacity-0 transition-opacity duration-100 group-hover:opacity-100">
+      <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-card2 px-2.5 py-1.5 text-center opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100">
         <span className="block text-[12px] font-bold text-white">{elite ? `Elite ${label} Medal` : `${label} Medal`}</span>
         <span className="block text-[10px] text-muted">{detail}</span>
       </span>
@@ -118,14 +118,15 @@ export default async function HorseProfile({ params, searchParams }) {
     const soFar = chrono.slice(0, i + 1).map((x) => Number(x.finish_place)).filter((p) => p >= 1);
     return soFar.length ? Math.min(...soFar) : null;
   }).filter((v) => v !== null);
+  // Deltas shown only when computed from real data — never invented.
   const metrics = [
-    { label: 'Total Rounds', delta: '+12%', value: String(starts), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
-    { label: 'Events Entered', delta: '+8%', value: String(eventsEntered || s?.starts ? eventsEntered : starts), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
-    { label: 'Clear Rate', delta: '+2.4%', value: `${Math.round(clearPct)}%`, data: sparkClear, color: '#00C853', good: true },
-    { label: 'Avg Faults', delta: '-18%', value: avgFaults.toFixed(2), data: sparkFaults, color: '#00C853', good: true },
-    { label: 'Wins', delta: '+2', value: String(wins), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) === 1).length), color: '#FFD700' },
-    { label: 'Top 10 Finishes', delta: '+4', value: String(top10), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) <= 10 && Number(x.finish_place) >= 1).length), color: '#FFD700' },
-    { label: 'Best Place', delta: '', value: bestPlace === null ? '–' : `#${bestPlace}`, data: sparkBest, color: '#FFD700' },
+    { label: 'Total Rounds', value: String(starts), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
+    { label: 'Events Entered', value: String(eventsEntered || s?.starts ? eventsEntered : starts), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
+    { label: 'Clear Rate', value: `${Math.round(clearPct)}%`, data: sparkClear, color: '#00C853', good: true },
+    { label: 'Avg Faults', value: avgFaults.toFixed(2), data: sparkFaults, color: '#00C853', good: true },
+    { label: 'Wins', value: String(wins), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) === 1).length), color: '#FFD700' },
+    { label: 'Top 10 Finishes', value: String(top10), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) <= 10 && Number(x.finish_place) >= 1).length), color: '#FFD700' },
+    { label: 'Best Place', value: bestPlace === null ? '–' : `#${bestPlace}`, data: sparkBest, color: '#FFD700' },
   ];
 
   const bandHistory = history.filter((r) => {
@@ -164,7 +165,7 @@ export default async function HorseProfile({ params, searchParams }) {
   ];
 
   return (
-    <div className="text-[14px] text-slate-100">
+    <div className="text-[14px] text-body">
       {/* breadcrumb + title */}
       <div className="mb-1 text-[12px] text-faint">
         <Link href="/horses" className="text-muted hover:text-white">Horses</Link>
@@ -173,11 +174,11 @@ export default async function HorseProfile({ params, searchParams }) {
       </div>
       {/* hero */}
       <div className="mb-6">
-        <section className="rounded border border-line bg-card p-5">
+        <section className="rounded-lg border border-line bg-card p-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Equine Subject</div>
-              <div className="mt-1 text-[30px] font-extrabold leading-none break-words">{h.name}</div>
+              <div className="mt-1 text-[24px] font-extrabold leading-none break-words">{h.name}</div>
               {!!earnedBadges.length && (
                 <div className="mt-2.5 flex flex-wrap gap-2" role="img" aria-label={`Division medals: ${earnedBadges.map((d) => d.label).join(', ')}`}>
                   {earnedBadges.map((d) => (
@@ -191,7 +192,7 @@ export default async function HorseProfile({ params, searchParams }) {
             </div>
             <div className="flex flex-col items-end gap-2.5 shrink-0">
               <div className="text-center">
-                <div className="text-[26px] font-extrabold leading-none tabular-nums text-gold">{horseRating === null || !formEligible ? '–' : horseRating.toFixed(1)}</div>
+                <div className="text-[22px] font-extrabold leading-none tabular-nums text-gold">{horseRating === null || !formEligible ? '–' : horseRating.toFixed(1)}</div>
                 <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Rating{formRank ? ` · #${formRank}` : ''}</div>
                 {!!roundsNeeded && (
                   <div className="mt-1 text-[10px] text-faint">needs {roundsNeeded} more round{roundsNeeded === 1 ? '' : 's'} to rank</div>
@@ -211,7 +212,6 @@ export default async function HorseProfile({ params, searchParams }) {
           <StatCard
             key={m.label}
             label={m.label}
-            delta={m.delta}
             tone={m.good ? 'mint' : 'gold'}
             value={m.value}
             spark={m.data}
@@ -225,7 +225,7 @@ export default async function HorseProfile({ params, searchParams }) {
         <>
           <h2 className="text-[15px] font-bold">Division Summary</h2>
           <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rounds and clears per division across the full record.</p>
-          <section className="mb-6 rounded border border-line bg-card p-4">
+          <section className="mb-6 rounded-lg border border-line bg-card p-4">
             <div className="overflow-x-auto">
             <table className="w-full border-collapse text-[13px]">
               <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
@@ -274,7 +274,7 @@ export default async function HorseProfile({ params, searchParams }) {
 
       <h2 className="text-[15px] font-bold">Season Timeline</h2>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Last rounds at a glance — place, clear/faults, height and rider.</p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
+      <section className="mb-6 rounded-lg border border-line bg-card p-4">
         <SeasonTimeline history={history} />
       </section>
 
@@ -289,7 +289,7 @@ export default async function HorseProfile({ params, searchParams }) {
         </span>
       </div>
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Historical performance records from the NZ Showjumping Circuit.</p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
+      <section className="mb-6 rounded-lg border border-line bg-card p-4">
         <HistoryTable rows={bandHistory} mode="horse" />
       </section>
 
@@ -297,13 +297,13 @@ export default async function HorseProfile({ params, searchParams }) {
 
       <PhotoStrip query={{ horse_id: h.id, kind: 'reel' }} title="Reels" moreHref={`/photos?horse=${h.slug || h.id}&kind=reel`} />
 
-      <section className="rounded border border-line bg-card p-5">
+      <section className="rounded-lg border border-line bg-card p-5">
         <h2 className="mb-2 text-[15px] font-bold">Registry</h2>
         <dl>
           {registry.map(([k, v]) => (
             <div key={k} className="flex items-center justify-between border-b border-line/60 py-[9px] text-[13px] last:border-0">
               <dt className="text-muted">{k}</dt>
-              <dd className="font-semibold text-slate-100">{k === 'Breeder' && v !== '—'
+              <dd className="font-semibold text-white">{k === 'Breeder' && v !== '—'
                 ? <Link href={`/breeders/${encodeURIComponent(v)}`} className="text-sky hover:text-white">{v}</Link>
                 : v}</dd>
             </div>

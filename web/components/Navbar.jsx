@@ -46,7 +46,7 @@ export default function Navbar() {
     }`;
   return (
     <span ref={menuRef} className="contents">
-      <nav className="hidden md:flex gap-[18px]">
+      <nav className="hidden xl:flex gap-[18px]">
         {NAV.map((item) => (
           <Link key={item.href} href={item.href} className={linkCls(item.match(pathname))}>
             {item.label}
@@ -54,14 +54,17 @@ export default function Navbar() {
         ))}
       </nav>
       <button
-        className="md:hidden bg-card border border-line rounded text-body w-8 h-8"
+        className="xl:hidden bg-card border border-line rounded text-body w-8 h-8"
         onClick={() => setOpen((o) => !o)}
         aria-label="Menu"
       >
         ☰
       </button>
       {open && (
-        <div className="absolute top-[60px] left-0 right-0 md:hidden bg-navbg border-b border-line px-7 py-2 flex flex-col max-h-[70vh] overflow-y-auto">
+        <div className="absolute top-[60px] left-0 right-0 xl:hidden bg-navbg border-b border-line px-7 py-2 flex flex-col max-h-[70vh] overflow-y-auto">
+          <div className="py-2 border-b border-line/50">
+            <NavSearch mobile onGo={() => setOpen(false)} />
+          </div>
           {NAV.map((item) => {
             const active = item.match(pathname);
             return (
@@ -83,7 +86,7 @@ export default function Navbar() {
   );
 }
 
-export function NavSearch() {
+export function NavSearch({ mobile = false, onGo = null }) {
   const router = useRouter();
   const hidden = useLandingHidden();
   const [q, setQ] = useState('');
@@ -128,12 +131,13 @@ export function NavSearch() {
     if (!t) return;
     setOpen(false); setQ(''); setHits([]); clearTimeout(timer.current);
     const base = t.kind === 'horse' ? 'horses' : t.kind === 'rider' ? 'riders' : 'events';
+    if (onGo) onGo();
     router.push(`/${base}/${t.id}`);
   }
 
   return (
     hidden ? null :
-    <div className="relative hidden sm:block" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
+    <div className={`relative ${mobile ? 'block xl:hidden' : 'hidden xl:block'}`} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false); }}>
       <input
         value={q}
         onChange={(e) => onType(e.target.value)}
@@ -145,10 +149,11 @@ export function NavSearch() {
           else if (e.key === 'Escape') setOpen(false);
         }}
         placeholder="⌕  Search..."
-        className="bg-card border border-line rounded text-body px-3 py-[7px] w-[180px] text-[13px] placeholder:text-muted focus:border-gold/60 focus:outline-none"
+        aria-label="Search horses, riders and events"
+        className={`bg-card border border-line rounded text-body px-3 py-[7px] text-[13px] placeholder:text-muted focus:border-gold/60 focus:outline-none ${mobile ? 'w-full' : 'w-[180px]'}`}
       />
       {open && !!hits.length && (
-        <div className="absolute right-0 z-20 mt-1 w-[260px] overflow-hidden rounded border border-line bg-card2 shadow-xl">
+        <div className={`absolute z-20 mt-1 overflow-hidden rounded border border-line bg-card2 shadow-xl ${mobile ? 'left-0 right-0' : 'right-0 w-[260px]'}`}>
           {hits.map((t, i) => (
             <button key={`${t.kind}-${t.id}`} onMouseDown={(e) => e.preventDefault()} onClick={() => go(i)}
               onMouseEnter={() => setHi(i)}
@@ -165,7 +170,7 @@ export function NavSearch() {
         </div>
       )}
       {open && q.trim().length >= 2 && !hits.length && (
-        <div className="absolute right-0 z-20 mt-1 w-[260px] rounded border border-line bg-card2 px-3 py-2 text-[12px] text-muted">
+        <div className={`absolute z-20 mt-1 rounded border border-line bg-card2 px-3 py-2 text-[12px] text-muted ${mobile ? 'left-0 right-0' : 'right-0 w-[260px]'}`}>
           No horses, riders or events found.
         </div>
       )}

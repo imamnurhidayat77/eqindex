@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { API } from '../../lib/api';
-import { CARD, H1, SUB, INP, BTN_PRIMARY, MUT } from '../../lib/tokens';
+import { CARD, H1, H2, SUB, INP, BTN_PRIMARY, MUT } from '../../lib/tokens';
 import Dropdown from '../../components/Dropdown';
 
 const TYPES = ['', 'horse', 'rider', 'event', 'class', 'result', 'other'];
@@ -38,7 +38,7 @@ export default function Contact() {
         timing systems. Series and calendar gaps can also be flagged for review.</p>
       </section>
       <section className={CARD}>
-        <h2 className="text-[15px] font-bold mb-2">Report a correction</h2>
+        <h2 className={`${H2} mb-2`}>Report a correction</h2>
         <form onSubmit={submit} className="grid md:grid-cols-2 gap-3">
           <label className="text-xs text-muted flex flex-col gap-1">Name
             <input className={INP} required value={f.name} onChange={set('name')} /></label>

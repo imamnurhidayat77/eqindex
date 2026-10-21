@@ -117,7 +117,7 @@ export default function BuyBox({ id, tier, tierLabel }) {
   }
 
   return (
-    <div className="mt-4 rounded border border-line bg-card2 p-3">
+    <div className="mt-4 rounded-lg border border-line bg-card2 p-3">
       {credit && Number(credit.slots_left) > 0 && (
         <button onClick={unlock} disabled={unlocking}
           className="mb-3 w-full rounded-lg border border-sky/60 bg-sky/10 px-2.5 py-2 text-left cursor-pointer hover:bg-sky/20 transition">
@@ -139,7 +139,7 @@ export default function BuyBox({ id, tier, tierLabel }) {
         <div className="flex flex-col gap-1" role="radiogroup" aria-label="License">
           {tiers.map((t) => (
             <button key={t.id} role="radio" aria-checked={picked === t.id} onClick={() => setPicked(t.id)}
-              className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left cursor-pointer transition ${picked === t.id ? 'border-gold/70 bg-goldbg/30' : 'border-line hover:border-gold/40'}`}>
+              className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left cursor-pointer transition active:scale-[0.99] ${picked === t.id ? 'border-gold/70 bg-goldbg/30' : 'border-line hover:border-gold/40'}`}>
               <span className="min-w-0">
                 <span className={`flex items-center gap-1.5 text-[13px] ${picked === t.id ? 'text-white font-bold' : 'text-muted'}`}>
                   {t.label || t.id}

@@ -24,7 +24,7 @@ export default function MomentBundle({ eventId, horseId, riderId, currentId, cur
 
   if (!rows || !rows.length) return null;
   return (
-    <div className="mt-3 rounded border border-line bg-card2 p-3">
+    <div className="mt-3 rounded-lg border border-line bg-card2 p-3">
       <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-2">
         {want === 'reel' ? 'Reels of this round' : 'Photos of this round'}
       </div>
@@ -33,11 +33,12 @@ export default function MomentBundle({ eventId, horseId, riderId, currentId, cur
           const price = nzd(x.price_cents);
           return (
             <Link key={x.id} href={`/photos/${x.id}`}
+              aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || (want === 'reel' ? 'Reel' : 'Photo')}
               className="group rounded-lg border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
               <div className="relative aspect-[4/3] bg-card flex items-center justify-center overflow-hidden">
                 {x.thumb_url || x.preview_url
-                  ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.04] transition duration-300" />
-                  : <span className="text-xl">{want === 'reel' ? '🎬' : '📷'}</span>}
+                  ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || `${x.event_name || 'Show-jumping'} ${want}`} loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.04] transition duration-300" />
+                  : <span className="text-xl" aria-hidden="true">{want === 'reel' ? '🎬' : '📷'}</span>}
                 {want === 'reel' && (
                   <span className="absolute left-1.5 top-1.5 rounded-full bg-black/70 px-1.5 py-px text-[10px] font-bold text-white">▶ Reel</span>
                 )}

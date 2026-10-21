@@ -46,7 +46,7 @@ export default function ClassResults({ groups }) {
   const pickTab = (k) => {
     setHtab(k);
     setOpen(null);
-    setCq(''); setCpage(1);
+    setCq(''); setCpage(1); setGpage(1);
   };
   // Follow the expanded class into view (skip initial mount).
   const openRef = useRef(null);
@@ -65,6 +65,17 @@ export default function ClassResults({ groups }) {
     : hasHorse ? 'horse' : 'pony';
   const visible = activeTab === 'all' ? groups
     : activeTab === 'pony' ? groups.filter(isPony) : groups.filter((g) => !isPony(g));
+  // Top-level class finder: jump straight to a class instead of opening each card.
+  const [gq, setGq] = useState('');
+  const [gpage, setGpage] = useState(1);
+  const [gper, setGper] = useState(10);
+  const gs = gq.trim().toLowerCase();
+  const matched = gs
+    ? visible.filter((g) => `${g.class_number || ''} ${g.name || ''} ${g.height_cm || ''}`.toLowerCase().includes(gs))
+    : visible;
+  const gpages = Math.max(1, Math.ceil(matched.length / gper));
+  const gsafe = Math.min(gpage, gpages);
+  const gview = matched.slice((gsafe - 1) * gper, gsafe * gper);
   if (!groups.length) {
     return (
       <section className={CARD}>
@@ -78,6 +89,15 @@ export default function ClassResults({ groups }) {
   }
   return (
     <div className="space-y-3 mb-6">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={gq} onChange={(e) => { setGq(e.target.value); setGpage(1); }}
+          placeholder="Search classes… (name, number, height)"
+          aria-label="Search classes"
+          className="w-full max-w-[280px] rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none"
+        />
+        {gs && <span className="text-[12px] text-muted">{matched.length} of {visible.length} classes</span>}
+      </div>
       {showTabs && (
         <div className="inline-flex gap-1 bg-card border border-line rounded p-1">
           {[['horse', `Horses (${groups.length - nPony})`], ['pony', `Ponies (${nPony})`]].map(([k, lbl]) => (
@@ -88,7 +108,16 @@ export default function ClassResults({ groups }) {
           ))}
         </div>
       )}
-      {visible.map((g) => {
+      {!matched.length && gs && (
+        <section className={CARD}>
+          <EmptyState
+            icon="🔍"
+            title="No classes match"
+            hint="Try a different class name, number or height."
+          />
+        </section>
+      )}
+      {gview.map((g) => {
         const isOpen = open === g.class_id;
         return (
           <section key={g.class_id} ref={isOpen ? openRef : null} className={`${CARD} scroll-mt-20`} style={{ marginBottom: 0 }}>
@@ -135,7 +164,7 @@ export default function ClassResults({ groups }) {
                   ['Avg faults', avgF.toFixed(2)],
                   ['Best time', bestTime.length ? `${Math.min(...bestTime)}s` : '–'],
                 ].map(([l, v]) => (
-                  <div key={l} className="rounded bg-card2 px-3 py-2">
+                    <div key={l} className="rounded-md bg-card2 px-3 py-2">
                     <div className="text-[10px] uppercase tracking-wide text-faint">{l}</div>
                     <div className="text-[15px] font-extrabold text-white">{v}</div>
                   </div>
@@ -144,7 +173,8 @@ export default function ClassResults({ groups }) {
               <div className="mb-2">
                 <input
                   value={cq} onChange={(e) => { setCq(e.target.value); setCpage(1); }} placeholder="Filter by rider or horse…"
-                  className="w-full max-w-[280px] rounded border border-line bg-ink px-2.5 py-1.5 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none"
+                  aria-label="Filter rounds by rider or horse"
+                  className="w-full max-w-[280px] rounded-md border border-line bg-ink px-2.5 py-1.5 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none"
                 />
               </div>
               <table className={TABLE}>
@@ -214,6 +244,9 @@ export default function ClassResults({ groups }) {
           </section>
         );
       })}
+      {matched.length > 0 && (
+        <Pagination page={gsafe} pages={gpages} setPage={setGpage} perPage={gper} setPerPage={setGper} total={matched.length} />
+      )}
     </div>
   );
 }

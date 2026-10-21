@@ -147,12 +147,12 @@ export default function EventWallGrid({ initialRows = [], eventId, kind }) {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {filtered.map((x) => (
-              <Link key={x.id} href={`/photos/${x.id}`} className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
+            {filtered.map((x, i) => (
+              <Link key={x.id} href={`/photos/${x.id}`} style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }} aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Photo'} className="rise group flex flex-col rounded-lg border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
                 <div className="relative aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                   {x.thumb_url || x.preview_url
-                    ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
-                    : <span className="text-xl">📷</span>}
+                    ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
+                    : <span className="text-xl" aria-hidden="true">📷</span>}
                   {x.kind === 'reel' && (
                     <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-white">▶ Reel</span>
                   )}
@@ -180,7 +180,7 @@ export default function EventWallGrid({ initialRows = [], eventId, kind }) {
               <p className="text-[12.5px] text-faint">Loading all photos for search…</p>
             ) : hasMore && !dq ? (
               <button onClick={loadMore} disabled={busy}
-                className="rounded border border-line bg-card2 px-5 py-2.5 text-[13px] font-bold text-white hover:border-gold/50 hover:text-gold cursor-pointer disabled:opacity-60">
+                className="rounded-md border border-line bg-card2 px-5 py-2.5 text-[13px] font-bold text-white hover:border-gold/50 hover:text-gold cursor-pointer disabled:opacity-60">
                 {busy ? 'Loading…' : `Load more (${rows.length} shown)`}
               </button>
             ) : null}

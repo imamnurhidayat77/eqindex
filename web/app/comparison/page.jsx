@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import { API } from '../../lib/api';
 import Dropdown from '../../components/Dropdown';
+import Modal from '../../components/Modal';
+import { INP, BTN_PRIMARY } from '../../lib/tokens';
 
 const MODES = [['horse', 'Horse vs Horse'], ['rider', 'Rider vs Rider'], ['combination', 'Combination'], ['event', 'Event vs Event']];
 
@@ -18,6 +20,9 @@ export default function Comparison() {
   const [bId, setBId] = useState('');
   const [result, setResult] = useState(null);
   const [err, setErr] = useState('');
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveLabel, setSaveLabel] = useState('');
+  const [saveBusy, setSaveBusy] = useState(false);
 
   useEffect(() => {
     setResult(null); setErr(''); setLoadingList(true);
@@ -97,13 +102,15 @@ export default function Comparison() {
   }
 
   async function save() {
-    if (!result) return;
-    const label = prompt('Label for this comparison:') || '';
+    if (!result || saveBusy) return;
+    setSaveBusy(true);
     const res = await fetch(`${API}/comparisons`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, a_id: aId, b_id: bId, label }),
+      body: JSON.stringify({ type, a_id: aId, b_id: bId, label: saveLabel.trim() }),
     });
-    setErr(res.ok ? 'Saved to Elite.' : res.status === 401 ? 'Log in to save comparisons.' : 'Save failed');
+    setSaveBusy(false);
+    if (res.ok) { setSaveOpen(false); setSaveLabel(''); setErr('Saved to Elite.'); }
+    else setErr(res.status === 401 ? 'Log in to save comparisons.' : 'Save failed');
   }
 
   const R = result ? {
@@ -128,8 +135,8 @@ export default function Comparison() {
       <section className="bg-card border border-line rounded px-5 py-[18px] mb-6">
         <div className="flex flex-wrap gap-2 bg-card2 rounded p-1 w-fit max-w-full mb-5">
           {MODES.map(([k, l]) => (
-            <button key={k} onClick={() => setType(k)}
-              className={`px-4 py-2 rounded-md text-sm font-semibold ${type === k ? 'border border-gold text-gold' : 'text-muted'}`}>
+              <button key={k} onClick={() => setType(k)}
+                className={`px-4 py-2 rounded-md text-sm font-semibold border ${type === k ? 'border-gold text-gold' : 'border-transparent text-muted hover:text-white'}`}>
               {l}
             </button>
           ))}
@@ -149,7 +156,19 @@ export default function Comparison() {
                 <button onClick={compare} disabled={loadingList} className="rounded bg-gold px-6 py-2.5 text-sm font-bold text-black disabled:opacity-50">
                   {loadingList ? 'Loading…' : 'Compare'}
                 </button>
-                {R && type !== 'event' && <button onClick={save} className="rounded border border-line bg-card2 px-4 py-2 text-xs text-muted">Save to Elite</button>}
+                {R && type !== 'event' && <button onClick={() => setSaveOpen(true)} className="rounded-md border border-line bg-card2 px-4 py-2 text-xs text-muted hover:text-white hover:border-faint cursor-pointer">Save to Elite</button>}
+      {saveOpen && (
+        <Modal title="Save comparison" sub="Name it to find it later in Elite." onClose={() => setSaveOpen(false)}
+          footer={[
+            <button key="cancel" onClick={() => setSaveOpen(false)} className="rounded-md border border-line px-4 py-2 text-sm text-muted hover:text-white hover:border-faint bg-none cursor-pointer">Cancel</button>,
+            <button key="ok" onClick={save} disabled={saveBusy} className={BTN_PRIMARY}>{saveBusy ? 'Saving…' : 'Save'}</button>,
+          ]}>
+          <label className="flex flex-col gap-1.5 text-xs text-muted">Label
+            <input value={saveLabel} onChange={(e) => setSaveLabel(e.target.value)} placeholder="e.g. Top jump-off horses" maxLength={80}
+              className={INP} autoFocus onKeyDown={(e) => { if (e.key === 'Enter') save(); }} />
+          </label>
+        </Modal>
+      )}
               </div>
               <Picker side="B" id={bId} setId={setBId} />
             </>
@@ -170,7 +189,7 @@ export default function Comparison() {
                   <div key={side} className="text-center">
                     <div className="font-bold">{x.label}</div>
                     <div className="text-muted text-xs mt-0.5">{x.classes} classes · {(x.date_start || '').slice(0, 10)} → {(x.date_end || '').slice(0, 10)}</div>
-                    <div className="mt-2 text-[34px] font-extrabold" style={{ color }}>{Number(x.clear_pct).toFixed(0)}%</div>
+                    <div className="mt-2 text-[28px] font-extrabold leading-none" style={{ color }}>{Number(x.clear_pct).toFixed(0)}%</div>
                     <div className="text-[11px] text-faint uppercase tracking-wide">clear rate</div>
                   </div>
                 );

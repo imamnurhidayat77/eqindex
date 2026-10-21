@@ -46,7 +46,7 @@ export default function TrainingPanel({ horseId, riders = [], compact = false })
     load();
   }
   return (
-    <section className="mb-6 overflow-hidden rounded border border-line bg-card">
+    <section className="mb-6 overflow-hidden rounded-lg border border-line bg-card">
       {!compact && <h2 className="px-5 pt-4 text-[15px] font-bold">Training</h2>}
       <div className="flex justify-end px-4 pt-3">
         {user ? (

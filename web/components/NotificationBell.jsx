@@ -42,7 +42,7 @@ export default function NotificationBell() {
   return (
     <div className="relative" ref={wrapRef}>
       <button onClick={() => { setOpen((o) => !o); if (!open) load(); }} aria-label="Notifications"
-        className="relative rounded border border-line bg-card px-2.5 py-1.5 text-[15px] text-muted hover:text-white cursor-pointer">
+        className="relative rounded-md border border-line bg-card px-2.5 py-1.5 text-[15px] text-muted hover:text-white cursor-pointer">
         🔔
         {!!unread && (
           <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-gold text-black text-[10.5px] font-extrabold inline-flex items-center justify-center">

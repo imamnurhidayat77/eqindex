@@ -6,6 +6,7 @@ import { useAdminApi } from '../../../components/useAdminApi';
 import { AdminFormSk, AdminCardsSk } from '../../../components/Skeletons';
 import Modal, { ConfirmDialog } from '../../../components/Modal';
 import { Sec, Fld, Num, Txt, Check, csvGet, csvSet, parsePairs, fmtSliding, parseSliding, fmtMult, parseMult, fmtOverride, parseOverride, MODELB_DEFAULTS, ModelBSummary } from '../../../components/ScoringForms';
+import { TrashIcon } from '../../../components/AdminTable';
 
 const stBadge = (s) => s === 'active' ? badge(BADGE.green) : s === 'draft' ? badge(BADGE.goldfill) : badge(BADGE.gray);
 
@@ -28,7 +29,7 @@ function RulesSummary({ p }) {
   const aw = p.awards || {};
   const row = 'flex justify-between gap-3 py-1 border-b border-rowline/60 last:border-0 text-[12.5px]';
   return (
-    <div className="mt-2.5 rounded border border-line bg-card2/40 p-3.5 text-muted">
+    <div className="mt-2.5 rounded-lg border border-line bg-card2/40 p-3.5 text-muted">
       <div className="flex flex-wrap gap-1.5 mb-2.5">
         {divs.map((d) => (
           <span key={d.key} className="inline-flex items-center gap-1.5 rounded border border-line px-2 py-[3px] text-[11.5px]"
@@ -50,7 +51,7 @@ function EsnzSummary({ ez, divisions }) {
   const row = 'flex justify-between gap-3 py-1 border-b border-rowline/60 last:border-0 text-[12.5px]';
   const series = ez.series || {};
   return (
-    <div className="mt-2.5 rounded border border-line bg-card2/40 p-3.5 text-muted">
+    <div className="mt-2.5 rounded-lg border border-line bg-card2/40 p-3.5 text-muted">
       <div className="mb-2"><span className="inline-flex items-center rounded-full bg-goldbg px-2 py-[3px] text-[11px] font-bold text-gold">SERIES SCORING · {ez.scope === 'all_classes' ? 'all classes score' : 'series classes only'}</span></div>
       <div className={row}><span>Divisions</span><span className="text-body text-right">{(divisions || []).map((d) => d.label).join(' · ') || '—'}</span></div>
       <div className={row}><span>Grand Prix scale</span><span className="text-body text-right">{(ez.scales?.grand_prix || []).join(' / ')}</span></div>
@@ -182,7 +183,7 @@ function DivisionsEditor({ draft, set }) {
             <span className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: d.color || '#888' }} />
             <input type="color" value={/^#[0-9a-f]{6}$/i.test(d.color || '') ? d.color : '#888888'}
               onChange={(e) => set((n) => { n.divisions[i].color = e.target.value; })}
-              className="w-8 h-8 p-0.5 rounded border border-line bg-ink cursor-pointer" title="Division colour" />
+              className="w-8 h-8 p-0.5 rounded-md border border-line bg-ink cursor-pointer" title="Division colour" />
             <Txt value={d.label} placeholder="Label" width={130}
               onChange={(v) => set((n) => { n.divisions[i].label = v; })} />
             <Num value={d.min} min={0} width={80} onChange={(v) => set((n) => { n.divisions[i].min = v; })} />
@@ -408,7 +409,7 @@ export default function AdminScoring() {
                     <span role="button" tabIndex={0} title={`Delete draft v${v.version}`}
                       onClick={(e) => { e.stopPropagation(); setDeleting(v); }}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); setDeleting(v); } }}
-                      className="w-6 h-6 inline-flex items-center justify-center rounded border border-line text-faint hover:text-blood hover:border-blood/60 text-[12px] cursor-pointer">🗑</span>
+                      className="w-6 h-6 inline-flex items-center justify-center rounded-md border border-line text-faint hover:text-blood hover:border-blood/60 cursor-pointer"><TrashIcon className="h-3 w-3" /></span>
                   )}
                 </span>
               </div>

@@ -16,7 +16,7 @@ export function FilterBar({ f, set, seasons, regions, arenas, categories = null,
   const clear = () => set({ q: '', season: '', region: '', arena: '', height: '', minStarts: '1', category: '' });
   const active = [f.q, f.season, f.region, f.arena, f.height, f.category].some(Boolean) || f.minStarts !== '1';
   return (
-    <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
+    <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded-lg border border-line bg-card p-4">
       <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
         Search
         <input value={f.q} onChange={upd('q')} placeholder="Name…"

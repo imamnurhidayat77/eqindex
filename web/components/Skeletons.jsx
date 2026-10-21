@@ -65,7 +65,7 @@ export function TableRowsSk({ rows = 8 }) {
 function HeroSk() {
   return (
     <div className="mb-6 grid gap-4 lg:grid-cols-[2fr_1fr]">
-      <section className="rounded border border-line bg-card p-5">
+      <section className="rounded-lg border border-line bg-card p-5">
         <Sk className="h-2.5 w-28" />
         <Sk className="h-9 w-64 mt-2 !rounded-md" />
         <div className="mt-4 space-y-2">
@@ -77,7 +77,7 @@ function HeroSk() {
           <Sk className="h-7 w-28 !rounded-md" />
         </div>
       </section>
-      <section className="rounded border border-line bg-card p-5">
+      <section className="rounded-lg border border-line bg-card p-5">
         <Sk className="h-4 w-40 mb-3" />
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="flex justify-between py-2 border-b border-line/60 last:border-0">
@@ -92,7 +92,7 @@ function HeroSk() {
 
 function FilterBarSk() {
   return (
-    <div className="mb-4 flex flex-wrap gap-2.5 rounded border border-line bg-card p-4">
+    <div className="mb-4 flex flex-wrap gap-2.5 rounded-lg border border-line bg-card p-4">
       {[160, 130, 130, 130, 110].map((w, i) => <Sk key={i} className="h-9" style={{ width: w }} />)}
     </div>
   );
@@ -114,14 +114,14 @@ export function LandingSk() {
           <Sk className="h-3 w-20" />
         </div>
       </div>
-      <section className="rounded border border-line bg-card p-4">
+      <section className="rounded-lg border border-line bg-card p-4">
         <div className="flex items-center justify-between gap-2 mb-3">
           <Sk className="h-3.5 w-48" />
           <Sk className="h-3 w-20" />
         </div>
         <div className="flex gap-3 overflow-hidden pb-1">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="shrink-0 w-[240px] rounded border border-line bg-card2 p-4">
+            <div key={i} className="shrink-0 w-[240px] rounded-lg border border-line bg-card2 p-4">
               <div className="flex items-center justify-between gap-2">
                 <Sk className="h-3 w-20" />
                 <Sk className="h-3 w-12" />
@@ -149,7 +149,7 @@ export function ProfileSk() {
         <Sk className="h-7 w-80 max-w-full !rounded-md" />
         <Sk className="h-6 w-28 !rounded-full" />
       </div>
-      <section className="rounded border border-line bg-card p-5 mb-6">
+      <section className="rounded-lg border border-line bg-card p-5 mb-6">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <Sk className="h-2.5 w-24" />
@@ -170,7 +170,7 @@ export function ProfileSk() {
       <StatGrid n={7} cols="grid-cols-2 sm:grid-cols-4 xl:grid-cols-7" />
       <TableSk cols={6} rows={6} />
       <Sk className="h-20 w-full !rounded-lg mb-6" />
-      <section className="rounded border border-line bg-card p-5 mb-6">
+      <section className="rounded-lg border border-line bg-card p-5 mb-6">
         <Sk className="h-4 w-32 mb-2" />
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="flex justify-between py-[9px] border-b border-line/60 last:border-0">
@@ -181,7 +181,7 @@ export function ProfileSk() {
       </section>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-6">
         {Array.from({ length: 6 }).map((_, i) => (
-          <Sk key={i} className="aspect-[4/3] !rounded-xl" />
+          <Sk key={i} className="aspect-[4/3] !rounded-lg" />
         ))}
       </div>
     </div>
@@ -200,7 +200,7 @@ export function EventDetailSk() {
         <span className="ml-auto"><Sk className="h-5 w-32 !rounded-full" /></span>
       </div>
       <p className={SUB}><Sk className="h-3.5 w-80 max-w-full" /></p>
-      <section className="rounded border border-line bg-card p-5 mb-6">
+      <section className="rounded-lg border border-line bg-card p-5 mb-6">
         <Sk className="h-5 w-64 mb-3" />
         <Sk className="h-3.5 w-full" />
         <Sk className="h-3.5 w-5/6 mt-1.5" />
@@ -208,7 +208,7 @@ export function EventDetailSk() {
       </section>
       <StatGrid n={7} cols="grid-cols-2 md:grid-cols-4 xl:grid-cols-7" />
       {[0, 1, 2].map((i) => (
-        <section key={i} className="rounded border border-line bg-card p-4 mb-4">
+        <section key={i} className="rounded-lg border border-line bg-card p-4 mb-4">
           <div className="flex items-center justify-between">
             <Sk className="h-4 w-56 max-w-full" />
             <Sk className="h-3 w-20" />
@@ -216,11 +216,11 @@ export function EventDetailSk() {
         </section>
       ))}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <section className="rounded border border-line bg-card p-5">
+        <section className="rounded-lg border border-line bg-card p-5">
           <Sk className="h-5 w-56 mb-3" />
           <Sk className="h-24 w-full !rounded-lg" />
         </section>
-        <section className="rounded border border-line bg-card p-5">
+        <section className="rounded-lg border border-line bg-card p-5">
           <Sk className="h-5 w-56 mb-3" />
           <Sk className="h-24 w-full !rounded-lg" />
         </section>
@@ -231,7 +231,7 @@ export function EventDetailSk() {
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-6">
         {Array.from({ length: 6 }).map((_, i) => (
-          <Sk key={i} className="aspect-[4/3] !rounded-xl" />
+          <Sk key={i} className="aspect-[4/3] !rounded-lg" />
         ))}
       </div>
     </>
@@ -297,7 +297,7 @@ export function SeriesDetailSk() {
       </div>
       <Sk className="h-5 w-32 mb-1" />
       <p className="mb-3"><Sk className="h-3.5 w-96 max-w-full" /></p>
-      <section className="mb-6 rounded border border-line bg-card p-4">
+      <section className="mb-6 rounded-lg border border-line bg-card p-4">
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex gap-2 items-center py-2.5 border-b border-rowline last:border-0">
             <Sk className="h-3.5 w-8" />
@@ -397,11 +397,11 @@ export function AdminSk() {
         ))}
       </div>
       <div className="grid gap-5 lg:grid-cols-[2fr_1fr] items-start mb-5">
-        <section className="rounded border border-line bg-card p-4">
+        <section className="rounded-lg border border-line bg-card p-4">
           <Sk className="h-5 w-48 mb-3" />
           <Sk className="h-44 w-full !rounded-lg" />
         </section>
-        <section className="rounded border border-line bg-card p-4">
+        <section className="rounded-lg border border-line bg-card p-4">
           <Sk className="h-5 w-40 mb-3" />
           {[0, 1, 2].map((i) => <Sk key={i} className="h-9 w-full !rounded-md mb-2" />)}
         </section>
@@ -450,7 +450,7 @@ export function PhotoCardSk({ n = 8 }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       {Array.from({ length: n }).map((_, i) => (
-        <div key={i} className="rounded-xl border border-line bg-card overflow-hidden">
+        <div key={i} className="rounded-lg border border-line bg-card overflow-hidden">
           <Sk className="aspect-[4/3] !rounded-none" />
           <div className="p-2.5">
             <Sk className="h-3.5 w-4/5" />
@@ -471,7 +471,7 @@ export function EventCardSk({ n = 6 }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       {Array.from({ length: n }).map((_, i) => (
-        <div key={i} className="rounded-xl border border-line bg-card overflow-hidden">
+        <div key={i} className="rounded-lg border border-line bg-card overflow-hidden">
           <Sk className="aspect-[16/9] !rounded-none" />
           <div className="p-3">
             <Sk className="h-4 w-3/4" />
@@ -490,7 +490,7 @@ export function EventCardSk({ n = 6 }) {
 // Gallery filter bar mirror: kind tabs + text search + rider picker.
 export function GalleryFilterSk() {
   return (
-    <div className="rounded border border-line bg-card p-3 mb-4">
+    <div className="rounded-lg border border-line bg-card p-3 mb-4">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1 bg-card2 border border-line rounded p-1 w-fit">
           {[0, 1, 2].map((i) => <Sk key={i} className="h-8 w-20 !rounded-md" />)}
@@ -598,7 +598,7 @@ export function ReelCardsSk({ n = 4 } = {}) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {Array.from({ length: n }).map((_, i) => (
-        <div key={i} className="rounded-xl border border-line bg-card overflow-hidden">
+        <div key={i} className="rounded-lg border border-line bg-card overflow-hidden">
           <Sk className="aspect-video !rounded-none" />
           <div className="p-3 space-y-2">
             <Sk className="h-3.5 w-3/4" />
@@ -620,7 +620,7 @@ export function CreditCardsSk({ n = 4 } = {}) {
   return (
     <div className="grid gap-3 md:grid-cols-2">
       {Array.from({ length: n }).map((_, i) => (
-        <section key={i} className="rounded-xl border border-line bg-card p-4">
+        <section key={i} className="rounded-lg border border-line bg-card p-4">
           <div className="flex items-baseline justify-between gap-2">
             <Sk className="h-4 w-40" />
             <Sk className="h-7 w-20" />

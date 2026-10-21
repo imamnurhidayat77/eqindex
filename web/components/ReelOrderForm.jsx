@@ -112,7 +112,7 @@ export default function ReelOrderForm({ eventId, eventName }) {
           <div className="grid gap-2 md:grid-cols-3 mb-3">
             {products.map((x) => (
               <button key={x.id} onClick={() => setPicked(x.id)}
-                className={`rounded-lg border p-2.5 text-left cursor-pointer transition ${picked === x.id ? 'border-gold bg-goldbg/15' : 'border-line bg-card2 hover:border-gold/50'}`}>
+                className={`rounded-lg border p-2.5 text-left cursor-pointer transition active:scale-[0.99] ${picked === x.id ? 'border-gold bg-goldbg/15' : 'border-line bg-card2 hover:border-gold/50'}`}>
                 <div className="text-[13px] font-bold text-white">{x.name}</div>
                 <div className="text-[11.5px] text-faint">{SCOPE[x.scope] || x.scope}{x.coverage === 'full' ? ' · full coverage' : ''}{x.includes_raw ? ' · + raw footage' : ''}</div>
                 {x.description && <div className="mt-1 text-[11.5px] text-muted">{x.description}</div>}

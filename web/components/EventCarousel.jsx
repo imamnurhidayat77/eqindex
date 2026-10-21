@@ -62,39 +62,40 @@ export default function EventCarousel({ events, kind = 'results' }) {
     );
   }
   return (
-    <section className={CARD}>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <div className="text-[13px] font-bold">{upcoming ? 'Upcoming Events' : 'Latest Events'} <span className="text-faint font-semibold">· {upcoming ? 'soonest first' : 'newest first'}</span></div>
+    <section className={`${CARD} !bg-card2/60`}>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <div className="font-display text-[17px] font-bold uppercase tracking-wide">{upcoming ? 'Upcoming Events' : 'Latest Events'}</div>
         <div className="flex items-center gap-1.5">
           <Link href="/events" className={`${LINK} text-[12px] mr-2`}>View all →</Link>
           <button onClick={() => slide(-1)} disabled={!canL} aria-label="Previous"
-            className="w-8 h-8 rounded border border-line bg-card2 text-body disabled:opacity-30 hover:text-gold">‹</button>
+            className="w-8 h-8 rounded-md border border-line bg-card text-body disabled:opacity-30 hover:text-gold hover:border-gold/50 transition-colors">‹</button>
           <button onClick={() => slide(1)} disabled={!canR} aria-label="Next"
-            className="w-8 h-8 rounded border border-line bg-card2 text-body disabled:opacity-30 hover:text-gold">›</button>
+            className="w-8 h-8 rounded-md border border-line bg-card text-body disabled:opacity-30 hover:text-gold hover:border-gold/50 transition-colors">›</button>
         </div>
       </div>
       <div ref={ref} onScroll={update}
         className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory"
         style={{ scrollbarWidth: 'thin' }}>
-        {list.map((e) => (
+        {list.map((e, i) => (
           <Link key={e.id} href={`/events/${e.slug || e.id}`}
-            className="snap-start shrink-0 w-[240px] bg-card2 border border-line rounded p-4 no-underline hover:border-gold/60 transition-colors group">
+            style={{ animationDelay: `${Math.min(i * 50, 300)}ms` }}
+            className="rise snap-start shrink-0 w-[260px] bg-ink border border-line rounded-lg p-5 no-underline hover:border-gold/60 transition-colors group flex flex-col">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] text-faint">{fmtDay(e.date_start)}{e.date_end && e.date_end !== e.date_start ? ` → ${fmtDay(e.date_end)}` : ''}</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.8px] text-gold">{fmtDay(e.date_start)}{e.date_end && e.date_end !== e.date_start ? ` → ${fmtDay(e.date_end)}` : ''}</span>
               {upcoming && <span className={badge(BADGE.goldfill)}>Upcoming</span>}
             </div>
-            <div className="mt-1 font-bold text-[14px] leading-snug text-white group-hover:text-gold line-clamp-2 min-h-[40px]">{e.name}</div>
+            <div className="mt-2 font-extrabold text-[17px] leading-[1.2] text-white group-hover:text-gold line-clamp-2 min-h-[41px] transition-colors">{e.name}</div>
             <div className="mt-1 text-[12px] text-muted truncate">{e.venue || '—'}{e.region ? ` · ${e.region}` : ''}</div>
             {upcoming ? (
-              <div className="mt-2 text-[12px] font-bold text-gold">VIEW DETAILS →</div>
+              <div className="mt-3 text-[12px] font-bold text-gold">VIEW DETAILS <span className="inline-block transition-transform group-hover:translate-x-1">→</span></div>
             ) : (
               <>
-                <div className="mt-2.5 flex gap-3 text-[12px]">
-                  <span className="text-muted"><b className="text-body">{e.class_count ?? '–'}</b> classes</span>
-                  <span className="text-muted"><b className="text-body">{e.combo_count ?? e.round_count ?? '–'}</b> combos</span>
+                <div className="mt-3 flex gap-5">
+                  <span><span className="block text-[18px] font-extrabold leading-none tabular-nums text-white">{e.class_count ?? '–'}</span><span className="mt-1 block text-[10.5px] uppercase tracking-[0.6px] text-faint">classes</span></span>
+                  <span><span className="block text-[18px] font-extrabold leading-none tabular-nums text-white">{e.combo_count ?? e.round_count ?? '–'}</span><span className="mt-1 block text-[10.5px] uppercase tracking-[0.6px] text-faint">combos</span></span>
                 </div>
-                {e.updated_at && <div className="mt-1 text-[11px] text-faint">Updated {fmtUpdated(e.updated_at)}</div>}
-                <div className="mt-2 text-[12px] font-bold text-gold">VIEW RESULTS →</div>
+                {e.updated_at && <div className="mt-2 text-[11px] text-faint">Updated {fmtUpdated(e.updated_at)}</div>}
+                <div className="mt-auto pt-3 text-[12px] font-bold text-gold">VIEW RESULTS <span className="inline-block transition-transform group-hover:translate-x-1">→</span></div>
               </>
             )}
           </Link>

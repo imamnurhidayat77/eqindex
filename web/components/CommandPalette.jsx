@@ -125,7 +125,7 @@ export default function CommandPalette({ open, onClose, role }) {
   return (
     <div className="fixed inset-0 z-[80] isolate" role="dialog" aria-modal="true" aria-label="Admin command palette">
       <div aria-hidden="true" onClick={onClose} className="modal-fade absolute inset-0 bg-black/80 backdrop-blur-[3px]" />
-      <div className="modal-pop relative mx-auto mt-[12vh] w-[min(560px,calc(100vw-2rem))] overflow-hidden rounded border border-line shadow-2xl"
+      <div className="modal-pop relative mx-auto mt-[12vh] w-[min(560px,calc(100vw-2rem))] overflow-hidden rounded-lg border border-line shadow-2xl"
         style={{ backgroundColor: '#1E1E1E' }}>
         <div className="h-[3px] bg-gold" aria-hidden="true" />
         <div className="flex items-center gap-2 border-b border-line px-4">
@@ -142,9 +142,9 @@ export default function CommandPalette({ open, onClose, role }) {
             lastGroup = it.group;
             return (
               <div key={it.key}>
-                {head && <div className="px-2.5 pt-2 pb-1 text-[10px] uppercase tracking-[0.8px] text-faint font-bold">{head}</div>}
+                {head && <div className="px-2.5 pt-2 pb-1 text-[12px] text-faint font-semibold">{head}</div>}
                 <button onClick={() => go(it)} onMouseEnter={() => setHi(i)}
-                  className={`flex w-full items-center gap-2.5 rounded px-2.5 py-2 text-left text-[13px] cursor-pointer border-0 ${i === hi ? 'bg-white/10' : 'bg-transparent'}`}>
+                  className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] cursor-pointer border-0 ${i === hi ? 'bg-white/10' : 'bg-transparent'}`}>
                   {it.icon && <span className="w-4 text-center text-gold">{it.icon}</span>}
                   <span className="truncate font-semibold text-white">{it.label}</span>
                   {it.sub && <span className="ml-auto shrink-0 text-[11px] text-faint truncate max-w-[45%]">{it.sub}</span>}

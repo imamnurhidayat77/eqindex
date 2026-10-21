@@ -106,19 +106,19 @@ export default async function EventDetail({ params }) {
         </div>
         <div className="flex gap-2.5 items-center shrink-0 pt-1.5">
           <span className={LIVE}>● LIVE EVENT FEED</span>
-          <span className="text-muted border border-line rounded-full px-3 py-[5px] text-xs">◷ Updated 10 min ago</span>
+          {e.updated_at && <span className="text-muted border border-line rounded-full px-3 py-[5px] text-xs">◷ Updated {(e.updated_at || '').slice(0, 10)}</span>}
         </div>
       </div>
 
       <section className={CARD}>
         <div className="flex items-center gap-2 mb-3">
-          <h2 className={H2}>🎖 Active Competition Summary</h2>
+          <h2 className={H2}>Active Competition Summary</h2>
           <div className="flex-1" />
           <span className={badge(BADGE.gold)}>{grade}</span>
         </div>
         <div className="flex gap-5 items-center">
           <div>
-            <div className="text-[22px] font-extrabold">{e.name}</div>
+            <div className="text-[20px] font-extrabold leading-snug">{e.name}</div>
             <div className="text-muted text-xs mt-1.5">
               Venue: <b className="text-body">{e.venue}</b>&nbsp;&nbsp;
               Region: <b className="text-body">{e.region}, NZ</b>&nbsp;&nbsp;

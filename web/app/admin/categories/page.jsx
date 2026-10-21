@@ -4,6 +4,7 @@ import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, 
 import { useAdminApi } from '../../../components/useAdminApi';
 import { TableRowsSk } from '../../../components/Skeletons';
 import Modal, { ConfirmDialog } from '../../../components/Modal';
+import { PencilIcon, TrashIcon } from '../../../components/AdminTable';
 
 const csvGet = (arr) => (arr || []).join(', ');
 
@@ -115,9 +116,9 @@ export default function AdminCategories() {
                 <td className={`${TD} whitespace-nowrap text-right`}>
                   <span className="inline-flex gap-1.5">
                     <button title={`Edit ${r.key}`} aria-label={`Edit ${r.key}`} onClick={() => startEdit(r)}
-                      className="w-7 h-7 inline-flex items-center justify-center rounded border border-line bg-card2 text-sky hover:text-white hover:border-sky/60 text-[13px] cursor-pointer transition-colors">✎</button>
+                      className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-line bg-card2 text-sky hover:text-white hover:border-sky/60 cursor-pointer transition-colors"><PencilIcon /></button>
                     <button title={`Delete ${r.key}`} aria-label={`Delete ${r.key}`} onClick={() => setDeleting(r)}
-                      className="w-7 h-7 inline-flex items-center justify-center rounded border border-line bg-card2 text-blood hover:border-blood/70 text-[13px] cursor-pointer transition-colors">🗑</button>
+                      className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-line bg-card2 text-blood hover:border-blood/70 cursor-pointer transition-colors"><TrashIcon /></button>
                   </span>
                 </td>
               </tr>

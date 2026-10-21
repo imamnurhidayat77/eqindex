@@ -9,7 +9,7 @@ export default function SurfaceSplits({ rows, subject }) {
       <p className="mb-3 mt-0.5 text-[12.5px] text-muted">
         How {subject} performs by arena type and surface — one venue can host many arenas.
       </p>
-      <section className="mb-6 overflow-x-auto rounded border border-line bg-card">
+      <section className="mb-6 overflow-x-auto rounded-lg border border-line bg-card">
         <table className="w-full min-w-[560px] border-collapse text-[13px]">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wide text-muted">

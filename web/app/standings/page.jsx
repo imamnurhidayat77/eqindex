@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
-import { CARD, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
+import { CARD, H1, H2, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
 import { Pagination } from '../../components/list-controls';
 import { TableEmpty } from '../../components/EmptyState';
 
@@ -76,7 +76,7 @@ export default function Standings() {
         </div>
       )}
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <h1 className="text-[26px] font-extrabold tracking-tight">{open !== null ? (openDiv?.label || 'Division') : 'Standings'}</h1>
+        <h1 className={H1}>{open !== null ? (openDiv?.label || 'Division') : 'Standings'}</h1>
         <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ {metric === 'clear' ? 'Clear rate' : 'Average score'}</span>
       </div>
       <p className={SUB}>{metric === 'clear' ? 'Rider clear rate on each horse — min 3 rounds, rounds column shows sample size.' : 'Average round score per combination — min 3 rounds, rounds column shows sample size.'}</p>
@@ -92,11 +92,11 @@ export default function Standings() {
       )}
       {open === null && (
       <>
-      <h2 className="mb-3 text-[22px] font-extrabold tracking-tight">Divisions</h2>
+      <h2 className={`mb-3 ${H2}`}>Divisions</h2>
       <div className="grid gap-4 md:grid-cols-3 mb-6">
         {divs.map((d) => (
           <button key={d.key} onClick={() => { setOpen(d.key); setPage(1); }}
-            className="group flex items-center justify-between rounded border border-line bg-card p-4 text-left transition hover:border-gold/50">
+            className="group flex items-center justify-between rounded-lg border border-line bg-card p-4 text-left transition hover:border-gold/50">
             <div>
               <div className={`text-[15px] font-bold ${open === d.key ? 'text-gold' : 'text-white group-hover:text-gold'} leading-tight`}>{d.label}{divRange(d) ? ` (${divRange(d)})` : ''}</div>
               <div className="mt-1 text-[12px] text-muted">Average score</div>
@@ -108,7 +108,7 @@ export default function Standings() {
       </>
       )}
       {open !== null && (
-      <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded border border-line bg-card p-4">
+      <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded-lg border border-line bg-card p-4">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Horse or rider…"
             className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 220 }} /></label>

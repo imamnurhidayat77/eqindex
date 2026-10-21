@@ -217,11 +217,11 @@ export default function AdminSeriesReview() {
               </select></label>
             <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Official board URL (optional)
               <input value={checkUrl} onChange={(e) => setCheckUrl(e.target.value)} placeholder="https://www.evoevents.co.nz/resultClass/…"
-                className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" /></label>
+                className="rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" /></label>
             <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">…or paste board text
               <textarea value={checkText} onChange={(e) => setCheckText(e.target.value)} rows={5} spellCheck={false}
                 placeholder={'Lucy Fell 122\nMichelle Wakeling 113'}
-                className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] font-mono text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" /></label>
+                className="rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] font-mono text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" /></label>
           </div>
           <button onClick={runCheck} disabled={busy} className={BTN_PRIMARY}>{busy ? 'Comparing…' : 'Compare boards'}</button>
           {!!diff && (

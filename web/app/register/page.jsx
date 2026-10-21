@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../components/auth';
-import { INP, BTN_PRIMARY, LINK } from '../../lib/tokens';
+import { H1, INP, BTN_PRIMARY, LINK } from '../../lib/tokens';
 
 const ROLES = [
   ['PUBLIC', 'Supporter', 'Follow horses, riders & rankings'],
@@ -67,36 +67,36 @@ export default function Register() {
           <button
             onClick={async () => { if (busyOut) return; setBusyOut(true); try { await logout(); } finally { setBusyOut(false); router.refresh(); } }}
             disabled={busyOut}
-            className="inline-flex items-center gap-2 border border-blood/60 text-blood rounded px-5 py-2.5 text-sm font-bold hover:bg-redbg/40 disabled:opacity-60 disabled:cursor-wait"
+            className="inline-flex items-center gap-2 border border-blood/60 text-blood rounded-md px-5 py-2.5 text-sm font-bold hover:bg-redbg/40 disabled:opacity-60 disabled:cursor-wait"
           >
             {busyOut && <span className="spinner" aria-hidden="true" />}
             {busyOut ? 'Logging out…' : `Switch accounts (log out ${user.name.split(' ')[0]})`}
           </button>
         </div>
       ) : (
-      <div className="mx-auto w-full max-w-[880px] grid md:grid-cols-2 overflow-hidden rounded border border-line bg-card">
+      <div className="mx-auto w-full max-w-[880px] grid md:grid-cols-2 overflow-hidden rounded-lg border border-line bg-card">
         {/* brand panel */}
         <div className="hidden md:flex flex-col justify-between bg-gold p-8 text-black">
           <div>
-            <div className="font-display text-[26px] font-bold uppercase tracking-tight">Join EQIndex</div>
-            <p className="mt-1 text-[13px] font-semibold uppercase tracking-wide opacity-70">One account, full circuit</p>
+            <div className="font-display text-[22px] font-bold uppercase tracking-tight">Join EQIndex</div>
+            <p className="mt-1 text-[12px] font-semibold uppercase tracking-[0.08em] opacity-70">One account, full circuit</p>
           </div>
-          <div className="space-y-3 text-[14px] font-semibold">
-            <div className="border-l-4 border-black/70 pl-3">Personal watchlists & saved comparisons</div>
-            <div className="border-l-4 border-black/40 pl-3">Riders verify & claim their profile</div>
-            <div className="border-l-4 border-black/40 pl-3">Coaches track their whole roster</div>
+          <div className="space-y-2.5 text-[13px] font-semibold leading-snug">
+            <div className="border-l-2 border-black/70 pl-3">Personal watchlists & saved comparisons</div>
+            <div className="border-l-2 border-black/40 pl-3">Tag yourself to find your photos</div>
+            <div className="border-l-2 border-black/40 pl-3">Coaches track their whole roster</div>
           </div>
           <p className="text-[11px] opacity-60">Free for supporters. No card required.</p>
         </div>
         {/* form panel */}
         <div className="p-6 sm:p-8">
-          <h1 className="font-display text-[24px] font-bold uppercase tracking-tight">Create account</h1>
+          <h1 className={H1}>Create account</h1>
           <p className="text-muted text-sm mt-1 mb-5">Start tracking the circuit in under a minute.</p>
           <form onSubmit={submit} className="flex flex-col gap-3.5">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {ROLES.map(([v, t, d]) => (
                 <button type="button" key={v} onClick={() => setForm({ ...form, role: v })}
-                  className={`rounded border p-2.5 text-left transition-colors ${form.role === v ? 'border-gold bg-goldbg' : 'border-line bg-card2 hover:border-faint'}`}>
+                  className={`rounded-md border p-2.5 text-left transition-colors active:scale-[0.99] ${form.role === v ? 'border-gold bg-goldbg' : 'border-line bg-card2 hover:border-faint'}`}>
                   <div className={`text-[13px] font-bold ${form.role === v ? 'text-gold' : 'text-white'}`}>{t}</div>
                   <div className="text-[11px] text-muted mt-0.5 leading-snug">{d}</div>
                 </button>
@@ -126,7 +126,7 @@ export default function Register() {
             <label className="text-xs text-muted flex flex-col gap-1.5">Confirm password
               <input className={`${INP} py-2.5`} type="password" required autoComplete="new-password"
                 value={form.password2} onChange={set('password2')} /></label>
-            {err && <p className="rounded border border-blood/40 bg-redbg/40 px-3 py-2 text-blood text-[13px]">{err}</p>}
+            {err && <p className="rounded-md border border-blood/40 bg-redbg/40 px-3 py-2 text-blood text-[13px]">{err}</p>}
             <button className={`${BTN_PRIMARY} py-2.5 mt-1`} disabled={busy}>{busy ? 'Creating…' : 'Create account →'}</button>
           </form>
           <p className="text-muted text-sm mt-4 text-center">Have an account? <Link className={LINK} href="/login">Log in →</Link></p>

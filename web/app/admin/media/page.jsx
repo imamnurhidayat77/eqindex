@@ -190,7 +190,7 @@ export default function AdminMediaLibrary() {
       {/* edit modal */}
       {editing && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4" onClick={() => setEditing(null)}>
-          <div className="w-full max-w-[520px] rounded border border-line bg-card p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-[520px] rounded-lg border border-line bg-card p-5" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-[16px] font-bold mb-1">Edit photo</h2>
             <p className="text-[13px] text-muted mb-4">{editing.event_name || 'Unsorted'} · {editing.kind}</p>
             {editing.thumb_url && <img src={editing.thumb_url} alt="" className="h-28 w-auto rounded border border-line mb-4" />}

@@ -95,7 +95,7 @@ export default function AddResult() {
           onChange={(e) => { setQ(e.target.value); setVal({ id: '', name: e.target.value }); }}
           placeholder="type to search, or new name…" />
         {!!rows.length && !val.id && (
-          <span className="absolute top-full left-0 mt-1 w-full z-10 block rounded border border-line bg-card2 shadow-xl overflow-hidden">
+          <span className="absolute top-full left-0 mt-1 w-full z-10 block rounded-lg border border-line bg-card2 shadow-xl overflow-hidden">
             {rows.map((r) => (
               <button type="button" key={r.id} onClick={() => { setVal({ id: r.id, name: r.name }); setQ(''); }}
                 className="block w-full text-left px-3 py-2 text-[13px] hover:bg-white/5">{r.name}</button>

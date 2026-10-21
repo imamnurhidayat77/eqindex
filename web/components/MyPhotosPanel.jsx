@@ -68,10 +68,10 @@ export default function MyPhotosPanel({ onCount }) {
       {!!rows?.length && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {rows.map((x) => (
-            <article key={`${x.purchase_id}-${x.media_id}`} className="flex flex-col rounded-xl border border-line bg-card overflow-hidden">
+            <article key={`${x.purchase_id}-${x.media_id}`} className="flex flex-col rounded-lg border border-line bg-card overflow-hidden">
               <div className="aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                 {x.thumb_url || x.preview_url
-                  ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                  ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" className="w-full h-full object-cover" />
                   : <ImageIcon className="h-8 w-8 text-faint" />}
               </div>
               <div className="flex grow flex-col gap-1 p-3">
@@ -103,11 +103,11 @@ export default function MyPhotosPanel({ onCount }) {
           <p className="text-[12.5px] text-muted !mt-0 mb-3">Photos you saved as yourself — buy them to unlock full resolution.</p>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {claimed.map((x) => (
-              <Link key={x.id} href={`/photos/${x.id}`}
-                className="flex flex-col rounded-xl border border-sky/40 bg-card overflow-hidden no-underline hover:border-gold/50 transition">
+              <Link key={x.id} href={`/photos/${x.id}`} aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Photo'}
+                className="flex flex-col rounded-lg border border-sky/40 bg-card overflow-hidden no-underline hover:border-gold/50 transition">
                 <div className="aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                   {x.thumb_url || x.preview_url
-                    ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover" />
+                    ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" className="w-full h-full object-cover" />
                     : <ImageIcon className="h-8 w-8 text-faint" />}
                 </div>
                 <div className="flex grow flex-col gap-1 p-3">

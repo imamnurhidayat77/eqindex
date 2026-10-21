@@ -33,7 +33,7 @@ function AthleteDetail({ a }) {
     <tr>
       <td colSpan={11} className="px-2 py-3 border-b border-rowline bg-ink/40">
 <div className="grid gap-3 md:grid-cols-3">
-                      <div className="rounded border border-line bg-card2 p-3">
+                      <div className="rounded-lg border border-line bg-card2 p-3">
                         <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1.5">Workload</div>
                         <div className="text-[13px] text-muted space-y-1">
                           <div>Shows tracked: <b className="text-white">{a.workload.shows}</b></div>
@@ -43,7 +43,7 @@ function AthleteDetail({ a }) {
                           {a.workload.overloaded && <div className="text-blood font-bold">⚠ Rest recommended — schedule recovery before next entry.</div>}
                         </div>
                       </div>
-                      <div className="rounded border border-line bg-card2 p-3">
+                      <div className="rounded-lg border border-line bg-card2 p-3">
                         <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1.5">Height readiness</div>
                         {a.bandArr.length ? (
                           <div className="space-y-1.5">
@@ -58,7 +58,7 @@ function AthleteDetail({ a }) {
                           </div>
                         ) : <div className="text-[13px] text-faint">No height data.</div>}
                       </div>
-                      <div className="rounded border border-line bg-card2 p-3">
+                      <div className="rounded-lg border border-line bg-card2 p-3">
                         <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-1.5">Partnership matrix</div>
                         {a.matrix ? (
                           <div className="text-[13px] text-muted space-y-1">
@@ -231,7 +231,7 @@ export default function MyStable() {
       </StatGrid>
 
       {/* add athlete */}
-      <div className="mb-4 rounded border border-line bg-card p-4">
+      <div className="mb-4 rounded-lg border border-line bg-card p-4">
         <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-2">Add athlete to roster</div>
         <div className="relative flex flex-wrap gap-2">
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type rider name… (min 2 chars)"
@@ -305,7 +305,7 @@ export default function MyStable() {
           <p className={SUB}>Athletes whose last-5 clear rate trails their career average by 5+ points.</p>
           <div className="grid gap-3 md:grid-cols-3 mb-6">
             {attention.map((a) => (
-              <div key={a.id} className="rounded border border-blood/40 bg-card p-4">
+              <div key={a.id} className="rounded-lg border border-blood/40 bg-card p-4">
                 <div className="flex justify-between items-center">
                   <b><Link className="text-white no-underline hover:text-gold" href={`/riders/${a.slug || a.id}`}>{a.name || a.rider}</Link></b>
                   <span className={badge(BADGE.red)}>↓ Declining</span>

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../components/auth';
-import { INP, BTN_PRIMARY, LINK } from '../../lib/tokens';
+import { H1, INP, BTN_PRIMARY, LINK } from '../../lib/tokens';
 
 function safeNext(v) {
   return v && v.startsWith('/') && !v.startsWith('//') && v !== '/login' && v !== '/register'
@@ -69,7 +69,7 @@ function LoginForm() {
         <button
           onClick={async () => { if (busyOut) return; setBusyOut(true); try { await logout(); } finally { setBusyOut(false); router.refresh(); } }}
           disabled={busyOut}
-          className="inline-flex items-center gap-2 border border-blood/60 text-blood rounded px-5 py-2.5 text-sm font-bold hover:bg-redbg/40 disabled:opacity-60 disabled:cursor-wait"
+          className="inline-flex items-center gap-2 border border-blood/60 text-blood rounded-md px-5 py-2.5 text-sm font-bold hover:bg-redbg/40 disabled:opacity-60 disabled:cursor-wait"
         >
           {busyOut && <span className="spinner" aria-hidden="true" />}
           {busyOut ? 'Logging out…' : `Switch accounts (log out ${user.name.split(' ')[0]})`}
@@ -78,23 +78,23 @@ function LoginForm() {
     );
   }
   return (
-    <div className="mx-auto w-full max-w-[880px] grid md:grid-cols-2 overflow-hidden rounded border border-line bg-card">
+    <div className="mx-auto w-full max-w-[880px] grid md:grid-cols-2 overflow-hidden rounded-lg border border-line bg-card">
       {/* brand panel */}
       <div className="hidden md:flex flex-col justify-between bg-gold p-8 text-black">
         <div>
-          <div className="font-display text-[26px] font-bold uppercase tracking-tight">EQIndex</div>
-          <p className="mt-1 text-[13px] font-semibold uppercase tracking-wide opacity-70">New Zealand show jumping rankings</p>
+          <div className="font-display text-[22px] font-bold uppercase tracking-tight">EQIndex</div>
+          <p className="mt-1 text-[12px] font-semibold uppercase tracking-[0.08em] opacity-70">New Zealand show jumping rankings</p>
         </div>
-        <div className="space-y-3 text-[14px] font-semibold">
-          <div className="border-l-4 border-black/70 pl-3">Placing-based points, updated weekly</div>
-          <div className="border-l-4 border-black/40 pl-3">Horse, rider & combination intelligence</div>
-          <div className="border-l-4 border-black/40 pl-3">Watchlists, forecasts & comparisons</div>
+        <div className="space-y-2.5 text-[13px] font-semibold leading-snug">
+          <div className="border-l-2 border-black/70 pl-3">Placing-based points from every round</div>
+          <div className="border-l-2 border-black/40 pl-3">Horse, rider & combination intelligence</div>
+          <div className="border-l-2 border-black/40 pl-3">Watchlists, forecasts & comparisons</div>
         </div>
         <p className="text-[11px] opacity-60">© 2026 EQIndex Platforms Ltd.</p>
       </div>
       {/* form panel */}
       <div className="p-6 sm:p-8">
-        <h1 className="font-display text-[24px] font-bold uppercase tracking-tight">Welcome back</h1>
+        <h1 className={H1}>Welcome back</h1>
         <p className="text-muted text-sm mt-1 mb-5">Log in to your stable intelligence.</p>
         <form onSubmit={submit} className="flex flex-col gap-3.5">
           <label className="text-xs text-muted flex flex-col gap-1.5">Email address
@@ -108,7 +108,7 @@ function LoginForm() {
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-[12px] text-faint hover:text-white bg-none border-0 cursor-pointer">
                 {show ? 'Hide' : 'Show'}</button>
             </span></label>
-          {err && <p className="rounded border border-blood/40 bg-redbg/40 px-3 py-2 text-blood text-[13px]">{err}</p>}
+          {err && <p className="rounded-md border border-blood/40 bg-redbg/40 px-3 py-2 text-blood text-[13px]">{err}</p>}
           <button className={`${BTN_PRIMARY} py-2.5 mt-1`} disabled={busy}>{busy ? 'Logging in…' : 'Log in →'}</button>
         </form>
         <p className="text-muted text-sm mt-4 text-center">New to EQIndex? <Link className={LINK} href="/register">Create an account →</Link></p>

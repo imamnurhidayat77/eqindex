@@ -49,7 +49,7 @@ export default function Stallions() {
         </div>
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Stallion…"
-            className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 200 }} /></label>
+            className="rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 200 }} /></label>
         <span className="ml-auto text-[12px] text-faint">Clear % split by height · % reaching 1.30m+ · best result</span>
       </div>
       <section className={CARD}>
