@@ -1,7 +1,8 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { API } from '../lib/api';
 import { useAuth } from './auth';
 import { useDismiss } from './useDismiss';
 
@@ -11,6 +12,18 @@ export default function UserMenu() {
   const [open, setOpen] = useState(false);
   const wrapRef = useDismiss(open, () => setOpen(false));
   const [busy, setBusy] = useState(false);
+  const [creditLeft, setCreditLeft] = useState(null);
+  useEffect(() => {
+    if (!open || creditLeft !== null) return;
+    fetch(`${API}/api/my/credits`, { credentials: 'include' })
+      .then((r) => r.json().catch(() => ({})))
+      .then((j) => {
+        const rows = Array.isArray(j.data) ? j.data : [];
+        setCreditLeft(rows.reduce((s, b) => s + Number(b.slots_left || 0), 0));
+      })
+      .catch(() => setCreditLeft(0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   if (loading) {
     return <span className="w-8 h-8 rounded-full border-[1.5px] border-line inline-flex items-center justify-center text-[15px]">🐎</span>;
   }
@@ -42,6 +55,14 @@ export default function UserMenu() {
           <span className="block px-2 py-1.5 text-[13px] font-bold text-white truncate">{user.name}</span>
           <span className="block px-2 pb-1.5 text-[11px] text-muted">{user.email} · {user.role}</span>
           <Link href="/watchlist" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">My Watchlist</Link>
+          <Link href="/photos/library" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">My Photos</Link>
+          <Link href="/reels" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">My Reels</Link>
+          <Link href="/credits" onClick={() => setOpen(false)} className="flex items-center justify-between px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">
+            <span>My Credits</span>
+            {Number(creditLeft) > 0 && (
+              <span className="rounded-full bg-goldbg px-1.5 py-px text-[10.5px] font-bold text-gold">{creditLeft} left</span>
+            )}
+          </Link>
           {user.role === 'ADMIN' && (
             <>
               <Link href="/admin" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-gold no-underline hover:text-white">⛨ Admin Console</Link>
