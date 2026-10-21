@@ -103,16 +103,19 @@ export function NavSearch() {
       const my = ++seq.current;
       const s = v.trim();
       try {
-        const [hj, rj] = await Promise.all([
-          (await fetch(`${API}/api/horses/search?q=${encodeURIComponent(s)}&limit=5`)).json().catch(() => ({})),
-          (await fetch(`${API}/api/riders/search?q=${encodeURIComponent(s)}&limit=5`)).json().catch(() => ({})),
+        const [hj, rj, ej] = await Promise.all([
+          (await fetch(`${API}/api/horses/search?q=${encodeURIComponent(s)}&limit=4`)).json().catch(() => ({})),
+          (await fetch(`${API}/api/riders/search?q=${encodeURIComponent(s)}&limit=4`)).json().catch(() => ({})),
+          (await fetch(`${API}/api/events/search?q=${encodeURIComponent(s)}&limit=4`)).json().catch(() => ({})),
         ]);
         if (seq.current !== my) return; // stale response
         const h = (Array.isArray(hj.data) ? hj.data : [])
           .map((x) => ({ id: x.id, name: x.name, kind: 'horse' }));
         const r = (Array.isArray(rj.data) ? rj.data : [])
           .map((x) => ({ id: x.id, name: x.name, kind: 'rider' }));
-        setHits([...h, ...r]);
+        const e = (Array.isArray(ej.data) ? ej.data : [])
+          .map((x) => ({ id: x.id, name: x.name, sub: x.venue, kind: 'event' }));
+        setHits([...h, ...r, ...e]);
         setOpen(true);
       } catch {
         if (seq.current === my) { setHits([]); setOpen(true); }
@@ -123,8 +126,9 @@ export function NavSearch() {
   function go(i) {
     const t = hits[i];
     if (!t) return;
-    setOpen(false); setQ('');
-    router.push(`/${t.kind === 'horse' ? 'horses' : 'riders'}/${t.id}`);
+    setOpen(false); setQ(''); setHits([]); clearTimeout(timer.current);
+    const base = t.kind === 'horse' ? 'horses' : t.kind === 'rider' ? 'riders' : 'events';
+    router.push(`/${base}/${t.id}`);
   }
 
   return (
@@ -148,10 +152,13 @@ export function NavSearch() {
           {hits.map((t, i) => (
             <button key={`${t.kind}-${t.id}`} onMouseDown={(e) => e.preventDefault()} onClick={() => go(i)}
               onMouseEnter={() => setHi(i)}
-              className={`flex w-full items-center justify-between px-3 py-2 text-left text-[13px] ${i === hi ? 'bg-white/10' : ''}`}>
-              <span className="truncate font-semibold text-white">{t.name}</span>
-              <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${t.kind === 'horse' ? 'bg-goldbg text-gold' : 'bg-bluebg text-sky'}`}>
-                {t.kind === 'horse' ? 'HORSE' : 'RIDER'}
+              className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] ${i === hi ? 'bg-white/10' : ''}`}>
+              <span className="min-w-0">
+                <span className="block truncate font-semibold text-white">{t.name}</span>
+                {t.sub ? <span className="block truncate text-[11px] text-muted">{t.sub}</span> : null}
+              </span>
+              <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${t.kind === 'horse' ? 'bg-goldbg text-gold' : t.kind === 'rider' ? 'bg-bluebg text-sky' : 'bg-green-500/15 text-green-400'}`}>
+                {t.kind === 'horse' ? 'HORSE' : t.kind === 'rider' ? 'RIDER' : 'EVENT'}
               </span>
             </button>
           ))}
@@ -159,7 +166,7 @@ export function NavSearch() {
       )}
       {open && q.trim().length >= 2 && !hits.length && (
         <div className="absolute right-0 z-20 mt-1 w-[260px] rounded border border-line bg-card2 px-3 py-2 text-[12px] text-muted">
-          No horses or riders found.
+          No horses, riders or events found.
         </div>
       )}
     </div>

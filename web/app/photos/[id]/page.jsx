@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { getJSON } from '../../../lib/api';
 import { CARD, H1, SUB } from '../../../lib/tokens';
 import BuyBox from '../../../components/BuyBox';
-import PackageUpsell from '../../../components/PackageUpsell';
+import PackageUpsell, { EventPackageUpsell } from '../../../components/PackageUpsell';
 import ClaimButton from '../../../components/ClaimButton';
 import CreditBuyButton from '../../../components/CreditBuyButton';
 import TakedownButton from '../../../components/TakedownButton';
@@ -150,6 +150,9 @@ export default async function PhotoDetail({ params, searchParams }) {
               <CreditBuyButton eventId={d.event_id}
                 horseId={d.rider_id ? null : d.horse_id}
                 riderId={d.rider_id || null} />
+            )}
+            {d.event_id && (
+              <EventPackageUpsell eventId={d.event_id} eventName={d.event_name} />
             )}
             <MomentBundle eventId={d.event_id} horseId={d.horse_id} riderId={d.rider_id} currentId={d.id} currentKind={d.kind} />
           </section>

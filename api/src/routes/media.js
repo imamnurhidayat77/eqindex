@@ -330,14 +330,16 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // Insert a published photo into every matching auto package
-  // (same event × same horse and/or same rider). Idempotent.
+  // (same event × same horse and/or same rider, plus whole-event packages
+  // with no subject). Idempotent.
   async function refreshAutoPackages(poolQ, media) {
-    if (!media.event_id || (!media.horse_id && !media.rider_id)) return [];
+    if (!media.event_id) return [];
     const { rows } = await poolQ.query(
       `SELECT id FROM packages
         WHERE status = 'published' AND auto = true AND event_id = $1
           AND ((horse_id IS NOT NULL AND horse_id = $2)
-            OR (rider_id IS NOT NULL AND rider_id = $3))`,
+            OR (rider_id IS NOT NULL AND rider_id = $3)
+            OR (horse_id IS NULL AND rider_id IS NULL))`,
       [media.event_id, media.horse_id, media.rider_id]
     );
     for (const p of rows) {
@@ -505,16 +507,74 @@ module.exports = function mountMediaRoutes(app) {
     withUrls(rows);
     res.json({ data: rows });
   }));
-  // Public: packages for a photo's event × subject (upsell block).
+  // ---- Managed packages: always available, no manual creation ----
+  // Whole-event price is set once in admin (admin_settings
+  // 'event_package_price_cents', global); empty/unset falls back to the auto
+  // rule over current media. Subject scope (event x horse/rider) always uses
+  // the auto rule — manual rows with custom prices take precedence and are
+  // returned as real rows, never synthesized or overwritten. Managed rows
+  // (auto=true) materialize on demand at checkout; reads stay write-free
+  // (virtual rows).
+  async function packageSnapshot(poolQ, { event_id, horse_id = null, rider_id = null }) {
+    const ev = await poolQ.query('SELECT id, name FROM events WHERE id = $1', [event_id]);
+    if (!ev.rows.length) return null;
+    const conds = [`m.status = 'published'`, 'm.event_id = $1'];
+    const params = [event_id];
+    if (horse_id) { params.push(horse_id); conds.push(`m.horse_id = $${params.length}`); }
+    if (rider_id) { params.push(rider_id); conds.push(`m.rider_id = $${params.length}`); }
+    const { rows } = await poolQ.query(
+      `SELECT COUNT(*)::INT AS items,
+          COUNT(*) FILTER (WHERE m.kind = 'reel')::INT AS reels,
+          COALESCE(SUM(COALESCE(t.price_cents, 0)), 0)::INT AS sum,
+          COALESCE(MAX(t.price_cents), 0)::INT AS single_max
+        FROM media m LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
+        WHERE ${conds.join(' AND ')}`,
+      params
+    );
+    const s = rows[0] || { items: 0, reels: 0, sum: 0, single_max: 0 };
+    let who = null;
+    if (horse_id) {
+      const h = await poolQ.query('SELECT name FROM horses WHERE id = $1', [horse_id]);
+      who = h.rows[0]?.name || 'horse';
+    } else if (rider_id) {
+      const r = await poolQ.query('SELECT name FROM riders WHERE id = $1', [rider_id]);
+      who = r.rows[0]?.name || 'rider';
+    }
+    if (!s.items) return { event: ev.rows[0], who, items: 0, reels: 0, price: 0 };
+    let price;
+    if (!horse_id && !rider_id) {
+      let fixed = 0;
+      try {
+        const set = await poolQ.query(
+          `SELECT value FROM admin_settings WHERE key = 'event_package_price_cents'`);
+        fixed = parseInt(String(set.rows[0]?.value || '').trim(), 10);
+        if (!Number.isInteger(fixed) || fixed < 0) fixed = 0;
+      } catch { fixed = 0; }
+      price = fixed > 0 ? fixed
+        : Math.max(Math.floor(0.6 * Number(s.sum)), Number(s.single_max));
+    } else {
+      price = Math.max(Math.floor(0.6 * Number(s.sum)), Number(s.single_max));
+    }
+    return { event: ev.rows[0], who, items: s.items, reels: s.reels, price };
+  }
+  const packageTitle = (snap) => snap.who
+    ? `All ${snap.items} photos of ${snap.who} at ${snap.event.name}`
+    : `All ${snap.items} photos at ${snap.event.name}`;
+
+  // Public: packages for a photo's event × subject (upsell block), or for the
+  // whole event when called with only ?event_id=. Real rows first, otherwise
+  // a virtual row synthesized from the live snapshot — so a package card
+  // shows on every photo whose scope has photos, with zero admin setup.
   app.get('/photos/packages', asyncH(async (req, res) => {
     const { event_id, horse_id, rider_id } = req.query;
-    if (!event_id || (!horse_id && !rider_id)) {
-      return res.status(400).json({ error: 'need {event_id} + {horse_id|rider_id}' });
+    if (!event_id || (!!horse_id && !!rider_id)) {
+      return res.status(400).json({ error: 'need {event_id} + zero or one of {horse_id, rider_id}' });
     }
     const conds = [`pk.status = 'published'`, 'pk.event_id = $1'];
     const params = [event_id];
     if (horse_id) { params.push(horse_id); conds.push(`pk.horse_id = $${params.length}`); }
-    else { params.push(rider_id); conds.push(`pk.rider_id = $${params.length}`); }
+    else if (rider_id) { params.push(rider_id); conds.push(`pk.rider_id = $${params.length}`); }
+    else { conds.push('pk.horse_id IS NULL AND pk.rider_id IS NULL'); }
     const { rows } = await pool.query(
       `SELECT pk.*, (SELECT COUNT(*)::INT FROM package_items WHERE package_id = pk.id) AS items,
           (SELECT COUNT(*)::INT FROM package_items pi JOIN media m ON m.id = pi.media_id
@@ -522,6 +582,21 @@ module.exports = function mountMediaRoutes(app) {
         FROM packages pk WHERE ${conds.join(' AND ')} ORDER BY pk.price_cents LIMIT 10`,
       params
     );
+    if (rows.length) return res.json({ data: rows });
+    const snap = await packageSnapshot(pool, {
+      event_id, horse_id: horse_id || null, rider_id: rider_id || null,
+    });
+    if (snap && snap.items > 0) {
+      const tag = horse_id ? `rider:0:horse:${horse_id}` : rider_id ? `rider:${rider_id}:horse:0` : 'event';
+      return res.json({ data: [{
+        id: `virtual:${event_id}:${tag}`, virtual: true, event_id,
+        horse_id: horse_id || null, rider_id: rider_id || null,
+        title: packageTitle(snap),
+        price_cents: snap.price, items: snap.items, reels: snap.reels,
+        early_price_cents: null, early_until: null,
+        auto: true, status: 'published',
+      }] });
+    }
     res.json({ data: rows });
   }));
 
@@ -645,17 +720,20 @@ module.exports = function mountMediaRoutes(app) {
   const TIER_RE = /^[a-z0-9_-]{1,32}$/i;
   const normEmail = (v) => String(v || '').trim().toLowerCase().slice(0, 254);
 
-  // POST /api/checkout {media_id|package_id, license_tier?, email?, idempotency_key?}
+  // POST /api/checkout {media_id|package_id|whole_event+event_id, license_tier?, email?, idempotency_key?}
   // Login required: purchases bind to the buyer account (buyer_user_id).
+  // whole_event: buys the managed whole-event package, materializing its row
+  // on demand (no manual package creation needed).
   app.post('/api/checkout', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
     if (throttled(req.ip, 'checkout')) return res.status(429).json({ error: 'too many requests, try again later' });
-    const { media_id, package_id, license_tier, email, idempotency_key } = req.body || {};
-    if (!!media_id === !!package_id) {
-      return res.status(400).json({ error: 'need exactly one of {media_id, package_id}' });
+    const { media_id, package_id, event_id, whole_event, license_tier, email, idempotency_key } = req.body || {};
+    if (!!media_id === !!package_id && !whole_event) {
+      return res.status(400).json({ error: 'need exactly one of {media_id, package_id} or {whole_event + event_id}' });
     }
     if (media_id && !UUID_RE.test(String(media_id))) return res.status(400).json({ error: 'bad media_id' });
     if (package_id && !UUID_RE.test(String(package_id))) return res.status(400).json({ error: 'bad package_id' });
+    if (whole_event && (!event_id || !UUID_RE.test(String(event_id)))) return res.status(400).json({ error: 'need {event_id}' });
     if (license_tier !== undefined && license_tier !== null && !TIER_RE.test(String(license_tier))) {
       return res.status(400).json({ error: 'bad license_tier' });
     }
@@ -702,13 +780,43 @@ module.exports = function mountMediaRoutes(app) {
       if (!Number.isInteger(amount) || amount <= 0) return res.status(409).json({ error: 'no price set for this photo' });
       title = `${row.horse_id || row.rider_id ? '' : 'Event '}photo${row.moment ? ` (${row.moment})` : ''} · ${tierId}`;
       mediaId = row.id;
-    } else {
+    } else if (package_id) {
       const pk = await pool.query(`SELECT * FROM packages WHERE id = $1 AND status = 'published'`, [package_id]);
       if (!pk.rows.length) return res.status(404).json({ error: 'package not found or not for sale' });
       amount = earlyPriceOf(pk.rows[0]) ?? pk.rows[0].price_cents;
       if (!Number.isInteger(amount) || amount <= 0) return res.status(409).json({ error: 'no price set for this package' });
       title = pk.rows[0].title;
       packageId = pk.rows[0].id;
+    } else {
+      // Whole-event managed package: find-or-create the row (race-free via
+      // partial unique index), refresh price/title + snapshot current media.
+      const snap = await eventPackageSnapshot(pool, String(event_id));
+      if (!snap) return res.status(404).json({ error: 'event not found' });
+      if (!snap.items) return res.status(409).json({ error: 'no photos for sale in this event yet' });
+      if (!Number.isInteger(snap.price) || snap.price <= 0) {
+        return res.status(409).json({ error: 'no price set for this package' });
+      }
+      const photographer = await activePhotographer(pool, null);
+      const up = await pool.query(
+        `INSERT INTO packages (photographer_id, event_id, title, price_cents, auto, status)
+          VALUES ($1, $2, $3, $4, true, 'published')
+          ON CONFLICT (event_id) WHERE auto IS TRUE AND horse_id IS NULL AND rider_id IS NULL
+          DO UPDATE SET title = EXCLUDED.title, price_cents = EXCLUDED.price_cents
+          RETURNING *`,
+        [photographer.id, snap.event.id,
+          `All ${snap.items} photos at ${snap.event.name}`, snap.price]
+      );
+      const pkRow = up.rows[0];
+      await pool.query(
+        `INSERT INTO package_items (package_id, media_id)
+          SELECT $1, m.id FROM media m WHERE m.status = 'published' AND m.event_id = $2
+          ON CONFLICT DO NOTHING`,
+        [pkRow.id, snap.event.id]
+      );
+      amount = earlyPriceOf(pkRow) ?? pkRow.price_cents;
+      if (!Number.isInteger(amount) || amount <= 0) return res.status(409).json({ error: 'no price set for this package' });
+      title = pkRow.title;
+      packageId = pkRow.id;
     }
     // ---- Already-owned guard: a paid entitlement grants lifetime re-downloads,
     // so selling the same photo/package twice just double-charges the buyer.
@@ -1300,12 +1408,13 @@ module.exports = function mountMediaRoutes(app) {
     });
   }));
 
-  // ---- Packages: auto-create per event × horse/rider (plan §3.4) ----
-  // POST /admin/packages {event_id, horse_id?, rider_id?, price_cents?}
+  // ---- Packages: auto-create per event × horse/rider, or whole-event
+  // when neither horse nor rider is given (plan §3.4) ----
+  // POST /admin/packages {event_id, horse_id?, rider_id?, price_cents?, title?}
   app.post('/admin/packages', needRole('ADMIN'), asyncH(async (req, res) => {
     const { event_id, horse_id, rider_id, price_cents, title } = req.body || {};
-    if (!event_id || (!!horse_id === !!rider_id)) {
-      return res.status(400).json({ error: 'need {event_id} + exactly one of {horse_id, rider_id}' });
+    if (!event_id || (!!horse_id && !!rider_id)) {
+      return res.status(400).json({ error: 'need {event_id} + zero or one of {horse_id, rider_id}' });
     }
     const ev = await pool.query('SELECT id, name FROM events WHERE id = $1', [event_id]);
     if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
@@ -1315,30 +1424,45 @@ module.exports = function mountMediaRoutes(app) {
       if (!hid) return;
       const h = await pool.query('SELECT name FROM horses WHERE id = $1', [hid]);
       who = { col: 'horse_id', id: hid, name: h.rows[0]?.name || 'horse' };
-    } else {
+    } else if (rider_id) {
       const rid = await resolveId('riders', rider_id, res);
       if (!rid) return;
       const r = await pool.query('SELECT name FROM riders WHERE id = $1', [rid]);
       who = { col: 'rider_id', id: rid, name: r.rows[0]?.name || 'rider' };
     }
     const photographer = await activePhotographer(pool, req.body?.photographer_id);
-    const items = await pool.query(
-      `SELECT m.id, COALESCE(t.price_cents, 0) AS price_cents FROM media m
-        LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
-        WHERE m.status = 'published' AND m.event_id = $1 AND m.${who.col} = $2`,
-      [event_id, who.id]
-    );
-    if (!items.rows.length) return res.status(409).json({ error: 'no published photos for this event × subject' });
+    const items = who
+      ? await pool.query(
+        `SELECT m.id, COALESCE(t.price_cents, 0) AS price_cents FROM media m
+          LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
+          WHERE m.status = 'published' AND m.event_id = $1 AND m.${who.col} = $2`,
+        [event_id, who.id]
+      )
+      : await pool.query(
+        `SELECT m.id, COALESCE(t.price_cents, 0) AS price_cents FROM media m
+          LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
+          WHERE m.status = 'published' AND m.event_id = $1`,
+        [event_id]
+      );
+    if (!items.rows.length) return res.status(409).json({ error: who ? 'no published photos for this event × subject' : 'no published photos for this event' });
     const sum = items.rows.reduce((s, x) => s + Number(x.price_cents), 0);
     const singleMax = Math.max(...items.rows.map((x) => Number(x.price_cents)));
     const auto = price_cents !== undefined && price_cents !== null ? Math.max(0, parseInt(price_cents, 10) || 0)
       : Math.max(Math.floor(0.6 * sum), singleMax);
-    const { rows } = await pool.query(
-      `INSERT INTO packages (photographer_id, event_id, ${who.col}, title, price_cents, auto, status)
-        VALUES ($1, $2, $3, $4, $5, true, 'published') RETURNING *`,
-      [photographer.id, event_id, who.id,
-        title || `All ${items.rows.length} photos of ${who.name} at ${ev.rows[0].name}`, auto]
-    );
+    const defaultTitle = who
+      ? `All ${items.rows.length} photos of ${who.name} at ${ev.rows[0].name}`
+      : `All ${items.rows.length} photos at ${ev.rows[0].name}`;
+    const { rows } = who
+      ? await pool.query(
+        `INSERT INTO packages (photographer_id, event_id, ${who.col}, title, price_cents, auto, status)
+          VALUES ($1, $2, $3, $4, $5, true, 'published') RETURNING *`,
+        [photographer.id, event_id, who.id, title || defaultTitle, auto]
+      )
+      : await pool.query(
+        `INSERT INTO packages (photographer_id, event_id, title, price_cents, auto, status)
+          VALUES ($1, $2, $3, $4, true, 'published') RETURNING *`,
+        [photographer.id, event_id, title || defaultTitle, auto]
+      );
     await pool.query(
       `INSERT INTO package_items (package_id, media_id)
         SELECT $1, unnest($2::uuid[]) ON CONFLICT DO NOTHING`,
@@ -1356,6 +1480,33 @@ module.exports = function mountMediaRoutes(app) {
         ORDER BY pk.created_at DESC LIMIT 100`
     );
     res.json({ data: rows });
+  }));
+
+  // ---- Global shop settings (whole-event package price, etc.) ----
+  const SETTING_KEYS = ['event_package_price_cents'];
+  app.get('/admin/settings', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT key, value FROM admin_settings WHERE key = ANY($1)`, [SETTING_KEYS]);
+    const data = {};
+    for (const k of SETTING_KEYS) data[k] = rows.find((r) => r.key === k)?.value ?? '';
+    res.json({ data });
+  }));
+  app.patch('/admin/settings', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { key, value } = req.body || {};
+    if (!SETTING_KEYS.includes(key)) return res.status(400).json({ error: 'unknown setting' });
+    const v = String(value ?? '').trim();
+    if (key === 'event_package_price_cents' && v !== '') {
+      const n = parseInt(v, 10);
+      if (!Number.isInteger(n) || n < 0) {
+        return res.status(400).json({ error: 'price must be a non-negative integer (cents)' });
+      }
+    }
+    await pool.query(
+      `INSERT INTO admin_settings (key, value) VALUES ($1, $2)
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [key, v]);
+    audit(req, 'setting.edit', 'setting', key, { value: v });
+    res.json({ data: { key, value: v } });
   }));
 
   // ---- License tiers (admin CRUD; buyers read prices via GET /api/license-tiers) ----

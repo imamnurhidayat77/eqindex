@@ -639,6 +639,20 @@ module.exports = function mountPublicRoutes(app) {
     res.json({ data: rows });
   }));
 
+  app.get('/api/events/search', asyncH(async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json({ data: [] });
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    const { rows } = await pool.query(
+      `SELECT id, name, slug, venue, date_start FROM events
+        WHERE (name ILIKE $1 OR COALESCE(venue, '') ILIKE $1)
+          AND is_active IS NOT FALSE
+        ORDER BY date_start DESC LIMIT $2`,
+      [`%${q}%`, limit]
+    );
+    res.json({ data: rows });
+  }));
+
   // ---- Stable-lite: training & health per horse ----
   app.get('/horses/:id/training', asyncH(async (req, res) => {
     req.params.id = await resolveId('horses', req.params.id, res);
