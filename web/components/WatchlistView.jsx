@@ -50,11 +50,11 @@ function ThumbGrid({ photos }) {
   return (
     <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
       {photos.map((x) => (
-        <Link key={x.id} href={`/photos/${x.id}`} className="block rounded border border-line bg-card overflow-hidden no-underline hover:border-gold/50">
+        <Link key={x.id} href={`/photos/${x.id}`} aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Photo'} className="block rounded-md border border-line bg-card overflow-hidden no-underline hover:border-gold/50">
           <div className="aspect-square flex items-center justify-center overflow-hidden">
             {x.thumb_url || x.preview_url
-              ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover" />
-              : <span className="text-lg">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
+              ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" className="w-full h-full object-cover" />
+              : <span className="text-lg" aria-hidden="true">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
           </div>
         </Link>
       ))}
@@ -317,8 +317,8 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
       {/* Hasil vs Foto: niat berbeda, layar berbeda. Jualan hanya di tab Foto. */}
       <div className="flex gap-1 bg-card2 border border-line rounded p-1 w-fit mb-4" role="tablist" aria-label="Watchlist view">
         {[
-          ['results', 'Hasil'],
-          ['photos', `Foto${totalShots ? ` (${totalShots})` : ''}`],
+          ['results', 'Results'],
+          ['photos', `Photos${totalShots ? ` (${totalShots})` : ''}`],
         ].map(([k, lbl]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
             className={`px-3.5 py-[7px] rounded-md text-[13px] whitespace-nowrap cursor-pointer border-0 ${tab === k ? 'bg-card text-gold font-bold' : 'bg-transparent text-muted hover:text-white'}`}>
