@@ -4,6 +4,7 @@ import { API } from '../../../lib/api';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { TableRowsSk } from '../../../components/Skeletons';
+import { RowBtn, FilterSelect } from '../../../components/TableBits';
 import EntityPicker from '../../../components/EntityPicker';
 
 const nzd = (c) => (c === null || c === undefined || c === '' ? '—' : `NZ$${(Number(c) / 100).toFixed(2)}`);
@@ -339,8 +340,10 @@ export default function AdminPricing() {
                     onChange={(e) => setEdit(t.id, 'is_hidden', e.target.checked)} />
                 </td>
                 <td className={`${TD} whitespace-nowrap text-right`}>
-                  <button onClick={() => saveTier(t)} disabled={busy} className="text-sky text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2">Save</button>
-                  <button onClick={() => removeTier(t)} className="text-faint text-[13px] hover:text-blood bg-none border-0 cursor-pointer">Delete</button>
+                  <span className="inline-flex gap-1.5">
+                    <RowBtn onClick={() => saveTier(t)} disabled={busy}>Save</RowBtn>
+                    <RowBtn onClick={() => removeTier(t)} tone="danger">Delete</RowBtn>
+                  </span>
                 </td>
               </tr>
               );
@@ -409,20 +412,20 @@ export default function AdminPricing() {
                 <td className={`${TD} ${NUM}`}><input value={pkgEdits[p.id]?.early_price_cents ?? toNZD(p.early_price_cents)} onChange={(e) => setPkg(p.id, 'early_price_cents', e.target.value)} inputMode="decimal" placeholder="—" className={INP} style={{ width: 90 }} /></td>
                 <td className={TD}><input type="date" value={pkgEdits[p.id]?.early_until ?? (p.early_until || '').slice(0, 10)} onChange={(e) => setPkg(p.id, 'early_until', e.target.value)} className={INP} style={{ width: 140 }} /></td>
                 <td className={TD}>
-                  <select value={pval(p, 'status')} onChange={(e) => setPkg(p.id, 'status', e.target.value)} className={INP}>
-                    <option value="draft">draft</option>
-                    <option value="published">published</option>
-                    <option value="archived">archived</option>
-                  </select>
+                  <FilterSelect ariaLabel="Package status" value={pval(p, 'status')}
+                    onChange={(v) => setPkg(p.id, 'status', v)}
+                    options={[['draft', 'Draft'], ['published', 'Published'], ['archived', 'Archived']]} />
                 </td>
                 <td className={`${TD} whitespace-nowrap text-right`}>
-                  <button onClick={() => togglePackageStatus(p)} disabled={busy}
-                    title={p.status === 'published' ? 'Hide from buyers' : 'Show to buyers'}
-                    className="text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2 text-gold">
-                    {p.status === 'published' ? 'Hide' : 'Show'}
-                  </button>
-                  <button onClick={() => savePackage(p)} disabled={busy} className="text-sky text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2">Save</button>
-                  <button onClick={() => removePackage(p)} className="text-faint text-[13px] hover:text-blood bg-none border-0 cursor-pointer">Delete</button>
+                  <span className="inline-flex gap-1.5">
+                    <RowBtn onClick={() => togglePackageStatus(p)} disabled={busy}
+                      title={p.status === 'published' ? 'Hide from buyers' : 'Show to buyers'}
+                      tone={p.status === 'published' ? 'gold' : 'muted'}>
+                      {p.status === 'published' ? 'Hide' : 'Show'}
+                    </RowBtn>
+                    <RowBtn onClick={() => savePackage(p)} disabled={busy}>Save</RowBtn>
+                    <RowBtn onClick={() => removePackage(p)} tone="danger">Delete</RowBtn>
+                  </span>
                 </td>
               </tr>
             ))}
@@ -480,30 +483,27 @@ export default function AdminPricing() {
                 <td className={TD}><input value={rval(r, 'name')} onChange={(e) => setReel(r.id, 'name', e.target.value)} className={INP} style={{ minWidth: 140 }} /></td>
                 <td className={`${TD} text-muted text-[13px]`}>{r.event_name || 'All'}</td>
                 <td className={TD}>
-                  <select value={rval(r, 'scope')} onChange={(e) => setReel(r.id, 'scope', e.target.value)} className={INP}>
-                    <option value="clip">clip</option>
-                    <option value="round">round</option>
-                    <option value="event">event</option>
-                  </select>
+                  <FilterSelect ariaLabel="Reel scope" value={rval(r, 'scope')}
+                    onChange={(v) => setReel(r.id, 'scope', v)}
+                    options={[['clip', 'Clip'], ['round', 'Round'], ['event', 'Event']]} />
                 </td>
                 <td className={TD}>
-                  <select value={rval(r, 'coverage')} onChange={(e) => setReel(r.id, 'coverage', e.target.value)} className={INP}>
-                    <option value="ring">ring</option>
-                    <option value="full">full</option>
-                  </select>
+                  <FilterSelect ariaLabel="Reel coverage" value={rval(r, 'coverage')}
+                    onChange={(v) => setReel(r.id, 'coverage', v)}
+                    options={[['ring', 'Ring'], ['full', 'Full']]} />
                 </td>
                 <td className={TD}><input type="checkbox" checked={!!(reelEdits[r.id]?.includes_raw ?? r.includes_raw)} onChange={(e) => setReel(r.id, 'includes_raw', e.target.checked)} /></td>
                 <td className={`${TD} ${NUM}`}><input value={rvalNZD(r)} onChange={(e) => setReel(r.id, 'price_cents', e.target.value)} inputMode="decimal" placeholder="NZ$" className={INP} style={{ width: 100 }} /></td>
                 <td className={TD}>
-                  <select value={rval(r, 'status')} onChange={(e) => setReel(r.id, 'status', e.target.value)} className={INP}>
-                    <option value="draft">draft</option>
-                    <option value="published">published</option>
-                    <option value="archived">archived</option>
-                  </select>
+                  <FilterSelect ariaLabel="Reel status" value={rval(r, 'status')}
+                    onChange={(v) => setReel(r.id, 'status', v)}
+                    options={[['draft', 'Draft'], ['published', 'Published'], ['archived', 'Archived']]} />
                 </td>
                 <td className={`${TD} whitespace-nowrap text-right`}>
-                  <button onClick={() => saveReel(r)} disabled={busy} className="text-sky text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2">Save</button>
-                  <button onClick={() => removeReel(r)} className="text-faint text-[13px] hover:text-blood bg-none border-0 cursor-pointer">Delete</button>
+                  <span className="inline-flex gap-1.5">
+                    <RowBtn onClick={() => saveReel(r)} disabled={busy}>Save</RowBtn>
+                    <RowBtn onClick={() => removeReel(r)} tone="danger">Delete</RowBtn>
+                  </span>
                 </td>
               </tr>
             ))}
@@ -551,26 +551,25 @@ export default function AdminPricing() {
               <tr key={c.id} className="border-b border-rowline last:border-0">
                 <td className={`${TD} text-muted text-[13px]`}>{c.event_name || 'All'}</td>
                 <td className={TD}>
-                  <select value={cval(c, 'scope_type')} onChange={(e) => setCredit(c.id, 'scope_type', e.target.value)} className={INP}>
-                    <option value="rider">rider</option>
-                    <option value="horse">horse</option>
-                  </select>
+                  <FilterSelect ariaLabel="Credit applies to" value={cval(c, 'scope_type')}
+                    onChange={(v) => setCredit(c.id, 'scope_type', v)}
+                    options={[['rider', 'Rider'], ['horse', 'Horse']]} />
                 </td>
                 <td className={`${TD} ${NUM}`}><input value={cval(c, 'slots') ?? ''} onChange={(e) => setCredit(c.id, 'slots', e.target.value)} inputMode="numeric" className={INP} style={{ width: 60 }} /></td>
                 <td className={`${TD} ${NUM}`}><input value={cvalNZD(c)} onChange={(e) => setCredit(c.id, 'price_cents', e.target.value)} inputMode="decimal" placeholder="NZ$" className={INP} style={{ width: 100 }} /></td>
                 <td className={`${TD} ${NUM}`}><input value={creditEdits[c.id]?.early_price_cents ?? toNZD(c.early_price_cents)} onChange={(e) => setCredit(c.id, 'early_price_cents', e.target.value)} inputMode="decimal" placeholder="—" className={INP} style={{ width: 90 }} /></td>
                 <td className={TD}><input type="date" value={creditEdits[c.id]?.early_until ?? (c.early_until || '').slice(0, 10)} onChange={(e) => setCredit(c.id, 'early_until', e.target.value)} className={INP} style={{ width: 140 }} /></td>
                 <td className={TD}>
-                  <select value={cval(c, 'status')} onChange={(e) => setCredit(c.id, 'status', e.target.value)} className={INP}>
-                    <option value="draft">draft</option>
-                    <option value="published">published</option>
-                    <option value="archived">archived</option>
-                  </select>
+                  <FilterSelect ariaLabel="Credit status" value={cval(c, 'status')}
+                    onChange={(v) => setCredit(c.id, 'status', v)}
+                    options={[['draft', 'Draft'], ['published', 'Published'], ['archived', 'Archived']]} />
                 </td>
                 <td className={`${TD} ${NUM}`}>{c.bundles}</td>
                 <td className={`${TD} whitespace-nowrap text-right`}>
-                  <button onClick={() => saveCredit(c)} disabled={busy} className="text-sky text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2">Save</button>
-                  <button onClick={() => removeCredit(c)} className="text-faint text-[13px] hover:text-blood bg-none border-0 cursor-pointer">Delete</button>
+                  <span className="inline-flex gap-1.5">
+                    <RowBtn onClick={() => saveCredit(c)} disabled={busy}>Save</RowBtn>
+                    <RowBtn onClick={() => removeCredit(c)} tone="danger">Delete</RowBtn>
+                  </span>
                 </td>
               </tr>
             ))}

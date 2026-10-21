@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../../lib/api';
-import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN, badge, BADGE, EMPTY } from '../../../lib/tokens';
+import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN, EMPTY } from '../../../lib/tokens';
+import { StatusPill, Count, RowBtn } from '../../../components/TableBits';
 import Dropdown from '../../../components/Dropdown';
 import { TableRowsSk, Sk } from '../../../components/Skeletons';
 
@@ -18,7 +19,6 @@ const shiftStr = (days) => {
   return d.toLocaleDateString('en-CA');
 };
 
-const STATUS_PILL = { paid: BADGE.green, pending: BADGE.goldfill, refunded: BADGE.red };
 const PRESETS = [
   ['today', 'Today'],
   ['7d', '7D'],
@@ -188,9 +188,9 @@ export default function AdminSales() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
         {[
-          ['Gross revenue', k ? nzd(k.gross_cents) : '…', `${k?.paid ?? '—'} paid order${k?.paid === 1 ? '' : 's'}`, 'text-gold'],
+          ['Gross revenue', k ? nzd(k.gross_cents) : '…', k ? <Count n={k.paid} one="paid order" /> : '—', 'text-gold'],
           ['Average order', k ? nzd(k.avg_cents) : '…', 'paid orders only', 'text-white'],
-          ['Pending', k ? nzd(k.pending_cents) : '…', `${k?.pending ?? '—'} awaiting payment`, 'text-muted'],
+          ['Pending', k ? nzd(k.pending_cents) : '…', k ? <><Count n={k.pending} one="order" /> awaiting payment</> : '—', 'text-muted'],
           ['Refunded', k ? String(k.refunded ?? '—') : '…', 'orders refunded', 'text-blood'],
         ].map(([label, value, sub, cls]) => (
           <div key={label} className="bg-card border border-line rounded p-4">
@@ -235,7 +235,7 @@ export default function AdminSales() {
           <label className="text-xs text-muted flex flex-col gap-1.5">Until
             <input className={`${INP} py-[7px]`} type="date" value={f.until} onChange={(e) => set('until')(e.target.value)} /></label>
           {dirty && (
-            <button onClick={reset} className="text-sky text-[13px] bg-none border-0 cursor-pointer hover:text-white pb-2">Reset ✕</button>
+            <span className="pb-2"><RowBtn onClick={reset} tone="muted">Reset ✕</RowBtn></span>
           )}
         </div>
       </div>
@@ -267,7 +267,7 @@ export default function AdminSales() {
                     <td className={`${TD} text-muted capitalize`}>{r.kind}</td>
                     <td className={TD}>{r.kind === 'package' ? <span className="text-muted">Bundle</span> : r.kind === 'reel' ? <span className="text-muted">Reel service</span> : r.kind === 'credit' ? <span className="text-muted">Credits</span> : tierLabel(r.license_tier)}</td>
                     <td className={`${TD} ${NUM} font-bold tabular-nums`}>{nzd(r.amount_cents)}</td>
-                    <td className={TD}><span className={badge(STATUS_PILL[r.status] || BADGE.gray)}>{r.status}</span></td>
+                    <td className={TD}><StatusPill value={r.status} /></td>
                   </tr>,
                   open && (
                     <tr key={`${r.id}-detail`} className="border-b border-rowline bg-card2/40">

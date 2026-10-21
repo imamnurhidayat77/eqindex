@@ -6,6 +6,7 @@ import { useAuth } from '../../components/auth';
 import { recommendHeight } from '../../lib/forecast';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, LINK, LIVE, badge, BADGE } from '../../lib/tokens';
 import { TableRowsSk } from '../../components/Skeletons';
+import { RowBtn } from '../../components/TableBits';
 import { EmptyState, TableEmpty } from '../../components/EmptyState';
 import { StatCard, StatGrid } from '../../components/StatCard';
 
@@ -264,8 +265,10 @@ export default function MyStable() {
               <>
               <tr key={a.id}>
                 <td className={TD}>
-                  <button onClick={() => toggle(a.id)} className="text-faint text-[11px] mr-1.5 bg-none border-0 cursor-pointer" title="Expand analysis">{expanded[a.id] ? '▾' : '▸'}</button>
-                  <Link href={`/riders/${a.slug || a.id}`} className="text-white font-semibold no-underline hover:text-gold">{a.name || a.rider}</Link>
+                  <span className="inline-flex items-center gap-1.5">
+                    <RowBtn onClick={() => toggle(a.id)} tone="muted" title="Expand analysis" className="!px-2">{expanded[a.id] ? '▾' : '▸'}</RowBtn>
+                    <Link href={`/riders/${a.slug || a.id}`} className="text-white font-semibold no-underline hover:text-gold">{a.name || a.rider}</Link>
+                  </span>
                   {a.workload.overloaded && <span className="ml-1.5 text-[10px] font-bold text-blood" title=">6 rounds/30d or shows <7d apart">⚠ LOAD</span>}
                 </td>
                 <td className={`${TD} ${NUM}`}><b className="text-gold">{a.clear.toFixed(0)}%</b></td>
