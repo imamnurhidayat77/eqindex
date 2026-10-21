@@ -85,10 +85,49 @@ function PhotosInner() {
   // photo grid; the kind tab filters both views.
   const [evGroups, setEvGroups] = useState(null);
   useEffect(() => {
-    const p = new URLSearchParams();
-    if (kind) p.set('kind', kind);
-    fetch(`${API}/photos/events?${p}`).then((r) => r.json())
-      .then((j) => setEvGroups(Array.isArray(j.data) ? j.data : [])).catch(() => setEvGroups([]));
+    (async () => {
+      const p = new URLSearchParams();
+      if (kind) p.set('kind', kind);
+      try {
+        const r = await fetch(`${API}/photos/events?${p}`);
+        const j = await r.json().catch(() => ({}));
+        if (r.ok && Array.isArray(j.data)) { setEvGroups(j.data); return; }
+        if (r.ok) { setEvGroups([]); return; }
+        // !ok (mis. 404: API lama belum punya endpoint) → fallback di bawah.
+      } catch { /* jaringan gagal → coba fallback */ }
+      // Fallback for APIs without /photos/events: group the flat catalog
+      // client-side (capped at 200 latest — server endpoint stays the
+      // source of truth once the API is deployed).
+      try {
+        const p2 = new URLSearchParams({ limit: '200' });
+        if (kind) p2.set('kind', kind);
+        const r2 = await fetch(`${API}/photos?${p2}`);
+        const j2 = await r2.json().catch(() => ({}));
+        const rows = Array.isArray(j2.data) ? j2.data : [];
+        const map = new Map();
+        for (const x of rows) {
+          if (!x.event_id) continue;
+          if (!map.has(x.event_id)) map.set(x.event_id, {
+            event_id: x.event_id, event_name: x.event_name || 'Event', event_slug: null,
+            date_start: null, photos: 0, reels: 0, thumb_url: null, preview_url: null, latest: '',
+          });
+          const g = map.get(x.event_id);
+          g.photos += 1;
+          if (x.kind === 'reel') g.reels += 1;
+          if (!g.thumb_url && (x.thumb_url || x.preview_url)) {
+            g.thumb_url = x.thumb_url || null;
+            g.preview_url = x.preview_url || null;
+          }
+          const t = x.created_at || '';
+          if (t && t > (g.latest || '')) {
+            g.latest = t;
+            if (x.taken_at && (!g.date_start || x.taken_at > g.date_start)) g.date_start = x.taken_at;
+          }
+        }
+        setEvGroups([...map.values()].sort((a, b) =>
+          String(b.date_start || b.latest || '').localeCompare(String(a.date_start || a.latest || ''))));
+      } catch { setEvGroups([]); }
+    })();
   }, [kind]);
   // (browsingEvents dihitung setelah riderId ada — di bawah, sebelum return.)
   // Rider filter: URL (?rider=) seeds it; the searchable picker overrides it
