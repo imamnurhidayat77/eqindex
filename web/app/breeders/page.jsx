@@ -61,7 +61,7 @@ export default function Breeders() {
               );
             })}
             {!view.length && (
-              loading ? (
+              loading && !rows.length ? (
                 <tr><td colSpan={6} className="px-2 py-4">
                   <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
                     {[0, 1, 2].map((i) => <span key={i} className="sk h-3.5 w-full" />)}
