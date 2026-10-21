@@ -448,7 +448,7 @@ module.exports = function mountMediaRoutes(app) {
         WHERE w.user_id = $${n}
           AND ((w.entity_type = 'horse' AND w.entity_id = m.horse_id)
             OR (w.entity_type = 'rider' AND w.entity_id = m.rider_id)
-            OR (w.entity_type = 'combination' AND w.horse_id = m.horse_id AND w.rider_id = m.rider_id)))`);
+            OR (w.entity_type = 'combination' AND w.horse_id = m.horse_id AND w.rider_id = m.rider_id))))`);
     } else {
       conds.push(HIDDEN_SQL);
     }

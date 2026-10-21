@@ -39,21 +39,22 @@ export default function Stallions() {
       <h1 className={H1}>Stallions</h1>
       <p className={SUB}>Sire rankings by offspring performance — internal EQIndex per-round scoring (clear 10 + double 5 + placing 5–1, cap 20). Minimum 2 competing offspring to rank.</p>
       <div className="flex flex-wrap items-end gap-2.5 mb-3">
-        <div className="flex gap-1 bg-card2 border border-line rounded p-1 overflow-x-auto w-fit">
+        <div className="flex gap-1 bg-card2 border border-line rounded-md p-1 overflow-x-auto w-fit">
           {[['total', 'Total points'], ['avg', 'Average / offspring']].map(([k, lbl]) => (
             <button key={k} onClick={() => { setSort(k); setPage(1); }}
-              className={`px-3.5 py-[7px] rounded-md text-[13px] whitespace-nowrap cursor-pointer border-0 ${sort === k ? 'bg-card text-gold font-bold' : 'bg-transparent text-muted hover:text-white'}`}>
+              className={`px-3.5 py-[7px] rounded text-[13px] whitespace-nowrap cursor-pointer border-0 transition-colors ${sort === k ? 'bg-card text-gold font-bold' : 'bg-transparent text-muted hover:text-white'}`}>
               {lbl}
             </button>
           ))}
         </div>
+        {loading && !!rows.length && <span className="spinner" aria-label="Refreshing" />}
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Stallion…"
             className="rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 200 }} /></label>
         <span className="ml-auto text-[12px] text-faint">Clear % split by height · % reaching 1.30m+ · best result</span>
       </div>
       <section className={CARD}>
-        <div className={TABLEWRAP}>
+        <div className={`${TABLEWRAP} transition-opacity duration-150 ${loading && rows.length ? 'opacity-50' : ''}`} aria-busy={loading && rows.length > 0}>
         <table className={TABLE}>
           <thead><tr>
             <th className={TH}>#</th><th className={TH}>Stallion</th>
@@ -87,7 +88,7 @@ export default function Stallions() {
               );
             })}
             {!view.length && (
-              loading ? (
+              loading && !rows.length ? (
                 <tr><td colSpan={11} className="px-2 py-4">
                   <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
                     {[0, 1, 2].map((k) => <span key={k} className="sk h-3.5 w-full" />)}
