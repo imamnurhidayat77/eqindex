@@ -134,7 +134,7 @@ export default function ReelOrderForm({ eventId, eventName }) {
           <label className="mb-3 flex items-start gap-2 text-[13px] cursor-pointer rounded-lg border border-line p-2.5">
             <input type="checkbox" checked={!!form.showcase} onChange={(e) => set('showcase', e.target.checked)} className="mt-1" />
             <span><span className="font-bold text-white">Showcase my reel</span><br />
-              <span className="text-muted text-[12px]">Allow the finished teaser in public galleries as Sophia&apos;s work. Unticked = private to you; the full file is always yours alone.</span></span>
+              <span className="text-muted text-[12px]">Allow the finished teaser in public galleries as portfolio work. Unticked = private to you; the full file is always yours alone.</span></span>
           </label>
           {err && <p className="mb-2 text-[13px] text-blood" role="alert">{err}</p>}
           <button onClick={order} disabled={busy || !product} className={BTN_PRIMARY}>
