@@ -720,10 +720,10 @@ module.exports = function mountMediaRoutes(app) {
   const TIER_RE = /^[a-z0-9_-]{1,32}$/i;
   const normEmail = (v) => String(v || '').trim().toLowerCase().slice(0, 254);
 
-  // POST /api/checkout {media_id|package_id|whole_event+event_id, license_tier?, email?, idempotency_key?}
+  // POST /api/checkout {media_id|package_id|whole_event+event_id[+horse_id|rider_id], license_tier?, email?, idempotency_key?}
   // Login required: purchases bind to the buyer account (buyer_user_id).
-  // whole_event: buys the managed whole-event package, materializing its row
-  // on demand (no manual package creation needed).
+  // whole_event: buys the managed package for a whole event or one
+  // event x subject, materializing its row on demand (no manual creation).
   app.post('/api/checkout', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
     if (throttled(req.ip, 'checkout')) return res.status(429).json({ error: 'too many requests, try again later' });
@@ -734,6 +734,11 @@ module.exports = function mountMediaRoutes(app) {
     if (media_id && !UUID_RE.test(String(media_id))) return res.status(400).json({ error: 'bad media_id' });
     if (package_id && !UUID_RE.test(String(package_id))) return res.status(400).json({ error: 'bad package_id' });
     if (whole_event && (!event_id || !UUID_RE.test(String(event_id)))) return res.status(400).json({ error: 'need {event_id}' });
+    const wHorse = whole_event && req.body.horse_id ? String(req.body.horse_id) : null;
+    const wRider = whole_event && req.body.rider_id ? String(req.body.rider_id) : null;
+    if (wHorse && !UUID_RE.test(wHorse)) return res.status(400).json({ error: 'bad horse_id' });
+    if (wRider && !UUID_RE.test(wRider)) return res.status(400).json({ error: 'bad rider_id' });
+    if (wHorse && wRider) return res.status(400).json({ error: 'need zero or one of {horse_id, rider_id}' });
     if (license_tier !== undefined && license_tier !== null && !TIER_RE.test(String(license_tier))) {
       return res.status(400).json({ error: 'bad license_tier' });
     }
@@ -788,30 +793,60 @@ module.exports = function mountMediaRoutes(app) {
       title = pk.rows[0].title;
       packageId = pk.rows[0].id;
     } else {
-      // Whole-event managed package: find-or-create the row (race-free via
-      // partial unique index), refresh price/title + snapshot current media.
-      const snap = await eventPackageSnapshot(pool, String(event_id));
+      // Managed package (whole event or event x subject): find-or-create the
+      // row race-free (partial unique index per scope), then snapshot current
+      // media. Pre-existing rows (incl. manual custom-price ones) are reused
+      // as-is, never overwritten.
+      const snap = await packageSnapshot(pool, {
+        event_id: String(event_id), horse_id: wHorse, rider_id: wRider,
+      });
       if (!snap) return res.status(404).json({ error: 'event not found' });
       if (!snap.items) return res.status(409).json({ error: 'no photos for sale in this event yet' });
       if (!Number.isInteger(snap.price) || snap.price <= 0) {
         return res.status(409).json({ error: 'no price set for this package' });
       }
       const photographer = await activePhotographer(pool, null);
-      const up = await pool.query(
-        `INSERT INTO packages (photographer_id, event_id, title, price_cents, auto, status)
-          VALUES ($1, $2, $3, $4, true, 'published')
-          ON CONFLICT (event_id) WHERE auto IS TRUE AND horse_id IS NULL AND rider_id IS NULL
-          DO UPDATE SET title = EXCLUDED.title, price_cents = EXCLUDED.price_cents
-          RETURNING *`,
-        [photographer.id, snap.event.id,
-          `All ${snap.items} photos at ${snap.event.name}`, snap.price]
+      const scopeCond = wHorse ? 'horse_id = $2 AND rider_id IS NULL'
+        : wRider ? 'rider_id = $2 AND horse_id IS NULL'
+        : 'horse_id IS NULL AND rider_id IS NULL';
+      const scopeConflict = wHorse
+        ? 'ON CONFLICT (event_id, horse_id) WHERE auto IS TRUE AND horse_id IS NOT NULL AND rider_id IS NULL DO NOTHING'
+        : wRider
+          ? 'ON CONFLICT (event_id, rider_id) WHERE auto IS TRUE AND horse_id IS NULL AND rider_id IS NOT NULL DO NOTHING'
+          : 'ON CONFLICT (event_id) WHERE auto IS TRUE AND horse_id IS NULL AND rider_id IS NULL DO NOTHING';
+      const subjCol = wHorse ? 'horse_id' : wRider ? 'rider_id' : null;
+      const subjId = wHorse || wRider || null;
+      const cols = subjCol
+        ? '(photographer_id, event_id, title, price_cents, auto, status, managed, ' + subjCol + ')'
+        : '(photographer_id, event_id, title, price_cents, auto, status, managed)';
+      const vals = subjCol
+        ? [photographer.id, snap.event.id, packageTitle(snap), snap.price, subjId]
+        : [photographer.id, snap.event.id, packageTitle(snap), snap.price];
+      await pool.query(
+        `INSERT INTO packages ${cols} VALUES (${vals.map((_, i) => `$${i + 1}`).join(', ')}, true, 'published', true)
+          ${scopeConflict}`,
+        vals
       );
-      const pkRow = up.rows[0];
+      const found = await pool.query(
+        `SELECT * FROM packages WHERE status = 'published' AND event_id = $1 AND ${scopeCond} LIMIT 1`,
+        subjId ? [snap.event.id, subjId] : [snap.event.id]
+      );
+      let pkRow = found.rows[0];
+      if (!pkRow) return res.status(409).json({ error: 'package not available' });
+      if (pkRow.managed) {
+        // Managed rows track the live snapshot (price/title stay fresh as the
+        // event grows); manual rows keep the admin's custom values.
+        const upd = await pool.query(
+          `UPDATE packages SET title = $2, price_cents = $3 WHERE id = $1 RETURNING *`,
+          [pkRow.id, packageTitle(snap), snap.price]);
+        pkRow = upd.rows[0];
+      }
       await pool.query(
         `INSERT INTO package_items (package_id, media_id)
           SELECT $1, m.id FROM media m WHERE m.status = 'published' AND m.event_id = $2
+            ${wHorse ? 'AND m.horse_id = $3' : wRider ? 'AND m.rider_id = $3' : ''}
           ON CONFLICT DO NOTHING`,
-        [pkRow.id, snap.event.id]
+        subjId ? [pkRow.id, snap.event.id, subjId] : [pkRow.id, snap.event.id]
       );
       amount = earlyPriceOf(pkRow) ?? pkRow.price_cents;
       if (!Number.isInteger(amount) || amount <= 0) return res.status(409).json({ error: 'no price set for this package' });

@@ -371,7 +371,7 @@ export default function AdminPricing() {
 
       <section className={CARD}>
         <h2 className="text-[15px] font-bold mb-1">Packages</h2>
-        <p className="text-[12.5px] text-muted mb-3">Bundles of one event × horse/rider — or the whole event when no horse/rider is picked — sold as one checkout. Auto-priced unless overridden.</p>
+        <p className="text-[12.5px] text-muted mb-3">Bundles appear automatically on every photo (whole-event + per horse/rider, auto-priced). Create one manually only to override the price/title for a specific scope.</p>
         <div className="grid gap-2.5 md:grid-cols-2 mb-3">
           <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Event
             <select value={pEvent} onChange={(e) => setPEvent(e.target.value)} className={INP}>

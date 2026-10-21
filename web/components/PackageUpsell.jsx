@@ -42,9 +42,15 @@ export default function PackageUpsell({ eventId, horseId, riderId, horse, rider 
     if (!em) { setErr('Enter your email for delivery.'); return; }
     setBusyId(pk.id);
     try {
+      // Virtual rows (no package row yet) materialize server-side at checkout.
+      const body = pk.virtual
+        ? { whole_event: true, event_id: eventId,
+            ...(horseId ? { horse_id: horseId } : riderId ? { rider_id: riderId } : {}),
+            email: em, idempotency_key: idem() }
+        : { package_id: pk.id, email: em, idempotency_key: idem() };
       const res = await fetch(`${API}/api/checkout`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ package_id: pk.id, email: em, idempotency_key: idem() }),
+        body: JSON.stringify(body),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || `Failed (${res.status})`);
