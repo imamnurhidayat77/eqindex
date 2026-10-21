@@ -606,6 +606,39 @@ module.exports = function mountPublicRoutes(app) {
     res.json({ data: privacy.maskRiderRow(rider.rows[0], sets), stats: stats.rows[0] || null, history: history.rows, partnerships: partners.rows });
   }));
 
+  // ---- Public identity search (gallery filters) ----
+  // Backend path keeps the /api prefix (same convention as /api/license-tiers
+  // in media.js); browsers call it as /api/api/... through the proxy.
+  // Anonymous + photo-hidden subjects are excluded: their names must not be
+  // discoverable publicly.
+  app.get('/api/riders/search', asyncH(async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json({ data: [] });
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    const { rows } = await pool.query(
+      `SELECT id, name, slug FROM riders
+        WHERE name ILIKE $1 AND COALESCE(visibility, 'public') <> 'anonymous'
+          AND COALESCE(photo_hidden, FALSE) = FALSE
+        ORDER BY name LIMIT $2`,
+      [`%${q}%`, limit]
+    );
+    res.json({ data: rows });
+  }));
+
+  app.get('/api/horses/search', asyncH(async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) return res.json({ data: [] });
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+    const { rows } = await pool.query(
+      `SELECT id, name, slug FROM horses
+        WHERE name ILIKE $1 AND COALESCE(visibility, 'public') <> 'anonymous'
+          AND COALESCE(photo_hidden, FALSE) = FALSE
+        ORDER BY name LIMIT $2`,
+      [`%${q}%`, limit]
+    );
+    res.json({ data: rows });
+  }));
+
   // ---- Stable-lite: training & health per horse ----
   app.get('/horses/:id/training', asyncH(async (req, res) => {
     req.params.id = await resolveId('horses', req.params.id, res);

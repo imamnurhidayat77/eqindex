@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { API } from '../../lib/api';
 import { CARD, H1, SUB, BTN_PRIMARY } from '../../lib/tokens';
+import RiderPicker from '../../components/RiderPicker';
 
 const TABS = [['', 'All'], ['photo', 'Photos'], ['reel', 'Reels']];
 const nzd = (c) => (c === null || c === undefined ? null : `NZ$${(Number(c) / 100).toFixed(2)}`);
@@ -45,21 +46,37 @@ function PhotosInner() {
   const [q, setQ] = useState('');
   const [loading, setLoading] = useState(true);
   const fHorse = sp.get('horse') || '';
-  const fRider = sp.get('rider') || '';
+  const urlRider = sp.get('rider') || '';
   const fEvent = sp.get('event') || '';
+  // Rider filter: URL (?rider=) seeds it; the searchable picker overrides it
+  // server-side (the text box below stays as a client-side refinement).
+  // undefined = follow URL, null = cleared, {id,name} = picked.
+  const [riderSel, setRiderSel] = useState(undefined);
+  const [urlRiderName, setUrlRiderName] = useState('');
+  useEffect(() => {
+    if (!urlRider) return;
+    fetch(`${API}/riders/${encodeURIComponent(urlRider)}`).then((r) => r.json()).then((j) => {
+      const d = j.data || {};
+      if (d && (d.id || d.rider_id)) setUrlRiderName(d.name || '');
+    }).catch(() => {});
+  }, [urlRider]);
+  const riderId = riderSel === undefined ? urlRider : (riderSel ? riderSel.id : '');
+  const riderValue = riderSel === undefined
+    ? (urlRider ? { id: urlRider, name: urlRiderName || urlRider } : null)
+    : riderSel;
   useEffect(() => {
     setLoading(true);
     const p = new URLSearchParams({ limit: '96' });
     if (kind) p.set('kind', kind);
     if (fHorse) p.set('horse_id', fHorse);
-    if (fRider) p.set('rider_id', fRider);
+    if (riderId) p.set('rider_id', riderId);
     if (fEvent) p.set('event_id', fEvent);
     fetch(`${API}/photos?${p}`)
       .then((r) => r.json())
       .then((j) => setRows(j.data || []))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-  }, [kind, fHorse, fRider, fEvent]);
+  }, [kind, fHorse, riderId, fEvent]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -94,6 +111,7 @@ function PhotosInner() {
           </div>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Horse, rider, event…" aria-label="Search photos"
             className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none grow min-w-[180px]" />
+          <RiderPicker value={riderValue} onPick={setRiderSel} placeholder="Filter by rider…" />
         </div>
       </section>
 
