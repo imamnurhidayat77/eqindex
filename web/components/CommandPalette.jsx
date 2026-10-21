@@ -61,7 +61,7 @@ export default function CommandPalette({ open, onClose, role }) {
   // /admin/lookup which stays admin-only.
   const isPhoto = role === 'PHOTOGRAPHER';
   const commands = isPhoto
-    ? COMMANDS.filter(([, href]) => ['/admin/media', '/admin/reels', '/admin/sales'].some((p) => href === p || href.startsWith(`${p}/`)))
+    ? COMMANDS.filter(([, href]) => ['/admin/media', '/admin/reels', '/admin/sales', '/admin/pricing'].some((p) => href === p || href.startsWith(`${p}/`)))
     : COMMANDS;
 
   useEffect(() => {

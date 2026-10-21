@@ -75,11 +75,17 @@ export default function AdminNav({ user }) {
   const pathname = usePathname() || '/admin';
   const [counts, setCounts] = useState({});
   const [palOpen, setPalOpen] = useCommandPalette();
-  // Photographers only see the Media group — every other console page stays
+  // Photographers see Media + Pricing — every other console page stays
   // API-blocked for them anyway; the nav just doesn't advertise it.
   const isPhoto = user?.role === 'PHOTOGRAPHER';
   const top = isPhoto ? [] : MANAGE_TOP;
-  const groups = isPhoto ? MANAGE_GROUPS.filter((g) => g.title === 'Media') : MANAGE_GROUPS;
+  const setup = MANAGE_GROUPS.find((g) => g.title === 'Setup');
+  const groups = isPhoto
+    ? [
+        MANAGE_GROUPS.find((g) => g.title === 'Media'),
+        setup && { ...setup, items: setup.items.filter(([href]) => href === '/admin/pricing') },
+      ].filter(Boolean)
+    : MANAGE_GROUPS;
   const flat = isPhoto ? [] : FLAT_GROUPS;
   // Collapsed state only affects desktop (lg+); on mobile the headers are
   // hidden and every item stays visible in the horizontal scroll row.

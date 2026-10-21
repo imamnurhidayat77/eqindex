@@ -1450,7 +1450,7 @@ module.exports = function mountMediaRoutes(app) {
   // ---- Packages: auto-create per event × horse/rider, or whole-event
   // when neither horse nor rider is given (plan §3.4) ----
   // POST /admin/packages {event_id, horse_id?, rider_id?, price_cents?, title?}
-  app.post('/admin/packages', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.post('/admin/packages', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { event_id, horse_id, rider_id, price_cents, title } = req.body || {};
     if (!event_id || (!!horse_id && !!rider_id)) {
       return res.status(400).json({ error: 'need {event_id} + zero or one of {horse_id, rider_id}' });
@@ -1511,7 +1511,7 @@ module.exports = function mountMediaRoutes(app) {
     res.status(201).json({ data: { ...rows[0], items: items.rows.length } });
   }));
 
-  app.get('/admin/packages', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/packages', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { rows } = await pool.query(
       `SELECT pk.*, e.name AS event_name,
           (SELECT COUNT(*)::INT FROM package_items WHERE package_id = pk.id) AS items
@@ -1523,14 +1523,14 @@ module.exports = function mountMediaRoutes(app) {
 
   // ---- Global shop settings (whole-event package price, etc.) ----
   const SETTING_KEYS = ['event_package_price_cents'];
-  app.get('/admin/settings', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/settings', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { rows } = await pool.query(
       `SELECT key, value FROM admin_settings WHERE key = ANY($1)`, [SETTING_KEYS]);
     const data = {};
     for (const k of SETTING_KEYS) data[k] = rows.find((r) => r.key === k)?.value ?? '';
     res.json({ data });
   }));
-  app.patch('/admin/settings', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.patch('/admin/settings', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { key, value } = req.body || {};
     if (!SETTING_KEYS.includes(key)) return res.status(400).json({ error: 'unknown setting' });
     const v = String(value ?? '').trim();
@@ -1549,13 +1549,13 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // ---- License tiers (admin CRUD; buyers read prices via GET /api/license-tiers) ----
-  app.get('/admin/license-tiers', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/license-tiers', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { rows } = await pool.query(
       'SELECT * FROM license_tiers ORDER BY sort_order NULLS LAST, price_cents NULLS LAST, id');
     res.json({ data: rows });
   }));
 
-  app.post('/admin/license-tiers', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.post('/admin/license-tiers', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { id, label, price_cents, max_resolution, printable, sort_order } = req.body || {};
     if (!id || !TIER_RE.test(String(id))) return res.status(400).json({ error: 'need {id} (a-z, 0-9, _, -)' });
     const price = price_cents === null || price_cents === undefined || price_cents === ''
@@ -1579,7 +1579,7 @@ module.exports = function mountMediaRoutes(app) {
     }
   }));
 
-  app.patch('/admin/license-tiers/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.patch('/admin/license-tiers/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const b = req.body || {};
     const sets = [], vals = [];
     const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
@@ -1621,7 +1621,7 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows[0] });
   }));
 
-  app.delete('/admin/license-tiers/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.delete('/admin/license-tiers/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     // 'web' is the hardcoded pricing fallback (checkout + buy box) — removing
     // it silently degrades every photo without an explicit tier.
     if (req.params.id === 'web') {
@@ -1641,7 +1641,7 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // ---- Packages: edit price/title/status, safe delete ----
-  app.patch('/admin/packages/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.patch('/admin/packages/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const b = req.body || {};
     const sets = [], vals = [];
     const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
@@ -1676,7 +1676,7 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows[0] });
   }));
 
-  app.delete('/admin/packages/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.delete('/admin/packages/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const paid = await pool.query(
       `SELECT COUNT(*)::INT AS n FROM purchases WHERE status = 'paid' AND package_id = $1`,
       [req.params.id]);
@@ -1906,7 +1906,7 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // ---- Admin: reel product catalog (prices set here, per event, no deploy) ----
-  app.get('/admin/reel-products', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/reel-products', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const params = [];
     let where = '';
     if (req.query.event_id) {
@@ -1924,7 +1924,7 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows });
   }));
 
-  app.post('/admin/reel-products', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.post('/admin/reel-products', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const b = req.body || {};
     const name = String(b.name || '').trim().slice(0, 120);
     if (!name) return res.status(400).json({ error: 'need {name}' });
@@ -1956,7 +1956,7 @@ module.exports = function mountMediaRoutes(app) {
     res.status(201).json({ data: rows[0] });
   }));
 
-  app.patch('/admin/reel-products/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.patch('/admin/reel-products/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const b = req.body || {};
     const sets = [], vals = [];
     const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
@@ -2000,7 +2000,7 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows[0] });
   }));
 
-  app.delete('/admin/reel-products/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.delete('/admin/reel-products/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const live = await pool.query(
       `SELECT COUNT(*)::INT AS n FROM reel_orders WHERE product_id = $1 AND status <> 'cancelled'`,
       [req.params.id]);
@@ -2309,7 +2309,7 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // ---- Admin: credit pack price list (all prices set here, no deploy) ----
-  app.get('/admin/credit-packs', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/credit-packs', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const params = [];
     let where = '';
     if (req.query.event_id) {
@@ -2327,7 +2327,7 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows });
   }));
 
-  app.post('/admin/credit-packs', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.post('/admin/credit-packs', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const b = req.body || {};
     if (!CREDIT_SCOPE.includes(String(b.scope_type))) {
       return res.status(400).json({ error: 'scope_type must be rider|horse' });
@@ -2356,7 +2356,7 @@ module.exports = function mountMediaRoutes(app) {
     res.status(201).json({ data: rows[0] });
   }));
 
-  app.patch('/admin/credit-packs/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.patch('/admin/credit-packs/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const b = req.body || {};
     const sets = [], vals = [];
     const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
@@ -2404,7 +2404,7 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows[0] });
   }));
 
-  app.delete('/admin/credit-packs/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.delete('/admin/credit-packs/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const live = await pool.query(
       `SELECT COUNT(*)::INT AS n FROM credit_bundles WHERE pack_id = $1 AND status <> 'cancelled'`,
       [req.params.id]);
