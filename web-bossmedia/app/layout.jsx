@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import Header from '../components/Header';
+import './globals.css';
 
 export const metadata = { title: 'Boss Media — Riders and Horses. Elevated.' };
 
