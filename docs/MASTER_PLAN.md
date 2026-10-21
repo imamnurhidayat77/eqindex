@@ -241,3 +241,48 @@ Dasar: Privacy Act 2020 + panduan OPC Mei 2025.
   (pre-existing, tak terkait 053+); smoke test butuh API di :3001.
 - Sisa manual: order Stripe test-mode, upload video ≤200MB (butuh CORS PUT R2),
   MAINTENANCE_SECRET di env.
+
+---
+
+## 10. Boss Media split-platform (Okt 2026, arahan Charles)
+
+Konteks: Boss Media duduk di platform/brand sendiri (bossmedia.nz); EQIndex
+tetap menampilkan preview yang mengarah (deep-link + atribusi `?ref=eqindex`)
+ke toko Boss Media. Keputusan domain final menunggu call — di bawah ini opsi
+yang direkomendasikan: **satu backend, dua storefront**.
+
+### 10.1 Prinsip
+1. Satu API + satu DB + satu bucket R2 (namespace per fotografer/org).
+   Tidak ada duplikasi data, tidak ada sync, tidak ada scrape internal.
+2. Dua app Next.js dalam monorepo (`web/`, `web-bossmedia/`) berbagi komponen
+   inti (BuyBox, tier logic, tokens). Tidak ada copy-paste codebase.
+3. Semua aturan uang/hak di API per storefront — tidak ada hardcode per brand
+   di frontend.
+4. Auth lintas domain adalah bagian tersulit: Fase 1 akun terpisah per
+   platform; Fase 2 SSO (mis. Supabase Auth). Tanpa auto-login via URL token.
+
+### 10.2 Perubahan data (kecil, skema sudah multi-ready)
+- Tabel baru `storefronts`: domain, brand, photographer_id/org_id, theme,
+  pricing overrides, TOS. Semua query commerce filter per storefront.
+- R2 path baru `{...}/{photographer_id}/{event_id}/...` (file lama fallback
+  path lama, tetap jalan).
+- SEO: canonical di Boss Media; preview EQIndex `noindex`/canonical ke sana.
+
+### 10.3 Phasing (±3–4 minggu single dev utk 1–3)
+1. Pondasi (±1 minggu): `storefronts`, namespace R2 upload baru, app shell
+   Boss Media (home + galeri + detail reuse komponen).
+2. Paritas shop (1–2 minggu): checkout, library, reel order, admin pricing
+   per storefront.
+3. Integrasi EQIndex (2–3 hari): kartu preview + deep link + atribusi ref
+   (fondasi org-credit split).
+4. SSO + split 3 arah + bonus points + volunteer credits (nanti, bareng
+   kebutuhan multi-fotografer — satu paket dengan §10.4).
+
+### 10.4 Keputusan yang harus Charles kunci (call 11:00)
+1. Domain/brand terpisah penuh vs section Boss Media di backend bersama.
+2. Multi-fotografer: jualan masing-masing vs pool satu galeri event.
+3. Split: platform % / fotografer % / org % — cash atau credits.
+4. Bonus points: earn per $ , nilai tukar, expiry, bisa diuangkan?
+5. Volunteer credits: siapa approve, berapa per shift, batas pakai.
+6. Raw reels: flat per klip atau ikut license tier.
+7. Enforcement wajib-upload (denda/cabut akreditasi?) untuk desain compliance.
