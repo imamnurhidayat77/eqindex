@@ -43,8 +43,8 @@ export default function MyReelsPanel({ onCount }) {
           <div className="flex flex-col items-center py-10 text-center">
             <span className="text-4xl" aria-hidden="true">🎬</span>
             <h2 className="mt-3 text-[16px] font-bold text-white">No reel orders yet</h2>
-            <p className="mt-1 text-[13px] text-muted">Order a custom reel from any event page — filmed and edited for you.</p>
-            <Link href="/events" className={`${BTN_PRIMARY} no-underline mt-4`}>Browse events</Link>
+            <p className="mt-1 text-[13px] text-muted">Order a custom reel — filmed and edited for you.</p>
+            <Link href="/reels/order" className={`${BTN_PRIMARY} no-underline mt-4`}>Order a reel</Link>
           </div>
         </section>
       )}
