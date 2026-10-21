@@ -58,6 +58,7 @@ export default function PhotoLibrary() {
           </span>
         )}
         <span className="flex-1" />
+        <Link href="/credits" className="text-sky text-[13px] no-underline hover:underline">My credits →</Link>
         <Link href="/reels" className="text-sky text-[13px] no-underline hover:underline">My reels →</Link>
         <Link href="/photos" className={`${BTN_PRIMARY} no-underline`}>Buy more photos</Link>
       </div>
