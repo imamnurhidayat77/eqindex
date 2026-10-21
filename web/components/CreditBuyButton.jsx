@@ -64,26 +64,34 @@ export default function CreditBuyButton({ eventId, horseId, riderId }) {
   }
 
   return (
-    <div className="mt-2 rounded border border-sky/40 bg-card2 p-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[13px]">
-          <b>Pick any {pack.slots || 5} photos</b>
-          <div className="text-[11px] text-faint">
+    <div className="mt-2 overflow-hidden rounded-lg border border-sky/40 bg-card2">
+      <div className="flex items-stretch gap-0">
+        <div className="flex w-[86px] shrink-0 flex-col items-center justify-center gap-0.5 bg-black/60 px-2 py-3 text-center">
+          <span className="text-[13px] font-extrabold tracking-widest text-white">PICK {pack.slots || 5}</span>
+          <span className="text-[9.5px] font-bold tracking-widest text-sky">FLEXIBLE</span>
+        </div>
+        <div className="flex min-w-0 grow flex-col justify-center gap-0.5 px-3 py-2.5">
+          <div className="text-[12px] text-muted">Any {pack.slots || 5} photos of this {pack.scope_type || 'rider'}</div>
+          <div className="truncate text-[13.5px] font-extrabold text-white">You choose, unlock one by one</div>
+          <div className="text-[12px]">
             {early !== null ? (
-              <><s>{nzd(pack.price_cents)}</s> <b className="text-gold">{nzd(early)}</b> early-bird</>
-            ) : nzd(pack.price_cents)} · unlock individually, keep forever
+              <><s className="text-faint">{nzd(pack.price_cents)}</s> <b className="text-gold">from {nzd(early)}</b></>
+            ) : <b className="text-gold">from {nzd(pack.price_cents)}</b>}
+            <span className="text-faint"> · keep forever</span>
           </div>
         </div>
-        <button onClick={buy} disabled={busy}
-          className="bg-sky text-black font-bold rounded px-3.5 py-2 text-[13px] hover:brightness-110 shrink-0">
-          {busy ? '…' : `Get ${pack.slots || 5}`}
-        </button>
+        <div className="flex items-center pr-2.5">
+          <button onClick={buy} disabled={busy}
+            className="rounded bg-sky px-4 py-2 text-[13px] font-extrabold text-black hover:brightness-110 shrink-0 disabled:opacity-60">
+            {busy ? '…' : `GET ${pack.slots || 5}`}
+          </button>
+        </div>
       </div>
       {(showEmail && !user?.email) && (
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email for delivery"
           type="email" className={`${INP} w-full mt-2 !text-[13px]`} />
       )}
-      {err && <p className="text-blood text-[12px] mt-1">{err}</p>}
+      {err && <p className="text-blood text-[12px] mt-1 px-2.5 pb-2">{err}</p>}
     </div>
   );
 }

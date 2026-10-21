@@ -5,6 +5,7 @@ import { CARD, H1, SUB } from '../../../lib/tokens';
 import BuyBox from '../../../components/BuyBox';
 import PackageUpsell from '../../../components/PackageUpsell';
 import ClaimButton from '../../../components/ClaimButton';
+import CreditBuyButton from '../../../components/CreditBuyButton';
 import TakedownButton from '../../../components/TakedownButton';
 import MomentBundle from '../../../components/MomentBundle';
 import ReelPlayer from '../../../components/ReelPlayer';
@@ -88,7 +89,17 @@ export default async function PhotoDetail({ params }) {
               ))}
             </dl>
             <BuyBox id={d.id} tier={d.license_default} tierLabel={d.tier_label} />
-            <PackageUpsell eventId={d.event_id} horseId={d.horse_id} riderId={d.rider_id} horse={d.horse} rider={d.rider} />
+            {d.event_id && d.horse_id && (
+              <PackageUpsell eventId={d.event_id} horseId={d.horse_id} riderId={null} horse={d.horse} rider={d.rider} />
+            )}
+            {d.event_id && d.rider_id && (
+              <PackageUpsell eventId={d.event_id} horseId={null} riderId={d.rider_id} horse={d.horse} rider={d.rider} />
+            )}
+            {d.event_id && (d.rider_id || d.horse_id) && (
+              <CreditBuyButton eventId={d.event_id}
+                horseId={d.rider_id ? null : d.horse_id}
+                riderId={d.rider_id || null} />
+            )}
             <MomentBundle eventId={d.event_id} horseId={d.horse_id} riderId={d.rider_id} currentId={d.id} currentKind={d.kind} />
           </section>
         </div>
