@@ -28,8 +28,16 @@ function s3() {
   return client;
 }
 
-const keyFor = (kind, eventId, mediaId, ext) =>
-  `${kind}/${eventId || 'unsorted'}/${mediaId}.${(ext || 'jpg').replace(/^\./, '')}`;
+// Namespace for new uploads: one prefix per photographer/studio so a shared
+// bucket stays attributable (Boss Media split, MASTER_PLAN §10). Old keys
+// without a prefix keep working — keys are stored per row, never recomputed.
+const slugify = (s) => String(s || 'studio').toLowerCase().trim()
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'studio';
+
+const keyFor = (kind, eventId, mediaId, ext, namespace) => {
+  const base = `${kind}/${eventId || 'unsorted'}/${mediaId}.${(ext || 'jpg').replace(/^\./, '')}`;
+  return namespace ? `${slugify(namespace)}/${base}` : base;
+};
 
 async function putBuffer(key, body, contentType) {
   const { R2_BUCKET } = cfg();

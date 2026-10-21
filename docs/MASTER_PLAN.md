@@ -269,8 +269,10 @@ yang direkomendasikan: **satu backend, dua storefront**.
 - SEO: canonical di Boss Media; preview EQIndex `noindex`/canonical ke sana.
 
 ### 10.3 Phasing (±3–4 minggu single dev utk 1–3)
-1. Pondasi (±1 minggu): `storefronts`, namespace R2 upload baru, app shell
-   Boss Media (home + galeri + detail reuse komponen).
+1. Pondasi ✅ Nov 2026: `storefronts` (migrasi 068, seed Boss Media) +
+   namespace R2 per fotografer untuk upload baru (file lama fallback, tetap
+   jalan) + app shell `web-bossmedia/` (home galeri + detail `/p/[id]` +
+   checkout satuan; build lolos; perlu Vercel project + domain).
 2. Paritas shop (1–2 minggu): checkout, library, reel order, admin pricing
    per storefront.
 3. Integrasi EQIndex (2–3 hari): kartu preview + deep link + atribusi ref

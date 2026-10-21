@@ -85,7 +85,7 @@ module.exports = function mountMediaRoutes(app) {
       );
       const id = rows[0].id;
       try {
-        const origKey = mediaStore.keyFor('originals', eventId, id, ext);
+        const origKey = mediaStore.keyFor('originals', eventId, id, ext, photographer.name);
         await mediaStore.putBuffer(origKey, f.buffer, f.mimetype);
         const patch = { storage_key: origKey };
         if (isPhoto) {
@@ -99,8 +99,8 @@ module.exports = function mountMediaRoutes(app) {
           const thumb = await sharp(f.buffer).rotate().resize({ width: 480, withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
           const preview = await sharp(f.buffer).rotate().resize({ width: pvW, withoutEnlargement: true })
             .composite([{ input: wm, blend: 'over' }]).jpeg({ quality: 68 }).toBuffer();
-          patch.thumb_key = mediaStore.keyFor('thumbs', eventId, id, 'jpg');
-          patch.preview_key = mediaStore.keyFor('previews', eventId, id, 'jpg');
+          patch.thumb_key = mediaStore.keyFor('thumbs', eventId, id, 'jpg', photographer.name);
+          patch.preview_key = mediaStore.keyFor('previews', eventId, id, 'jpg', photographer.name);
           await mediaStore.putBuffer(patch.thumb_key, thumb, 'image/jpeg');
           await mediaStore.putBuffer(patch.preview_key, preview, 'image/jpeg');
           patch.width = meta.width || null;
@@ -152,7 +152,7 @@ module.exports = function mountMediaRoutes(app) {
       [photographer.id, eventId]
     );
     const id = rows[0].id;
-    const origKey = mediaStore.keyFor('originals', eventId, id, ext);
+    const origKey = mediaStore.keyFor('originals', eventId, id, ext, photographer.name);
     await pool.query('UPDATE media SET storage_key = $2 WHERE id = $1', [id, origKey]);
     const uploadUrl = await mediaStore.presignedPutUrl(origKey, mimetype);
     audit(req, 'media.upload-url', 'media', id, { mimetype, size_bytes: size });
@@ -229,8 +229,9 @@ module.exports = function mountMediaRoutes(app) {
       const s2 = await mediaStore.getStream(m.storage_key);
       const preview = await renderPreview(s2.stream, wmPath);
       const poster = await renderPoster(preview.buffer);
-      const thumbKey = mediaStore.keyFor('thumbs', m.event_id, m.id, 'jpg');
-      const previewKey = mediaStore.keyFor('previews', m.event_id, m.id, 'mp4');
+      const ns = photographer.rows[0]?.name || null;
+      const thumbKey = mediaStore.keyFor('thumbs', m.event_id, m.id, 'jpg', ns);
+      const previewKey = mediaStore.keyFor('previews', m.event_id, m.id, 'mp4', ns);
       await mediaStore.putBuffer(thumbKey, poster, 'image/jpeg');
       await mediaStore.putBuffer(previewKey, preview.buffer, 'video/mp4');
       await pool.query(
