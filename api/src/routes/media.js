@@ -452,7 +452,8 @@ module.exports = function mountMediaRoutes(app) {
     }
     if (req.query.kind) push('m.kind = ?', String(req.query.kind));
     const limit = Math.min(parseInt(req.query.limit, 10) || 48, 200);
-    params.push(limit);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+    params.push(limit, offset);
     const { rows } = await pool.query(
       `SELECT m.id, m.kind, m.event_id, m.class_id, m.horse_id, m.rider_id,
           m.thumb_key, m.preview_key, m.width, m.height, m.taken_at,
@@ -464,7 +465,7 @@ module.exports = function mountMediaRoutes(app) {
         JOIN photographers p ON p.id = m.photographer_id
         LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
         WHERE ${conds.join(' AND ')}
-        ORDER BY m.created_at DESC LIMIT $${params.length}`,
+        ORDER BY m.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
     withUrls(rows);
@@ -887,7 +888,21 @@ module.exports = function mountMediaRoutes(app) {
           RETURNING id`,
         [String(pi), sessionId]
       );
-      if (done.rows.length) audit(req, 'media.refund', 'purchase', done.rows.map((r) => r.id).join(','), { pi });
+      if (done.rows.length) {
+        audit(req, 'media.refund', 'purchase', done.rows.map((r) => r.id).join(','), { pi });
+        // Freeze service products tied to refunded purchases. Photo/package
+        // entitlements already gate on status='paid'; credit bundles and reel
+        // orders get an explicit status flip so no stale 'active' row lingers.
+        const ids = done.rows.map((r) => r.id);
+        await pool.query(
+          `UPDATE credit_bundles SET status = 'cancelled'
+            WHERE purchase_id = ANY($1::UUID[]) AND status <> 'cancelled'`, [ids]
+        ).catch(() => {});
+        await pool.query(
+          `UPDATE reel_orders SET status = 'cancelled'
+            WHERE purchase_id = ANY($1::UUID[]) AND status NOT IN ('delivered', 'cancelled')`, [ids]
+        ).catch(() => {});
+      }
       return ok();
     }
     return ok();
@@ -1998,6 +2013,11 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // Buyer unlocks one photo with credits (re-downloads stay free afterwards).
+  // SECURITY: the pick-and-consume runs in one transaction with the bundle
+  // row locked (SELECT ... FOR UPDATE). Without this, N parallel requests
+  // could all pass the "slots left" check before any INSERT lands and mint
+  // credits out of thin air (classic TOCTOU). The PK on
+  // (bundle_id, media_id) additionally makes double-unlock impossible.
   app.post('/api/credits/unlock', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
     if (throttled(req.ip, 'credit-unlock')) return res.status(429).json({ error: 'too many requests, try again later' });
@@ -2019,28 +2039,43 @@ module.exports = function mountMediaRoutes(app) {
       [media.id, req.authUser.id]
     );
     if (dupe.rows.length) return res.status(200).json({ data: { unlocked: true, reused: true } });
-    const { rows } = await pool.query(
-      `SELECT cb.id, cb.slots_total,
-          (SELECT COUNT(*)::INT FROM credit_redemptions WHERE bundle_id = cb.id) AS used
-        FROM credit_bundles cb JOIN purchases pu ON pu.id = cb.purchase_id
-        WHERE cb.status = 'active' AND pu.status = 'paid' AND pu.buyer_user_id = $1
-          AND cb.event_id = $2
-          AND ((cb.rider_id IS NOT NULL AND cb.rider_id = $3)
-            OR (cb.horse_id IS NOT NULL AND cb.horse_id = $4))
-        ORDER BY cb.created_at LIMIT 20`,
-      [req.authUser.id, media.event_id, media.rider_id, media.horse_id]
-    );
-    const bundle = rows.find((r) => Number(r.slots_total) - Number(r.used) > 0);
-    if (!bundle) return res.status(409).json({ error: 'no credits left for this event × subject (buy a 5-pack first)' });
+    const client = await pool.connect();
     try {
-      await pool.query(
-        'INSERT INTO credit_redemptions (bundle_id, media_id) VALUES ($1, $2)', [bundle.id, media.id]);
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        `SELECT cb.id, cb.slots_total,
+            (SELECT COUNT(*)::INT FROM credit_redemptions WHERE bundle_id = cb.id) AS used
+          FROM credit_bundles cb JOIN purchases pu ON pu.id = cb.purchase_id
+          WHERE cb.status = 'active' AND pu.status = 'paid' AND pu.buyer_user_id = $1
+            AND cb.event_id = $2
+            AND ((cb.rider_id IS NOT NULL AND cb.rider_id = $3)
+              OR (cb.horse_id IS NOT NULL AND cb.horse_id = $4))
+          ORDER BY cb.created_at LIMIT 20
+          FOR UPDATE OF cb`,
+        [req.authUser.id, media.event_id, media.rider_id, media.horse_id]
+      );
+      const bundle = rows.find((r) => Number(r.slots_total) - Number(r.used) > 0);
+      if (!bundle) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'no credits left for this event × subject (buy a 5-pack first)' });
+      }
+      try {
+        await client.query(
+          'INSERT INTO credit_redemptions (bundle_id, media_id) VALUES ($1, $2)', [bundle.id, media.id]);
+      } catch (e) {
+        await client.query('ROLLBACK');
+        if (e.code === '23505') return res.status(200).json({ data: { unlocked: true, reused: true } });
+        throw e;
+      }
+      await client.query('COMMIT');
+      const left = Number(bundle.slots_total) - Number(bundle.used) - 1;
+      res.status(201).json({ data: { unlocked: true, bundle_id: bundle.id, slots_left: left } });
     } catch (e) {
-      if (e.code === '23505') return res.status(200).json({ data: { unlocked: true, reused: true } });
+      try { await client.query('ROLLBACK'); } catch { /* already closed */ }
       throw e;
+    } finally {
+      client.release();
     }
-    const left = Number(bundle.slots_total) - Number(bundle.used) - 1;
-    res.status(201).json({ data: { unlocked: true, bundle_id: bundle.id, slots_left: left } });
   }));
 
   // Buyer: remaining credit balance per bundle (powers "n left" hints).

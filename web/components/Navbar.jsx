@@ -89,37 +89,35 @@ export function NavSearch() {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
-  const cache = useRef(null);
-
-  async function ensure() {
-    if (cache.current) return cache.current;
-    try {
-      const [h, r] = await Promise.all([
-        (await fetch(`${API}/rankings/horses?limit=100`)).json(),
-        (await fetch(`${API}/rankings/riders?limit=100`)).json(),
-      ]);
-      cache.current = {
-        horses: (h.data || []).map((x) => ({ id: x.horse_id, name: x.horse })),
-        riders: (r.data || []).map((x) => ({ id: x.rider_id, name: x.rider })),
-      };
-    } catch {
-      cache.current = { horses: [], riders: [] };
-    }
-    return cache.current;
-  }
-
   const [hits, setHits] = useState([]);
-  async function onType(v) {
+  const timer = useRef(null);
+  const seq = useRef(0);
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  function onType(v) {
     setQ(v); setHi(0);
+    clearTimeout(timer.current);
     if (v.trim().length < 2) { setHits([]); setOpen(false); return; }
-    const c = await ensure();
-    const s = v.trim().toLowerCase();
-    const h = c.horses.filter((x) => (x.name || '').toLowerCase().includes(s)).slice(0, 5)
-      .map((x) => ({ ...x, kind: 'horse' }));
-    const r = c.riders.filter((x) => (x.name || '').toLowerCase().includes(s)).slice(0, 4)
-      .map((x) => ({ ...x, kind: 'rider' }));
-    setHits([...h, ...r]);
-    setOpen(true);
+    timer.current = setTimeout(async () => {
+      const my = ++seq.current;
+      const s = v.trim();
+      try {
+        const [hj, rj] = await Promise.all([
+          (await fetch(`${API}/api/horses/search?q=${encodeURIComponent(s)}&limit=5`)).json().catch(() => ({})),
+          (await fetch(`${API}/api/riders/search?q=${encodeURIComponent(s)}&limit=5`)).json().catch(() => ({})),
+        ]);
+        if (seq.current !== my) return; // stale response
+        const h = (Array.isArray(hj.data) ? hj.data : [])
+          .map((x) => ({ id: x.id, name: x.name, kind: 'horse' }));
+        const r = (Array.isArray(rj.data) ? rj.data : [])
+          .map((x) => ({ id: x.id, name: x.name, kind: 'rider' }));
+        setHits([...h, ...r]);
+        setOpen(true);
+      } catch {
+        if (seq.current === my) { setHits([]); setOpen(true); }
+      }
+    }, 250);
   }
 
   function go(i) {
@@ -142,7 +140,7 @@ export function NavSearch() {
           else if (e.key === 'Enter') go(hi);
           else if (e.key === 'Escape') setOpen(false);
         }}
-        placeholder="⌕  Search Intelligence..."
+        placeholder="⌕  Search..."
         className="bg-card border border-line rounded text-body px-3 py-[7px] w-[180px] text-[13px] placeholder:text-muted focus:border-gold/60 focus:outline-none"
       />
       {open && !!hits.length && (

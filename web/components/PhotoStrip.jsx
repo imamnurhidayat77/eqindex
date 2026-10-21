@@ -38,7 +38,7 @@ export default function PhotoStrip({ query, title = 'Photos', moreHref = '/photo
               className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
               <div className="relative aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                 {x.thumb_url || x.preview_url
-                  ? <img src={x.thumb_url || x.preview_url} alt={caption} loading="lazy"
+                  ? <img src={x.thumb_url || x.preview_url} alt={caption} loading="lazy" decoding="async"
                       className="w-full h-full object-cover group-hover:scale-[1.04] transition duration-300" />
                   : <span className="text-xl">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
                 {x.kind === 'reel' && (

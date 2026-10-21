@@ -120,19 +120,46 @@ function PhotosInner() {
     })();
   }, [kind]);
   const browsingEvents = !horseId && !riderId && !eventId;
-  useEffect(() => {
-    setLoading(true);
-    const p = new URLSearchParams({ limit: '96' });
+  const PAGE = 48;
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const photoParams = (off) => {
+    const p = new URLSearchParams({ limit: String(PAGE), offset: String(off) });
     if (kind) p.set('kind', kind);
     if (horseId) p.set('horse_id', horseId);
     if (riderId) p.set('rider_id', riderId);
     if (eventId) p.set('event_id', eventId);
-    fetch(`${API}/photos?${p}`)
+    return p;
+  };
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API}/photos?${photoParams(0)}`)
       .then((r) => r.json())
-      .then((j) => setRows(j.data || []))
-      .catch(() => setRows([]))
+      .then((j) => {
+        const list = Array.isArray(j.data) ? j.data : [];
+        setRows(list);
+        setOffset(list.length);
+        setHasMore(list.length === PAGE);
+      })
+      .catch(() => { setRows([]); setHasMore(false); })
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, horseId, riderId, eventId]);
+
+  async function loadMore() {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const r = await fetch(`${API}/photos?${photoParams(offset)}`);
+      const j = await r.json().catch(() => ({}));
+      const list = Array.isArray(j.data) ? j.data : [];
+      setRows((prev) => [...prev, ...list.filter((x) => !prev.some((y) => y.id === x.id))]);
+      setOffset((o) => o + list.length);
+      setHasMore(list.length === PAGE);
+    } catch { /* retryable */ }
+    setLoadingMore(false);
+  }
 
   // Picking an event navigates to its wall: /photos/<event-slug>.
   const goEvent = (o) => {
@@ -178,7 +205,7 @@ function PhotosInner() {
                 className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
                 <div className="relative aspect-[16/9] bg-card2 flex items-center justify-center overflow-hidden">
                   {g.thumb_url || g.preview_url
-                    ? <img src={g.thumb_url || g.preview_url} alt="" loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
+                    ? <img src={g.thumb_url || g.preview_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
                     : <ImageIcon className="h-8 w-8 text-faint" />}
                 </div>
                 <div className="flex grow flex-col gap-0.5 p-3">
@@ -210,14 +237,15 @@ function PhotosInner() {
           {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <span key={i} className="sk h-44 w-full rounded-xl" />)}
         </div>
       ) : rows.length ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {rows.map((x) => {
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {rows.map((x) => {
             const price = nzd(x.price_cents);
             return (
               <Link key={x.id} href={`/photos/${x.id}`} className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
                 <div className="relative aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                   {x.thumb_url || x.preview_url
-                    ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
+                    ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
                     : <ImageIcon className="h-8 w-8 text-faint" />}
                   {x.kind === 'reel' && (
                     <span className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-white">
@@ -243,7 +271,16 @@ function PhotosInner() {
               </Link>
             );
           })}
-        </div>
+          </div>
+          {hasMore && (
+            <div className="mt-4 text-center">
+              <button onClick={loadMore} disabled={loadingMore}
+                className="rounded border border-line bg-card2 px-5 py-2.5 text-[13px] font-bold text-white hover:border-gold/50 hover:text-gold cursor-pointer disabled:opacity-60">
+                {loadingMore ? 'Loading…' : `Load more (${rows.length} shown)`}
+              </button>
+            </div>
+          )}
+        </>
       ) : (
         <section className={CARD}>
           <div className="flex flex-col items-center py-10 text-center">

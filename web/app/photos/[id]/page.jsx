@@ -24,7 +24,7 @@ const isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(String(v || ''));
 // Event photo wall: /photos/<event-slug>. Same shop cards as the gallery,
 // scoped to one event. UUIDs still land on the photo detail below.
 async function EventWall({ event, kind }) {
-  const qp = new URLSearchParams({ event_id: event.id, limit: '96' });
+  const qp = new URLSearchParams({ event_id: event.id, limit: '48' });
   if (['photo', 'reel'].includes(kind)) qp.set('kind', kind);
   const r = await getJSON(`/photos?${qp}`).catch(() => ({ data: [] }));
   const rows = r.data || [];
@@ -56,7 +56,7 @@ async function EventWall({ event, kind }) {
           </div>
         </section>
       ) : (
-        <EventWallGrid rows={rows} />
+        <EventWallGrid initialRows={rows} eventId={event.id} kind={['photo', 'reel'].includes(kind) ? kind : ''} />
       )}
     </>
   );
