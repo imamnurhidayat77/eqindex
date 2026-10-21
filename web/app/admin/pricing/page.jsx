@@ -135,6 +135,18 @@ export default function AdminPricing() {
     setBusy(false);
   }
 
+  async function togglePackageStatus(p) {
+    const next = p.status === 'published' ? 'archived' : 'published';
+    if (next === 'archived' && !window.confirm(`Hide package "${p.title}" from buyers? Paid buyers keep their downloads.`)) return;
+    setBusy(true);
+    try {
+      await call(`/admin/packages/${p.id}`, { method: 'PATCH', body: JSON.stringify({ status: next }) });
+      setMsg(next === 'published' ? `Package "${p.title}" is visible to buyers.` : `Package "${p.title}" hidden from buyers.`);
+      load();
+    } catch (err) { setMsg(err.message); }
+    setBusy(false);
+  }
+
   async function removePackage(p) {
     if (!window.confirm(`Delete package "${p.title}"? Blocked while it has paid purchases — archive instead.`)) return;
     try {
@@ -274,29 +286,37 @@ export default function AdminPricing() {
 
       <section className={CARD}>
         <h2 className="text-[15px] font-bold mb-1">License tiers</h2>
-        <p className="text-[12.5px] text-muted mb-3">Shown in the buy box on every photo. A photo without its own price sells at its default tier (Web unless set). The <span className="font-mono text-[12px]">web</span> tier is the system default and cannot be deleted.</p>
+        <p className="text-[12.5px] text-muted mb-3">Shown in the buy box on every photo. A photo without its own price sells at its default tier (Web unless set). The <span className="font-mono text-[12px]">web</span> tier is the system default and cannot be deleted or hidden. Tick Hidden + Save to remove a tier from the buy box without deleting it (blocked while any photo uses it as default).</p>
         <div className={TABLEWRAP}>
         <table className={TABLE}>
           <thead><tr>
             <th className={TH}>ID</th><th className={TH}>Label</th><th className={TH}>Max resolution</th>
             <th className={TH}>Printable</th><th className={`${TH} ${NUM}`}>Price (NZ$)</th><th className={`${TH} ${NUM}`}>Sort</th>
+            <th className={TH}>Hidden</th>
             <th className={TH}><span className="sr-only">Actions</span></th>
           </tr></thead>
           <tbody>
-            {tiers.map((t) => (
-              <tr key={t.id} className="border-b border-rowline last:border-0">
+            {tiers.map((t) => {
+              const hidden = !!(edits[t.id]?.is_hidden ?? t.is_hidden);
+              return (
+              <tr key={t.id} className={`border-b border-rowline last:border-0${hidden ? ' opacity-50' : ''}`}>
                 <td className={`${TD} font-mono text-[12px]`}>{t.id}</td>
                 <td className={TD}><input value={val(t, 'label')} onChange={(e) => setEdit(t.id, 'label', e.target.value)} className={INP} style={{ width: 170 }} /></td>
                 <td className={TD}><input value={val(t, 'max_resolution') ?? ''} onChange={(e) => setEdit(t.id, 'max_resolution', e.target.value)} placeholder="e.g. 1417×945" className={INP} style={{ width: 130 }} /></td>
                 <td className={TD}><input type="checkbox" checked={!!(edits[t.id]?.printable ?? t.printable)} onChange={(e) => setEdit(t.id, 'printable', e.target.checked)} /></td>
                 <td className={`${TD} ${NUM}`}><input value={valNZD(t)} onChange={(e) => setEdit(t.id, 'price_cents', e.target.value)} inputMode="decimal" placeholder="NZ$" className={INP} style={{ width: 90 }} /></td>
                 <td className={`${TD} ${NUM}`}><input value={val(t, 'sort_order') ?? ''} onChange={(e) => setEdit(t.id, 'sort_order', e.target.value)} inputMode="numeric" className={INP} style={{ width: 60 }} /></td>
+                <td className={TD} title={t.id === 'web' ? 'The system default tier cannot be hidden' : 'Hide from the buy box'}>
+                  <input type="checkbox" checked={hidden} disabled={t.id === 'web'}
+                    onChange={(e) => setEdit(t.id, 'is_hidden', e.target.checked)} />
+                </td>
                 <td className={`${TD} whitespace-nowrap text-right`}>
                   <button onClick={() => saveTier(t)} disabled={busy} className="text-sky text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2">Save</button>
                   <button onClick={() => removeTier(t)} className="text-faint text-[13px] hover:text-blood bg-none border-0 cursor-pointer">Delete</button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
             <tr className="border-t-2 border-line">
               <td className={TD}><input value={newTier.id} onChange={(e) => setNewTier({ ...newTier, id: e.target.value })} placeholder="new-id" className={INP} style={{ width: 110 }} /></td>
               <td className={TD}><input value={newTier.label} onChange={(e) => setNewTier({ ...newTier, label: e.target.value })} placeholder="Label" className={INP} style={{ width: 170 }} /></td>
@@ -357,6 +377,11 @@ export default function AdminPricing() {
                   </select>
                 </td>
                 <td className={`${TD} whitespace-nowrap text-right`}>
+                  <button onClick={() => togglePackageStatus(p)} disabled={busy}
+                    title={p.status === 'published' ? 'Hide from buyers' : 'Show to buyers'}
+                    className="text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2 text-gold">
+                    {p.status === 'published' ? 'Hide' : 'Show'}
+                  </button>
                   <button onClick={() => savePackage(p)} disabled={busy} className="text-sky text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2">Save</button>
                   <button onClick={() => removePackage(p)} className="text-faint text-[13px] hover:text-blood bg-none border-0 cursor-pointer">Delete</button>
                 </td>

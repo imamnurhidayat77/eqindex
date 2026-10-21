@@ -409,9 +409,11 @@ module.exports = function mountMediaRoutes(app) {
 
   // ---- Public catalog (published only; previews/thumbs are CDN-public) ----
   // License tiers with prices (public by design — buyers pick one, Sportfot-style).
+  // Hidden tiers (admin Pricing) are excluded — buyers can't pick or pay them.
   app.get('/api/license-tiers', asyncH(async (req, res) => {
     const { rows } = await pool.query(
-      `SELECT id, label, price_cents, max_resolution, printable FROM license_tiers ORDER BY price_cents NULLS LAST, id`);
+      `SELECT id, label, price_cents, max_resolution, printable FROM license_tiers
+        WHERE NOT COALESCE(is_hidden, FALSE) ORDER BY price_cents NULLS LAST, id`);
     res.json({ data: rows });
   }));
 
@@ -650,6 +652,14 @@ module.exports = function mountMediaRoutes(app) {
       } catch { /* gate optional */ }
       const row = m.rows[0];
       if (tierId && !row.tier_label) return res.status(400).json({ error: 'unknown license tier' });
+      if (tierId) {
+        // Hidden tiers can't be bought (admin hid them from the buy box).
+        const vis = await pool.query(
+          'SELECT COALESCE(is_hidden, FALSE) AS hidden FROM license_tiers WHERE id = $1', [tierId]);
+        if (vis.rows.length && vis.rows[0].hidden) {
+          return res.status(400).json({ error: 'license tier is not available' });
+        }
+      }
       if (!tierId) {
         const dflt = await pool.query('SELECT * FROM license_tiers WHERE id = $1', [row.license_default || 'web']);
         tierId = dflt.rows[0]?.id || 'web';
@@ -1345,6 +1355,22 @@ module.exports = function mountMediaRoutes(app) {
     }
     if (b.max_resolution !== undefined) set('max_resolution', b.max_resolution ? String(b.max_resolution).slice(0, 40) : null);
     if (b.printable !== undefined) set('printable', !!b.printable);
+    if (b.is_hidden !== undefined) {
+      // 'web' is the pricing fallback — hiding it would silently reprice
+      // every photo without an explicit tier. Hidden tiers also can't be a
+      // photo default (gallery/checkout always resolve the default tier).
+      if (b.is_hidden && req.params.id === 'web') {
+        return res.status(409).json({ error: "'web' is the system default tier — it can't be hidden" });
+      }
+      if (b.is_hidden) {
+        const used = await pool.query(
+          'SELECT COUNT(*)::INT AS n FROM media WHERE license_default = $1', [req.params.id]);
+        if (used.rows[0].n > 0) {
+          return res.status(409).json({ error: 'tier is a photo default — change those photos to another tier first' });
+        }
+      }
+      set('is_hidden', !!b.is_hidden);
+    }
     if (b.sort_order !== undefined && b.sort_order !== '' && b.sort_order !== null) {
       const so = parseInt(b.sort_order, 10);
       if (!Number.isInteger(so)) return res.status(400).json({ error: 'sort_order must be an integer' });
