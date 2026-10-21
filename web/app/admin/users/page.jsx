@@ -7,7 +7,7 @@ import { ConfirmDialog } from '../../../components/Modal';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { TableRowsSk } from '../../../components/Skeletons';
 
-const ROLES = ['PUBLIC', 'RIDER', 'COACH', 'OWNER', 'BREEDER', 'ADMIN'];
+const ROLES = ['PUBLIC', 'RIDER', 'COACH', 'OWNER', 'BREEDER', 'PHOTOGRAPHER', 'ADMIN'];
 
 export default function AdminUsers() {
   const [rows, setRows] = useState([]);

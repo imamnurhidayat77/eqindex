@@ -50,13 +50,19 @@ export function useCommandPalette() {
   return [open, setOpen];
 }
 
-export default function CommandPalette({ open, onClose }) {
+export default function CommandPalette({ open, onClose, role }) {
   const router = useRouter();
   const [q, setQ] = useState('');
   const [hits, setHits] = useState([]);
   const [searching, setSearching] = useState(false);
   const [hi, setHi] = useState(0);
   const inputRef = useRef(null);
+  // Photographers only jump between their media pages; record lookup needs
+  // /admin/lookup which stays admin-only.
+  const isPhoto = role === 'PHOTOGRAPHER';
+  const commands = isPhoto
+    ? COMMANDS.filter(([, href]) => ['/admin/media', '/admin/reels', '/admin/sales'].some((p) => href === p || href.startsWith(`${p}/`)))
+    : COMMANDS;
 
   useEffect(() => {
     if (open) {
@@ -67,7 +73,7 @@ export default function CommandPalette({ open, onClose }) {
 
   useEffect(() => {
     const query = q.trim();
-    if (query.length < 2) { setHits([]); setSearching(false); return; }
+    if (isPhoto || query.length < 2) { setHits([]); setSearching(false); return; }
     setSearching(true);
     const t = setTimeout(async () => {
       try {
@@ -88,7 +94,7 @@ export default function CommandPalette({ open, onClose }) {
     return () => clearTimeout(t);
   }, [q]);
 
-  const cmds = COMMANDS
+  const cmds = commands
     .filter(([label]) => label.toLowerCase().includes(q.trim().toLowerCase()))
     .slice(0, 7)
     .map(([label, href, icon, sub]) => ({ key: `cmd-${href}`, group: 'Go to', label, sub, href, icon }));

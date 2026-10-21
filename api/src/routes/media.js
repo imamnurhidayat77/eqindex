@@ -61,7 +61,7 @@ async function activePhotographer(poolQ, id) {
 
 module.exports = function mountMediaRoutes(app) {
   // ---- Upload batch (photos get 3 renditions; reels store original only) ----
-  app.post('/admin/media/upload', needRole('ADMIN'), upload.array('files', 20), asyncH(async (req, res) => {
+  app.post('/admin/media/upload', needRole('PHOTOGRAPHER'), upload.array('files', 20), asyncH(async (req, res) => {
     const photographer = await activePhotographer(pool, req.body?.photographer_id);
     const eventId = req.body?.event_id || null;
     if (eventId) {
@@ -129,7 +129,7 @@ module.exports = function mountMediaRoutes(app) {
   // DEPLOY: R2 bucket needs a CORS rule allowing PUT from the web origin.
   const REEL_MAX_BYTES = 200 * 1024 * 1024;
 
-  app.post('/admin/media/upload-url', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.post('/admin/media/upload-url', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const b = req.body || {};
     const mimetype = String(b.mimetype || '');
     if (!REEL_MIMES.includes(mimetype)) {
@@ -159,8 +159,23 @@ module.exports = function mountMediaRoutes(app) {
     res.status(201).json({ data: { media_id: id, upload_url: uploadUrl, max_bytes: REEL_MAX_BYTES } });
   }));
 
+  // NOTE: static sub-paths must be registered BEFORE '/admin/media/:id',
+  // otherwise Express matches ":id" first ("stats" is not a UUID).
+  app.get('/admin/media/stats', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::INT AS assets,
+          COUNT(*) FILTER (WHERE status = 'published')::INT AS published,
+          COALESCE(SUM(view_count), 0)::INT AS views,
+          COALESCE(SUM(purchase_count), 0)::INT AS purchases,
+          (SELECT COUNT(*)::INT FROM purchases WHERE status = 'paid')::INT AS paid_sales,
+          (SELECT COALESCE(SUM(amount_cents), 0)::INT FROM purchases WHERE status = 'paid')::INT AS gross_cents
+        FROM media`
+    );
+    res.json({ data: rows[0] });
+  }));
+
   // Single admin media row (finalize polling target).
-  app.get('/admin/media/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/media/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { rows } = await pool.query('SELECT * FROM media WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'media not found' });
     const r = rows[0];
@@ -175,7 +190,7 @@ module.exports = function mountMediaRoutes(app) {
   // immediately and works in the background (transcodes take minutes — far
   // beyond any proxy timeout); the upload page polls GET /admin/media/:id
   // until thumb_key appears. Safe to retry: skips when already done.
-  app.post('/admin/media/:id/finalize', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.post('/admin/media/:id/finalize', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { rows } = await pool.query('SELECT * FROM media WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'media not found' });
     const m = rows[0];
@@ -231,7 +246,7 @@ module.exports = function mountMediaRoutes(app) {
   }
 
   // ---- Review queue ----
-  app.get('/admin/media', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/media', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const conds = [], params = [];
     const push = (sql, v) => { params.push(v); conds.push(sql.replace('?', `$${params.length}`)); };
     if (req.query.status) push('m.status = ?', String(req.query.status));
@@ -268,7 +283,7 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows });
   }));
 
-  app.patch('/admin/media/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.patch('/admin/media/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const b = req.body || {};
     const sets = [], vals = [];
     // $1 is the media id (params are [id, ...vals]), so columns start at $2.
@@ -1053,7 +1068,7 @@ module.exports = function mountMediaRoutes(app) {
 
   // ---- Moment badges: suggest win/clear/debut from round_results ----
   // POST /admin/media/:id/suggest-moment
-  app.post('/admin/media/:id/suggest-moment', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.post('/admin/media/:id/suggest-moment', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const m = await pool.query('SELECT horse_id, rider_id, event_id FROM media WHERE id = $1', [req.params.id]);
     if (!m.rows.length) return res.status(404).json({ error: 'media not found' });
     const { horse_id, rider_id, event_id } = m.rows[0];
@@ -1262,7 +1277,7 @@ module.exports = function mountMediaRoutes(app) {
   // Admin: sales CSV export (plan §9 settlement). Honors the same filters
   // as the table; adds photographer + platform-fee/payout columns so the
   // file doubles as the monthly settlement + GST record.
-  app.get('/admin/sales.csv', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/sales.csv', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const params = [];
     const where = salesWhere(req.query, params);
     const { rows } = await pool.query(
@@ -1323,22 +1338,11 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // Admin: photo view→purchase funnel (plan §8.6).
-  app.get('/admin/media/stats', needRole('ADMIN'), asyncH(async (req, res) => {
-    const { rows } = await pool.query(
-      `SELECT COUNT(*)::INT AS assets,
-          COUNT(*) FILTER (WHERE status = 'published')::INT AS published,
-          COALESCE(SUM(view_count), 0)::INT AS views,
-          COALESCE(SUM(purchase_count), 0)::INT AS purchases,
-          (SELECT COUNT(*)::INT FROM purchases WHERE status = 'paid')::INT AS paid_sales,
-          (SELECT COALESCE(SUM(amount_cents), 0)::INT FROM purchases WHERE status = 'paid')::INT AS gross_cents
-        FROM media`
-    );
-    res.json({ data: rows[0] });
-  }));
+  // (Route lives above '/admin/media/:id' — Express would match ":id" first.)
 
   // Admin sales table: filterable + paginated. `totals` is filter-aware
   // (sales = matching rows incl. pending/refunded; gross = paid only).
-  app.get('/admin/sales', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/sales', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     const params = [];
@@ -1376,7 +1380,7 @@ module.exports = function mountMediaRoutes(app) {
 
   // Admin sales summary: filter-aware KPIs + revenue-by-tier + daily trend +
   // photographer settlement (plan §9: payout = gross − platform fee).
-  app.get('/admin/sales/summary', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/sales/summary', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const params = [];
     const where = salesWhere(req.query, params);
     const [kpis, tiers, days, settle] = await Promise.all([
@@ -1688,7 +1692,7 @@ module.exports = function mountMediaRoutes(app) {
 
   // ---- Delete: DB row is source of truth; R2 keys removed best-effort.
   // Refused when the photo has paid purchases (refund/settle first).
-  app.delete('/admin/media/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.delete('/admin/media/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const cur = await pool.query('SELECT * FROM media WHERE id = $1', [req.params.id]);
     if (!cur.rows.length) return res.status(404).json({ error: 'media not found' });
     const paid = await pool.query(
@@ -2011,7 +2015,7 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // ---- Admin: reel order fulfillment queue ----
-  app.get('/admin/reel-orders', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/reel-orders', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const conds = [], params = [];
     if (req.query.status && REEL_ORDER_FLOW[req.query.status]) {
       params.push(String(req.query.status));
@@ -2034,7 +2038,7 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows });
   }));
 
-  app.patch('/admin/reel-orders/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.patch('/admin/reel-orders/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const cur = await pool.query('SELECT * FROM reel_orders WHERE id = $1', [req.params.id]);
     if (!cur.rows.length) return res.status(404).json({ error: 'reel order not found' });
     const b = req.body || {};
@@ -2623,7 +2627,7 @@ module.exports = function mountMediaRoutes(app) {
   };
 
   // ---- Assisted tagging: rank classes by taken_at proximity, with candidates ----
-  app.post('/admin/media/suggest-tags', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.post('/admin/media/suggest-tags', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { event_id, taken_at } = req.body || {};
     if (!event_id) return res.status(400).json({ error: 'need {event_id}' });
     const ts = taken_at ? new Date(taken_at) : null;

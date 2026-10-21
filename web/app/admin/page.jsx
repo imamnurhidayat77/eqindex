@@ -49,6 +49,17 @@ const GROUPS = [
 export default async function AdminOverview() {
   const token = cookies().get('eq_session')?.value;
   let d = null;
+  // Photographers land straight in their workspace (overview APIs stay
+  // admin-only, so they'd only see "unavailable" here).
+  try {
+    const me = await fetch(`${API}/auth/me`, {
+      headers: { cookie: `eq_session=${token}` }, cache: 'no-store',
+    }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (me?.data?.role === 'PHOTOGRAPHER') {
+      const { redirect } = await import('next/navigation');
+      redirect('/admin/media');
+    }
+  } catch { /* fall through to the admin overview */ }
   let daily = null;
   try {
     const res = await fetch(`${API}/admin/overview`, {

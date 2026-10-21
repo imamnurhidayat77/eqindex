@@ -67,6 +67,9 @@ export default function UserMenu() {
               <Link href="/admin/review" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">Review Queue</Link>
             </>
           )}
+          {user.role === 'PHOTOGRAPHER' && (
+            <Link href="/admin/media" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-gold no-underline hover:text-white">⛨ Media Console</Link>
+          )}
           <button onClick={handleLogout} disabled={busy}
             className="flex w-full items-center gap-2 text-left px-2 py-1.5 text-[13px] text-blood bg-none border-0 cursor-pointer disabled:opacity-60 disabled:cursor-wait">
             {busy && <span className="spinner" aria-hidden="true" />}

@@ -1169,7 +1169,7 @@ module.exports = function mountAdminRoutes(app) {
 
 
   // ---- Admin manage: search lists (including zero-start records) ----
-  app.get('/admin/horses', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/horses', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const q = `%${String(req.query.q || '').trim()}%`;
     const { rows } = await pool.query(
       `SELECT h.*, (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.horse_id = h.id) AS starts
@@ -1179,7 +1179,7 @@ module.exports = function mountAdminRoutes(app) {
     res.json({ data: rows });
   }));
 
-  app.get('/admin/riders', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/riders', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const q = `%${String(req.query.q || '').trim()}%`;
     const { rows } = await pool.query(
       `SELECT r.*, (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.rider_id = r.id) AS starts
@@ -1189,7 +1189,7 @@ module.exports = function mountAdminRoutes(app) {
     res.json({ data: rows });
   }));
 
-  app.get('/admin/events', needRole('ADMIN'), asyncH(async (req, res) => {
+  app.get('/admin/events', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const q = `%${String(req.query.q || '').trim()}%`;
     const { rows } = await pool.query(
       `SELECT e.*, (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id) AS class_count,

@@ -75,6 +75,12 @@ export default function AdminNav({ user }) {
   const pathname = usePathname() || '/admin';
   const [counts, setCounts] = useState({});
   const [palOpen, setPalOpen] = useCommandPalette();
+  // Photographers only see the Media group — every other console page stays
+  // API-blocked for them anyway; the nav just doesn't advertise it.
+  const isPhoto = user?.role === 'PHOTOGRAPHER';
+  const top = isPhoto ? [] : MANAGE_TOP;
+  const groups = isPhoto ? MANAGE_GROUPS.filter((g) => g.title === 'Media') : MANAGE_GROUPS;
+  const flat = isPhoto ? [] : FLAT_GROUPS;
   // Collapsed state only affects desktop (lg+); on mobile the headers are
   // hidden and every item stays visible in the horizontal scroll row.
   const [open, setOpen] = useState(() => {
@@ -162,8 +168,8 @@ export default function AdminNav({ user }) {
       <nav className="p-2 flex lg:flex-col gap-0.5 overflow-x-auto">
         <div className="min-w-fit">
           <div className="hidden lg:block px-2.5 pt-3 pb-1 text-[10px] uppercase tracking-[0.8px] text-faint font-bold">Manage</div>
-          {MANAGE_TOP.map((item) => row(item))}
-          {MANAGE_GROUPS.map((g) => {
+          {top.map((item) => row(item))}
+          {groups.map((g) => {
             const isOpen = !!open[g.title];
             const hasActive = g.items.some(([href]) => active(href));
             return (
@@ -180,7 +186,7 @@ export default function AdminNav({ user }) {
             );
           })}
         </div>
-        {FLAT_GROUPS.map((g) => (
+        {flat.map((g) => (
           <div key={g.title} className="min-w-fit">
             <div className="hidden lg:block px-2.5 pt-3 pb-1 text-[10px] uppercase tracking-[0.8px] text-faint font-bold">{g.title}</div>
             {g.items.map((item) => row(item))}
@@ -190,7 +196,7 @@ export default function AdminNav({ user }) {
       <div className="p-2 border-t border-rowline">
         <Link href="/" className="flex items-center gap-2.5 rounded px-2.5 py-2 text-[13px] text-faint no-underline hover:text-white">← Back to site</Link>
       </div>
-      <CommandPalette open={palOpen} onClose={() => setPalOpen(false)} />
+      <CommandPalette open={palOpen} onClose={() => setPalOpen(false)} role={user?.role} />
     </aside>
   );
 }

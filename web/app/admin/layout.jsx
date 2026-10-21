@@ -20,12 +20,15 @@ async function currentUser() {
 
 export default async function AdminLayout({ children }) {
   const user = await currentUser();
-  if (!user || user.role !== 'ADMIN') {
+  // Photographers get the media side of the console (nav filters the rest);
+  // every API route still enforces its own role.
+  const allowed = user && (user.role === 'ADMIN' || user.role === 'PHOTOGRAPHER');
+  if (!allowed) {
     return (
       <section className={CARD}>
         <h1 className="font-display text-[24px] font-bold uppercase tracking-tight">Restricted</h1>
         <p className="text-muted text-sm mt-2">
-          The admin console requires an <b className="text-body">ADMIN</b> account.
+          The admin console requires an <b className="text-body">ADMIN</b> or photographer account.
           {user ? ` You are signed in as ${user.name} (${user.role}).` : ' You are not signed in.'}{' '}
           <Link className={LINK} href="/login?next=/admin">Log in →</Link>
         </p>
