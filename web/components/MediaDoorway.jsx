@@ -11,7 +11,6 @@ export default function MediaDoorway({
   horseId, horseSlug, horseName,
   riderId, riderSlug, riderName,
 }) {
-  const subject = eventName || horseName || riderName || '';
   const eq = (v) => encodeURIComponent(v);
 
   let photosHref = '/photos';
@@ -27,7 +26,7 @@ export default function MediaDoorway({
     <section className={CARD}>
       <h2 className="text-[15px] font-bold">📷 Photos &amp; video</h2>
       <p className="mt-0.5 mb-3 text-[12.5px] text-muted">
-        Results above are free{subject ? ` — photos and custom reels from ${subject} are sold separately` : ' — photos and custom reels are sold separately'}.
+        Relive the moment — browse the photo gallery or order a custom video reel.
       </p>
       <div className="flex flex-wrap gap-2">
         <Link href={photosHref} className="text-sky text-[13px] no-underline hover:underline border border-line rounded px-4 py-2">
