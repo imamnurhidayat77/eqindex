@@ -317,8 +317,8 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
       {/* Hasil vs Foto: niat berbeda, layar berbeda. Jualan hanya di tab Foto. */}
       <div className="flex gap-1 bg-card2 border border-line rounded p-1 w-fit mb-4" role="tablist" aria-label="Watchlist view">
         {[
-          ['results', 'Hasil'],
-          ['photos', `Foto${totalShots ? ` (${totalShots})` : ''}`],
+          ['results', 'Results'],
+          ['photos', `Photos${totalShots ? ` (${totalShots})` : ''}`],
         ].map(([k, lbl]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
             className={`px-3.5 py-[7px] rounded-md text-[13px] whitespace-nowrap cursor-pointer border-0 ${tab === k ? 'bg-card text-gold font-bold' : 'bg-transparent text-muted hover:text-white'}`}>
