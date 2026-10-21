@@ -90,7 +90,7 @@ function PhotosInner() {
     fetch(`${API}/photos/events?${p}`).then((r) => r.json())
       .then((j) => setEvGroups(Array.isArray(j.data) ? j.data : [])).catch(() => setEvGroups([]));
   }, [kind]);
-  const browsingEvents = !q.trim() && !horseId && !riderId && !eventId;
+  // (browsingEvents dihitung setelah riderId ada — di bawah, sebelum return.)
   // Rider filter: URL (?rider=) seeds it; the searchable picker overrides it
   // server-side (the text box below stays as a client-side refinement).
   // undefined = follow URL, null = cleared, {id,name} = picked.
@@ -107,6 +107,7 @@ function PhotosInner() {
   const riderValue = riderSel === undefined
     ? (urlRider ? { id: urlRider, name: urlRiderName || urlRider } : null)
     : riderSel;
+  const browsingEvents = !q.trim() && !horseId && !riderId && !eventId;
   useEffect(() => {
     setLoading(true);
     const p = new URLSearchParams({ limit: '96' });
