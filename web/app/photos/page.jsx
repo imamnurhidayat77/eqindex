@@ -4,9 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { API } from '../../lib/api';
 import { CARD, H1, SUB } from '../../lib/tokens';
-import RiderPicker from '../../components/RiderPicker';
-import HorsePicker from '../../components/HorsePicker';
-import Dropdown from '../../components/Dropdown';
+import EventSearch from '../../components/EventSearch';
 
 const TABS = [['', 'All'], ['photo', 'Photos'], ['reel', 'Reels']];
 const nzd = (c) => (c === null || c === undefined ? null : `NZ$${(Number(c) / 100).toFixed(2)}`);
@@ -50,8 +48,10 @@ function PhotosInner() {
   const fHorse = sp.get('horse') || '';
   const urlRider = sp.get('rider') || '';
   const urlEvent = sp.get('event') || '';
-  const [horseSel, setHorseSel] = useState(undefined);
-  const [urlHorseName, setUrlHorseName] = useState('');
+  // URL-seeded subject filters stay (doorway links use ?horse= / ?rider=);
+  // only the event search has a visible picker.
+  const horseId = fHorse;
+  const riderId = urlRider;
   const [events, setEvents] = useState([]);
   const [eventSel, setEventSel] = useState(undefined);
   useEffect(() => {
@@ -67,17 +67,6 @@ function PhotosInner() {
       }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => {
-    if (!fHorse) return;
-    fetch(`${API}/horses/${encodeURIComponent(fHorse)}`).then((r) => r.json()).then((j) => {
-      const d = j.data || {};
-      if (d && (d.id || d.horse_id)) setUrlHorseName(d.name || '');
-    }).catch(() => {});
-  }, [fHorse]);
-  const horseId = horseSel === undefined ? fHorse : (horseSel ? horseSel.id : '');
-  const horseValue = horseSel === undefined
-    ? (fHorse ? { id: fHorse, name: urlHorseName || fHorse } : null)
-    : horseSel;
   const eventId = eventSel === undefined ? urlEvent : (eventSel ? eventSel.value : '');
 
   // Event cards: the default gallery view. Newest event first, only events
@@ -129,23 +118,6 @@ function PhotosInner() {
       } catch { setEvGroups([]); }
     })();
   }, [kind]);
-  // (browsingEvents dihitung setelah riderId ada — di bawah, sebelum return.)
-  // Rider filter: URL (?rider=) seeds it; the searchable picker overrides it
-  // server-side (the text box below stays as a client-side refinement).
-  // undefined = follow URL, null = cleared, {id,name} = picked.
-  const [riderSel, setRiderSel] = useState(undefined);
-  const [urlRiderName, setUrlRiderName] = useState('');
-  useEffect(() => {
-    if (!urlRider) return;
-    fetch(`${API}/riders/${encodeURIComponent(urlRider)}`).then((r) => r.json()).then((j) => {
-      const d = j.data || {};
-      if (d && (d.id || d.rider_id)) setUrlRiderName(d.name || '');
-    }).catch(() => {});
-  }, [urlRider]);
-  const riderId = riderSel === undefined ? urlRider : (riderSel ? riderSel.id : '');
-  const riderValue = riderSel === undefined
-    ? (urlRider ? { id: urlRider, name: urlRiderName || urlRider } : null)
-    : riderSel;
   const browsingEvents = !q.trim() && !horseId && !riderId && !eventId;
   useEffect(() => {
     setLoading(true);
@@ -201,14 +173,10 @@ function PhotosInner() {
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Horse, rider, event…" aria-label="Search photos"
             className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none grow min-w-[180px]" />
         </div>
-        <div className="mt-2 grid gap-2 sm:grid-cols-3">
-          <Dropdown ariaLabel="Filter by event" searchable placeholder="All events…"
-            value={eventSel === undefined ? '' : (eventSel ? eventSel.value : '')}
-            options={[{ value: '', label: 'All events…' },
-              ...events.map((e) => ({ value: e.id, label: `${e.name}${e.date_start ? ` · ${String(e.date_start).slice(0, 10)}` : ''}` }))]}
-            onSelect={(o) => setEventSel(o.value ? o : null)} />
-          <HorsePicker value={horseValue} onPick={setHorseSel} placeholder="Filter by horse…" />
-          <RiderPicker value={riderValue} onPick={setRiderSel} placeholder="Filter by rider…" />
+        <div className="mt-2">
+          <EventSearch events={events}
+            value={eventSel === undefined ? (urlEvent ? { value: urlEvent, label: urlEvent } : null) : eventSel}
+            onPick={(o) => setEventSel(o)} placeholder="Search event…" />
         </div>
       </section>
 
