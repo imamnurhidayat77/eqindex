@@ -357,32 +357,51 @@ export function VenueDetailSk() {
 }
 
 export function WatchlistSk() {
+  // Mirrors the current watchlist: pulse bar + search, event chips,
+  // Hasil|Foto tabs, watched chips, then per-event sections.
   return (
     <>
-      <PageHead />
-      <StatGrid n={4} cols="grid-cols-2 xl:grid-cols-4" />
-      <div className="grid grid-cols-1 lg:grid-cols-[1.7fr_1fr] gap-5 items-start">
+      <div className="bg-card border border-line rounded p-4 mb-5 flex items-center gap-4">
         <div>
-          <TableSk cols={6} rows={5} />
-          <TableSk cols={5} rows={4} />
+          <Sk className="h-2.5 w-24" />
+          <Sk className="h-5 w-72 max-w-full mt-2" />
         </div>
-        <div>
-          <h2 className="text-[17px] font-bold mb-0.5"><Sk className="h-5 w-48" /></h2>
-          <div className="space-y-2.5 mb-6">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="bg-card border border-line rounded p-3">
-                <Sk className="h-3.5 w-3/4" />
-                <Sk className="h-3 w-full mt-2" />
+        <span className="flex-1" />
+        <Sk className="h-9 w-64 !rounded-md hidden sm:block" />
+      </div>
+      <div className="flex flex-wrap gap-1.5 mb-4 items-center">
+        {[0, 1, 2, 3].map((i) => <Sk key={i} className="h-6 w-24 !rounded-full" />)}
+      </div>
+      <div className="flex gap-1 bg-card2 border border-line rounded p-1 w-fit mb-4">
+        {[0, 1].map((i) => <Sk key={i} className="h-8 w-24 !rounded-md" />)}
+      </div>
+      <section className="bg-card border border-line rounded p-4 mb-4">
+        <div className="flex flex-wrap gap-1.5">
+          {[0, 1, 2].map((i) => <Sk key={i} className="h-7 w-36 !rounded-full" />)}
+        </div>
+      </section>
+      {[0, 1].map((s) => (
+        <section key={s} className="bg-card border border-line rounded p-4 mb-4">
+          <div className="flex items-baseline gap-3 mb-1">
+            <Sk className="h-5 w-56 max-w-full" />
+            <span className="ml-auto"><Sk className="h-3 w-16" /></span>
+          </div>
+          <Sk className="h-3.5 w-72 max-w-full mb-2.5" />
+          <div className="space-y-1.5">
+            {[0, 1].map((i) => (
+              <div key={i} className="rounded bg-card2 border border-rowline px-3 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <Sk className="h-2.5 w-10" />
+                  <Sk className="h-4 w-40" />
+                  <Sk className="h-3 w-48 hidden sm:block" />
+                  <span className="flex-1" />
+                  <Sk className="h-7 w-28 !rounded-md" />
+                </div>
               </div>
             ))}
           </div>
-          <section className="rounded border border-line bg-card px-5 py-[18px] mb-6">
-            <Sk className="h-5 w-40 mb-2" />
-            <Sk className="h-3 w-full" />
-            <Sk className="h-3 w-5/6 mt-1.5" />
-          </section>
-        </div>
-      </div>
+        </section>
+      ))}
     </>
   );
 }
@@ -421,6 +440,130 @@ export function AnalyticsSk() {
       <StatGrid n={4} cols="grid-cols-2 lg:grid-cols-4" />
       <TableSk cols={6} rows={6} />
       <TableSk cols={5} rows={6} />
+    </>
+  );
+}
+
+/* ---------------- media shop skeletons ---------------- */
+
+// Mirrors the gallery / wall photo cards (4:3 thumb + 2 caption lines +
+// footer row) so the grid doesn't jump when photos land.
+export function PhotoCardSk({ n = 8 }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {Array.from({ length: n }).map((_, i) => (
+        <div key={i} className="rounded-xl border border-line bg-card overflow-hidden">
+          <Sk className="aspect-[4/3] !rounded-none" />
+          <div className="p-2.5">
+            <Sk className="h-3.5 w-4/5" />
+            <Sk className="h-3 w-3/5 mt-1.5" />
+            <div className="flex justify-between mt-2">
+              <Sk className="h-3 w-12" />
+              <Sk className="h-3 w-16" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Mirrors the gallery event cards (16:9 cover + title/date/count).
+export function EventCardSk({ n = 6 }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {Array.from({ length: n }).map((_, i) => (
+        <div key={i} className="rounded-xl border border-line bg-card overflow-hidden">
+          <Sk className="aspect-[16/9] !rounded-none" />
+          <div className="p-3">
+            <Sk className="h-4 w-3/4" />
+            <Sk className="h-3 w-24 mt-1.5" />
+            <div className="flex justify-between mt-2">
+              <Sk className="h-3 w-20" />
+              <Sk className="h-3 w-14" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Gallery filter bar mirror (kind tabs are gone; event search remains).
+export function GalleryFilterSk() {
+  return (
+    <div className="rounded border border-line bg-card p-3 mb-4">
+      <Sk className="h-[38px] w-full !rounded-md" />
+    </div>
+  );
+}
+
+export function PhotosGallerySk() {
+  return (
+    <>
+      <div className="mb-1 flex items-center gap-3">
+        <div className={H1}><Sk className="h-8 w-40 !rounded-md" /></div>
+      </div>
+      <p className={SUB}><Sk className="h-3.5 w-96 max-w-full" /></p>
+      <GalleryFilterSk />
+      <EventCardSk n={6} />
+    </>
+  );
+}
+
+// Event photo wall (/photos/<slug>): breadcrumb + title + filter row + grid.
+export function PhotoWallSk() {
+  return (
+    <>
+      <div className="mb-1"><Sk className="h-3 w-56" /></div>
+      <div className="mb-1 flex items-center gap-3">
+        <div className={H1}><Sk className="h-8 w-80 max-w-full !rounded-md" /></div>
+      </div>
+      <p className={SUB}><Sk className="h-3.5 w-96 max-w-full" /></p>
+      <div className="grid gap-2 sm:grid-cols-3 mb-4">
+        {[0, 1, 2].map((i) => <Sk key={i} className="h-[38px] !rounded-md" />)}
+      </div>
+      <PhotoCardSk n={8} />
+    </>
+  );
+}
+
+// My Media hub (photos/reels/credits tabs).
+export function MyMediaSk() {
+  return (
+    <>
+      <div className="mb-1 flex items-center gap-3">
+        <div className={H1}><Sk className="h-8 w-48 !rounded-md" /></div>
+      </div>
+      <p className={SUB}><Sk className="h-3.5 w-72 max-w-full" /></p>
+      <div className="flex gap-1 bg-card2 border border-line rounded p-1 w-fit mb-4">
+        {[0, 1, 2].map((i) => <Sk key={i} className="h-8 w-24 !rounded-md" />)}
+      </div>
+      <PhotoCardSk n={8} />
+    </>
+  );
+}
+
+// Reels order page (event picker + product cards + short form).
+export function ReelOrderSk() {
+  return (
+    <>
+      <div className="mb-1 flex items-center gap-3">
+        <div className={H1}><Sk className="h-8 w-64 max-w-full !rounded-md" /></div>
+      </div>
+      <p className={SUB}><Sk className="h-3.5 w-96 max-w-full" /></p>
+      <Sk className="h-[38px] w-full !rounded-md mb-4" />
+      <section className={CARD}>
+        <Sk className="h-5 w-40" />
+        <Sk className="h-3.5 w-3/4 mt-1.5" />
+        <div className="grid gap-2 md:grid-cols-3 mt-3 mb-3">
+          {[0, 1, 2].map((i) => <Sk key={i} className="h-24 !rounded-lg" />)}
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          {[0, 1, 2, 3].map((i) => <Sk key={i} className="h-12 !rounded-md" />)}
+        </div>
+        <Sk className="h-10 w-48 !rounded-md mt-3" />
+      </section>
     </>
   );
 }

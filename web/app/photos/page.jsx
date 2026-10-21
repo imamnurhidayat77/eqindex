@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { API } from '../../lib/api';
 import { CARD, H1, SUB } from '../../lib/tokens';
 import EventSearch from '../../components/EventSearch';
+import { EventCardSk, PhotoCardSk } from '../../components/Skeletons';
 
 const nzd = (c) => (c === null || c === undefined ? null : `NZ$${(Number(c) / 100).toFixed(2)}`);
 
@@ -195,9 +196,7 @@ function PhotosInner() {
 
       {browsingEvents ? (
         evGroups === null ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {[0, 1, 2, 3, 4, 5].map((i) => <span key={i} className="sk h-44 w-full rounded-xl" />)}
-          </div>
+          <EventCardSk n={6} />
         ) : evGroups.length ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {evGroups.map((g) => (
@@ -233,9 +232,7 @@ function PhotosInner() {
           </section>
         )
       ) : loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <span key={i} className="sk h-44 w-full rounded-xl" />)}
-        </div>
+        <PhotoCardSk n={8} />
       ) : rows.length ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

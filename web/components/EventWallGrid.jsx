@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { API } from '../lib/api';
 import Dropdown from './Dropdown';
 import { CARD } from '../lib/tokens';
+import { PhotoCardSk } from './Skeletons';
 
 const PAGE = 48;
 const MOMENT = {
@@ -135,9 +136,7 @@ export default function EventWallGrid({ initialRows = [], eventId, kind }) {
           className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none w-full" />
       </div>
       {busy && !rows.length ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <span key={i} className="sk h-44 w-full rounded-xl" />)}
-        </div>
+        <PhotoCardSk n={8} />
       ) : !filtered.length ? (
         <section className={CARD}>
           <div className="flex flex-col items-center py-10 text-center">
