@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { CARD, BTN_PRIMARY } from '../lib/tokens';
+import { PhotoCardSk } from './Skeletons';
 
 const nzd = (c) => (c === null || c === undefined ? '—' : `NZ$${(Number(c) / 100).toFixed(2)}`);
 const fmtDate = (d) => (d || '').slice(0, 10);
@@ -23,12 +24,11 @@ function ImageIcon({ className }) {
 export default function MyPhotosPanel({ onCount }) {
   const [rows, setRows] = useState(null);
   const [claimed, setClaimed] = useState([]);
-  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
   useEffect(() => {
     let live = true;
-    setBusy(true); setErr('');
+    setErr('');
     (async () => {
       try {
         const [a, b] = await Promise.all([
@@ -42,7 +42,6 @@ export default function MyPhotosPanel({ onCount }) {
         setClaimed(b && b.r.ok ? b.j.data || [] : []);
         if (onCount) onCount((a.j.data || []).length);
       } catch (e) { if (live) setErr(e.message); }
-      if (live) setBusy(false);
     })();
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -53,9 +52,7 @@ export default function MyPhotosPanel({ onCount }) {
   return (
     <>
       {err && <section className={CARD} role="alert"><p className="text-blood text-sm">{err}</p></section>}
-      {rows === null && !err && (
-        <p className="text-muted text-sm mb-3">{busy ? 'Loading…' : ''}</p>
-      )}
+      {rows === null && !err && <PhotoCardSk n={8} />}
       {rows !== null && !rows.length && !err && (
         <section className={CARD}>
           <div className="flex flex-col items-center py-10 text-center">

@@ -50,8 +50,16 @@ export default function SeriesIndex() {
       <p className={SUB}>Season-long points races across the NZ showjumping circuit.</p>
 
       {loading ? (
-        <span className="flex flex-col gap-2 py-1" aria-hidden="true" aria-label="Loading">
-          {[0, 1, 2].map((i) => <span key={i} className="sk h-12 w-full" />)}
+        <span className="grid gap-4 md:grid-cols-3 mb-6" aria-hidden="true" aria-label="Loading">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <span key={i} className="flex items-center justify-between rounded border border-line bg-card p-4">
+              <span className="min-w-0">
+                <span className="sk block h-[15px] w-40 !rounded" />
+                <span className="sk mt-1 block h-3 w-56 !rounded" />
+              </span>
+              <span className="sk h-4 w-4 shrink-0 ml-3 !rounded" />
+            </span>
+          ))}
         </span>
       ) : (
         <>

@@ -4,11 +4,17 @@ import { useState } from 'react';
 import { H1, SUB } from '../../lib/tokens';
 import { useAuth } from '../../components/auth';
 import MyCreditsPanel from '../../components/MyCreditsPanel';
+import { CreditCardsSk } from '../../components/Skeletons';
 
 export default function MyCredits() {
   const { user, loading } = useAuth();
   const [total, setTotal] = useState(null);
-  if (loading) return <p className="text-muted text-sm">Loading…</p>;
+  if (loading) return (
+    <>
+      <div className="mb-1"><div className={H1}><span className="sk h-8 w-44 !rounded-md" aria-hidden="true" /></div></div>
+      <CreditCardsSk n={4} />
+    </>
+  );
   if (!user) return (
     <>
       <h1 className={H1}>My credits</h1>

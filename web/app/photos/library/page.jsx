@@ -4,11 +4,17 @@ import { useState } from 'react';
 import { H1, SUB, BTN_PRIMARY } from '../../../lib/tokens';
 import { useAuth } from '../../../components/auth';
 import MyPhotosPanel from '../../../components/MyPhotosPanel';
+import { PhotoCardSk } from '../../../components/Skeletons';
 
 export default function PhotoLibrary() {
   const { user, loading } = useAuth();
   const [count, setCount] = useState(null);
-  if (loading) return <p className="text-muted text-sm">Loading…</p>;
+  if (loading) return (
+    <>
+      <div className="mb-1"><h1 className={H1}>My photos</h1></div>
+      <PhotoCardSk n={8} />
+    </>
+  );
   if (!user) return (
     <>
       <h1 className={H1}>My photos</h1>

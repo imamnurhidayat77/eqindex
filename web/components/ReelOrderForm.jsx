@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { API } from '../lib/api';
 import { CARD, BTN_PRIMARY, INP } from '../lib/tokens';
 import { useAuth } from './auth';
+import { Sk } from './Skeletons';
 
 const nzd = (c) => (c === null || c === undefined ? '—' : `NZ$${(Number(c) / 100).toFixed(2)}`);
 const SCOPE = { clip: 'Raw clip', round: 'Round edit', event: 'Event edit' };
@@ -76,7 +78,17 @@ export default function ReelOrderForm({ eventId, eventName }) {
     setBusy(false);
   }
 
-  if (products !== null && !products.length) return null;
+  if (products !== null && !products.length) {
+    return (
+      <section className={CARD}>
+        <h2 className="text-[15px] font-bold">Video Reels</h2>
+        <p className="mt-0.5 text-[12.5px] text-muted">
+          No reel packages at{eventName ? ` ${eventName}` : ' this event'} yet — check back soon, or{' '}
+          <Link href="/contact" className="text-sky hover:underline">ask us</Link> about custom filming.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className={CARD}>
@@ -85,7 +97,16 @@ export default function ReelOrderForm({ eventId, eventName }) {
         Custom reels filmed and edited for you{eventName ? ` at ${eventName}` : ''} — pay up front, we produce after.
       </p>
       {products === null ? (
-        <p className="text-[13px] text-faint">Loading reel options…</p>
+        <div aria-hidden="true" aria-label="Loading reel options">
+          <div className="grid gap-2 md:grid-cols-3 mb-3">
+            {[0, 1, 2].map((i) => <Sk key={i} className="h-[86px] !rounded-lg" />)}
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 mb-2.5">
+            {[0, 1, 2, 3, 4, 5].map((i) => <Sk key={i} className="h-[52px] !rounded-md" />)}
+          </div>
+          <Sk className="h-24 w-full !rounded-lg mb-3" />
+          <Sk className="h-10 w-48 !rounded-md" />
+        </div>
       ) : (
         <>
           <div className="grid gap-2 md:grid-cols-3 mb-3">

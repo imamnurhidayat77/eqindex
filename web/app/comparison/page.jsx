@@ -13,13 +13,14 @@ const clearOf = (t, x) => (t === 'event' ? null : Number(x.clear_pct));
 export default function Comparison() {
   const [type, setType] = useState('horse');
   const [list, setList] = useState([]);
+  const [loadingList, setLoadingList] = useState(true);
   const [aId, setAId] = useState('');
   const [bId, setBId] = useState('');
   const [result, setResult] = useState(null);
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    setResult(null); setErr('');
+    setResult(null); setErr(''); setLoadingList(true);
     const ep = type === 'event' ? '/events?limit=100&has_data=1'
       : type === 'combination' ? '/partnerships?limit=100'
       : type === 'horse' ? '/rankings/horses?limit=100' : '/rankings/riders?limit=100';
@@ -35,7 +36,7 @@ export default function Comparison() {
         setAId(idOf(type, a));
         setBId(idOf(type, b));
       }
-    }).catch(() => setErr('API unreachable'));
+    }).catch(() => setErr('API unreachable')).finally(() => setLoadingList(false));
   }, [type]);
 
   const byId = Object.fromEntries(list.map((x) => [idOf(type, x), x]));
@@ -134,13 +135,25 @@ export default function Comparison() {
           ))}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-start">
-          <Picker side="A" id={aId} setId={setAId} />
-          <div className="flex md:flex-col items-center justify-center gap-3 pt-7">
-            <span className="w-10 h-10 rounded-full border-[1.5px] border-gold text-gold inline-flex items-center justify-center text-xs font-bold">VS</span>
-            <button onClick={compare} className="rounded bg-gold px-6 py-2.5 text-sm font-bold text-black">Compare</button>
-            {R && type !== 'event' && <button onClick={save} className="rounded border border-line bg-card2 px-4 py-2 text-xs text-muted">Save to Elite</button>}
-          </div>
-          <Picker side="B" id={bId} setId={setBId} />
+          {loadingList && !list.length ? (
+            <>
+              <span className="sk h-[76px] w-full !rounded-md" aria-hidden="true" />
+              <span className="sk h-[76px] w-24 !rounded-md mx-auto" aria-hidden="true" />
+              <span className="sk h-[76px] w-full !rounded-md" aria-hidden="true" />
+            </>
+          ) : (
+            <>
+              <Picker side="A" id={aId} setId={setAId} />
+              <div className="flex md:flex-col items-center justify-center gap-3 pt-7">
+                <span className="w-10 h-10 rounded-full border-[1.5px] border-gold text-gold inline-flex items-center justify-center text-xs font-bold">VS</span>
+                <button onClick={compare} disabled={loadingList} className="rounded bg-gold px-6 py-2.5 text-sm font-bold text-black disabled:opacity-50">
+                  {loadingList ? 'Loading…' : 'Compare'}
+                </button>
+                {R && type !== 'event' && <button onClick={save} className="rounded border border-line bg-card2 px-4 py-2 text-xs text-muted">Save to Elite</button>}
+              </div>
+              <Picker side="B" id={bId} setId={setBId} />
+            </>
+          )}
         </div>
         {err && <p className="text-muted text-sm mt-3">{err}</p>}
       </section>

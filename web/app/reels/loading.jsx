@@ -1,5 +1,5 @@
-import { MyMediaSk } from '../../components/Skeletons';
+import { ReelCardsSk } from '../../components/Skeletons';
 
 export default function Loading() {
-  return <MyMediaSk />;
+  return <ReelCardsSk n={4} />;
 }

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { CARD, BTN_PRIMARY } from '../lib/tokens';
+import { CreditCardsSk } from './Skeletons';
 
 // Shared body for My credits (credits route + My Media tab).
 // onTotal(totalLeft) lets the host show the balance in its header.
@@ -38,7 +39,7 @@ export default function MyCreditsPanel({ onTotal }) {
   return (
     <>
       {err && <section className={CARD} role="alert"><p className="text-blood text-sm">{err}</p></section>}
-      {rows === null && !err && <p className="text-muted text-sm">Loading…</p>}
+      {rows === null && !err && <CreditCardsSk n={4} />}
       {rows !== null && !rows.length && !err && (
         <section className={CARD}>
           <div className="flex flex-col items-center py-10 text-center">
