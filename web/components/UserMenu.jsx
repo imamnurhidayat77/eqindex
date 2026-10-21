@@ -55,12 +55,10 @@ export default function UserMenu() {
           <span className="block px-2 py-1.5 text-[13px] font-bold text-white truncate">{user.name}</span>
           <span className="block px-2 pb-1.5 text-[11px] text-muted">{user.email} · {user.role}</span>
           <Link href="/watchlist" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">My Watchlist</Link>
-          <Link href="/photos/library" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">My Photos</Link>
-          <Link href="/reels" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">My Reels</Link>
-          <Link href="/credits" onClick={() => setOpen(false)} className="flex items-center justify-between px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">
-            <span>My Credits</span>
+          <Link href="/media" onClick={() => setOpen(false)} className="flex items-center justify-between px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">
+            <span>My Media</span>
             {Number(creditLeft) > 0 && (
-              <span className="rounded-full bg-goldbg px-1.5 py-px text-[10.5px] font-bold text-gold">{creditLeft} left</span>
+              <span className="rounded-full bg-goldbg px-1.5 py-px text-[10.5px] font-bold text-gold">{creditLeft} credits</span>
             )}
           </Link>
           {user.role === 'ADMIN' && (

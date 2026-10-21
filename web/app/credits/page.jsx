@@ -1,98 +1,35 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { API } from '../../lib/api';
-import { CARD, H1, SUB, BTN_PRIMARY } from '../../lib/tokens';
+import { useState } from 'react';
+import { H1, SUB } from '../../lib/tokens';
 import { useAuth } from '../../components/auth';
+import MyCreditsPanel from '../../components/MyCreditsPanel';
 
-// My credits wallet: every 5-pack bundle with remaining slots per event.
-// Data: GET /api/my/credits (paid + active only). Redeemed photos live in
-// My photos (library); this page answers "where are my credits?".
 export default function MyCredits() {
   const { user, loading } = useAuth();
-  const [rows, setRows] = useState(null);
-  const [err, setErr] = useState('');
-
-  useEffect(() => {
-    if (loading || !user) return;
-    fetch(`${API}/api/my/credits`, { credentials: 'include' })
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({}));
-        if (r.status === 401) throw new Error('Log in to see your credits.');
-        if (!r.ok) throw new Error(j.error || `Failed (${r.status})`);
-        setRows(j.data || []);
-      })
-      .catch((e) => setErr(e.message));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user]);
-
-  const galleryHref = (b) => {
-    const p = new URLSearchParams();
-    if (b.event_id) p.set('event', b.event_id);
-    if (b.horse_id) p.set('horse', b.horse_id);
-    else if (b.rider_id) p.set('rider', b.rider_id);
-    return `/photos?${p}`;
-  };
-
+  const [total, setTotal] = useState(null);
+  if (loading) return <p className="text-muted text-sm">Loading…</p>;
+  if (!user) return (
+    <>
+      <h1 className={H1}>My credits</h1>
+      <p className={SUB}>Log in to see your credits.</p>
+      <Link href="/login" className="text-sky text-[13px] no-underline hover:underline">Log in →</Link>
+    </>
+  );
   return (
     <>
       <div className="mb-1 flex flex-wrap items-center gap-3">
         <h1 className={H1}>My credits</h1>
-        {!!rows?.length && (
+        {!!total && (
           <span className="rounded-full border border-line px-2.5 py-1 text-[12px] font-bold text-muted">
-            {rows.reduce((s, b) => s + Number(b.slots_left || 0), 0)} left
+            {total} left
           </span>
         )}
         <span className="flex-1" />
-        <Link href="/photos/library" className="text-sky text-[13px] no-underline hover:underline">My photos →</Link>
+        <Link href="/media" className="text-sky text-[13px] no-underline hover:underline">My media →</Link>
       </div>
       <p className={SUB}>5-pack bundles, per event × rider/horse. Open a photo in scope and unlock it with one click.</p>
-      {err && <section className={CARD} role="alert"><p className="text-blood text-sm">{err}</p></section>}
-      {rows === null && !err && <p className="text-muted text-sm">Loading…</p>}
-      {rows !== null && !rows.length && !err && (
-        <section className={CARD}>
-          <div className="flex flex-col items-center py-10 text-center">
-            <span className="text-4xl" aria-hidden="true">🎟️</span>
-            <h2 className="mt-3 text-[16px] font-bold text-white">No credits yet</h2>
-            <p className="mt-1 text-[13px] text-muted">Grab a 5-pack from any stable group in your watchlist, or any photo page.</p>
-            <Link href="/watchlist" className={`${BTN_PRIMARY} no-underline mt-4`}>Go to watchlist</Link>
-          </div>
-        </section>
-      )}
-      {!!rows?.length && (
-        <div className="grid gap-3 md:grid-cols-2">
-          {rows.map((b) => {
-            const total = Number(b.slots_total) || 0;
-            const left = Number(b.slots_left) || 0;
-            const used = total - left;
-            return (
-              <section key={b.id} className="rounded-xl border border-line bg-card p-4">
-                <div className="flex items-baseline justify-between gap-2">
-                  <div className="text-[14px] font-bold text-white truncate">
-                    {[b.horse, b.rider].filter(Boolean).join(' × ') || 'Bundle'}
-                  </div>
-                  <div className="shrink-0 text-[22px] font-extrabold tabular-nums text-gold">
-                    {left}<span className="text-[13px] font-bold text-faint">/{total} left</span>
-                  </div>
-                </div>
-                <div className="text-[12px] text-faint truncate">{b.event_name || ''}</div>
-                <div className="mt-2 flex gap-1" aria-label={`${used} of ${total} used`}>
-                  {Array.from({ length: total }).map((_, i) => (
-                    <span key={i} title={i < used ? 'Used' : 'Available'}
-                      className={`h-2 flex-1 rounded-full ${i < used ? 'bg-line' : 'bg-gold'}`} />
-                  ))}
-                </div>
-                <div className="mt-3 flex items-center gap-3">
-                  <Link href={galleryHref(b)} className={`${BTN_PRIMARY} no-underline !py-2 text-[13px]`}>
-                    Browse photos to unlock →
-                  </Link>
-                  <span className="text-[11.5px] text-faint">Bought {String(b.created_at || '').slice(0, 10) || ''}</span>
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      )}
+      <MyCreditsPanel onTotal={setTotal} />
     </>
   );
 }

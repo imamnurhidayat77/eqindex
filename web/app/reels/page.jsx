@@ -1,109 +1,35 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { API } from '../../lib/api';
-import { CARD, H1, SUB, BTN_PRIMARY } from '../../lib/tokens';
+import { useState } from 'react';
+import { H1, SUB, BTN_PRIMARY } from '../../lib/tokens';
 import { useAuth } from '../../components/auth';
-import ReelPlayer from '../../components/ReelPlayer';
+import MyReelsPanel from '../../components/MyReelsPanel';
 
-const nzd = (c) => (c === null || c === undefined ? '—' : `NZ$${(Number(c) / 100).toFixed(2)}`);
-const STATUS_HINT = {
-  awaiting_payment: 'Waiting for payment — complete checkout to start production.',
-  pending: 'Paid — queued for production.',
-  in_production: 'Being filmed and edited — check back soon.',
-  ready: 'Ready — your reel is finished.',
-  delivered: 'Delivered — yours to keep.',
-  cancelled: 'Cancelled.',
-};
-
-// My reels: the buyer's own custom-reel orders (private by default).
-// Finished reels play + download here; showcase teasers (opt-in) also
-// appear in public galleries.
 export default function MyReels() {
   const { user, loading } = useAuth();
-  const [rows, setRows] = useState(null);
-  const [err, setErr] = useState('');
-
-  useEffect(() => {
-    if (loading || !user) return;
-    fetch(`${API}/api/my/reels`, { credentials: 'include' })
-      .then(async (r) => {
-        const j = await r.json().catch(() => ({}));
-        if (r.status === 401) throw new Error('Log in to see your reels.');
-        if (!r.ok) throw new Error(j.error || `Failed (${r.status})`);
-        setRows(j.data || []);
-      })
-      .catch((e) => setErr(e.message));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user]);
-
+  const [count, setCount] = useState(null);
+  if (loading) return <p className="text-muted text-sm">Loading…</p>;
+  if (!user) return (
+    <>
+      <h1 className={H1}>My reels</h1>
+      <p className={SUB}>Log in to see your reels.</p>
+      <Link href="/login" className={`${BTN_PRIMARY} no-underline mt-4 inline-block`}>Log in</Link>
+    </>
+  );
   return (
     <>
       <div className="mb-1 flex flex-wrap items-center gap-3">
         <h1 className={H1}>My reels</h1>
-        {!!rows?.length && (
+        {!!count && (
           <span className="rounded-full border border-line px-2.5 py-1 text-[12px] font-bold text-muted">
-            {rows.length} order{rows.length > 1 ? 's' : ''}
+            {count} order{count > 1 ? 's' : ''}
           </span>
         )}
         <span className="flex-1" />
-        <Link href="/reels/order" className="text-sky no-underline hover:underline text-[13px]">Order a reel →</Link>
+        <Link href="/media" className="text-sky text-[13px] no-underline hover:underline">My media →</Link>
       </div>
       <p className={SUB}>Custom reels you ordered — private to you unless you allowed showcase.</p>
-      {err && <section className={CARD} role="alert"><p className="text-blood text-sm">{err}</p></section>}
-      {rows === null && !err && <p className="text-muted text-sm">Loading…</p>}
-      {rows !== null && !rows.length && !err && (
-        <section className={CARD}>
-          <div className="flex flex-col items-center py-10 text-center">
-            <span className="text-4xl" aria-hidden="true">🎬</span>
-            <h2 className="mt-3 text-[16px] font-bold text-white">No reel orders yet</h2>
-            <p className="mt-1 text-[13px] text-muted">Order a custom reel from the Reels menu — filmed and edited for you.</p>
-            <Link href="/reels/order" className={`${BTN_PRIMARY} no-underline mt-4`}>Order a reel</Link>
-          </div>
-        </section>
-      )}
-      {!!rows?.length && (
-        <div className="grid gap-3 md:grid-cols-2">
-          {rows.map((o) => (
-            <article key={o.id} className="flex flex-col rounded-xl border border-line bg-card overflow-hidden">
-              {(o.preview_url && ['ready', 'delivered'].includes(o.status)) ? (
-                <ReelPlayer previewUrl={o.preview_url} posterUrl={o.thumb_url}
-                  title={`${o.product_name} — ${o.horse_name}`} />
-              ) : (
-                <div className="flex items-center justify-center gap-2 bg-card2 py-10 text-muted text-[13px]">
-                  <span className="text-2xl" aria-hidden="true">🎬</span>
-                  {STATUS_HINT[o.status] || o.status}
-                </div>
-              )}
-              <div className="flex grow flex-col gap-1 p-3">
-                <div className="text-[13.5px] font-bold text-white truncate">
-                  {o.product_name} — {o.horse_name}
-                </div>
-                <div className="text-[11.5px] text-faint truncate">
-                  {[o.event_name, o.class_name, o.back_number && `#${o.back_number}`].filter(Boolean).join(' · ') || '—'}
-                </div>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="rounded border border-line px-1.5 py-px text-[10.5px] font-bold uppercase tracking-wide text-muted">
-                    {o.status.replace(/_/g, ' ')}
-                  </span>
-                  {o.showcase && (
-                    <span className="rounded border border-gold/40 px-1.5 py-px text-[10.5px] font-bold uppercase tracking-wide text-gold">
-                      showcase
-                    </span>
-                  )}
-                  <span className="ml-auto text-[12px] font-bold text-muted tabular-nums">{nzd(o.price_cents)}</span>
-                </div>
-                {o.media_id && ['ready', 'delivered'].includes(o.status) && (
-                  <a href={`${API}/api/media/${o.media_id}/download`}
-                    className={`${BTN_PRIMARY} no-underline mt-1.5 text-center !py-2`}>
-                    Download full file
-                  </a>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
+      <MyReelsPanel onCount={setCount} />
     </>
   );
 }
