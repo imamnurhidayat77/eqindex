@@ -46,6 +46,8 @@ export default function MyReels() {
             {rows.length} order{rows.length > 1 ? 's' : ''}
           </span>
         )}
+        <span className="flex-1" />
+        <Link href="/reels/order" className="text-sky no-underline hover:underline text-[13px]">Order a reel →</Link>
       </div>
       <p className={SUB}>Custom reels you ordered — private to you unless you allowed showcase.</p>
       {err && <section className={CARD} role="alert"><p className="text-blood text-sm">{err}</p></section>}
@@ -55,8 +57,8 @@ export default function MyReels() {
           <div className="flex flex-col items-center py-10 text-center">
             <span className="text-4xl" aria-hidden="true">🎬</span>
             <h2 className="mt-3 text-[16px] font-bold text-white">No reel orders yet</h2>
-            <p className="mt-1 text-[13px] text-muted">Order a custom reel from any event page — filmed and edited for you.</p>
-            <Link href="/events" className={`${BTN_PRIMARY} no-underline mt-4`}>Browse events</Link>
+            <p className="mt-1 text-[13px] text-muted">Order a custom reel from the Reels menu — filmed and edited for you.</p>
+            <Link href="/reels/order" className={`${BTN_PRIMARY} no-underline mt-4`}>Order a reel</Link>
           </div>
         </section>
       )}
