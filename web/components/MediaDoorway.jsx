@@ -15,7 +15,8 @@ export default function MediaDoorway({
   const eq = (v) => encodeURIComponent(v);
 
   let photosHref = '/photos';
-  if (eventId || eventSlug) photosHref = `/photos?event=${eq(eventSlug || eventId)}`;
+  if (eventSlug) photosHref = `/photos/${encodeURIComponent(eventSlug)}`;
+  else if (eventId) photosHref = `/photos?event=${eq(eventId)}`;
   else if (horseId || horseSlug) photosHref = `/photos?horse=${eq(horseSlug || horseId)}`;
   else if (riderId || riderSlug) photosHref = `/photos?rider=${eq(riderSlug || riderId)}`;
 

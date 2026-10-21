@@ -3,8 +3,8 @@ import { useState } from 'react';
 import { INP } from '../lib/tokens';
 
 // Event search over a local event list (no API call per keystroke).
-// value: { value: id, label: name } | null. Typing clears the pick and
-// filters the list; picking sets it. Mirrors the Horse/RiderPicker UX.
+// value: { value: id, label: name, slug } | null. Typing clears the pick
+// and filters the list; picking sets it. Mirrors the Horse/RiderPicker UX.
 export default function EventSearch({ events = [], value, onPick, placeholder }) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
@@ -31,7 +31,7 @@ export default function EventSearch({ events = [], value, onPick, placeholder })
         <div className="absolute left-0 right-0 top-[110%] z-30 max-h-56 overflow-y-auto rounded border border-line bg-card2 shadow-xl">
           {shown.map((e) => (
             <button key={e.id} onMouseDown={(ev) => ev.preventDefault()}
-              onClick={() => { onPick({ value: e.id, label: e.name }); setQ(''); setOpen(false); }}
+              onClick={() => { onPick({ value: e.id, label: e.name, slug: e.slug || null }); setQ(''); setOpen(false); }}
               className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-[13px] text-white hover:bg-white/10 cursor-pointer bg-none border-0">
               <span className="truncate">{e.name}</span>
               <span className="text-[11px] text-faint shrink-0 ml-2">{(e.date_start || '').slice(0, 10)}</span>

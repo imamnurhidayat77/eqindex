@@ -1,12 +1,11 @@
 'use client';
 import Link from 'next/link';
-import { Suspense, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { API } from '../../lib/api';
 import { CARD, H1, SUB } from '../../lib/tokens';
 import EventSearch from '../../components/EventSearch';
 
-const TABS = [['', 'All'], ['photo', 'Photos'], ['reel', 'Reels']];
 const nzd = (c) => (c === null || c === undefined ? null : `NZ$${(Number(c) / 100).toFixed(2)}`);
 
 function ImageIcon({ className }) {
@@ -41,9 +40,11 @@ export default function Photos() {
 
 function PhotosInner() {
   const [rows, setRows] = useState([]);
+  const router = useRouter();
   const sp = useSearchParams();
-  const [kind, setKind] = useState(sp.get('kind') || '');
-  const [q, setQ] = useState('');
+  // ?kind= still honored for deep links (e.g. profile "Reels" strips),
+  // but there is no visible kind switcher anymore.
+  const kind = sp.get('kind') || '';
   const [loading, setLoading] = useState(true);
   const fHorse = sp.get('horse') || '';
   const urlRider = sp.get('rider') || '';
@@ -62,7 +63,7 @@ function PhotosInner() {
         // Reflect a URL-seeded ?event= (id or slug) in the picker.
         if (urlEvent) {
           const hit = list.find((e) => String(e.id) === urlEvent || (e.slug && String(e.slug) === urlEvent));
-          if (hit) setEventSel({ value: hit.id, label: hit.name });
+          if (hit) setEventSel({ value: hit.id, label: hit.name, slug: hit.slug || null });
         }
       }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -118,7 +119,7 @@ function PhotosInner() {
       } catch { setEvGroups([]); }
     })();
   }, [kind]);
-  const browsingEvents = !q.trim() && !horseId && !riderId && !eventId;
+  const browsingEvents = !horseId && !riderId && !eventId;
   useEffect(() => {
     setLoading(true);
     const p = new URLSearchParams({ limit: '96' });
@@ -133,12 +134,11 @@ function PhotosInner() {
       .finally(() => setLoading(false));
   }, [kind, horseId, riderId, eventId]);
 
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter((x) =>
-      [x.horse, x.rider, x.event_name].filter(Boolean).some((v) => v.toLowerCase().includes(s)));
-  }, [rows, q]);
+  // Picking an event navigates to its wall: /photos/<event-slug>.
+  const goEvent = (o) => {
+    if (!o) { setEventSel(null); return; }
+    router.push(`/photos/${encodeURIComponent(o.slug || o.value)}`);
+  };
 
   return (
     <>
@@ -150,9 +150,9 @@ function PhotosInner() {
               {evGroups.length} event{evGroups.length > 1 ? 's' : ''}
             </span>
           ))
-          : (!loading && !!filtered.length && (
+          : (!loading && !!rows.length && (
             <span className="rounded-full border border-line px-2.5 py-1 text-[12px] font-bold text-muted">
-              {filtered.length} photo{filtered.length > 1 ? 's' : ''}
+              {rows.length} photo{rows.length > 1 ? 's' : ''}
             </span>
           ))}
         <span className="flex-1" />
@@ -161,23 +161,9 @@ function PhotosInner() {
       <p className={SUB}>Buy event photos — watermarked previews, full resolution after purchase.</p>
 
       <section className={`${CARD} !p-3 mb-4`}>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1 bg-card2 border border-line rounded p-1 overflow-x-auto w-fit" role="tablist" aria-label="Media type">
-            {TABS.map(([k, lbl]) => (
-              <button key={k} role="tab" aria-selected={kind === k} onClick={() => setKind(k)}
-                className={`px-3.5 py-[7px] rounded-md text-[13px] whitespace-nowrap cursor-pointer border-0 ${kind === k ? 'bg-card text-gold font-bold' : 'bg-transparent text-muted hover:text-white'}`}>
-                {lbl}
-              </button>
-            ))}
-          </div>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Horse, rider, event…" aria-label="Search photos"
-            className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none grow min-w-[180px]" />
-        </div>
-        <div className="mt-2">
-          <EventSearch events={events}
-            value={eventSel === undefined ? (urlEvent ? { value: urlEvent, label: urlEvent } : null) : eventSel}
-            onPick={(o) => setEventSel(o)} placeholder="Search event…" />
-        </div>
+        <EventSearch events={events}
+          value={eventSel === undefined ? (urlEvent ? { value: urlEvent, label: urlEvent } : null) : eventSel}
+          onPick={goEvent} placeholder="Search event…" />
       </section>
 
       {browsingEvents ? (
@@ -188,9 +174,8 @@ function PhotosInner() {
         ) : evGroups.length ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {evGroups.map((g) => (
-              <button key={g.event_id}
-                onClick={() => setEventSel({ value: g.event_id, label: g.event_name })}
-                className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden text-left hover:border-gold/50 transition cursor-pointer">
+              <Link key={g.event_id} href={`/photos/${encodeURIComponent(g.event_slug || g.event_id)}`}
+                className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
                 <div className="relative aspect-[16/9] bg-card2 flex items-center justify-center overflow-hidden">
                   {g.thumb_url || g.preview_url
                     ? <img src={g.thumb_url || g.preview_url} alt="" loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
@@ -206,7 +191,7 @@ function PhotosInner() {
                     <span className="text-sky text-[12px] font-bold">Shop →</span>
                   </div>
                 </div>
-              </button>
+              </Link>
             ))}
           </div>
         ) : (
@@ -224,9 +209,9 @@ function PhotosInner() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => <span key={i} className="sk h-44 w-full rounded-xl" />)}
         </div>
-      ) : filtered.length ? (
+      ) : rows.length ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {filtered.map((x) => {
+          {rows.map((x) => {
             const price = nzd(x.price_cents);
             return (
               <Link key={x.id} href={`/photos/${x.id}`} className="group flex flex-col rounded-xl border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
