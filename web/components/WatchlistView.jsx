@@ -25,9 +25,45 @@ function placingBadge(place, status) {
   return <span className="text-faint">—</span>;
 }
 
-function EventAthleteCard({ a, photos, eventId, viewAllHref, onUnwatch }) {
-  const [open, setOpen] = useState(false);
+function UnwatchBtn({ watchId, name, onUnwatch }) {
   const [busy, setBusy] = useState(false);
+  if (!watchId || !onUnwatch) return null;
+  return (
+    <button
+      onClick={async () => {
+        if (busy) return;
+        setBusy(true);
+        try { await deleteWatch(watchId); onUnwatch(watchId); }
+        catch { /* tetap tampilkan, user bisa coba lagi */ }
+        setBusy(false);
+      }}
+      disabled={busy}
+      title={`Unwatch ${name}`}
+      className="text-[12px] text-faint hover:text-danger bg-none border border-line rounded px-2.5 py-1 cursor-pointer"
+    >
+      {busy ? '…' : 'Unwatch ✕'}
+    </button>
+  );
+}
+
+function ThumbGrid({ photos }) {
+  return (
+    <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+      {photos.map((x) => (
+        <Link key={x.id} href={`/photos/${x.id}`} className="block rounded border border-line bg-card overflow-hidden no-underline hover:border-gold/50">
+          <div className="aspect-square flex items-center justify-center overflow-hidden">
+            {x.thumb_url || x.preview_url
+              ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover" />
+              : <span className="text-lg">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
+          </div>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function EventAthleteCard({ a, onUnwatch }) {
+  const [open, setOpen] = useState(false);
   const rounds = a.rounds.length;
   const clears = a.rounds.filter((r) => r.clear).length;
   const withPlace = a.rounds.filter((r) => r.place !== null && r.place !== undefined);
@@ -36,9 +72,6 @@ function EventAthleteCard({ a, photos, eventId, viewAllHref, onUnwatch }) {
   const partnerKey = a.kind === 'horse' ? 'rider' : 'horse';
   const partnerSlug = a.kind === 'horse' ? 'rider_slug' : 'horse_slug';
   const partnerId = a.kind === 'horse' ? 'rider_id' : 'horse_id';
-  const shots = (photos || []).slice(0, 4);
-  const horseId = a.kind === 'horse' ? a.id : null;
-  const riderId = a.kind === 'horse' ? null : a.id;
   return (
     <div className="rounded bg-card2 border border-rowline px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
@@ -53,22 +86,7 @@ function EventAthleteCard({ a, photos, eventId, viewAllHref, onUnwatch }) {
           className="text-[12px] text-muted hover:text-white bg-none border border-line rounded px-2.5 py-1 cursor-pointer">
           {open ? 'Hide rounds ▲' : `Show rounds (${rounds}) ▼`}
         </button>
-        {a.watchId && onUnwatch && (
-          <button
-            onClick={async () => {
-              if (busy) return;
-              setBusy(true);
-              try { await deleteWatch(a.watchId); onUnwatch(a.watchId); }
-              catch { /* tetap tampilkan, user bisa coba lagi */ }
-              setBusy(false);
-            }}
-            disabled={busy}
-            title={`Unwatch ${a.name}`}
-            className="text-[12px] text-faint hover:text-danger bg-none border border-line rounded px-2.5 py-1 cursor-pointer"
-          >
-            {busy ? '…' : 'Unwatch ✕'}
-          </button>
-        )}
+        <UnwatchBtn watchId={a.watchId} name={a.name} onUnwatch={onUnwatch} />
       </div>
       {open && (
         <div className="mt-2 border-t border-rowline pt-2 overflow-x-auto">
@@ -112,36 +130,41 @@ function EventAthleteCard({ a, photos, eventId, viewAllHref, onUnwatch }) {
           </table>
         </div>
       )}
-      {!!shots.length && (
-        <div className="mt-2 border-t border-rowline pt-2">
-          <div className="mb-1.5 flex items-center gap-2">
-            <span className="text-[11px] uppercase tracking-wide text-faint font-bold">
-              📷 {shots.length}{shots.length >= 4 && (photos || []).length > 4 ? ` of ${(photos || []).length}` : ''} at this event
-            </span>
-            <span className="flex-1" />
-            {viewAllHref && (
-              <Link href={viewAllHref} className="text-sky text-[11.5px] no-underline hover:underline">View all →</Link>
-            )}
-          </div>
-          <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
-            {shots.map((x) => (
-              <Link key={x.id} href={`/photos/${x.id}`} className="block rounded border border-line bg-card overflow-hidden no-underline hover:border-gold/50">
-                <div className="aspect-square flex items-center justify-center overflow-hidden">
-                  {x.thumb_url || x.preview_url
-                    ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover" />
-                    : <span className="text-lg">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
-                </div>
-              </Link>
-            ))}
-          </div>
-          {eventId && (
-            <>
-              <CreditBuyButton eventId={eventId} horseId={horseId} riderId={riderId} />
-              <PackageUpsell eventId={eventId} horseId={horseId} riderId={riderId} />
-            </>
-          )}
-        </div>
-      )}
+    </div>
+  );
+}
+
+// Foto per atlet per event (tab Foto): thumbs + upsell paket/kredit.
+// Jualan hanya terjadi di sini dan halaman detail foto — tab Hasil steril.
+function EventPhotoCard({ a, photos, eventId, viewAllHref, onUnwatch }) {
+  const shots = (photos || []).slice(0, 4);
+  const profileHref = `/${a.kind === 'horse' ? 'horses' : 'riders'}/${a.slug || a.id}`;
+  const horseId = a.kind === 'horse' ? a.id : null;
+  const riderId = a.kind === 'horse' ? null : a.id;
+  if (!shots.length) return null;
+  return (
+    <div className="rounded bg-card2 border border-rowline px-3 py-2.5">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <span className={`text-[10px] font-bold uppercase tracking-wide ${a.kind === 'horse' ? 'text-moss' : 'text-sky'}`}>{a.kind}</span>
+        <Link href={profileHref} className="text-white font-semibold text-[13.5px] no-underline hover:text-gold">{a.name}</Link>
+        <span className="text-faint text-[12px]">
+          📷 {shots.length}{shots.length >= 4 && (photos || []).length > 4 ? ` of ${(photos || []).length}` : ''} at this event
+        </span>
+        <span className="flex-1" />
+        {viewAllHref && (
+          <Link href={viewAllHref} className="text-sky text-[11.5px] no-underline hover:underline">View all →</Link>
+        )}
+        <UnwatchBtn watchId={a.watchId} name={a.name} onUnwatch={onUnwatch} />
+      </div>
+      <div className="mt-2 border-t border-rowline pt-2">
+        <ThumbGrid photos={shots} />
+        {eventId && (
+          <>
+            <CreditBuyButton eventId={eventId} horseId={horseId} riderId={riderId} />
+            <PackageUpsell eventId={eventId} horseId={horseId} riderId={riderId} />
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -149,6 +172,7 @@ function EventAthleteCard({ a, photos, eventId, viewAllHref, onUnwatch }) {
 export default function WatchlistView({ horses = [], riders = [], pulse = { rounds: 0, clears: 0, podiums: 0, wins: 0 }, byEvent, photoGroups }) {
   const [q, setQ] = useState('');
   const [evFilter, setEvFilter] = useState('');
+  const [tab, setTab] = useState('results');
   const [removed, setRemoved] = useState([]);
   const [busyId, setBusyId] = useState(null);
 
@@ -226,6 +250,37 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
     return `/photos?${qp}`;
   };
 
+  // Match photos to athletes FIRST (before leftovers), otherwise every
+  // photo also lands in the leftover strip. Shared by both tabs.
+  const groupShots = (g) => {
+    const key = g.event_id || g.event;
+    const shots = eventShots.get(key) || [];
+    const matched = new Set();
+    const byAth = new Map();
+    for (const a of g.athletes) {
+      const list = shots.filter((x) => {
+        const hit = (a.kind === 'horse' ? x.horse_id : x.rider_id) === a.id;
+        if (hit) matched.add(x.id);
+        return hit;
+      });
+      byAth.set(`${a.kind}:${a.id}`, list);
+    }
+    const leftover = shots.filter((x) => !matched.has(x.id) && matchQ([x.horse, x.rider, x.event_name].filter(Boolean).join(' ')));
+    return { shots, byAth, leftover };
+  };
+
+  const totalShots = useMemo(() => {
+    let n = 0;
+    for (const list of eventShots.values()) n += list.length;
+    return n;
+  }, [eventShots]);
+
+  const evHrefOf = (g) => {
+    const qp = new URLSearchParams();
+    if (g.event_id) qp.set('event', g.event_id);
+    return `/photos?${qp}`;
+  };
+
 
   return (
     <>
@@ -259,6 +314,19 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
         ))}
       </div>
 
+      {/* Hasil vs Foto: niat berbeda, layar berbeda. Jualan hanya di tab Foto. */}
+      <div className="flex gap-1 bg-card2 border border-line rounded p-1 w-fit mb-4" role="tablist" aria-label="Watchlist view">
+        {[
+          ['results', 'Hasil'],
+          ['photos', `Foto${totalShots ? ` (${totalShots})` : ''}`],
+        ].map(([k, lbl]) => (
+          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+            className={`px-3.5 py-[7px] rounded-md text-[13px] whitespace-nowrap cursor-pointer border-0 ${tab === k ? 'bg-card text-gold font-bold' : 'bg-transparent text-muted hover:text-white'}`}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
       {/* manage: unwatch langsung dari sini, termasuk yang belum punya rounds */}
       {!!watched.length && (
         <section className="bg-card border border-line rounded p-4 mb-4">
@@ -289,6 +357,7 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
         </section>
       )}
 
+      {tab === 'results' ? (
       <div className="min-w-0 space-y-4">
         {!evGroups.length && (
           <p className="text-faint text-sm">No watched rounds at events yet — results appear here once your stable competes.</p>
@@ -296,25 +365,6 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
           {evGroups.map((g) => {
             const key = g.event_id || g.event;
             const rate = g.entries.length ? (100 * g.clears) / g.entries.length : null;
-            const shots = eventShots.get(key) || [];
-            // Match photos to athletes FIRST (before computing leftovers),
-            // otherwise every photo also lands in the leftover strip.
-            const matched = new Set();
-            const shotsByAth = new Map();
-            for (const a of g.athletes) {
-              const list = shots.filter((x) => {
-                const hit = (a.kind === 'horse' ? x.horse_id : x.rider_id) === a.id;
-                if (hit) matched.add(x.id);
-                return hit;
-              });
-              shotsByAth.set(`${a.kind}:${a.id}`, list);
-            }
-            const leftover = shots.filter((x) => !matched.has(x.id) && matchQ([x.horse, x.rider, x.event_name].filter(Boolean).join(' ')));
-            const evHref = (() => {
-              const qp = new URLSearchParams();
-              if (g.event_id) qp.set('event', g.event_id);
-              return `/photos?${qp}`;
-            })();
             return (
               <section key={key} className="bg-card border border-line rounded p-4">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-1">
@@ -322,11 +372,6 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
                     <Link href={`/events/${g.event_id}`} className="text-white font-bold text-[15px] no-underline hover:text-gold">{g.event}</Link>
                   ) : (
                     <span className="text-white font-bold text-[15px]">{g.event}</span>
-                  )}
-                  {!!shots.length && (
-                    <span className="rounded-full border border-line px-2 py-px text-[11px] font-bold text-muted">
-                      📷 {shots.length}
-                    </span>
                   )}
                   <span className="text-[12px] text-faint ml-auto">{g.when || ''}</span>
                 </div>
@@ -338,8 +383,40 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
                 </div>
                 <div className="space-y-1.5">
                   {g.athletes.map((a) => (
-                    <EventAthleteCard key={`${a.kind}-${a.id}`} a={a}
-                      photos={shotsByAth.get(`${a.kind}:${a.id}`) || []} eventId={g.event_id} viewAllHref={athleteHref(g, a)} />
+                    <EventAthleteCard key={`${a.kind}-${a.id}`} a={a} onUnwatch={handleUnwatch} />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+      <div className="min-w-0 space-y-4">
+        {!evGroups.some((g) => groupShots(g).shots.length) && (
+          <p className="text-faint text-sm">No photos of your stable yet — published photos appear here. <Link href="/photos" className="text-sky no-underline hover:underline">Browse the gallery →</Link></p>
+        )}
+          {evGroups.map((g) => {
+            const key = g.event_id || g.event;
+            const { shots, byAth, leftover } = groupShots(g);
+            if (!shots.length) return null;
+            return (
+              <section key={key} className="bg-card border border-line rounded p-4">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 mb-1">
+                  {g.event_id ? (
+                    <Link href={`/events/${g.event_id}`} className="text-white font-bold text-[15px] no-underline hover:text-gold">{g.event}</Link>
+                  ) : (
+                    <span className="text-white font-bold text-[15px]">{g.event}</span>
+                  )}
+                  <span className="rounded-full border border-line px-2 py-px text-[11px] font-bold text-muted">
+                    📷 {shots.length}
+                  </span>
+                  <span className="text-[12px] text-faint ml-auto">{g.when || ''}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {g.athletes.map((a) => (
+                    <EventPhotoCard key={`${a.kind}-${a.id}`} a={a}
+                      photos={byAth.get(`${a.kind}:${a.id}`) || []} eventId={g.event_id} viewAllHref={athleteHref(g, a)}
+                      onUnwatch={handleUnwatch} />
                   ))}
                 </div>
                 {!!leftover.length && (
@@ -349,41 +426,22 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
                         📷 More from this event ({leftover.length})
                       </span>
                       <span className="flex-1" />
-                      <Link href={evHref} className="text-sky text-[11.5px] no-underline hover:underline">View all →</Link>
+                      <Link href={evHrefOf(g)} className="text-sky text-[11.5px] no-underline hover:underline">View all →</Link>
                     </div>
-                    <div className="grid grid-cols-4 gap-1.5">
-                      {leftover.slice(0, 4).map((x) => (
-                        <Link key={x.id} href={`/photos/${x.id}`} className="block rounded border border-line bg-card overflow-hidden no-underline hover:border-gold/50">
-                          <div className="aspect-[4/3] flex items-center justify-center overflow-hidden">
-                            {x.thumb_url || x.preview_url
-                              ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover" />
-                              : <span className="text-lg">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
+                    <ThumbGrid photos={leftover.slice(0, 4)} />
                   </div>
                 )}
               </section>
             );
           })}
         </div>
-      {(eventShots.get('noevent') || []).length > 0 && (
+      )}
+      {tab === 'photos' && (eventShots.get('noevent') || []).length > 0 && (
         <div className="mt-4 rounded border border-line bg-card p-3">
           <div className="mb-1.5 text-[11px] uppercase tracking-wide text-faint font-bold">
             📷 Photos without event ({eventShots.get('noevent').length})
           </div>
-          <div className="grid grid-cols-4 gap-1.5">
-            {eventShots.get('noevent').slice(0, 4).map((x) => (
-              <Link key={x.id} href={`/photos/${x.id}`} className="block rounded border border-line bg-card2 overflow-hidden no-underline hover:border-gold/50">
-                <div className="aspect-[4/3] flex items-center justify-center overflow-hidden">
-                  {x.thumb_url || x.preview_url
-                    ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" className="w-full h-full object-cover" />
-                    : <span className="text-lg">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
-                </div>
-              </Link>
-            ))}
-          </div>
+          <ThumbGrid photos={eventShots.get('noevent').slice(0, 4)} />
         </div>
       )}
     </>

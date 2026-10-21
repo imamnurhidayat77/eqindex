@@ -2,11 +2,12 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getJSON } from '../../../lib/api';
 import { ordinal } from '../../../lib/eq';
-import { BADGE, CARD, H1, H2, LINK, LIVE, NUM, SUB, TABLE, TABLEWRAP, TD, TH, BTN_PRIMARY, badge } from '../../../lib/tokens';
+import { BADGE, CARD, H1, H2, LINK, LIVE, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
 import ClassResults from '../../../components/ClassResults';
 import { EventDifficultyTable } from '../../../components/EventTables';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 import PhotoStrip from '../../../components/PhotoStrip';
+import MediaDoorway from '../../../components/MediaDoorway';
 
 export const revalidate = 30;
 
@@ -241,15 +242,7 @@ export default async function EventDetail({ params }) {
       <PhotoStrip query={{ event_id: params.id, kind: 'reel' }} title="Event reels" moreHref={`/photos?event=${params.id}&kind=reel`} />
 
       <div className="mb-6">
-        <section className={CARD}>
-          <h2 className="text-[15px] font-bold">Video Reels</h2>
-          <p className="mt-0.5 mb-3 text-[12.5px] text-muted">
-            Custom reels filmed and edited for you at {e.name} — pay up front, we produce after.
-          </p>
-          <Link href={`/reels/order?event=${encodeURIComponent(e.slug || e.id || params.id)}`} className={`${BTN_PRIMARY} no-underline inline-block`}>
-            Order a video reel →
-          </Link>
-        </section>
+        <MediaDoorway eventId={e.id} eventSlug={e.slug} eventName={e.name} />
       </div>
 
     </>

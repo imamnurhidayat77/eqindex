@@ -10,6 +10,7 @@ import SurfaceSplits from '../../../components/SurfaceSplits';
 import ExportCsv from '../../../components/ExportCsv';
 import HistoryTable from '../../../components/HistoryTable';
 import PhotoStrip from '../../../components/PhotoStrip';
+import MediaDoorway from '../../../components/MediaDoorway';
 import { EmptyState, TableEmpty } from '../../../components/EmptyState';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 
@@ -406,6 +407,10 @@ export default async function RiderProfile({ params, searchParams }) {
       <PhotoStrip query={{ rider_id: r.id }} title="Photos" moreHref={`/photos?rider=${r.slug || r.id}`} />
 
       <PhotoStrip query={{ rider_id: r.id, kind: 'reel' }} title="Reels" moreHref={`/photos?rider=${r.slug || r.id}&kind=reel`} />
+
+      <div className="mt-6">
+        <MediaDoorway riderId={r.id} riderSlug={r.slug} riderName={r.name} />
+      </div>
 
     </div>
   );

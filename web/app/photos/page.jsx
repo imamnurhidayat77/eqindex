@@ -3,8 +3,10 @@ import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { API } from '../../lib/api';
-import { CARD, H1, SUB, BTN_PRIMARY } from '../../lib/tokens';
+import { CARD, H1, SUB } from '../../lib/tokens';
 import RiderPicker from '../../components/RiderPicker';
+import HorsePicker from '../../components/HorsePicker';
+import Dropdown from '../../components/Dropdown';
 
 const TABS = [['', 'All'], ['photo', 'Photos'], ['reel', 'Reels']];
 const nzd = (c) => (c === null || c === undefined ? null : `NZ$${(Number(c) / 100).toFixed(2)}`);
@@ -47,7 +49,36 @@ function PhotosInner() {
   const [loading, setLoading] = useState(true);
   const fHorse = sp.get('horse') || '';
   const urlRider = sp.get('rider') || '';
-  const fEvent = sp.get('event') || '';
+  const urlEvent = sp.get('event') || '';
+  const [horseSel, setHorseSel] = useState(undefined);
+  const [urlHorseName, setUrlHorseName] = useState('');
+  const [events, setEvents] = useState([]);
+  const [eventSel, setEventSel] = useState(undefined);
+  useEffect(() => {
+    fetch(`${API}/events?limit=200&include_empty=1`).then((r) => r.json())
+      .then((j) => {
+        const list = Array.isArray(j.data) ? j.data : [];
+        setEvents(list);
+        // Reflect a URL-seeded ?event= (id or slug) in the picker.
+        if (urlEvent) {
+          const hit = list.find((e) => String(e.id) === urlEvent || (e.slug && String(e.slug) === urlEvent));
+          if (hit) setEventSel({ value: hit.id, label: hit.name });
+        }
+      }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!fHorse) return;
+    fetch(`${API}/horses/${encodeURIComponent(fHorse)}`).then((r) => r.json()).then((j) => {
+      const d = j.data || {};
+      if (d && (d.id || d.horse_id)) setUrlHorseName(d.name || '');
+    }).catch(() => {});
+  }, [fHorse]);
+  const horseId = horseSel === undefined ? fHorse : (horseSel ? horseSel.id : '');
+  const horseValue = horseSel === undefined
+    ? (fHorse ? { id: fHorse, name: urlHorseName || fHorse } : null)
+    : horseSel;
+  const eventId = eventSel === undefined ? urlEvent : (eventSel ? eventSel.value : '');
   // Rider filter: URL (?rider=) seeds it; the searchable picker overrides it
   // server-side (the text box below stays as a client-side refinement).
   // undefined = follow URL, null = cleared, {id,name} = picked.
@@ -68,15 +99,15 @@ function PhotosInner() {
     setLoading(true);
     const p = new URLSearchParams({ limit: '96' });
     if (kind) p.set('kind', kind);
-    if (fHorse) p.set('horse_id', fHorse);
+    if (horseId) p.set('horse_id', horseId);
     if (riderId) p.set('rider_id', riderId);
-    if (fEvent) p.set('event_id', fEvent);
+    if (eventId) p.set('event_id', eventId);
     fetch(`${API}/photos?${p}`)
       .then((r) => r.json())
       .then((j) => setRows(j.data || []))
       .catch(() => setRows([]))
       .finally(() => setLoading(false));
-  }, [kind, fHorse, riderId, fEvent]);
+  }, [kind, horseId, riderId, eventId]);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -95,9 +126,9 @@ function PhotosInner() {
           </span>
         )}
         <span className="flex-1" />
-        <Link href="/photos/library" className="text-sky text-[13px] no-underline hover:underline">My photos →</Link>
+        <Link href="/media" className="text-sky text-[13px] no-underline hover:underline">My media →</Link>
       </div>
-      <p className={SUB}>Event photos and reels, tagged to horse and rider. Watermarked previews — full resolution after purchase.</p>
+      <p className={SUB}>Buy event photos — watermarked previews, full resolution after purchase.</p>
 
       <section className={`${CARD} !p-3 mb-4`}>
         <div className="flex flex-wrap items-center gap-2">
@@ -111,6 +142,14 @@ function PhotosInner() {
           </div>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Horse, rider, event…" aria-label="Search photos"
             className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none grow min-w-[180px]" />
+        </div>
+        <div className="mt-2 grid gap-2 sm:grid-cols-3">
+          <Dropdown ariaLabel="Filter by event" searchable placeholder="All events…"
+            value={eventSel === undefined ? '' : (eventSel ? eventSel.value : '')}
+            options={[{ value: '', label: 'All events…' },
+              ...events.map((e) => ({ value: e.id, label: `${e.name}${e.date_start ? ` · ${String(e.date_start).slice(0, 10)}` : ''}` }))]}
+            onSelect={(o) => setEventSel(o.value ? o : null)} />
+          <HorsePicker value={horseValue} onPick={setHorseSel} placeholder="Filter by horse…" />
           <RiderPicker value={riderValue} onPick={setRiderSel} placeholder="Filter by rider…" />
         </div>
       </section>

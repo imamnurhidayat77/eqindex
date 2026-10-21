@@ -6,6 +6,7 @@ import WatchButton from '../../../components/WatchButton';
 import ExportCsv from '../../../components/ExportCsv';
 import HistoryTable from '../../../components/HistoryTable';
 import PhotoStrip from '../../../components/PhotoStrip';
+import MediaDoorway from '../../../components/MediaDoorway';
 import SeasonTimeline from '../../../components/SeasonTimeline';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 
@@ -309,6 +310,10 @@ export default async function HorseProfile({ params, searchParams }) {
           ))}
         </dl>
       </section>
+
+      <div className="mt-6">
+        <MediaDoorway horseId={h.id} horseSlug={h.slug} horseName={h.name} />
+      </div>
 
     </div>
   );
