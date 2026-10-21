@@ -6,6 +6,7 @@ import { API } from '../lib/api';
 import { useSeason } from './global';
 import Dropdown from './Dropdown';
 import { useAuth } from './auth';
+import { useDismiss } from './useDismiss';
 
 // Minimal header for logged-out visitors everywhere: logo + Join stay,
 // app nav/search/season only render once a session is known.
@@ -21,6 +22,7 @@ function useLandingHidden() {
 export const NAV = [
   { href: '/', label: 'Home', match: (p) => p === '/' },
   { href: '/events', label: 'Events', match: (p) => p.startsWith('/events') },
+  { href: '/reels/order', label: 'Reels', match: (p) => p.startsWith('/reels') },
   { href: '/series', label: 'Series', match: (p) => p.startsWith('/series') },
   { href: '/standings', label: 'Standings', match: (p) => p.startsWith('/standings') },
   { href: '/riders', label: 'Riders', match: (p) => p.startsWith('/riders') },
@@ -35,13 +37,14 @@ export default function Navbar() {
   const pathname = usePathname() || '/';
   const hidden = useLandingHidden();
   const [open, setOpen] = useState(false);
+  const menuRef = useDismiss(open, () => setOpen(false));
   if (hidden) return null;
   const linkCls = (active) =>
     `no-underline text-sm px-0.5 pt-5 pb-[18px] transition-colors hover:text-white ${
       active ? 'text-white border-b-2 border-gold' : 'text-muted'
     }`;
   return (
-    <>
+    <span ref={menuRef} className="contents">
       <nav className="hidden md:flex gap-[18px]">
         {NAV.map((item) => (
           <Link key={item.href} href={item.href} className={linkCls(item.match(pathname))}>
@@ -75,7 +78,7 @@ export default function Navbar() {
           })}
         </div>
       )}
-    </>
+    </span>
   );
 }
 

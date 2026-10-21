@@ -3,11 +3,13 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './auth';
+import { useDismiss } from './useDismiss';
 
 export default function UserMenu() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const wrapRef = useDismiss(open, () => setOpen(false));
   const [busy, setBusy] = useState(false);
   if (loading) {
     return <span className="w-8 h-8 rounded-full border-[1.5px] border-line inline-flex items-center justify-center text-[15px]">🐎</span>;
@@ -30,7 +32,7 @@ export default function UserMenu() {
     router.push('/login');
   }
   return (
-    <span className="relative">
+    <span className="relative" ref={wrapRef}>
       <button onClick={() => setOpen((o) => !o)} title={`${user.name} (${user.role})`}
         className="w-8 h-8 rounded-full border-[1.5px] border-gold bg-goldbg text-gold font-bold inline-flex items-center justify-center text-[15px]">
         {initial}

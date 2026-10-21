@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { useAuth } from './auth';
+import { useDismiss } from './useDismiss';
 
 // Header notification bell (P1b): unread in-app notifications
 // (package top-ups, photos-live). Email digests follow in P3.
@@ -11,6 +12,7 @@ export default function NotificationBell() {
   const [items, setItems] = useState([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
+  const wrapRef = useDismiss(open, () => setOpen(false));
 
   async function load() {
     if (!user) return;
@@ -38,7 +40,7 @@ export default function NotificationBell() {
 
   if (!user) return null;
   return (
-    <div className="relative">
+    <div className="relative" ref={wrapRef}>
       <button onClick={() => { setOpen((o) => !o); if (!open) load(); }} aria-label="Notifications"
         className="relative rounded border border-line bg-card px-2.5 py-1.5 text-[15px] text-muted hover:text-white cursor-pointer">
         🔔
