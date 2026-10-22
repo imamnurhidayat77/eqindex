@@ -21,19 +21,21 @@ export default function Header() {
   return (
     <>
       <header className="site-header">
-        <Link href="/" className="brand">BOSS&nbsp;MEDIA<small>EST. NZ</small></Link>
-        <nav className="site-nav" aria-label="Primary">
-          <Link href="/events" {...active('/events')}>Events</Link>
-          <Link href="/photos" {...active('/photos')}>Photos</Link>
-          <Link href="/reels" {...active('/reels')}>Reels</Link>
-        </nav>
-        <div className="header-actions">
-          <Link href="/photos" aria-label="Search photos" className="icon-btn"><IconSearch /></Link>
-          <Link href="/sell" className="sell-link">Sell your work</Link>
-          <Link href="/favourites" aria-label="Favourites" className="icon-btn"><IconHeart /></Link>
-          {authed
-            ? <Link href="/media" aria-label="Your media" className="icon-btn"><IconUser /></Link>
-            : <Link href="/login" className="btn btn-primary btn-sm">Log in</Link>}
+        <div className="bar">
+          <Link href="/" className="brand">BOSS&nbsp;MEDIA<small>EST. NZ</small></Link>
+          <nav className="site-nav" aria-label="Primary">
+            <Link href="/" {...active('/')}>Home</Link>
+            <Link href="/photos" {...active('/photos')}>Photos</Link>
+            <Link href="/reels" {...active('/reels')}>Reels</Link>
+          </nav>
+          <div className="header-actions">
+            <Link href="/photos" aria-label="Search photos" className="icon-btn"><IconSearch /></Link>
+            <Link href="/sell" className="sell-link">Sell your work</Link>
+            <Link href="/favourites" aria-label="Favourites" className="icon-btn"><IconHeart /></Link>
+            {authed
+              ? <Link href="/media" aria-label="Your media" className="icon-btn"><IconUser /></Link>
+              : <Link href="/login" className="btn btn-primary btn-sm">Sign in</Link>}
+          </div>
         </div>
       </header>
       <nav className="mobile-tabs" aria-label="Mobile">

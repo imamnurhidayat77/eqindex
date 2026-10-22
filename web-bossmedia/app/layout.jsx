@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import Header from '../components/Header';
 import './globals.css';
+import './globals.css';
 
 export const metadata = { title: 'Boss Media — Riders and Horses. Elevated.' };
+export const viewport = { width: 'device-width', initialScale: 1 };
 
 export default function RootLayout({ children }) {
   return (
@@ -18,27 +20,32 @@ export default function RootLayout({ children }) {
         <footer className="site-footer">
           <div className="inner">
             <div>
-              <h4>Shop</h4>
-              <Link href="/photos">All photos</Link>
-              <Link href="/reels">Custom reels</Link>
-              <Link href="/events">Events</Link>
+              <div className="brand" style={{ marginBottom: 10 }}>BOSS&nbsp;MEDIA</div>
+              <p className="caption" style={{ fontSize: 13, maxWidth: 260 }}>
+                Cinematic imagery and high-speed motion coverage dedicated to New Zealand equestrian sports.
+              </p>
+              <p className="caption" style={{ fontSize: 13 }}>Prices displayed in New Zealand Dollars (NZD).</p>
             </div>
             <div>
-              <h4>About</h4>
-              <Link href="/about">About Boss Media</Link>
-              <Link href="/faq">FAQ</Link>
-              <Link href="/licensing">Licensing guide</Link>
+              <h4>Explore</h4>
+              <Link href="/events">Calendar</Link>
+              <Link href="/photos">Photos</Link>
+              <Link href="/reels">Showreels</Link>
+            </div>
+            <div>
+              <h4>Company</h4>
+              <Link href="/about">About</Link>
+              <Link href="/licensing">Licensing Guide</Link>
               <Link href="/contact">Contact</Link>
             </div>
             <div>
               <h4>Legal</h4>
-              <Link href="/terms">Terms</Link>
-              <Link href="/privacy">Privacy</Link>
-              <Link href="/refunds">Refunds</Link>
-              <Link href="/takedown">Takedown</Link>
+              <Link href="/terms">Terms of Service</Link>
+              <Link href="/privacy">Privacy Policy</Link>
+              <Link href="/takedown">Takedown Request</Link>
             </div>
           </div>
-          <div className="fine">Prices in NZD, GST included. © Boss Media — New Zealand&apos;s Riders and Horses. Elevated.</div>
+          <div className="fine">© 2026 Boss Media Limited. All rights reserved. · Secure checkout · Watermark-free downloads · Photographer rights protected</div>
         </footer>
       </body>
     </html>

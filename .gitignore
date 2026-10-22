@@ -8,3 +8,5 @@ node_modules/
 .next/
 .DS_Store
 horses_missing*
+
+.taste-skill/
