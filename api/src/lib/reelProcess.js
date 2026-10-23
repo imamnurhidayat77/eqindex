@@ -95,12 +95,16 @@ async function renderPreview(inputStream, watermarkPngPath) {
 }
 
 // Poster frame from the (small, in-memory) preview — no second R2 download.
-async function renderPoster(previewBuffer) {
+// NOTE: -ss must be an OUTPUT option here. As an input option ffmpeg tries
+// to seek, which silently yields zero frames on non-seekable pipe:0 input
+// (empty poster). After -i it decodes-and-discards instead — always works.
+async function renderPoster(previewBuffer, atSeconds = 1) {
   const { Readable } = require('node:stream');
   const { buffer } = await runFfmpeg([
-    '-hide_banner', '-ss', '1', '-i', 'pipe:0',
+    '-hide_banner', '-i', 'pipe:0', '-ss', String(atSeconds),
     '-vframes', '1', '-vf', 'scale=480:-2', '-q:v', '4', '-f', 'image2', 'pipe:1',
   ], Readable.from(previewBuffer), { timeoutMs: PROBE_TIMEOUT_MS });
+  if (!buffer.length) throw new Error('poster render produced zero bytes');
   return buffer;
 }
 

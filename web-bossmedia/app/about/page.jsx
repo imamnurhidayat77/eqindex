@@ -1,9 +1,9 @@
+import PageShell from '../../components/PageShell';
+
 export default function AboutPage() {
   return (
-    <>
-      <h1 className="page-title">About Boss Media</h1>
-      <p className="caption" style={{ margin: '6px 0 18px' }}>Riders and Horses. Elevated.</p>
-      <div className="card" style={{ padding: 28, maxWidth: 720 }}>
+    <PageShell eyebrow="Studio" title="About Boss Media." intro="Riders and Horses. Elevated.">
+      <div className="card-dark">
         <p>Boss Media creates cinematic content for the New Zealand equestrian industry, focused on the riders, horses, and teams behind the result.</p>
         <p>We don&apos;t just capture performance. Our services include:</p>
         <ul>
@@ -14,6 +14,6 @@ export default function AboutPage() {
         </ul>
         <p>Projects taken on a limited basis.</p>
       </div>
-    </>
+    </PageShell>
   );
 }

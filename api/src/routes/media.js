@@ -3,6 +3,7 @@ const pool = require('../db');
 const { asyncH } = require('../lib/async');
 const { EMAIL_RE, needRole, throttled } = require('../lib/auth');
 const { audit } = require('../lib/audit');
+const { recordPurchaseSplit } = require('../lib/wallet');
 const { resolveId } = require('../lib/resolve');
 const multer = require('multer');
 const sharp = require('sharp');
@@ -33,11 +34,24 @@ function watermarkSvg(w, h, text) {
   // Dense diagonal tiles across the whole frame (corner-only marks get
   // cropped) at an opacity that survives casual AI cleaners (~0.36) without
   // ruining the sales appeal. Baked into pixels at upload — not strippable.
+  // PHOTOS ONLY — reels use watermarkSvgLight below.
   const size = Math.max(30, Math.round(Math.min(w, h) / 10));
   return Buffer.from(
     `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
     `<defs><pattern id="wm" width="260" height="100" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">` +
     `<text x="8" y="52" font-family="sans-serif" font-size="${size}" font-weight="bold" fill="white" fill-opacity="0.36">${escXml(text)}</text>` +
+    `</pattern></defs><rect width="${w}" height="${h}" fill="url(#wm)"/></svg>`
+  );
+}
+
+// Lighter variant for REELS: wider-spaced, smaller, fainter tiles —
+// a moving picture already carries motion branding, so a few marks suffice.
+function watermarkSvgLight(w, h, text) {
+  const size = Math.max(22, Math.round(Math.min(w, h) / 16));
+  return Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
+    `<defs><pattern id="wm" width="460" height="180" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">` +
+    `<text x="12" y="96" font-family="sans-serif" font-size="${size}" font-weight="bold" fill="white" fill-opacity="0.20">${escXml(text)}</text>` +
     `</pattern></defs><rect width="${w}" height="${h}" fill="url(#wm)"/></svg>`
   );
 }
@@ -180,8 +194,8 @@ module.exports = function mountMediaRoutes(app) {
     if (!rows.length) return res.status(404).json({ error: 'media not found' });
     const r = rows[0];
     try {
-      if (r.preview_key) r.preview_url = mediaStore.publicUrl(r.preview_key);
-      if (r.thumb_key) r.thumb_url = mediaStore.publicUrl(r.thumb_key);
+      if (r.preview_key) r.preview_url = mediaStore.publicUrlOrPassthrough(r.preview_key);
+      if (r.thumb_key) r.thumb_url = mediaStore.publicUrlOrPassthrough(r.thumb_key);
     } catch { /* R2 public base unconfigured */ }
     res.json({ data: r });
   }));
@@ -219,8 +233,8 @@ module.exports = function mountMediaRoutes(app) {
     const s1 = await mediaStore.getStream(m.storage_key);
     const dims = await probeDims(s1.stream);
     const pvH = Math.max(2, Math.round((640 * dims.height) / Math.max(1, dims.width)));
-    // 2. Watermark tile PNG (same diagonal style as photo previews).
-    const wmPng = await sharp(watermarkSvg(640, pvH, `${photographer.rows[0]?.name || 'EQINDEX'} • EQINDEX PREVIEW`))
+    // 2. Watermark tile PNG (lighter reel variant — fewer, fainter tiles).
+    const wmPng = await sharp(watermarkSvgLight(640, pvH, `${photographer.rows[0]?.name || 'EQINDEX'} • EQINDEX PREVIEW`))
       .png().toBuffer();
     const wmPath = path.join(os.tmpdir(), `eqindex-wm-${mediaId}.png`);
     await fs.promises.writeFile(wmPath, wmPng);
@@ -228,7 +242,12 @@ module.exports = function mountMediaRoutes(app) {
       // 3. Preview transcode (fresh stream; only small outputs buffered).
       const s2 = await mediaStore.getStream(m.storage_key);
       const preview = await renderPreview(s2.stream, wmPath);
-      const poster = await renderPoster(preview.buffer);
+      // 4. Poster is rendered from the ORIGINAL (no watermark) — it is the
+      // shop window, the watermark lives on the playable teaser instead.
+      const s3 = await mediaStore.getStream(m.storage_key);
+      const chunks = [];
+      for await (const c of s3.stream) chunks.push(c);
+      const poster = await renderPoster(Buffer.concat(chunks));
       const ns = photographer.rows[0]?.name || null;
       const thumbKey = mediaStore.keyFor('thumbs', m.event_id, m.id, 'jpg', ns);
       const previewKey = mediaStore.keyFor('previews', m.event_id, m.id, 'mp4', ns);
@@ -277,8 +296,8 @@ module.exports = function mountMediaRoutes(app) {
     );
     for (const r of rows) {
       try {
-        if (r.preview_key) r.preview_url = mediaStore.publicUrl(r.preview_key);
-        if (r.thumb_key) r.thumb_url = mediaStore.publicUrl(r.thumb_key);
+        if (r.preview_key) r.preview_url = mediaStore.publicUrlOrPassthrough(r.preview_key);
+        if (r.thumb_key) r.thumb_url = mediaStore.publicUrlOrPassthrough(r.thumb_key);
       } catch { /* R2 public base unconfigured — URLs resolve after setup */ }
     }
     res.json({ data: rows });
@@ -723,14 +742,61 @@ module.exports = function mountMediaRoutes(app) {
   function withUrls(rows) {
     for (const r of rows) {
       try {
-        if (r.preview_key) r.preview_url = mediaStore.publicUrl(r.preview_key);
-        if (r.thumb_key) r.thumb_url = mediaStore.publicUrl(r.thumb_key);
+        if (r.preview_key) r.preview_url = mediaStore.publicUrlOrPassthrough(r.preview_key);
+        if (r.thumb_key) r.thumb_url = mediaStore.publicUrlOrPassthrough(r.thumb_key);
       } catch { /* R2 public base unconfigured */ }
     }
   }
 
   // ---- Commerce: Stripe Checkout + webhook + downloads (plan §7) ----
   const APP_URL = (process.env.APP_URL || '').replace(/\/$/, '');
+
+  // Multi-storefront return URLs. Checkout callers (EQIndex, Boss Media,
+  // …) may override where Stripe sends the buyer back via:
+  //   return_base:  full origin, must exactly match APP_URL or an entry
+  //                 of WEB_ORIGIN (prevents open-redirect abuse)
+  //   success_path: path on that origin (default /photos/success);
+  //                 the purchase id is appended as ?purchase=<uuid>
+  //   cancel_path:  path on that origin (default /photos)
+  // Paths only — never full URLs — so a compromised key can't smuggle
+  // buyers off-site.
+  const ALLOWED_BASES = () => {
+    const fromEnv = String(process.env.WEB_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const out = [];
+    for (const u of [APP_URL, ...fromEnv]) {
+      try { out.push(new URL(u).origin); } catch { /* ignore junk */ }
+    }
+    return [...new Set(out)];
+  };
+  function returnBase(body) {
+    const raw = String(body?.return_base || '').trim();
+    if (!raw) return APP_URL;
+    let origin;
+    try { origin = new URL(raw).origin; }
+    catch { const e = new Error('bad return_base'); e.status = 400; throw e; }
+    if (!ALLOWED_BASES().includes(origin)) {
+      const e = new Error('return_base not allowed for this shop');
+      e.status = 400; throw e;
+    }
+    return origin;
+  }
+  function returnPath(v, dflt) {
+    const s = String(v ?? dflt);
+    if (!/^\/[^\s\\]*$/.test(s) || s.startsWith('//')) {
+      const e = new Error('bad return path'); e.status = 400; throw e;
+    }
+    return s;
+  }
+  function stripeReturnUrls(body, purchaseId) {
+    const base = returnBase(body);
+    const successPath = returnPath(body?.success_path, '/photos/success');
+    const cancelPath = returnPath(body?.cancel_path, '/photos');
+    const sep = successPath.includes('?') ? '&' : '?';
+    return {
+      success_url: `${base}${successPath}${sep}purchase=${purchaseId}`,
+      cancel_url: `${base}${cancelPath}`,
+    };
+  }
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const TIER_RE = /^[a-z0-9_-]{1,32}$/i;
@@ -952,8 +1018,7 @@ module.exports = function mountMediaRoutes(app) {
         },
         quantity: 1,
       }],
-      success_url: `${APP_URL}/photos/success?purchase=${purchaseId}`,
-      cancel_url: `${APP_URL}/photos`,
+      ...stripeReturnUrls(req.body, purchaseId),
       metadata: { purchase_id: purchaseId },
     }, { idempotencyKey: idempotency_key ? `co-${idempotency_key}` : `co-${purchaseId}` });
     await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = $1', [purchaseId, session.id]);
@@ -1023,6 +1088,12 @@ module.exports = function mountMediaRoutes(app) {
             WHERE purchase_id = $1 AND status = 'awaiting_payment'`,
           [purchaseId]
         ).catch(() => {});
+        // Immutable 10/10/80 split + organizer wallet credit (P0 wallet).
+        // Non-fatal to the webhook: payment is already marked paid, and a
+        // missed split stays backfillable (platform_fee_cents IS NULL).
+        try {
+          await recordPurchaseSplit(pool, purchaseId);
+        } catch (e) { console.error('[webhook] split failed:', e.message); }
       }
       return ok();
     }
@@ -1159,6 +1230,21 @@ module.exports = function mountMediaRoutes(app) {
 
   // Buyer library ("my photos") — session-owned. Package purchases expand
   // to one row per contained photo so buyers can find what they paid for.
+  app.get('/api/my/wallet', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    const [bal, tx] = await Promise.all([
+      pool.query('SELECT balance_cents FROM users WHERE id = $1', [req.authUser.id]),
+      pool.query(
+        `SELECT kind, amount_cents, balance_after_cents, purchase_id, reason, created_at
+           FROM wallet_transactions WHERE user_id = $1
+          ORDER BY created_at DESC LIMIT 20`,
+        [req.authUser.id]
+      ),
+    ]);
+    if (!bal.rows.length) return res.status(404).json({ error: 'user not found' });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ data: { balance_cents: bal.rows[0].balance_cents, transactions: tx.rows } });
+  }));
   app.get('/api/my/photos', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
     const { rows } = await pool.query(
@@ -1523,7 +1609,7 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // ---- Global shop settings (whole-event package price, etc.) ----
-  const SETTING_KEYS = ['event_package_price_cents'];
+  const SETTING_KEYS = ['event_package_price_cents', 'platform_commission_rate', 'organizer_share_rate'];
   app.get('/admin/settings', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { rows } = await pool.query(
       `SELECT key, value FROM admin_settings WHERE key = ANY($1)`, [SETTING_KEYS]);
@@ -1539,6 +1625,18 @@ module.exports = function mountMediaRoutes(app) {
       const n = parseInt(v, 10);
       if (!Number.isInteger(n) || n < 0) {
         return res.status(400).json({ error: 'price must be a non-negative integer (cents)' });
+      }
+    }
+    if ((key === 'platform_commission_rate' || key === 'organizer_share_rate') && v !== '') {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0 || n > 1) {
+        return res.status(400).json({ error: 'rate must be a fraction 0..1' });
+      }
+      const other = key === 'platform_commission_rate' ? 'organizer_share_rate' : 'platform_commission_rate';
+      const cur = await pool.query('SELECT value FROM admin_settings WHERE key = $1', [other]);
+      const otherRate = cur.rows[0] && cur.rows[0].value !== '' ? Number(cur.rows[0].value) : 0.10;
+      if (!(n + (Number.isFinite(otherRate) ? otherRate : 0) <= 1)) {
+        return res.status(400).json({ error: 'platform + organizer rates must not exceed 1' });
       }
     }
     await pool.query(
@@ -1868,8 +1966,7 @@ module.exports = function mountMediaRoutes(app) {
         price_data: { currency: 'nzd', product_data: { name: label }, unit_amount: product.price_cents },
         quantity: 1,
       }],
-      success_url: `${APP_URL}/photos/success?purchase=${purchaseId}`,
-      cancel_url: `${APP_URL}/photos`,
+      ...stripeReturnUrls(b, purchaseId),
       metadata: { purchase_id: purchaseId },
     }, { idempotencyKey: b.idempotency_key ? `reel-${b.idempotency_key}` : `reel-${purchaseId}` });
     await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = $1', [purchaseId, session.id]);
@@ -1894,8 +1991,8 @@ module.exports = function mountMediaRoutes(app) {
       try {
         if (!o.preview_key) continue;
         if (o.showcase) {
-          o.preview_url = mediaStore.publicUrl(o.preview_key);
-          if (o.thumb_key) o.thumb_url = mediaStore.publicUrl(o.thumb_key);
+          o.preview_url = mediaStore.publicUrlOrPassthrough(o.preview_key);
+          if (o.thumb_key) o.thumb_url = mediaStore.publicUrlOrPassthrough(o.thumb_key);
         } else {
           o.preview_url = await mediaStore.signedDownloadUrl(o.preview_key);
           if (o.thumb_key) o.thumb_url = await mediaStore.signedDownloadUrl(o.thumb_key);
@@ -2195,8 +2292,7 @@ module.exports = function mountMediaRoutes(app) {
         price_data: { currency: 'nzd', product_data: { name: label }, unit_amount: amount },
         quantity: 1,
       }],
-      success_url: `${APP_URL}/photos/success?purchase=${purchaseId}`,
-      cancel_url: `${APP_URL}/photos`,
+      ...stripeReturnUrls(b, purchaseId),
       metadata: { purchase_id: purchaseId },
     }, { idempotencyKey: b.idempotency_key ? `cr-${b.idempotency_key}` : `cr-${purchaseId}` });
     await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = $1', [purchaseId, session.id]);
@@ -2609,8 +2705,8 @@ module.exports = function mountMediaRoutes(app) {
     );
     for (const x of rows) {
       try {
-        if (x.preview_key) x.preview_url = mediaStore.publicUrl(x.preview_key);
-        if (x.thumb_key) x.thumb_url = mediaStore.publicUrl(x.thumb_key);
+        if (x.preview_key) x.preview_url = mediaStore.publicUrlOrPassthrough(x.preview_key);
+        if (x.thumb_key) x.thumb_url = mediaStore.publicUrlOrPassthrough(x.thumb_key);
       } catch { /* R2 public base unconfigured */ }
     }
     res.setHeader('Cache-Control', 'private, no-store');

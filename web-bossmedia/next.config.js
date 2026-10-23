@@ -9,4 +9,12 @@ module.exports = {
     return [{ source: '/api/:path*', destination: `${API_URL}/:path*` }];
   },
   images: { unoptimized: true },
+  // Dev-only: no persistent webpack cache. The shared .next cache folder
+  // kept getting poisoned when switching between `next start` and
+  // `next dev` (stale chunks -> `__webpack_modules__ is not a function`
+  // and 500s on CSS). Production builds are unaffected.
+  webpack(config, { dev }) {
+    if (dev) config.cache = false;
+    return config;
+  },
 };

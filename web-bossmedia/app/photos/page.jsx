@@ -1,57 +1,82 @@
 import Link from 'next/link';
 import { getJSON } from '../../lib/api';
-import GalleryFilter from '../../components/GalleryFilter';
-import FavButton from '../../components/FavButton';
+import { Icon } from '../../components/figma';
+import PageShell from '../../components/PageShell';
 
 export const revalidate = 30;
 export const dynamic = 'force-dynamic';
 
-const nzd = (c) => (c === null || c === undefined ? null : `NZ$${(Number(c) / 100).toFixed(2)}`);
-
 export default async function PhotosPage({ searchParams }) {
   const sp = searchParams || {};
-  const p = new URLSearchParams({ limit: '96' });
-  for (const k of ['kind', 'horse', 'rider', 'event']) if (sp[k]) p.set(`${k === 'horse' ? 'horse_id' : k === 'rider' ? 'rider_id' : k === 'event' ? 'event_id' : k}`, sp[k]);
+  const LIMIT = 48;
+  const page = Math.max(1, parseInt(sp.page, 10) || 1);
+  const p = new URLSearchParams({ limit: String(LIMIT + 1), offset: String((page - 1) * LIMIT) });
+  for (const k of ['kind', 'horse', 'rider', 'event']) {
+    if (sp[k]) p.set(k === 'horse' ? 'horse_id' : k === 'rider' ? 'rider_id' : k === 'event' ? 'event_id' : k, sp[k]);
+  }
   const { data } = await getJSON(`/photos?${p}`).catch(() => ({ data: [] }));
   let rows = data || [];
-  let riderName = '';
-  if (sp.rider) {
-    const r = await getJSON(`/riders/${encodeURIComponent(sp.rider)}`).catch(() => null);
-    riderName = r?.data?.name || '';
-  }
   const q = (sp.q || '').trim().toLowerCase();
   if (q) rows = rows.filter((x) => [x.horse, x.rider, x.event_name].filter(Boolean).some((v) => v.toLowerCase().includes(q)));
+  const hasNext = !q && rows.length > LIMIT;
+  if (hasNext) rows = rows.slice(0, LIMIT);
+  const base = { ...(sp.q ? { q: sp.q } : {}), ...(sp.kind ? { kind: sp.kind } : {}) };
+  const hrefFor = (n) => `/photos?${new URLSearchParams({ ...base, ...(n > 1 ? { page: String(n) } : {}) })}`;
+
   return (
-    <>
-      <h1 className="page-title">Photos</h1>
-      <p className="caption" style={{ margin: '6px 0 18px' }}>Event photos and reels, tagged to horse and rider. Watermarked previews — full resolution after purchase.</p>
-      <GalleryFilter kind={sp.kind || ''} q={sp.q || ''} riderName={riderName} />
+    <PageShell eyebrow="Archive / All media" title="Photos." wide
+      intro="Event photos and reels, tagged to horse and rider. Watermarked previews — full resolution after purchase.">
+      <form method="GET" action="/photos" className="gallery-simple-tools" style={{ marginBottom: 26 }}>
+        <label className="search-box">
+          <Icon name="search" />
+          <span className="sr-only">Search horse, rider or event</span>
+          <input name="q" defaultValue={sp.q || ''} placeholder="Search horse, rider or event" />
+        </label>
+        <div className="filters">
+          <label className="filter"><span>Type</span>
+            <select name="kind" defaultValue={sp.kind || ''}>
+              <option value="">All media</option>
+              <option value="photo">Photos</option>
+              <option value="reel">Reels</option>
+            </select>
+            <Icon name="chevron" size={15} />
+          </label>
+        </div>
+      </form>
       {!rows.length ? (
-        <div className="card" style={{ padding: 40, textAlign: 'center' }}>
-          <h3 className="card-title">No photos found</h3>
-          <p className="caption">Try a different search or filter — new event photos land here after publishing.</p>
+        <div className="event-media-empty">
+          <p className="eyebrow">No photos found</p>
+          <h3>Try another search.</h3>
         </div>
       ) : (
-        <div className="grid">
+        <div className="event-media-grid">
           {rows.map((x) => (
-            <Link key={x.id} href={`/p/${x.id}`} className="card photo-card" style={{ position: 'relative' }}>
-              {x.kind === 'reel' && <span className="badge" style={{ position: 'absolute', top: 10, left: 10 }}>▶ REEL</span>}
+            <Link className="event-media-card" key={x.id} href={`/p/${x.id}`}
+              aria-label={`${x.horse || ''} ${x.rider || ''}`.trim() || 'Photo'}>
               {x.thumb_url || x.preview_url
                 ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" />
-                : <div style={{ aspectRatio: '4/3', display: 'grid', placeItems: 'center', background: '#eceae4' }} />}
-              <FavButton id={x.id} />
-              <div className="cap">
-                <b>{[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Untagged'}</b>
-                <span>{x.event_name || ''}</span>
-              </div>
-              <div className="row">
-                <span>{x.kind === 'reel' ? 'Video' : 'Photo'}</span>
-                {nzd(x.price_cents) && <span className="price">from {nzd(x.price_cents)}</span>}
-              </div>
+                : <span className="cover-fallback">Boss Media</span>}
+              <span className="media-kind">{x.kind === 'reel' && <Icon name="play" size={13} />}{x.kind === 'reel' ? 'Reel' : 'Photo'}</span>
+              <span className="media-card-footer">
+                <small>{x.event_name ? x.event_name.slice(0, 10) : '—'}</small>
+                <strong>{[x.horse, x.rider].filter(Boolean).join(' · ') || x.event_name || 'Untagged'}</strong>
+                <Icon name="arrow" size={15} />
+              </span>
             </Link>
           ))}
         </div>
       )}
-    </>
+      {(page > 1 || hasNext) && (
+        <nav className="my-pager" aria-label="Pagination">
+          {page > 1
+            ? <Link href={hrefFor(page - 1)}>← Prev</Link>
+            : <button type="button" disabled>← Prev</button>}
+          <button type="button" className="on" aria-current="page">{page}</button>
+          {hasNext
+            ? <Link href={hrefFor(page + 1)}>Next →</Link>
+            : <button type="button" disabled>Next →</button>}
+        </nav>
+      )}
+    </PageShell>
   );
 }

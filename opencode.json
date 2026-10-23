@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "shell": {
+      "*": "allow",
+      "*next build*": "ask",
+      "*npm run build*": "ask",
+      "*npm --prefix*build*": "ask",
+      "*npx next build*": "ask",
+      "*bun run build*": "ask",
+      "*rm*rf*.next*": "ask",
+      "*rimraf*.next*": "ask"
+    }
+  }
+}
