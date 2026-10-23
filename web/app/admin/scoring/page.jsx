@@ -4,6 +4,7 @@ import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { AdminFormSk, AdminCardsSk } from '../../../components/Skeletons';
+import { RowBtn } from '../../../components/TableBits';
 import Modal, { ConfirmDialog } from '../../../components/Modal';
 import { Sec, Fld, Num, Txt, Check, csvGet, csvSet, parsePairs, fmtSliding, parseSliding, fmtMult, parseMult, fmtOverride, parseOverride, MODELB_DEFAULTS, ModelBSummary } from '../../../components/ScoringForms';
 import { TrashIcon } from '../../../components/AdminTable';
@@ -126,8 +127,7 @@ function EsnzSections({ draft, setDraft, tab }) {
             <div key={key} className="rounded border border-line p-3">
               <div className="flex items-center gap-2 mb-2">
                 <b className="text-[13px]">{key}</b>
-                <button onClick={() => set((n) => { delete n.series[key]; })}
-                  className="ml-auto text-[12px] text-faint hover:text-blood bg-none border-0 cursor-pointer">Remove</button>
+                <span className="ml-auto"><RowBtn onClick={() => set((n) => { delete n.series[key]; })} tone="danger">Remove</RowBtn></span>
               </div>
               <div className="flex flex-wrap gap-3 items-end">
                 <Fld label="Best of (N)"><Num value={cfg.bestOf} min={1} width={64} onChange={(v) => set((n) => { n.series[key].bestOf = v; })} /></Fld>
@@ -190,8 +190,7 @@ function DivisionsEditor({ draft, set }) {
             <span className="text-faint text-[12px]">–</span>
             <Num value={d.max} min={0} width={80} onChange={(v) => set((n) => { n.divisions[i].max = v; })} />
             <span className="text-faint text-[12px]">cm</span>
-            <button onClick={() => set((n) => { n.divisions.splice(i, 1); })}
-              className="ml-auto text-[12px] text-faint hover:text-blood bg-none border-0 cursor-pointer">Remove</button>
+            <span className="ml-auto"><RowBtn onClick={() => set((n) => { n.divisions.splice(i, 1); })} tone="danger">Remove</RowBtn></span>
           </div>
         ))}
         <button onClick={() => set((n) => { (n.divisions ||= []).push({ key: `div-${Date.now() % 100000}`, label: 'New division', min: null, max: null, color: '#A0A0A0' }); })}

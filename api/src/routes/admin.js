@@ -1348,6 +1348,59 @@ module.exports = function mountAdminRoutes(app) {
     res.json({ ok: true, revoked: rowCount });
   }));
 
+  // ---- Photographer approval: turn an application (corrections queue,
+  // entity_type 'other') into a photographer row + PHOTOGRAPHER role.
+  // Registration never grants this role (auth allowlist), so this is the
+  // only path. One active photographer per user; ADMINs keep their role.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  app.post('/admin/photographers/approve', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { correction_id } = req.body || {};
+    if (!UUID_RE.test(String(correction_id))) return res.status(400).json({ error: 'need {correction_id}' });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const corr = await client.query('SELECT * FROM correction_reports WHERE id = $1', [String(correction_id)]);
+      if (!corr.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'application not found' }); }
+      const c = corr.rows[0];
+      if (!['open', 'in_review'].includes(c.status)) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'application already decided' }); }
+      const u = await client.query('SELECT id, name, email, role FROM users WHERE lower(email) = lower($1)', [c.email]);
+      if (!u.rows.length) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'applicant has no account yet — ask them to register first' }); }
+      const user = u.rows[0];
+      const existing = await client.query(
+        'SELECT id, is_active FROM photographers WHERE user_id = $1 ORDER BY is_active DESC LIMIT 1', [user.id]);
+      let photographer;
+      if (existing.rows.length && existing.rows[0].is_active) {
+        await client.query('ROLLBACK'); return res.status(409).json({ error: 'user is already an active photographer' });
+      } else if (existing.rows.length) {
+        photographer = (await client.query(
+          'UPDATE photographers SET is_active = true, name = $2, contact_email = $3 WHERE id = $1 RETURNING id, name, contact_email, is_active',
+          [existing.rows[0].id, c.name || user.name, c.email])).rows[0];
+      } else {
+        photographer = (await client.query(
+          `INSERT INTO photographers (user_id, name, contact_email, commission_rate, is_active)
+           VALUES ($1, $2, $3, 0, true) RETURNING id, name, contact_email, is_active`,
+          [user.id, c.name || user.name, c.email])).rows[0];
+      }
+      let role = user.role;
+      if (role !== 'ADMIN') {
+        role = (await client.query(
+          `UPDATE users SET role = 'PHOTOGRAPHER' WHERE id = $1 RETURNING role`, [user.id])).rows[0].role;
+      }
+      await client.query(
+        `UPDATE correction_reports SET status = 'resolved',
+           resolved_note = COALESCE(resolved_note || E'\n', '') || $2 WHERE id = $1`,
+        [c.id, `Approved as photographer by ${req.authUser.email || req.authUser.id}`]);
+      await client.query('COMMIT');
+      audit(req, 'photographer.approve', 'photographer', photographer.id, { user_id: user.id });
+      res.status(201).json({ data: { photographer, user: { id: user.id, name: user.name, email: user.email, role } } });
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+  }));
+
   // ---- Seasons master (events.season FK lands here — new seasons must
   // exist before imports/classes referencing them, or writes fail) ----
   app.post('/admin/seasons', needRole('ADMIN'), asyncH(async (req, res) => {

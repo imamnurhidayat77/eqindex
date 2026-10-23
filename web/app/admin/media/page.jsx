@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, H1, SUB, TABLE, TD, TH, NUM, INP, BTN_PRIMARY } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
+import { RowBtn, StatusPill } from '../../../components/TableBits';
 import DataTable from '../../../components/DataTable';
 import EntityPicker from '../../../components/EntityPicker';
 
@@ -177,10 +178,12 @@ export default function AdminMediaLibrary() {
                   : <span className="text-gold font-semibold">Untagged</span>}
               </td>
               <td className="px-2 py-2 text-muted text-[12px] max-w-[160px] truncate" title={r.class_name}>{r.class_name || '—'}</td>
-              <td className="px-2 py-2"><span className={`text-[11px] font-bold rounded px-1.5 py-0.5 ${r.status === 'published' ? 'bg-greenbg text-moss' : r.status === 'archived' ? 'bg-redbg text-blood' : 'bg-card2 text-faint border border-line'}`}>{r.status}</span></td>
+              <td className="px-2 py-2"><StatusPill value={r.status} /></td>
               <td className="px-2 py-2 whitespace-nowrap text-right">
-                <button onClick={() => openEdit(r)} className="text-sky text-[13px] hover:underline bg-none border-0 cursor-pointer mr-2">Edit</button>
-                <button onClick={() => removeOne(r.id)} className="text-faint text-[13px] hover:text-blood bg-none border-0 cursor-pointer">Delete</button>
+                <span className="inline-flex gap-1.5">
+                  <RowBtn onClick={() => openEdit(r)}>Edit</RowBtn>
+                  <RowBtn onClick={() => removeOne(r.id)} tone="danger">Delete</RowBtn>
+                </span>
               </td>
             </tr>
           )}

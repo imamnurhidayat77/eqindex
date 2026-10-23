@@ -28,8 +28,16 @@ function s3() {
   return client;
 }
 
-const keyFor = (kind, eventId, mediaId, ext) =>
-  `${kind}/${eventId || 'unsorted'}/${mediaId}.${(ext || 'jpg').replace(/^\./, '')}`;
+// Namespace for new uploads: one prefix per photographer/studio so a shared
+// bucket stays attributable (Boss Media split, MASTER_PLAN §10). Old keys
+// without a prefix keep working — keys are stored per row, never recomputed.
+const slugify = (s) => String(s || 'studio').toLowerCase().trim()
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'studio';
+
+const keyFor = (kind, eventId, mediaId, ext, namespace) => {
+  const base = `${kind}/${eventId || 'unsorted'}/${mediaId}.${(ext || 'jpg').replace(/^\./, '')}`;
+  return namespace ? `${slugify(namespace)}/${base}` : base;
+};
 
 async function putBuffer(key, body, contentType) {
   const { R2_BUCKET } = cfg();
@@ -82,6 +90,14 @@ function publicUrl(key) {
   return `${base}/${key}`;
 }
 
+// Same as publicUrl, but mock/seed rows may store a full http(s) URL
+// directly in the key columns — pass those through untouched.
+function publicUrlOrPassthrough(key) {
+  if (!key) return null;
+  if (/^https?:\/\//i.test(key)) return key;
+  return publicUrl(key);
+}
+
 // Best-effort delete (DB row is the source of truth; missing keys are fine).
 async function deleteKeys(keys) {
   const list = (keys || []).filter(Boolean);
@@ -93,4 +109,4 @@ async function deleteKeys(keys) {
   return (out.Deleted || []).length;
 }
 
-module.exports = { keyFor, putBuffer, signedDownloadUrl, presignedPutUrl, getStream, headKey, publicUrl, deleteKeys };
+module.exports = { keyFor, putBuffer, signedDownloadUrl, presignedPutUrl, getStream, headKey, publicUrl, publicUrlOrPassthrough, deleteKeys };

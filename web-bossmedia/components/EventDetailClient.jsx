@@ -1,0 +1,113 @@
+'use client';
+import Link from 'next/link';
+import { useMemo, useState } from 'react';
+import { Icon, SiteFooter, SiteHeader } from './figma';
+import GalleryPager from './GalleryPager';
+
+const LIMIT = 24;
+
+export default function EventDetailClient({ event, media }) {
+  const [filter, setFilter] = useState('All');
+  const [search, setSearch] = useState('');
+  const [rider, setRider] = useState('All riders');
+  const [horse, setHorse] = useState('All horses');
+  const [page, setPage] = useState(1);
+
+  const riders = useMemo(() => [...new Set(media.map((m) => m.rider).filter(Boolean))].sort(), [media]);
+  const horses = useMemo(() => [...new Set(media.map((m) => m.horse).filter(Boolean))].sort(), [media]);
+
+  const visible = useMemo(() => media.filter((m) => {
+    const kind = m.kind === 'reel' ? 'Reel' : 'Photo';
+    const q = `${m.rider || ''} ${m.horse || ''} ${m.class_name || ''} ${m.event_name || ''}`.toLowerCase();
+    return q.includes(search.toLowerCase())
+      && (filter === 'All' || kind === filter)
+      && (rider === 'All riders' || m.rider === rider)
+      && (horse === 'All horses' || m.horse === horse);
+  }), [media, filter, search, rider, horse]);
+  const pages = Math.max(1, Math.ceil(visible.length / LIMIT));
+  const safePage = Math.min(page, pages);
+  const pageItems = visible.slice((safePage - 1) * LIMIT, safePage * LIMIT);
+
+  const photoCount = media.filter((m) => m.kind !== 'reel').length;
+  const reelCount = media.filter((m) => m.kind === 'reel').length;
+
+  return (
+    <div className="event-detail-page">
+      <SiteHeader />
+      <main>
+        <section className="event-media-section section-gutter" data-page-top>
+          <div className="event-media-header">
+            <div>
+              <Link href="/events" className="event-collection-back">← Event galleries</Link>
+              <p className="eyebrow">{event.name} / {event.year}</p>
+              <h2>Photos &amp; reels.</h2>
+            </div>
+            <p>Select an image to preview. High-resolution downloads are available after purchase.</p>
+          </div>
+          <div className="event-gallery-search">
+            <label className="detail-media-search">
+              <Icon name="search" />
+              <span className="sr-only">Search rider, horse or media</span>
+              <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search rider, horse or media" />
+            </label>
+            <label className="detail-media-filter">
+              <span>Rider</span>
+              <select value={rider} onChange={(e) => { setRider(e.target.value); setPage(1); }}>
+                <option>All riders</option>
+                {riders.map((r) => <option key={r}>{r}</option>)}
+              </select>
+              <Icon name="chevron" size={15} />
+            </label>
+            <label className="detail-media-filter">
+              <span>Horse</span>
+              <select value={horse} onChange={(e) => { setHorse(e.target.value); setPage(1); }}>
+                <option>All horses</option>
+                {horses.map((h) => <option key={h}>{h}</option>)}
+              </select>
+              <Icon name="chevron" size={15} />
+            </label>
+          </div>
+          <div className="event-media-tools">
+            <div className="media-tabs" role="tablist" aria-label="Media type">
+              {[['All', media.length], ['Photo', photoCount], ['Reel', reelCount]].map(([t, n]) => (
+                <button key={t} role="tab" aria-selected={filter === t} className={filter === t ? 'active' : ''} onClick={() => { setFilter(t); setPage(1); }}>
+                  {t}<span>{n}</span>
+                </button>
+              ))}
+            </div>
+            <p>{visible.length} items</p>
+          </div>
+          {visible.length ? (
+            <div className="event-media-grid">
+              {pageItems.map((m) => {
+                const isReel = m.kind === 'reel';
+                return (
+                  <Link className={`event-media-card ${isReel ? 'reel' : 'photo'}`} key={m.id}
+                    href={`/events/${event.slug}/media/${m.id}`} aria-label={`Preview ${m.horse || ''} ${m.rider || ''}`}>
+                    <img src={m.thumb_url || m.preview_url} alt={`${m.horse || ''} ${m.rider || ''}`.trim() || 'Event media'} loading="lazy" />
+                    <span className="media-kind">{isReel && <Icon name="play" size={13} />}{isReel ? 'Reel' : 'Photo'}</span>
+                    <span className="media-card-footer">
+                      <small>{m.class_name ? m.class_name.slice(0, 8) : '—'}</small>
+                      <strong>{[m.rider, m.horse].filter(Boolean).join(' · ') || m.event_name || 'Untitled'}</strong>
+                      <Icon name="arrow" size={15} />
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="event-media-empty">
+              <p className="eyebrow">No media found</p>
+              <h3>Try another rider or horse.</h3>
+              <button onClick={() => { setSearch(''); setRider('All riders'); setHorse('All horses'); setFilter('All'); setPage(1); }}>
+                Clear all filters
+              </button>
+            </div>
+          )}
+          <GalleryPager page={safePage} pages={pages} onPage={setPage} />
+        </section>
+      </main>
+      <SiteFooter />
+    </div>
+  );
+}

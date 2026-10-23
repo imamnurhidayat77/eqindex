@@ -3,6 +3,7 @@
 import { HEIGHT_BANDS, heightParams } from '../lib/heights';
 import { keyOptions, FALLBACK_CATS } from '../lib/categories';
 import Dropdown from './Dropdown';
+import { Count } from './TableBits';
 
 export { HEIGHT_BANDS, heightParams };
 
@@ -87,7 +88,7 @@ export function Pagination({ page, pages, setPage, perPage, setPerPage, total, p
   return (
     <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
       <div className="text-[12.5px] text-muted">
-        {total} result{total === 1 ? '' : 's'} · Page {page} of {pages}
+        <Count n={total} one="result" /> · Page {page} of {pages}
       </div>
       <div className="flex items-center gap-1.5">
         <Dropdown ariaLabel="Rows per page" value={String(perPage)}

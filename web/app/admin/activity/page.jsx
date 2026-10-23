@@ -4,6 +4,7 @@ import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, INP, badge, BADGE } fro
 import Dropdown from '../../../components/Dropdown';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { TableRowsSk } from '../../../components/Skeletons';
+import { RowBtn, Count } from '../../../components/TableBits';
 
 const ACT_CLS = { review: 'goldfill', claim: 'blue', training: 'green', health: 'green', watchlist: 'gray', comparison: 'gray', coach: 'blue' };
 const ENTITIES = ['', 'horse', 'rider', 'event', 'series', 'user', 'combination', 'entity'];
@@ -56,9 +57,8 @@ export default function AdminActivity() {
           <input className={`${INP} py-[7px]`} type="date" value={f.since} onChange={(e) => set('since')(e.target.value)} /></label>
         <label className="text-xs text-muted flex flex-col gap-1.5">Until
           <input className={`${INP} py-[7px]`} type="date" value={f.until} onChange={(e) => set('until')(e.target.value)} /></label>
-        {dirty && <button onClick={() => setF({ action: '', entity: '', actor: '', since: '', until: '' })}
-          className="text-sky text-[13px] bg-none border-0 cursor-pointer hover:text-white pb-2">Reset ✕</button>}
-        <span className="ml-auto text-[12px] text-faint pb-2">{!loading && `${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}`}</span>
+        {dirty && <span className="pb-2"><RowBtn onClick={() => setF({ action: '', entity: '', actor: '', since: '', until: '' })} tone="muted">Reset ✕</RowBtn></span>}
+        <span className="ml-auto text-[12px] text-faint pb-2">{!loading && <Count n={rows.length} one="entry" many="entries" />}</span>
       </div>
       {err && <section className={CARD}><p className="text-blood text-sm">{err}</p></section>}
       <section className={CARD}>

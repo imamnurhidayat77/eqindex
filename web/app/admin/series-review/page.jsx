@@ -4,6 +4,7 @@ import { API } from '../../../lib/api';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { TableRowsSk } from '../../../components/Skeletons';
+import { RowBtn } from '../../../components/TableBits';
 
 // Series Review — close the Sophia gap from both ends:
 // 1. Untagged: classes without series_key (tag them or judge non-series;
@@ -171,8 +172,7 @@ export default function AdminSeriesReview() {
                     <td className={`${TD} ${NUM}`}>{s.default_height_cm}</td>
                     <td className={`${TD} text-muted text-[12px]`}>{s.source || '—'}</td>
                     <td className={`${TD} text-right`}>
-                      <button onClick={async () => { try { await call(`/admin/series/heights/${s.series_key}`, { method: 'DELETE' }); load(); } catch (e) { setMsg(e.message); } }}
-                        className="text-faint text-[12px] hover:text-blood bg-none border-0 cursor-pointer">Delete</button>
+                      <RowBtn onClick={async () => { try { await call(`/admin/series/heights/${s.series_key}`, { method: 'DELETE' }); load(); } catch (e) { setMsg(e.message); } }} tone="danger">Delete</RowBtn>
                     </td>
                   </tr>
                 ))}
