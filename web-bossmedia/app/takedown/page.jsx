@@ -2,6 +2,15 @@
 import { useState } from 'react';
 import { API } from '../../lib/api';
 import PageShell from '../../components/PageShell';
+import SearchSelect from '../../components/SearchSelect';
+
+const RELATIONSHIPS = [
+  "That's me",
+  'Parent / guardian',
+  "That's my horse",
+  'Photographer / other rights holder',
+  'Other',
+];
 
 export default function TakedownPage() {
   const [form, setForm] = useState({ url: '', reason: '', relationship: '', contact: '' });
@@ -53,14 +62,8 @@ export default function TakedownPage() {
           <label className="booking-field full"><span>Photo page link</span>
             <input value={form.url} onChange={(e) => set('url', e.target.value)} placeholder="https://bossmedia.nz/p/…" /></label>
           <label className="booking-field full" style={{ marginTop: 20 }}><span>Your relationship to the photo</span>
-            <select value={form.relationship} onChange={(e) => set('relationship', e.target.value)}>
-              <option value="">Select…</option>
-              <option>That&apos;s me</option>
-              <option>Parent / guardian</option>
-              <option>That&apos;s my horse</option>
-              <option>Photographer / other rights holder</option>
-              <option>Other</option>
-            </select></label>
+            <SearchSelect options={RELATIONSHIPS.map((r) => ({ id: r, label: r }))} value={form.relationship || null}
+              onChange={(id) => set('relationship', id || '')} placeholder="Select…" clearable={false} /></label>
           <label className="booking-field full" style={{ marginTop: 20 }}><span>Why should it come down? (optional)</span>
             <input value={form.reason} onChange={(e) => set('reason', e.target.value)} placeholder="e.g. that's my child, please remove" maxLength={300} /></label>
           <label className="booking-field full" style={{ marginTop: 20 }}><span>Your contact (email or phone)</span>

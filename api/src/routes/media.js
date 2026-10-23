@@ -31,27 +31,27 @@ const REEL_MIMES = ['video/mp4', 'video/quicktime', 'video/webm'];
 
 const escXml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 function watermarkSvg(w, h, text) {
-  // Photographer credit tiles on a wide diagonal grid: readable enough to
-  // attribute (and to survive casual crops/AI cleaners) but sparse and faint
-  // enough to judge sharpness/expression — what sells the photo. Baked into
-  // pixels at upload — not strippable. PHOTOS ONLY — reels use watermarkSvgLight.
-  const size = Math.max(26, Math.round(Math.min(w, h) / 15));
+  // Proof-gallery standard: diagonal repeat tiles, clearly readable but
+  // transparent enough to evaluate the shot — theft-deterrent, not a
+  // second subject. Baked into pixels at upload — not strippable.
+  // PHOTOS ONLY — reels use watermarkSvgLight.
+  const size = Math.max(24, Math.round(Math.min(w, h) / 18));
   return Buffer.from(
     `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
-    `<defs><pattern id="wm" width="560" height="170" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">` +
-    `<text x="12" y="100" font-family="sans-serif" font-size="${size}" font-weight="bold" fill="white" fill-opacity="0.22">${escXml(text)}</text>` +
+    `<defs><pattern id="wm" width="700" height="240" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">` +
+    `<text x="12" y="100" font-family="sans-serif" font-size="${size}" font-weight="bold" fill="white" fill-opacity="0.16">${escXml(text)}</text>` +
     `</pattern></defs><rect width="${w}" height="${h}" fill="url(#wm)"/></svg>`
   );
 }
 
-// Lighter variant for REELS: wider-spaced, smaller, fainter tiles —
-// a moving picture already carries motion branding, so a few marks suffice.
+// Lighter variant for REELS: same treatment as photos — a moving picture
+// already carries motion branding, so identical density suffices.
 function watermarkSvgLight(w, h, text) {
-  const size = Math.max(22, Math.round(Math.min(w, h) / 16));
+  const size = Math.max(22, Math.round(Math.min(w, h) / 18));
   return Buffer.from(
     `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
-    `<defs><pattern id="wm" width="460" height="180" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">` +
-    `<text x="12" y="96" font-family="sans-serif" font-size="${size}" font-weight="bold" fill="white" fill-opacity="0.20">${escXml(text)}</text>` +
+    `<defs><pattern id="wm" width="700" height="240" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">` +
+    `<text x="12" y="96" font-family="sans-serif" font-size="${size}" font-weight="bold" fill="white" fill-opacity="0.16">${escXml(text)}</text>` +
     `</pattern></defs><rect width="${w}" height="${h}" fill="url(#wm)"/></svg>`
   );
 }
@@ -507,9 +507,17 @@ module.exports = function mountMediaRoutes(app) {
   // License tiers with prices (public by design — buyers pick one, Sportfot-style).
   // Hidden tiers (admin Pricing) are excluded — buyers can't pick or pay them.
   app.get('/api/license-tiers', asyncH(async (req, res) => {
+    const kind = String(req.query.kind || '');
+    const params = [];
+    let kindFilter = '';
+    if (['photo', 'reel'].includes(kind)) {
+      params.push(kind);
+      kindFilter = ` AND (applies_to = 'both' OR applies_to = $${params.length})`;
+    }
     const { rows } = await pool.query(
-      `SELECT id, label, price_cents, max_resolution, printable FROM license_tiers
-        WHERE NOT COALESCE(is_hidden, FALSE) ORDER BY price_cents NULLS LAST, id`);
+      `SELECT id, label, price_cents, max_resolution, printable, applies_to FROM license_tiers
+        WHERE NOT COALESCE(is_hidden, FALSE)${kindFilter} ORDER BY price_cents NULLS LAST, id`,
+      params);
     res.json({ data: rows });
   }));
 
@@ -893,7 +901,8 @@ module.exports = function mountMediaRoutes(app) {
     let title, amount, tierId = license_tier || null, mediaId = null, packageId = null;
     if (media_id) {
       const m = await pool.query(
-        `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label
+        `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label,
+            t.applies_to AS tier_applies
           FROM media m LEFT JOIN license_tiers t ON t.id = $2
           WHERE m.id = $1 AND m.status = 'published'`,
         [media_id, tierId]
@@ -915,11 +924,23 @@ module.exports = function mountMediaRoutes(app) {
         if (vis.rows.length && vis.rows[0].hidden) {
           return res.status(400).json({ error: 'license tier is not available' });
         }
+        // Photo-only tiers can't price reels and vice versa.
+        if (row.tier_applies && row.tier_applies !== 'both' && row.tier_applies !== row.kind) {
+          return res.status(400).json({ error: `license tier does not apply to ${row.kind}s` });
+        }
       }
       if (!tierId) {
         const dflt = await pool.query('SELECT * FROM license_tiers WHERE id = $1', [row.license_default || 'web']);
-        tierId = dflt.rows[0]?.id || 'web';
-        amount = dflt.rows[0]?.price_cents;
+        const applies = dflt.rows[0]?.applies_to || 'both';
+        if (dflt.rows[0] && (applies === 'both' || applies === row.kind)) {
+          tierId = dflt.rows[0].id;
+          amount = dflt.rows[0].price_cents;
+        } else {
+          // Photo/reel default doesn't cover this kind — fall back to 'web'.
+          const web = await pool.query(`SELECT * FROM license_tiers WHERE id = 'web'`);
+          tierId = web.rows[0]?.id || 'web';
+          amount = web.rows[0]?.price_cents;
+        }
       } else {
         amount = row.tier_price;
       }
@@ -1210,7 +1231,8 @@ module.exports = function mountMediaRoutes(app) {
       let tierId = license_tier || null, amount, title, mediaId = null, packageId = null;
       if (media_id) {
         const m = await pool.query(
-          `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label
+          `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label,
+              t.applies_to AS tier_applies
              FROM media m LEFT JOIN license_tiers t ON t.id = $2
             WHERE m.id = $1 AND m.status = 'published'`,
           [media_id, tierId]
@@ -1226,11 +1248,21 @@ module.exports = function mountMediaRoutes(app) {
           const vis = await pool.query(
             'SELECT COALESCE(is_hidden, FALSE) AS hidden FROM license_tiers WHERE id = $1', [tierId]);
           if (vis.rows.length && vis.rows[0].hidden) fail(idx, 400, 'license tier is not available');
+          if (row.tier_applies && row.tier_applies !== 'both' && row.tier_applies !== row.kind) {
+            fail(idx, 400, `license tier does not apply to ${row.kind}s`);
+          }
         }
         if (!tierId) {
           const dflt = await pool.query('SELECT * FROM license_tiers WHERE id = $1', [row.license_default || 'web']);
-          tierId = dflt.rows[0]?.id || 'web';
-          amount = dflt.rows[0]?.price_cents;
+          const applies = dflt.rows[0]?.applies_to || 'both';
+          if (dflt.rows[0] && (applies === 'both' || applies === row.kind)) {
+            tierId = dflt.rows[0].id;
+            amount = dflt.rows[0].price_cents;
+          } else {
+            const web = await pool.query(`SELECT * FROM license_tiers WHERE id = 'web'`);
+            tierId = web.rows[0]?.id || 'web';
+            amount = web.rows[0]?.price_cents;
+          }
         } else {
           amount = row.tier_price;
         }
@@ -2207,21 +2239,24 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   app.post('/admin/license-tiers', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
-    const { id, label, price_cents, max_resolution, printable, sort_order } = req.body || {};
+    const { id, label, price_cents, max_resolution, printable, sort_order, applies_to } = req.body || {};
     if (!id || !TIER_RE.test(String(id))) return res.status(400).json({ error: 'need {id} (a-z, 0-9, _, -)' });
     const price = price_cents === null || price_cents === undefined || price_cents === ''
       ? null : parseInt(price_cents, 10);
     if (price !== null && !(price >= 0)) return res.status(400).json({ error: 'price_cents must be a non-negative integer or null' });
     const sortRaw = sort_order === undefined || sort_order === null || sort_order === '' ? null : parseInt(sort_order, 10);
     if (sortRaw !== null && !Number.isInteger(sortRaw)) return res.status(400).json({ error: 'sort_order must be an integer' });
+    const applies = applies_to === undefined || applies_to === null || applies_to === '' ? 'both' : String(applies_to);
+    if (!['photo', 'reel', 'both'].includes(applies)) return res.status(400).json({ error: 'applies_to must be photo, reel or both' });
     try {
       const { rows } = await pool.query(
-      `INSERT INTO license_tiers (id, label, price_cents, max_resolution, printable, sort_order)
-       VALUES ($1, $2, $3, $4, $5, COALESCE($6, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM license_tiers))) RETURNING *`,
+      `INSERT INTO license_tiers (id, label, price_cents, max_resolution, printable, sort_order, applies_to)
+       VALUES ($1, $2, $3, $4, $5, COALESCE($6, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM license_tiers)), $7) RETURNING *`,
         [String(id).toLowerCase(), String(label || id), price,
           max_resolution ? String(max_resolution).slice(0, 40) : null,
           printable === undefined ? true : !!printable,
-          sort_order === undefined || sort_order === '' ? null : parseInt(sort_order, 10)]);
+          sort_order === undefined || sort_order === '' ? null : parseInt(sort_order, 10),
+          applies]);
       audit(req, 'tier.create', 'license_tier', id, {});
       res.status(201).json({ data: rows[0] });
     } catch (e) {
@@ -2242,6 +2277,17 @@ module.exports = function mountMediaRoutes(app) {
     }
     if (b.max_resolution !== undefined) set('max_resolution', b.max_resolution ? String(b.max_resolution).slice(0, 40) : null);
     if (b.printable !== undefined) set('printable', !!b.printable);
+    if (b.applies_to !== undefined) {
+      if (!['photo', 'reel', 'both'].includes(b.applies_to)) {
+        return res.status(400).json({ error: 'applies_to must be photo, reel or both' });
+      }
+      // 'web' is the fallback for both photos and reels — narrowing it
+      // would break default pricing on the other kind.
+      if (req.params.id === 'web' && b.applies_to !== 'both') {
+        return res.status(409).json({ error: "'web' applies to photos and reels — it can't be narrowed" });
+      }
+      set('applies_to', b.applies_to);
+    }
     if (b.is_hidden !== undefined) {
       // 'web' is the pricing fallback — hiding it would silently reprice
       // every photo without an explicit tier. Hidden tiers also can't be a
@@ -3316,3 +3362,5 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: out });
   }));
 };
+module.exports.watermarkSvg = watermarkSvg;
+module.exports.watermarkSvgLight = watermarkSvgLight;

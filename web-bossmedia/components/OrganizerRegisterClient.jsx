@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { Icon } from './figma';
+import SearchSelect from './SearchSelect';
 
 const REGIONS = [
   'Northland', 'Auckland', 'Waikato', 'Bay of Plenty', 'Gisborne', 'Hawke’s Bay',
@@ -190,10 +191,8 @@ function OrganizerInner({ visual }) {
                   placeholder="e.g. Brookby Show Jumping" autoComplete="organization" />
               </label>
               <label><span>Main region</span>
-                <select required value={app.region} onChange={(e) => setApp({ ...app, region: e.target.value })}>
-                  <option value="" disabled>Select a region…</option>
-                  {REGIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
+                <SearchSelect options={REGIONS.map((r) => ({ id: r, label: r }))} value={app.region || null}
+                  onChange={(id) => setApp({ ...app, region: id || '' })} placeholder="Select a region…" clearable={false} />
               </label>
               <label><span>Events you run</span>
                 <textarea required value={app.events} onChange={(e) => setApp({ ...app, events: e.target.value })}

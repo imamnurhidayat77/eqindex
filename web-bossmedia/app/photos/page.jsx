@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getJSON } from '../../lib/api';
 import { Icon } from '../../components/figma';
 import PageShell from '../../components/PageShell';
+import QueryFilter from '../../components/QueryFilter';
 
 export const revalidate = 30;
 export const dynamic = 'force-dynamic';
@@ -34,12 +35,9 @@ export default async function PhotosPage({ searchParams }) {
         </label>
         <div className="filters">
           <label className="filter"><span>Type</span>
-            <select name="kind" defaultValue={sp.kind || ''}>
-              <option value="">All media</option>
-              <option value="photo">Photos</option>
-              <option value="reel">Reels</option>
-            </select>
-            <Icon name="chevron" size={15} />
+            <QueryFilter name="kind" value={sp.kind || ''}
+              options={[{ id: '', label: 'All media' }, { id: 'photo', label: 'Photos' }, { id: 'reel', label: 'Reels' }]}
+              placeholder="Type" />
           </label>
         </div>
       </form>

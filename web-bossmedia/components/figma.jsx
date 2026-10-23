@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { cartCount, onCartChange } from '../lib/cart';
+import SearchSelect from './SearchSelect';
 
 export function Icon({ name, size = 18 }) {
   const paths = {
@@ -20,6 +21,8 @@ export function Icon({ name, size = 18 }) {
     close: <path d="M5 5l14 14M19 5 5 19" />,
     menu: <path d="M3 7h18M3 17h18" />,
     chevron: <path d="m8 10 4 4 4-4" />,
+    instagram: (<><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><path d="M17.2 6.8h.01" /></>),
+    facebook: <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3V2Z" />,
   };
   return (
     <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24"
@@ -33,10 +36,8 @@ export function Filter({ label, value, options, onChange }) {
   return (
     <label className="filter">
       <span>{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        {options.map((o) => <option key={o}>{o}</option>)}
-      </select>
-      <Icon name="chevron" size={15} />
+      <SearchSelect options={options.map((o) => ({ id: o, label: o }))} value={value}
+        onChange={(id) => onChange(id)} placeholder={label} clearable={false} />
     </label>
   );
 }
@@ -165,6 +166,10 @@ export function SiteFooter() {
       <div className="footer-brand">
         <Link href="/" className="wordmark inverted">BOSS<span>MEDIA</span></Link>
         <p>Equestrian stories,<br />made to keep.</p>
+        <div className="footer-social">
+          <a href="https://instagram.com/bossmedia.nz" target="_blank" rel="noreferrer" aria-label="Boss Media on Instagram"><Icon name="instagram" size={18} /></a>
+          <a href="https://www.facebook.com/BossMediaNZ/" target="_blank" rel="noreferrer" aria-label="Boss Media on Facebook"><Icon name="facebook" size={18} /></a>
+        </div>
       </div>
       <div className="footer-links">
         <div>

@@ -45,8 +45,16 @@ export default function PricingClient({ events }) {
         hint="What a buyer pays for one photo. They pick one option at checkout — for example Social for sharing, Web for everyday use, or High Resolution for printing."
         tip="‘Web’ is the default option. It is always available and cannot be hidden or deleted."
       >
-        <TierTable tiers={tiers} reload={load} />
-        <TierForm onDone={load} />
+        <TierTable kind="photo" tiers={tiers} reload={load} />
+        <TierForm kind="photo" onDone={load} />
+      </Section>
+      <Section
+        title="Reel prices"
+        hint="What a buyer pays for one finished reel. Separate from photo prices — add reel-only options below, or keep using the shared ones."
+        tip="Options marked ‘Photo + reel’ are shared with photo checkout. Edit them under Photo prices."
+      >
+        <TierTable kind="reel" tiers={tiers} reload={load} />
+        <TierForm kind="reel" onDone={load} />
       </Section>
       <Section
         title="Photo bundles"
@@ -111,16 +119,17 @@ function useReprice(applyPrice) {
   };
 }
 
-/* ---------- license tiers ---------- */
-function TierTable({ tiers, reload }) {
+/* ---------- license tiers (split photo / reel by applies_to) ---------- */
+function TierTable({ kind, tiers, reload }) {
   const notify = useToast();
   const dialog = useDialog();
   const [edits, setEdits] = useState({});
   const [offset, setOffset] = useState(0);
   const PAGE = 10;
   if (tiers === null) return <p className="empty-note">Loading prices…</p>;
-  if (!tiers.length) return <p className="empty-note">No price options yet — add your first one below.</p>;
-  const pages = Math.max(1, Math.ceil(tiers.length / PAGE));
+  const list = tiers.filter((t) => (t.applies_to || 'both') === kind || (t.applies_to || 'both') === 'both');
+  if (!list.length) return <p className="empty-note">No {kind} price options yet — add your first one below.</p>;
+  const pages = Math.max(1, Math.ceil(list.length / PAGE));
   const safe = Math.min(offset, Math.max(0, (pages - 1) * PAGE));
   const set = (id, k, v) => setEdits((e) => ({ ...e, [id]: { ...(e[id] || {}), [k]: v } }));
   const save = async (t) => {
@@ -145,7 +154,7 @@ function TierTable({ tiers, reload }) {
     <table className="st-table">
       <thead><tr><th>Buyer option</th><th>Price (NZ$)</th><th>File quality</th><th>Print-ready</th><th>In shop</th><th></th></tr></thead>
       <tbody>
-        {tiers.slice(safe, safe + PAGE).map((t) => {
+        {list.slice(safe, safe + PAGE).map((t) => {
           const e = edits[t.id] || {};
           const hidden = e.hidden ?? t.is_hidden;
           const printable = e.printable ?? t.printable;
@@ -157,6 +166,7 @@ function TierTable({ tiers, reload }) {
               <input value={e.label ?? t.label} onChange={(ev) => set(t.id, 'label', ev.target.value)} aria-label={`Option name for ${t.label}`} style={inp} />
               <div style={{ color: '#777', fontSize: 11, marginTop: 4 }}>
                 {isDefault ? 'Default option — always in the shop' : 'Shows at checkout as “' + (e.label ?? t.label) + '”'}
+                {(t.applies_to || 'both') === 'both' ? ' · Photo + reel' : ''}
               </div>
             </td>
             <td>
@@ -194,13 +204,13 @@ function TierTable({ tiers, reload }) {
         })}
       </tbody>
     </table>
-    <Pager total={tiers.length} limit={PAGE} offset={safe} onPage={setOffset} />
+    <Pager total={list.length} limit={PAGE} offset={safe} onPage={setOffset} />
     </>
   );
 }
 const inp = { background: '#0b0b0b', border: '1px solid #333', color: '#fff', fontSize: 13, minHeight: 36, padding: '0 8px' };
 
-function TierForm({ onDone }) {
+function TierForm({ kind, onDone }) {
   const notify = useToast();
   const [f, setF] = useState({ label: '', price: '', quality: 'original' });
   const previewId = slug(f.label);
@@ -213,7 +223,7 @@ function TierForm({ onDone }) {
     try {
       await studio.post('/admin/license-tiers', {
         id, label: f.label.trim(), price_cents: cents(f.price), max_resolution,
-        printable: f.quality === 'original',
+        printable: f.quality === 'original', applies_to: kind,
       });
       setF({ label: '', price: '', quality: 'original' }); notify(`“${f.label.trim()}” added to the shop`); onDone();
     } catch (e) { notify(e.message, true); }
@@ -224,11 +234,15 @@ function TierForm({ onDone }) {
       <div className="st-filters" style={{ margin: '0 0 8px' }}>
         <input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} placeholder="Option name, e.g. Social" aria-label="New option name" style={{ width: 200 }} />
         <input value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} placeholder="$ price, e.g. 15" aria-label="New option price in NZ dollars" inputMode="decimal" style={{ width: 140 }} />
-        <select value={f.quality} onChange={(e) => setF({ ...f, quality: e.target.value })} aria-label="File quality" style={{ height: 44 }}>
-          <option value="1417x945">Small file — social media</option>
-          <option value="2400x1600">Medium file — everyday use</option>
-          <option value="original">Original — best quality + print</option>
-        </select>
+        <div style={{ minWidth: 240 }}>
+          <SearchSelect value={f.quality} onChange={(id) => setF({ ...f, quality: id })} clearable={false}
+            placeholder="File quality"
+            options={[
+              { id: '1417x945', label: 'Small file — social media' },
+              { id: '2400x1600', label: 'Medium file — everyday use' },
+              { id: 'original', label: 'Original — best quality + print' },
+            ]} />
+        </div>
         <button className="st-btn" disabled={!f.label.trim() || f.price === ''} onClick={submit}>Add option</button>
       </div>
       {previewId && <p style={{ color: '#666', fontSize: 11 }}>Buyers will see “{f.label}” at checkout{Number(f.price) >= 0 && f.price !== '' ? ` for NZ$${f.price}` : ''}.</p>}

@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import StudioShell, { Pager, useDialog, useToast } from '../../../components/studio';
+import SearchSelect from '../../../components/SearchSelect';
 import { dayOf, nzdc, studio, useStudioUser } from '../../../lib/studio';
 
 const SECTIONS = [['commission', 'Commission'], ['users', 'Users'], ['applications', 'Applications']];
@@ -188,10 +189,9 @@ function UserTable({ rows, selfId, setRole, revoke }) {
                   <td><div style={{ fontWeight: 600 }}>{u.name}</div>
                     <div style={{ color: '#777', fontSize: 11 }}>{u.email}</div></td>
                   <td>
-                    <select value={u.role} disabled={u.id === selfId} onChange={(e) => setRole(u, e.target.value)}
-                      aria-label={`Role for ${u.email}`} style={{ background: '#0b0b0b', border: '1px solid #333', color: '#fff', fontSize: 12, padding: '8px' }}>
-                      {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-                    </select>
+                    <SearchSelect value={u.role} disabled={u.id === selfId} onChange={(id) => setRole(u, id)}
+                      placeholder="Role" clearable={false}
+                      options={ROLES.map((r) => ({ id: r, label: r }))} />
                     {u.id === selfId && <div style={{ color: '#777', fontSize: 11, marginTop: 4 }}>That’s you</div>}
                   </td>
                   <td>{u.active_sessions}</td>

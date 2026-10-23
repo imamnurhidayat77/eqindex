@@ -21,6 +21,8 @@ export default function StoryViewer({ reels, index, onIndex, onClose }) {
     if (index > 0) { setProg(0); onIndex(index - 1); }
   }, [index, onIndex]);
 
+  const stop = (e) => e.stopPropagation();
+
   useEffect(() => { setProg(0); }, [index]);
 
   // Photo timer with smooth progress.
@@ -64,13 +66,13 @@ export default function StoryViewer({ reels, index, onIndex, onClose }) {
   );
 
   return (
-    <div className="story" role="dialog" aria-modal="true" aria-label={`Reel ${index + 1} of ${reels.length} featuring ${reel.rider}`}>
+    <div className="story" role="dialog" aria-modal="true" aria-label={`Reel ${index + 1} of ${reels.length} featuring ${reel.rider}`} onClick={onClose}>
       <div className="story-segs" aria-hidden="true">
         {reels.map((r, i) => (
           <span key={r.id || i}><i style={{ width: `${i < index ? 100 : i === index ? Math.round(prog * 100) : 0}%` }} /></span>
         ))}
       </div>
-      <div className="story-head">
+      <div className="story-head" onClick={stop}>
         <span className="story-who">
           <strong>{reel.rider}{reel.horse ? ` × ${reel.horse}` : ''}</strong>
           <small>{reel.event}</small>
@@ -80,7 +82,7 @@ export default function StoryViewer({ reels, index, onIndex, onClose }) {
           <Icon name="close" size={22} />
         </button>
       </div>
-      <div className="story-deck">
+      <div className="story-deck" onClick={stop}>
         {peek(prevReel, 'prev')}
         <div className="story-stage" key={reel.id}>
           {reel.video ? (
@@ -94,8 +96,8 @@ export default function StoryViewer({ reels, index, onIndex, onClose }) {
         </div>
         {peek(nextReel, 'next')}
       </div>
-      <button type="button" className="story-tap left" onClick={prev} disabled={index === 0} aria-label="Previous reel" />
-      <button type="button" className="story-tap right" onClick={next} aria-label="Next reel" />
+      <button type="button" className="story-tap left" onClick={(e) => { stop(e); prev(); }} disabled={index === 0} aria-label="Previous reel" />
+      <button type="button" className="story-tap right" onClick={(e) => { stop(e); next(); }} aria-label="Next reel" />
     </div>
   );
 }

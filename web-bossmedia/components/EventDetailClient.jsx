@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Icon, SiteFooter, SiteHeader } from './figma';
 import GalleryPager from './GalleryPager';
+import SearchSelect from './SearchSelect';
 
 const LIMIT = 24;
 
@@ -52,19 +53,13 @@ export default function EventDetailClient({ event, media }) {
             </label>
             <label className="detail-media-filter">
               <span>Rider</span>
-              <select value={rider} onChange={(e) => { setRider(e.target.value); setPage(1); }}>
-                <option>All riders</option>
-                {riders.map((r) => <option key={r}>{r}</option>)}
-              </select>
-              <Icon name="chevron" size={15} />
+              <SearchSelect options={['All riders', ...riders].map((r) => ({ id: r, label: r }))} value={rider}
+                onChange={(id) => { setRider(id); setPage(1); }} placeholder="Rider" clearable={false} />
             </label>
             <label className="detail-media-filter">
               <span>Horse</span>
-              <select value={horse} onChange={(e) => { setHorse(e.target.value); setPage(1); }}>
-                <option>All horses</option>
-                {horses.map((h) => <option key={h}>{h}</option>)}
-              </select>
-              <Icon name="chevron" size={15} />
+              <SearchSelect options={['All horses', ...horses].map((h) => ({ id: h, label: h }))} value={horse}
+                onChange={(id) => { setHorse(id); setPage(1); }} placeholder="Horse" clearable={false} />
             </label>
           </div>
           <div className="event-media-tools">

@@ -20,16 +20,7 @@ const { Pool } = pg;
 const DRY = process.argv.includes('--dry');
 const onlyId = (process.argv.find((a) => a.startsWith('--id=')) || '').slice(5) || null;
 
-const escXml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-function watermarkSvgLight(w, h, text) {
-  const size = Math.max(22, Math.round(Math.min(w, h) / 16));
-  return Buffer.from(
-    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
-    `<defs><pattern id="wm" width="460" height="180" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">` +
-    `<text x="12" y="96" font-family="sans-serif" font-size="${size}" font-weight="bold" fill="white" fill-opacity="0.20">${escXml(text)}</text>` +
-    `</pattern></defs><rect width="${w}" height="${h}" fill="url(#wm)"/></svg>`
-  );
-}
+const { watermarkSvgLight } = require('../src/routes/media.js');
 
 async function streamToBuffer(stream) {
   const chunks = [];

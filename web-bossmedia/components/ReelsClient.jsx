@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Icon, SiteFooter, SiteHeader } from './figma';
 import GalleryPager from './GalleryPager';
+import SearchSelect from './SearchSelect';
 
 const LIMIT = 12;
 
@@ -38,11 +39,8 @@ export default function ReelsClient({ items, eventOptions }) {
           </label>
           <label>
             <span>Event</span>
-            <select value={eventFilter} onChange={(e) => { setEventFilter(e.target.value); setPage(1); }}>
-              <option>All events</option>
-              {eventOptions.map((ev) => <option key={ev}>{ev}</option>)}
-            </select>
-            <Icon name="chevron" size={16} />
+            <SearchSelect options={['All events', ...eventOptions].map((ev) => ({ id: ev, label: ev }))} value={eventFilter}
+              onChange={(id) => { setEventFilter(id); setPage(1); }} placeholder="Event" clearable={false} />
           </label>
         </div>
         <div className="reels-result-meta">

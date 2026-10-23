@@ -39,7 +39,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   const horse = media.horse || 'Unknown horse';
 
   useEffect(() => {
-    fetch(`${API}/api/license-tiers`)
+    fetch(`${API}/api/license-tiers?kind=${media.kind === 'reel' ? 'reel' : 'photo'}`)
       .then((r) => r.json())
       .then((j) => {
         const list = j.data || [];
