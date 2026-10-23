@@ -618,12 +618,8 @@ button { color: inherit; }
 .reels-result-meta p { margin: 0; }
 .reels-archive-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 1100px) { .reels-archive-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-/* Editorial stagger: even cards sit slightly lower so the 6-up row reads
-   like a magazine, not a spreadsheet. Desktop only — mobile stays swipeable. */
 @media (min-width: 1101px) {
   .reels-grid > :nth-child(even) { transform: translateY(20px); }
-  .reels-archive-grid > a:nth-child(even) { transform: translateY(20px); }
-  .reels-archive-grid > a:nth-child(even):hover { transform: translateY(16px); }
 }
 .reels-archive-grid > a { aspect-ratio: 9 / 16; min-width: 0; padding: 0; border: 1px solid #303030; color: white; background: #151515; position: relative; overflow: hidden; text-align: left; cursor: pointer; transition: transform .3s, border-color .3s; }
 .reels-archive-grid > a::after { content: ''; position: absolute; inset: 45% 0 0; background: linear-gradient(transparent, rgba(0,0,0,.85)); }
