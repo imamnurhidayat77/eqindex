@@ -205,9 +205,9 @@ function UserTable({ rows, selfId, setRole, revoke }) {
             </tbody>
           </table>
           <Pager total={rows.length} limit={PAGE} offset={safe} onPage={setOffset} />
-          <p style={{ color: '#777', fontSize: 12, padding: '0 0 12px' }}>
-            PHOTOGRAPHER is granted only by approving an application — it can’t be picked here.
-          </p>
+            <p style={{ color: '#777', fontSize: 12, padding: '0 0 12px' }}>
+              PHOTOGRAPHER and ORGANIZER are granted only by approving an application — they can’t be picked here.
+            </p>
         </div>
   );
 }
@@ -215,7 +215,7 @@ function UserTable({ rows, selfId, setRole, revoke }) {
 /* ---------- applications: photographer queue (corrections entity_type 'other') ---------- */
 // Photographer applications follow a fixed template (see PhotographerRegisterClient);
 // parse it into labeled fields, fall back to raw lines for anything else.
-const APP_LABELS = ['portfolio', 'region', 'social', 'gear', 'events covered'];
+const APP_LABELS = ['portfolio', 'region', 'social', 'gear', 'events covered', 'organization', 'events', 'contact'];
 function parseApplication(message) {
   const fields = [];
   let cur = null;
@@ -235,11 +235,13 @@ function parseApplication(message) {
 }
 
 function AppDetail({ c }) {
-  const isPhoto = c.entity_type === 'other';
-  const fields = isPhoto ? parseApplication(c.message) : [{ label: '', value: c.message }];
+  const kindLabel = c.entity_type === 'organizer' ? 'Organizer application'
+    : c.entity_type === 'other' ? 'Photographer application' : 'Correction report';
+  const fields = c.entity_type === 'other' || c.entity_type === 'organizer'
+    ? parseApplication(c.message) : [{ label: '', value: c.message }];
   return (
     <>
-      <p className="eyebrow">{isPhoto ? 'Photographer application' : 'Correction report'} · {dayOf(c.created_at)}</p>
+            <p className="eyebrow">{kindLabel} · {dayOf(c.created_at)}</p>
       <h3>{c.name || '—'}</h3>
       <p style={{ color: '#999', fontSize: 13 }}>{c.email}</p>
       <dl style={{ display: 'grid', gap: 0, margin: '16px 0 4px', borderTop: '1px solid #2c2c2c', fontSize: 13 }}>
@@ -293,15 +295,19 @@ function Applications() {
   }
 
   async function approve(c) {
+    const isOrg = c.entity_type === 'organizer';
     if (!await dialog.confirm({
-      title: `Approve ${c.name || c.email} as photographer?`,
-      message: 'Creates a photographer profile and grants upload access.',
+      title: `Approve ${c.name || c.email} as ${isOrg ? 'organizer' : 'photographer'}?`,
+      message: isOrg
+        ? 'Creates an organizer profile: event dashboard, revenue share, volunteer grants.'
+        : 'Creates a photographer profile and grants upload access.',
     })) return;
     try {
-      const r = await studio.post('/admin/photographers/approve', { correction_id: c.id });
+      const path = isOrg ? '/admin/organizers/approve' : '/admin/photographers/approve';
+      const r = await studio.post(path, { correction_id: c.id });
       setRows((xs) => (xs || []).filter((x) => x.id !== c.id));
       setViewing(null);
-      notify(`Approved — ${r.user.email} is now a photographer`);
+      notify(`Approved — ${r.user.email} is now a${isOrg ? 'n organizer' : ' photographer'}`);
     } catch (e) { notify(e.message, true); }
   }
 
@@ -343,7 +349,7 @@ function Applications() {
             <AppDetail c={viewing} />
             <div className="st-modal-actions" style={{ flexWrap: 'wrap' }}>
               <button className="st-btn-ghost" onClick={() => setViewing(null)}>Close</button>
-              {viewing.entity_type === 'other' && status === 'open' && (
+              {(viewing.entity_type === 'other' || viewing.entity_type === 'organizer') && status === 'open' && (
                 <button className="st-btn" onClick={() => approve(viewing)}>Approve</button>
               )}
               <button className="st-btn-ghost" onClick={() => decide(viewing, 'resolved')}>Resolve</button>

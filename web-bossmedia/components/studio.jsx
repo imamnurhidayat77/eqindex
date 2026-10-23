@@ -98,7 +98,6 @@ export default function StudioShell({ active, kpis, children }) {
             </span>
             {user?.name?.split(' ')[0] || 'Studio'}
           </Link>
-          <Link href="/cart" className="icon-button cart" aria-label="View cart"><Icon name="cart" /><CartCount /></Link>
         </div>
       </header>
       <main className="section-gutter">
@@ -169,16 +168,6 @@ export default function StudioShell({ active, kpis, children }) {
       )}
     </div>
   );
-}
-
-function CartCount() {
-  const [n, setN] = useState(0);
-  useEffect(() => {
-    let items = [];
-    try { items = JSON.parse(localStorage.getItem('bossmedia:cart') || '[]'); } catch {}
-    setN(items.length);
-  }, []);
-  return <span>{n}</span>;
 }
 
 export function Stat({ label, value, sub }) {

@@ -7,13 +7,14 @@ export const revalidate = 60;
 export default async function Home() {
   const [items, { data: reelPhotos }] = await Promise.all([
     galleryEvents(),
-    getJSON('/photos?kind=reel&limit=4').catch(() => ({ data: [] })),
+    getJSON('/photos?kind=reel&limit=6').catch(() => ({ data: [] })),
   ]);
   // Same hero image as the Figma design.
   const heroImage = 'https://images.unsplash.com/photo-1594768816441-1dd241ffaa67?auto=format&fit=crop&w=2000&q=90';
   const reels = (reelPhotos || []).map((r) => ({
     id: r.id,
-    rider: r.rider || 'Unknown rider',
+    // Never show "Unknown rider" on a card — fall back to horse, then event.
+    rider: r.rider || r.horse || r.event_name || 'Boss Media reel',
     horse: r.horse || '',
     event: r.event_name || '',
     image: r.thumb_url || r.preview_url || null,

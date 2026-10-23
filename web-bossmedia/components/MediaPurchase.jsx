@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { addToCart } from '../lib/cart';
@@ -20,13 +20,16 @@ function licenseSubline(t) {
 
 export default function MediaPurchase({ media, eventName, eventSlug, backHref, backLabel }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [tiers, setTiers] = useState([]);
   const [tierId, setTierId] = useState(media.license_default || null);
   const [bundle, setBundle] = useState(null); // rider/horse x event package
   const [creditPack, setCreditPack] = useState(null); // N-photo credit bundle
   const [owned, setOwned] = useState(null); // {owned, owned_tier} | {credit:{slots_left}} | null
   const [unlocking, setUnlocking] = useState(false);
-  const [email, setEmail] = useState('');
+  const [meEmail, setMeEmail] = useState(null);
+  const [meChecked, setMeChecked] = useState(false);
+  const [balance, setBalance] = useState(0);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [added, setAdded] = useState(false);
@@ -71,12 +74,13 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   async function checkoutPost(path, body, cancelPath) {
     const res = await fetch(`${API}${path}`, {
       method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...checkoutBase(), ...(cancelPath ? { cancel_path: cancelPath } : {}), ...body, email: email.trim(), idempotency_key: newKey() }),
+      body: JSON.stringify({ ...checkoutBase(), ...(cancelPath ? { cancel_path: cancelPath } : {}), ...body, email: meEmail, idempotency_key: newKey() }),
     });
     const j = await res.json().catch(() => ({}));
     if (res.ok && j.data?.owned) { setOwned({ owned: true, owned_tier: j.data.owned_tier }); return null; }
     if (res.status === 409 && j.owned) { setOwned({ owned: true, owned_tier: j.owned_tier }); throw new Error(j.error || 'You already own this.'); }
     if (!res.ok) throw new Error(j.error || 'Checkout failed — try again.');
+    if (j.data?.paid && j.data?.purchase_id) { router.push(`/photos/success?purchase=${j.data.purchase_id}`); return j.data; }
     if (!j.data?.checkout_url) throw new Error('Checkout already started — check your email for the payment link.');
     window.location.assign(j.data.checkout_url);
     return j.data;
@@ -91,8 +95,25 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
         else if (Number(j?.data?.credit?.slots_left) > 0) setOwned({ credit: j.data.credit });
       })
       .catch(() => {});
+    fetch(`${API}/auth/me`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        setMeEmail(j?.data?.email || null);
+        if (j?.data) {
+          fetch(`${API}/api/my/wallet`, { credentials: 'include' })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((w) => setBalance(Number(w?.data?.balance_cents) || 0))
+            .catch(() => {});
+        }
+      })
+      .catch(() => setMeEmail(null))
+      .finally(() => setMeChecked(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [media.id]);
+
+  // Buying requires an account (backend 401s otherwise). Receipt goes to
+  // the account email, downloads live in My media.
+  const needLogin = () => { router.push(`/login?next=${encodeURIComponent(pathname || '/')}`); };
 
   async function unlock() {
     if (unlocking) return;
@@ -112,29 +133,33 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   async function buyNow(tierOverride) {
     const t = tierOverride || tier;
     if (!t) { setErr('Licensing is unavailable right now — try again shortly.'); return; }
-    if (!email.trim()) { setErr('Enter your email to receive the download link.'); return; }
+    if (!meEmail) { needLogin(); return; }
     setBusy(true); setErr('');
     try {
-      await checkoutPost('/api/checkout', { media_id: media.id, license_tier: t.id }, backHref);
+      const gross = Number(t.price_cents) || 0;
+      const use_balance_cents = Math.min(balance, gross);
+      await checkoutPost('/api/checkout', { media_id: media.id, license_tier: t.id, ...(use_balance_cents ? { use_balance_cents } : {}) }, backHref);
     } catch (e) { setErr(e.message); setBusy(false); }
   }
 
   async function buyBundle() {
     if (!bundle) return;
-    if (!email.trim()) { setErr('Enter your email to receive the download link.'); return; }
+    if (!meEmail) { needLogin(); return; }
     setBusy(true); setErr('');
     try {
       // Real rows check out by id; virtual rows materialize server-side.
       const body = bundle.virtual
         ? { whole_event: true, event_id: media.event_id, ...scopeIds }
         : { package_id: bundle.id };
-      await checkoutPost('/api/checkout', body, backHref);
+      const gross = Number(bundle.price_cents) || 0;
+      const use_balance_cents = Math.min(balance, gross);
+      await checkoutPost('/api/checkout', { ...body, ...(use_balance_cents ? { use_balance_cents } : {}) }, backHref);
     } catch (e) { setErr(e.message); setBusy(false); }
   }
 
   async function buyCredits() {
     if (!creditPack) return;
-    if (!email.trim()) { setErr('Enter your email to receive the download link.'); return; }
+    if (!meEmail) { needLogin(); return; }
     setBusy(true); setErr('');
     try {
       await checkoutPost('/api/credit-orders', { pack_id: creditPack.id, event_id: media.event_id, ...scopeIds });
@@ -245,6 +270,15 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
               <li>Kept in your account — download again anytime</li>
             </ul>
             <div className="license-total"><span>Total</span><strong>{price}</strong></div>
+            {meEmail && balance > 0 && tier?.price_cents > 0 && (
+              <p style={{ margin: '12px 0', color: '#ccc', fontSize: 13, lineHeight: 1.5 }}>
+                {nzd(Math.min(balance, Number(tier.price_cents)))} balance applied
+                {Math.min(balance, Number(tier.price_cents)) < Number(tier.price_cents)
+                  ? ` · ${nzd(Number(tier.price_cents) - Math.min(balance, Number(tier.price_cents)))} left by card`
+                  : ' · covers it fully'}
+                <span style={{ display: 'block', marginTop: 4, color: '#777', fontSize: 11 }}>Balance payments are final — no refunds to balance.</span>
+              </p>
+            )}
             {err && <p className="auth-error" role="alert">{err}</p>}
             <button className={added ? 'added' : ''} disabled={busy || !tier}
               onClick={() => tier && addItem(tier)} aria-label={added ? 'Added to cart — view cart to check out' : `Add this ${isReel ? 'reel' : 'photo'} to cart for ${price}`}>
@@ -252,11 +286,15 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
               <Icon name="cart" size={17} />
             </button>
             <p style={{ margin: '8px 0 12px', color: '#888', fontSize: 11 }}>No email needed — you can pay later in the cart.</p>
-            <label htmlFor="license-email" style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
-              <span style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' }}>Email for delivery — for Buy now</span>
-              <input id="license-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.nz"
-                style={{ minHeight: 46, padding: '0 12px', color: 'white', background: '#0b0b0b', border: '1px solid #333', outline: 0, fontSize: 13 }} />
-            </label>
+            {meChecked && (meEmail ? (
+              <p style={{ margin: '0 0 12px', color: '#888', fontSize: 11, lineHeight: 1.6 }}>
+                Receipt to <strong style={{ color: '#ddd' }}>{meEmail}</strong> — downloads live in <Link href="/media" style={{ color: '#fff', borderBottom: '1px solid #555' }}>My media</Link>.
+              </p>
+            ) : (
+              <p style={{ margin: '0 0 12px', color: '#888', fontSize: 11, lineHeight: 1.6 }}>
+                <Link href={`/login?next=${encodeURIComponent(pathname || '/')}`} style={{ color: '#fff', borderBottom: '1px solid #555' }}>Sign in</Link> to buy — downloads live in My media.
+              </p>
+            ))}
             <button disabled={busy || !tier} onClick={() => buyNow()}
               style={{ marginTop: 10, background: 'transparent', border: '1px solid #555', color: 'white' }}>
               {busy ? 'Opening checkout…' : 'Buy now — pay immediately'}

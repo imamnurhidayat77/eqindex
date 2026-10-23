@@ -1401,6 +1401,57 @@ module.exports = function mountAdminRoutes(app) {
     }
   }));
 
+  // ---- Organizer approval: same pattern as photographers — application
+  // (corrections entity_type 'organizer') becomes an organizers row +
+  // ORGANIZER role. Registration never grants this role.
+  app.post('/admin/organizers/approve', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { correction_id } = req.body || {};
+    if (!UUID_RE.test(String(correction_id))) return res.status(400).json({ error: 'need {correction_id}' });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const corr = await client.query('SELECT * FROM correction_reports WHERE id = $1', [String(correction_id)]);
+      if (!corr.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'application not found' }); }
+      const c = corr.rows[0];
+      if (!['open', 'in_review'].includes(c.status)) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'application already decided' }); }
+      const u = await client.query('SELECT id, name, email, role FROM users WHERE lower(email) = lower($1)', [c.email]);
+      if (!u.rows.length) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'applicant has no account yet — ask them to register first' }); }
+      const user = u.rows[0];
+      const existing = await client.query(
+        'SELECT id, is_active FROM organizers WHERE user_id = $1 ORDER BY is_active DESC LIMIT 1', [user.id]);
+      let organizer;
+      if (existing.rows.length && existing.rows[0].is_active) {
+        await client.query('ROLLBACK'); return res.status(409).json({ error: 'user is already an active organizer' });
+      } else if (existing.rows.length) {
+        organizer = (await client.query(
+          'UPDATE organizers SET is_active = true, name = $2, contact_email = $3 WHERE id = $1 RETURNING id, name, contact_email, is_active',
+          [existing.rows[0].id, c.name || user.name, c.email])).rows[0];
+      } else {
+        organizer = (await client.query(
+          `INSERT INTO organizers (user_id, name, contact_email, is_active)
+           VALUES ($1, $2, $3, true) RETURNING id, name, contact_email, is_active`,
+          [user.id, c.name || user.name, c.email])).rows[0];
+      }
+      let role = user.role;
+      if (role !== 'ADMIN') {
+        role = (await client.query(
+          `UPDATE users SET role = 'ORGANIZER' WHERE id = $1 RETURNING role`, [user.id])).rows[0].role;
+      }
+      await client.query(
+        `UPDATE correction_reports SET status = 'resolved',
+           resolved_note = COALESCE(resolved_note || E'\n', '') || $2 WHERE id = $1`,
+        [c.id, `Approved as organizer by ${req.authUser.email || req.authUser.id}`]);
+      await client.query('COMMIT');
+      audit(req, 'organizer.approve', 'organizer', organizer.id, { user_id: user.id });
+      res.status(201).json({ data: { organizer, user: { id: user.id, name: user.name, email: user.email, role } } });
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+  }));
+
   // ---- Seasons master (events.season FK lands here — new seasons must
   // exist before imports/classes referencing them, or writes fail) ----
   app.post('/admin/seasons', needRole('ADMIN'), asyncH(async (req, res) => {

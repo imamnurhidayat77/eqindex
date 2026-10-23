@@ -1384,7 +1384,7 @@ module.exports = function mountPublicRoutes(app) {
     if (!name || !String(name).trim()) errs.push('name required');
     if (!EMAIL_RE.test(String(email || '').trim().toLowerCase())) errs.push('valid email required');
     if (!message || !String(message).trim()) errs.push('message required');
-    if (entity_type && !['horse', 'rider', 'event', 'class', 'result', 'other'].includes(entity_type)) {
+    if (entity_type && !['horse', 'rider', 'event', 'class', 'result', 'organizer', 'other'].includes(entity_type)) {
       errs.push('bad entity_type');
     }
     if (errs.length) return res.status(400).json({ error: errs.join('; ') });

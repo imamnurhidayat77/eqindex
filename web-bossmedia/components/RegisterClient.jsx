@@ -170,6 +170,7 @@ function RegisterInner({ visual }) {
           <p className="login-register">
             Have an account? <Link href={`/login?next=${encodeURIComponent(next)}`}>Sign in</Link>
             {' · '}Shoot for us? <Link href="/register/photographer">Join as photographer</Link>
+            {' · '}Run events? <Link href="/register/organizer">Join as organizer</Link>
           </p>
         </div>
         <footer>

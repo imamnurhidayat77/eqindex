@@ -15,7 +15,7 @@ export default function FaqPage() {
       {QA.map(([q, a]) => (
         <details key={q} className="card-dark" style={{ marginBottom: 10 }}>
           <summary>{q}</summary>
-          <p style={{ margin: '8px 0 0' }}>{a}</p>
+          <p className="faq-a">{a}</p>
         </details>
       ))}
     </PageShell>

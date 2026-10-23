@@ -111,10 +111,9 @@ export function HomeSk() {
         {/* hero */}
         <section className="hero section-gutter" aria-hidden="true" style={{ pointerEvents: 'none' }}>
           <div className="hero-copy">
-            <Sk style={{ width: 180, height: 11 }} />
             <Sk style={{ width: 'min(560px, 70vw)', height: 58, marginTop: 30 }} />
             <Sk style={{ width: 'min(420px, 60vw)', height: 58, marginTop: 10 }} />
-            <Sk style={{ width: 220, height: 14, marginTop: 38 }} />
+            <Sk style={{ width: 'min(460px, 60vw)', height: 15, marginTop: 30 }} />
             <div style={{ display: 'flex', gap: 28, marginTop: 37 }}>
               <Sk style={{ width: 220, height: 52 }} />
               <Sk style={{ width: 130, height: 20 }} />

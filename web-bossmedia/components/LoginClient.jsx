@@ -87,6 +87,7 @@ function LoginInner({ visual }) {
           </p>
           <p className="login-register login-register-tight">
             Shoot for us? <Link href="/register/photographer">Join as photographer</Link>
+            {' · '}Run events? <Link href="/register/organizer">Join as organizer</Link>
           </p>
         </div>
         <footer>

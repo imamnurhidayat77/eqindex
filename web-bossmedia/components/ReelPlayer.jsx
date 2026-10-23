@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from './figma';
 
 const fmt = (s) => {
@@ -8,48 +8,81 @@ const fmt = (s) => {
   return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 };
 
-// Proper reel player in Figma voice: custom chrome, no native controls.
-// Props: src, poster?, autoPlay?, className? (fills parent).
-export default function ReelPlayer({ src, poster = null, autoPlay = true, label = 'Reel' }) {
+// Custom reel chrome: click video to toggle, auto-hiding bar, arrows/space shortcuts.
+// Props: src, poster?, autoPlay?, label? (fills parent — parent must be positioned).
+export default function ReelPlayer({ src, poster = null, autoPlay = true, label = 'Reel', onProgress = null, onEnded = null }) {
   const ref = useRef(null);
+  const idleTimer = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [time, setTime] = useState(0);
   const [dur, setDur] = useState(0);
   const [waiting, setWaiting] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [idle, setIdle] = useState(false);
 
   useEffect(() => {
     const v = ref.current;
     if (!v || !src) return;
-    setPlaying(false); setTime(0); setDur(0); setFailed(false); setWaiting(true);
+    setPlaying(false); setTime(0); setDur(0); setFailed(false); setWaiting(true); setIdle(false);
     v.load();
     if (autoPlay) v.play().catch(() => {});
   }, [src, autoPlay]);
 
-  const toggle = () => {
+  useEffect(() => () => clearTimeout(idleTimer.current), []);
+
+  const poke = useCallback(() => {
+    setIdle(false);
+    clearTimeout(idleTimer.current);
+    const v = ref.current;
+    if (v && !v.paused) idleTimer.current = setTimeout(() => setIdle(true), 2200);
+  }, []);
+
+  const toggle = useCallback(() => {
     const v = ref.current;
     if (!v) return;
     if (v.paused) v.play().catch(() => {});
     else v.pause();
-  };
+  }, []);
 
-  const seek = (e) => {
+  const toggleMute = useCallback(() => {
     const v = ref.current;
-    const val = Number(e.target.value);
-    if (v && Number.isFinite(val)) { v.currentTime = val; setTime(val); }
-  };
+    if (!v) return;
+    v.muted = !v.muted;
+    setMuted(v.muted);
+  }, []);
 
-  const fullscreen = () => {
+  const fullscreen = useCallback(() => {
     const v = ref.current;
     if (!v) return;
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     else if (v.requestFullscreen) v.requestFullscreen().catch(() => {});
     else if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+  }, []);
+
+  const seek = (e) => {
+    const v = ref.current;
+    const val = Number(e.target.value);
+    if (v && Number.isFinite(val)) { v.currentTime = val; setTime(val); }
+    poke();
   };
 
+  const onKeys = (e) => {
+    const v = ref.current;
+    if (!v) return;
+    if (e.key === ' ') { e.preventDefault(); toggle(); poke(); }
+    else if (e.key === 'ArrowLeft') { v.currentTime = Math.max(0, v.currentTime - 5); poke(); }
+    else if (e.key === 'ArrowRight') { v.currentTime = Math.min(dur || v.duration || 0, v.currentTime + 5); poke(); }
+    else if (e.key === 'm' || e.key === 'M') { toggleMute(); poke(); }
+    else if (e.key === 'f' || e.key === 'F') { fullscreen(); poke(); }
+  };
+
+  const pct = dur > 0 ? Math.min(100, (time / dur) * 100) : 0;
+
   return (
-    <div className="rp" onClick={(e) => e.stopPropagation()}>
+    <div className={`rp${playing && idle ? ' is-idle' : ''}`} onClick={(e) => e.stopPropagation()}
+      onMouseMove={poke} onMouseLeave={() => { if (ref.current && !ref.current.paused) setIdle(true); }}
+      tabIndex={0} onKeyDown={onKeys} role="region" aria-label={label}>
       <video
         ref={ref}
         src={src}
@@ -57,13 +90,17 @@ export default function ReelPlayer({ src, poster = null, autoPlay = true, label 
         playsInline
         preload="metadata"
         aria-label={label}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+        onPlay={() => { setPlaying(true); poke(); }}
+        onPause={() => { setPlaying(false); setIdle(false); clearTimeout(idleTimer.current); }}
+        onTimeUpdate={(e) => {
+          setTime(e.currentTarget.currentTime);
+          if (onProgress && e.currentTarget.duration) onProgress(Math.min(1, e.currentTarget.currentTime / e.currentTarget.duration));
+        }}
+        onEnded={() => { setPlaying(false); onEnded?.(); }}
         onLoadedMetadata={(e) => { setDur(e.currentTarget.duration); setWaiting(false); }}
         onCanPlay={() => setWaiting(false)}
         onWaiting={() => setWaiting(true)}
-        onPlaying={() => setWaiting(false)}
+        onPlaying={() => { setWaiting(false); poke(); }}
         onError={() => { setFailed(true); setWaiting(false); }}
         onClick={toggle}
       />
@@ -83,19 +120,22 @@ export default function ReelPlayer({ src, poster = null, autoPlay = true, label 
             </button>
           )}
           <div className="rp-bar" onClick={(e) => e.stopPropagation()}>
-            <button type="button" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>
-              <Icon name={playing ? 'pause' : 'play'} size={16} />
-            </button>
-            <span className="rp-time">{fmt(time)}</span>
-            <input type="range" min={0} max={Math.max(0, dur || 0)} step={0.1} value={Math.min(time, dur || 0)}
-              onChange={seek} aria-label="Seek" />
-            <span className="rp-time">{fmt(dur)}</span>
-            <button type="button" onClick={() => { const v = ref.current; if (v) { v.muted = !v.muted; setMuted(v.muted); } }} aria-label={muted ? 'Unmute' : 'Mute'}>
-              <Icon name={muted ? 'muted' : 'sound'} size={16} />
-            </button>
-            <button type="button" onClick={fullscreen} aria-label="Fullscreen">
-              <Icon name="expand" size={16} />
-            </button>
+            <input className="rp-track" type="range" min={0} max={Math.max(0, dur || 0)} step={0.1}
+              value={Math.min(time, dur || 0)} onChange={seek} aria-label="Seek"
+              style={{ '--p': `${pct}%` }} />
+            <div className="rp-row">
+              <button type="button" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>
+                <Icon name={playing ? 'pause' : 'play'} size={17} />
+              </button>
+              <span className="rp-time">{fmt(time)} / {fmt(dur)}</span>
+              <span className="rp-flex" aria-hidden="true" />
+              <button type="button" onClick={toggleMute} aria-label={muted ? 'Unmute' : 'Mute'}>
+                <Icon name={muted ? 'muted' : 'sound'} size={17} />
+              </button>
+              <button type="button" onClick={fullscreen} aria-label="Fullscreen">
+                <Icon name="expand" size={17} />
+              </button>
+            </div>
           </div>
         </>
       )}

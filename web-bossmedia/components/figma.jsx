@@ -114,6 +114,7 @@ export function SiteHeader({ transparent = false }) {
                   <div className="acct-menu" role="menu">
                     <p className="acct-who">{me.name || me.email}<small>{me.role?.toLowerCase()}</small></p>
                     {studio && <Link href="/studio" role="menuitem" onClick={() => setAcctOpen(false)}>My Studio</Link>}
+                    <Link href="/account" role="menuitem" onClick={() => setAcctOpen(false)}>My account</Link>
                     <Link href="/media" role="menuitem" onClick={() => setAcctOpen(false)}>My media</Link>
                     <button type="button" role="menuitem" className="acct-signout" onClick={signOut}>Sign out</button>
                   </div>
@@ -139,8 +140,8 @@ export function SiteHeader({ transparent = false }) {
           <nav>
             {[...NAV.map(([href, label], i) => ({ href, label, n: `0${i + 1}` })),
               ...(studio ? [{ href: '/studio', label: `My Studio · ${(me?.name || '').split(' ')[0] || 'photo'}`, n: '04' }] : []),
-              ...(me ? [{ href: '/media', label: 'My media', n: studio ? '05' : '04' }] : [{ href: '/login', label: 'Sign in', n: studio ? '05' : '04' }]),
-              { href: '/cart', label: 'Cart', n: studio ? '06' : '05' },
+              ...(me ? [{ href: '/account', label: 'My account', n: studio ? '05' : '04' }, { href: '/media', label: 'My media', n: studio ? '06' : '05' }] : [{ href: '/login', label: 'Sign in', n: studio ? '05' : '04' }]),
+              { href: '/cart', label: 'Cart', n: studio ? '07' : me ? '06' : '05' },
             ].map((l) => (
               <Link key={l.href} href={l.href} onClick={() => setMenuOpen(false)}>
                 <span>{l.n}</span>{l.label} <Icon name="arrow" />

@@ -12,7 +12,8 @@ export default async function ReelsPage() {
   for (const e of events || []) slugById[e.id] = e.slug || e.id;
   const items = (reels || []).map((r) => ({
     id: r.id,
-    rider: r.rider || 'Unknown rider',
+    // Never show "Unknown rider" on a card — fall back to horse, then event.
+    rider: r.rider || r.horse || r.event_name || 'Boss Media reel',
     horse: r.horse || '',
     event: r.event_name || '',
     eventSlug: r.event_id && slugById[r.event_id] ? slugById[r.event_id] : null,

@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { EventCard, Filter, Icon, SiteFooter, SiteHeader } from './figma';
-import ReelPlayer from './ReelPlayer';
+import StoryViewer from './StoryViewer';
 
 export default function HomeClient({ items, heroImage, reels, regions, years, tiers }) {
   const [tab, setTab] = useState('Gallery live');
@@ -14,9 +14,13 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
   const [limit, setLimit] = useState(6);
   const [activeReel, setActiveReel] = useState(null);
 
+  const [scrolled, setScrolled] = useState(false);
+
   useEffect(() => {
     document.body.style.overflow = activeReel !== null ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
+    const onKey = (e) => { if (e.key === 'Escape') setActiveReel(null); };
+    window.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = ''; window.removeEventListener('keydown', onKey); };
   }, [activeReel]);
 
   const filtered = useMemo(() => items.filter((it) => {
@@ -30,18 +34,24 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
 
   useEffect(() => setLimit(6), [tab, search, region, year, tier]);
 
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 60);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   return (
     <div className="site-shell">
       <SiteHeader transparent />
       <main id="top">
         <section className="hero section-gutter">
           <div className="hero-copy">
-            <p className="eyebrow">New Zealand Equestrian</p>
             <h1>
               <span className="hero-lead">We don’t just capture performance.</span>
               <span className="hero-emphasis">We elevate it.</span>
             </h1>
-            <p className="hero-intro">New Zealand’s Riders and Horses.<br />Elevated.</p>
+            <p className="hero-intro">New Zealand&rsquo;s riders and horses, captured at shows across the country.</p>
             <div className="hero-links">
               <Link href="/pre-book" className="primary-link">Book your coverage <Icon name="arrow" size={17} /></Link>
               <Link href="/events" className="text-link">Explore our work</Link>
@@ -54,6 +64,11 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
               <figcaption><span>01</span> Flight, captured</figcaption>
             </figure>
           </div>
+          {!scrolled && (
+            <a href="#events" className="scroll-cue" aria-label="Scroll to events">
+              <span>Scroll</span><i aria-hidden="true" />
+            </a>
+          )}
         </section>
 
         <section className="events-section section-gutter" id="events">
@@ -110,22 +125,16 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
           )}
         </section>
 
-        <section className="prebook-strip section-gutter" id="prebook">
-          <div className="prebook-top">
-            <p className="eyebrow light">Pre-book / Never miss the moment</p>
-            <p className="prebook-status"><span />Bookings open</p>
+        <section className="booking-cta" aria-label="Pre-book your coverage">
+          <div className="booking-cta-copy">
+            <h2>Never miss your round.</h2>
+            <p>Pre-book a dedicated photographer before you ride. Stills and reels from every round, delivered to your private gallery.</p>
+            <Link href="/pre-book" className="booking-cta-btn">Book your coverage <Icon name="arrow" size={17} /></Link>
           </div>
-          <div className="prebook-row">
-            <h2>Your next ride.<br />Already covered.</h2>
-            <div className="prebook-aside">
-              <p>Book a dedicated photographer before the event. We’ll follow your rounds and deliver a considered gallery of stills and reels.</p>
-              <Link href="/pre-book">Explore upcoming events <Icon name="arrow" /></Link>
-            </div>
-          </div>
-          <ol className="prebook-steps">
-            <li><span>01</span><div><strong>Choose your event</strong><small>Browse open coverage dates</small></div></li>
-            <li><span>02</span><div><strong>Reserve your rider</strong><small>Tell us your classes and times</small></div></li>
-            <li><span>03</span><div><strong>Ride. We’ll capture it.</strong><small>Receive your private gallery</small></div></li>
+          <ol className="booking-cta-steps">
+            <li><span aria-hidden="true">01</span><div><strong>Choose your event</strong><small>Browse open coverage dates</small></div></li>
+            <li><span aria-hidden="true">02</span><div><strong>Reserve your rider</strong><small>Tell us your classes and times</small></div></li>
+            <li><span aria-hidden="true">03</span><div><strong>Ride. We’ll cover it.</strong><small>Stills and reels in your private gallery</small></div></li>
           </ol>
         </section>
 
@@ -141,7 +150,6 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
             {reels.map((reel, i) => (
               <button className="reel-card" key={reel.id} onClick={() => setActiveReel(i)} aria-label={`Play reel featuring ${reel.rider}`}>
                 {reel.image ? <img src={reel.image} alt="" loading="lazy" /> : <span className="cover-fallback">Boss Media</span>}
-                <span className="reel-number">0{i + 1}</span>
                 <span className="play"><Icon name="play" size={22} /></span>
                 <span className="reel-info"><strong>{reel.rider}</strong><small>{reel.event}</small></span>
               </button>
@@ -151,24 +159,7 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
       </main>
       <SiteFooter />
       {activeReel !== null && reels[activeReel] && (
-        <div className="reel-modal" role="dialog" aria-modal="true" aria-label={`Reel featuring ${reels[activeReel].rider}`} onClick={() => setActiveReel(null)}>
-          <button className="modal-close" aria-label="Close reel" onClick={() => setActiveReel(null)}><Icon name="close" size={24} /></button>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            {reels[activeReel].video ? (
-              <ReelPlayer src={reels[activeReel].video} poster={reels[activeReel].image}
-                label={`Reel featuring ${reels[activeReel].rider}`} />
-            ) : (
-              <>
-                {reels[activeReel].image && <img src={reels[activeReel].image} alt={`${reels[activeReel].rider} at ${reels[activeReel].event}`} />}
-                <span className="modal-play"><Icon name="play" size={28} /></span>
-              </>
-            )}
-            <div>
-              <p>{reels[activeReel].rider}{reels[activeReel].horse ? ` × ${reels[activeReel].horse}` : ''}</p>
-              <span>{reels[activeReel].event}</span>
-            </div>
-          </div>
-        </div>
+        <StoryViewer reels={reels} index={activeReel} onIndex={setActiveReel} onClose={() => setActiveReel(null)} />
       )}
     </div>
   );

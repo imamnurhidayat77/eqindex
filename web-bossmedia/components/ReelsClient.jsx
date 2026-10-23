@@ -52,12 +52,11 @@ export default function ReelsClient({ items, eventOptions }) {
         {visible.length ? (
           <>
           <div className="reels-archive-grid">
-            {pageItems.map((r, i) => {
+            {pageItems.map((r) => {
               const href = r.eventSlug ? `/events/${r.eventSlug}/media/${r.id}?rider=${encodeURIComponent(r.rider)}&horse=${encodeURIComponent(r.horse)}` : `/p/${r.id}`;
               return (
                 <Link key={r.id} href={href} aria-label={`Play ${r.rider} at ${r.event}`}>
                   {r.image ? <img src={r.image} alt="" loading="lazy" /> : <span className="cover-fallback">Boss Media</span>}
-                  <span className="archive-reel-index">{String((safePage - 1) * LIMIT + i + 1).padStart(2, '0')}</span>
                   <span className="archive-reel-duration">{r.horse ? r.horse.slice(0, 12) : ''}</span>
                   <span className="archive-reel-play"><Icon name="play" size={22} /></span>
                   <span className="archive-reel-info"><strong>{r.rider}</strong><small>{r.event}</small></span>
