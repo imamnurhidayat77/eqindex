@@ -15,6 +15,11 @@ export default function CartClient() {
   const subtotal = items.reduce((t, it) => t + Number(it.priceCents || 0), 0);
   const gst = Math.round((subtotal / 1.15) * 0.15);
   const total = subtotal;
+  const photoItems = items.filter((it) => it.kind !== 'reel' && it.mediaId);
+  const reelItems = items.filter((it) => it.kind === 'reel');
+  const photoTotal = photoItems.reduce((t, it) => t + Number(it.priceCents || 0), 0);
+
+  const genKey = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
 
   async function buyMedia(item) {
     if (!email.trim()) { setErr('Enter your email to receive download links.'); return; }
@@ -46,6 +51,26 @@ export default function CartClient() {
       if (!res.ok) throw new Error(j.error || 'Order failed — try again.');
       removeFromCart(item.key);
       if (j.data?.checkout_url) window.location.assign(j.data.checkout_url);
+    } catch (e) { setErr(e.message); setBusyKey(null); }
+  }
+
+  async function payAll() {
+    if (!email.trim()) { setErr('Enter your email to receive download links.'); return; }
+    if (!photoItems.length || busyKey) return;
+    setBusyKey('__all'); setErr('');
+    try {
+      const res = await fetch(`${API}/api/checkout/batch`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...checkoutBase(),
+          items: photoItems.map((it) => ({ media_id: it.mediaId, license_tier: it.tierId })),
+          cancel_path: '/cart', email: email.trim(), idempotency_key: genKey(),
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || 'Checkout failed — try again.');
+      photoItems.forEach((it) => removeFromCart(it.key));
+      window.location.assign(j.data.checkout_url);
     } catch (e) { setErr(e.message); setBusyKey(null); }
   }
 
@@ -99,7 +124,17 @@ export default function CartClient() {
               </label>
               {err && <p className="auth-error" role="alert" style={{ marginTop: 12 }}>{err}</p>}
               <div className="cart-total"><span>Total</span><strong>{nzd(total)}</strong></div>
-              <p>Pay per item with secure Stripe checkout — use Buy now on each row.</p>
+              {!!photoItems.length && (
+                <button type="button" className="pay-all" disabled={busyKey}
+                  onClick={payAll}>
+                  {busyKey === '__all' ? 'Opening secure checkout…' : photoItems.length === items.length && !reelItems.length
+                    ? `Pay ${nzd(photoTotal)}`
+                    : `Pay ${photoItems.length} photo${photoItems.length === 1 ? '' : 's'} · ${nzd(photoTotal)}`}
+                </button>
+              )}
+              <p>{reelItems.length
+                ? 'Photos pay together above — each reel needs its own Buy now (it starts a production order).'
+                : 'One secure Stripe checkout for everything — no per-item payments.'}</p>
               <div className="cart-trust"><span>Secure payment</span><span>Instant delivery</span><span>NZ support</span></div>
             </aside>
           </div>

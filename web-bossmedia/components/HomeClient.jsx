@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { EventCard, Filter, Icon, SiteFooter, SiteHeader } from './figma';
+import ReelPlayer from './ReelPlayer';
 
 export default function HomeClient({ items, heroImage, reels, regions, years, tiers }) {
   const [tab, setTab] = useState('Gallery live');
@@ -154,7 +155,8 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
           <button className="modal-close" aria-label="Close reel" onClick={() => setActiveReel(null)}><Icon name="close" size={24} /></button>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             {reels[activeReel].video ? (
-              <video src={reels[activeReel].video} controls autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+              <ReelPlayer src={reels[activeReel].video} poster={reels[activeReel].image}
+                label={`Reel featuring ${reels[activeReel].rider}`} />
             ) : (
               <>
                 {reels[activeReel].image && <img src={reels[activeReel].image} alt={`${reels[activeReel].rider} at ${reels[activeReel].event}`} />}

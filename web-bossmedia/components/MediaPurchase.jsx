@@ -6,6 +6,7 @@ import { API } from '../lib/api';
 import { addToCart } from '../lib/cart';
 import { checkoutBase, nzd } from '../lib/figma-data';
 import { Icon } from './figma';
+import ReelPlayer from './ReelPlayer';
 
 // Honest per-tier subline when the DB has no custom description. Never
 // promises "full resolution" for small/medium renditions.
@@ -183,11 +184,11 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
         <div className="media-preview-column">
           <figure className="purchase-preview">
             {isReel ? (
-              <video src={media.preview_url} controls playsInline style={{ width: '100%', height: 'min(68vh, 720px)', objectFit: 'contain' }} />
+              <span className="rp-wrap"><ReelPlayer src={media.preview_url} poster={media.thumb_url || undefined}
+                label={`${horse} × ${rider} reel`} /></span>
             ) : (
               <img src={media.preview_url || media.thumb_url} alt={`${horse} and ${rider}`} loading="eager" />
             )}
-            {isReel && <span className="purchase-preview-play"><Icon name="play" size={28} /></span>}
             <figcaption>
               <span>Boss Media preview</span>
               {media.photographer ? <span>© {media.photographer}</span> : <span>Watermarked preview</span>}

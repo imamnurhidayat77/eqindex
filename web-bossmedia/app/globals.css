@@ -389,6 +389,8 @@ button { color: inherit; }
 .cart-total span { color: #777; font-size: 12px; text-transform: uppercase; }
 .cart-total strong { font-size: 28px; }
 .cart-summary > button { width: 100%; min-height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border: 0; color: var(--ink); background: white; font-size: 13px; font-weight: 700; cursor: pointer; }
+.cart-summary > button.pay-all { margin-top: 20px; justify-content: center; }
+.cart-summary > button:disabled { opacity: .55; cursor: default; }
 .cart-summary > p { margin: 20px 0 0; color: #777; font-size: 11px; line-height: 1.65; }
 .cart-trust { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
 .cart-trust span { padding: 7px 9px; color: #888; border: 1px solid #303030; font-size: 10px; }
@@ -1326,3 +1328,26 @@ button.license-option { width: 100%; padding: 13px; background: transparent; cur
 @keyframes riseUp { from { opacity: 0; transform: translateY(8px); } }
 .st-modal-card-wide { width: min(620px, 100%); }
 .st-modal-card { max-height: calc(100vh - 60px); overflow-y: auto; }
+
+/* ---- Proper reel player ---- */
+.rp { position: absolute; inset: 0; background: #000; overflow: hidden; }
+.rp > video { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+.rp-spinner { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.rp-spinner i { width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); border-top-color: #fff; animation: rpSpin .8s linear infinite; }
+@keyframes rpSpin { to { transform: rotate(360deg); } }
+.rp-bigplay { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 68px; height: 68px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.7); backdrop-filter: blur(4px); cursor: pointer; transition: transform .2s, background .2s; }
+.rp-bigplay:hover { transform: translate(-50%, -50%) scale(1.06); background: rgba(0,0,0,.6); }
+.rp-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 10px; padding: 10px 14px 12px; background: linear-gradient(transparent, rgba(0,0,0,.78)); }
+.rp-bar button { flex: none; display: grid; place-items: center; width: 30px; height: 30px; background: none; border: 0; color: #fff; cursor: pointer; opacity: .92; }
+.rp-bar button:hover { opacity: 1; }
+.rp-time { flex: none; color: rgba(255,255,255,.85); font-size: 11px; tabular-nums: true; min-width: 34px; text-align: center; }
+.rp-bar input[type='range'] { flex: 1; appearance: none; -webkit-appearance: none; height: 3px; border-radius: 2px; background: rgba(255,255,255,.28); outline: none; cursor: pointer; margin: 0; }
+.rp-bar input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 0; }
+.rp-bar input[type='range']::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 0; }
+.rp-error { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; text-align: center; color: #bbb; font-size: 13px; }
+.rp-error a { color: #fff; border-bottom: 1px solid #666; padding-bottom: 3px; font-size: 13px; }
+.modal-content .rp { border-radius: 0; }
+
+/* ---- Reel player embed in purchase preview ---- */
+.rp-wrap { position: relative; display: block; width: 100%; height: min(68vh, 720px); min-height: 340px; }
+@media (max-width: 800px) { .rp-wrap { height: 55vh; min-height: 340px; } }
