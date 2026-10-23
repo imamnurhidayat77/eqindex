@@ -7,15 +7,20 @@ import SearchSelect from './SearchSelect';
 
 const LIMIT = 24;
 
+const MOMENT_LABELS = { win: 'Win', pb: 'Personal best', clear: 'Clear round', debut: 'Debut' };
+const momentLabel = (m) => MOMENT_LABELS[m] || m;
+
 export default function EventDetailClient({ event, media }) {
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
   const [rider, setRider] = useState('All riders');
   const [horse, setHorse] = useState('All horses');
+  const [moment, setMoment] = useState('All moments');
   const [page, setPage] = useState(1);
 
   const riders = useMemo(() => [...new Set(media.map((m) => m.rider).filter(Boolean))].sort(), [media]);
   const horses = useMemo(() => [...new Set(media.map((m) => m.horse).filter(Boolean))].sort(), [media]);
+  const moments = useMemo(() => [...new Set(media.map((m) => m.moment).filter(Boolean))].sort(), [media]);
 
   const visible = useMemo(() => media.filter((m) => {
     const kind = m.kind === 'reel' ? 'Reel' : 'Photo';
@@ -23,8 +28,9 @@ export default function EventDetailClient({ event, media }) {
     return q.includes(search.toLowerCase())
       && (filter === 'All' || kind === filter)
       && (rider === 'All riders' || m.rider === rider)
-      && (horse === 'All horses' || m.horse === horse);
-  }), [media, filter, search, rider, horse]);
+      && (horse === 'All horses' || m.horse === horse)
+      && (moment === 'All moments' || m.moment === moment);
+  }), [media, filter, search, rider, horse, moment]);
   const pages = Math.max(1, Math.ceil(visible.length / LIMIT));
   const safePage = Math.min(page, pages);
   const pageItems = visible.slice((safePage - 1) * LIMIT, safePage * LIMIT);
@@ -61,6 +67,13 @@ export default function EventDetailClient({ event, media }) {
               <SearchSelect options={['All horses', ...horses].map((h) => ({ id: h, label: h }))} value={horse}
                 onChange={(id) => { setHorse(id); setPage(1); }} placeholder="Horse" clearable={false} />
             </label>
+            {moments.length > 0 && (
+              <label className="detail-media-filter">
+                <span>Moment</span>
+                <SearchSelect options={['All moments', ...moments].map((m) => ({ id: m, label: momentLabel(m) }))} value={moment}
+                  onChange={(id) => { setMoment(id); setPage(1); }} placeholder="Moment" clearable={false} />
+              </label>
+            )}
           </div>
           <div className="event-media-tools">
             <div className="media-tabs" role="tablist" aria-label="Media type">
@@ -94,7 +107,7 @@ export default function EventDetailClient({ event, media }) {
             <div className="event-media-empty">
               <p className="eyebrow">No media found</p>
               <h3>Try another rider or horse.</h3>
-              <button onClick={() => { setSearch(''); setRider('All riders'); setHorse('All horses'); setFilter('All'); setPage(1); }}>
+              <button onClick={() => { setSearch(''); setRider('All riders'); setHorse('All horses'); setMoment('All moments'); setFilter('All'); setPage(1); }}>
                 Clear all filters
               </button>
             </div>

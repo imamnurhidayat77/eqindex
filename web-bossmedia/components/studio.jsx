@@ -1,9 +1,9 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { nzdc, studio, useStudioUser } from '../lib/studio';
-import { Icon } from './figma';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { useStudioUser } from '../lib/studio';
+import { Icon, SiteFooter, SiteHeader } from './figma';
 
 const ToastCtx = createContext(() => {});
 export const useToast = () => useContext(ToastCtx);
@@ -84,22 +84,7 @@ export default function StudioShell({ active, kpis, children }) {
 
   return (
     <div className="studio-page">
-      <header className="header">
-        <Link href="/" className="wordmark" aria-label="Boss Media home">BOSS<span>MEDIA</span></Link>
-        <nav className="desktop-nav" aria-label="Main navigation">
-          <Link href="/events">Event galleries</Link>
-          <Link href="/pre-book">Pre-book</Link>
-          <Link href="/reels">Reels</Link>
-        </nav>
-        <div className="header-actions">
-          <Link href="/media" className="signin" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 26, height: 26, borderRadius: '50%', background: '#fff', color: '#101010', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>
-              {(user?.name || user?.email || 'P').slice(0, 1).toUpperCase()}
-            </span>
-            {user?.name?.split(' ')[0] || 'Studio'}
-          </Link>
-        </div>
-      </header>
+      <SiteHeader />
       <main className="section-gutter">
         <div className="st-hero">
           <div className="st-hero-row">
@@ -132,12 +117,7 @@ export default function StudioShell({ active, kpis, children }) {
           </DialogCtx.Provider>
         </ToastCtx.Provider>
       </main>
-      <footer className="footer section-gutter" style={{ borderTop: '1px solid #242424' }}>
-        <div className="footer-bottom" style={{ borderTop: 0, marginTop: 0 }}>
-          <p>© 2026 Boss Media Limited</p>
-          <p>Photographed in Aotearoa New Zealand</p>
-        </div>
-      </footer>
+      <SiteFooter />
       <div className="st-toast-wrap" aria-live="polite">
         {toasts.map((t) => <div key={t.id} className={t.err ? 'st-toast err' : 'st-toast'}>{t.msg}</div>)}
       </div>
