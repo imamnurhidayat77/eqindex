@@ -1,14 +1,13 @@
 'use client';
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
+import { bossPhotoUrl } from '../lib/bossmedia';
 
-const nzd = (c) => (c === null || c === undefined ? null : `NZ$${(Number(c) / 100).toFixed(2)}`);
 const MOMENT = { win: 'Win', clear: 'Clear round', debut: 'Debut', pb: 'PB' };
 
-// Latest published photos for an identity (horse/rider/event) as
-// shop-ready cards — same visual language as the gallery: moment badge,
-// reel badge, horse × rider caption and a "from" price that sells the click.
+// Latest published photos for an identity (horse/rider/event) as display
+// cards. Nothing is sold here — every card opens the photo on Boss Media
+// in a new tab, where buying happens.
 export default function PhotoStrip({ query, title = 'Photos', moreHref = '/photos' }) {
   const [rows, setRows] = useState([]);
   useEffect(() => {
@@ -27,14 +26,13 @@ export default function PhotoStrip({ query, title = 'Photos', moreHref = '/photo
           {rows.length}{rows.length >= 7 ? '+' : ''}
         </span>
         <span className="flex-1" />
-        <Link href={moreHref} className="text-sky text-[12px] no-underline hover:underline">View all →</Link>
+        <a href={moreHref} target="_blank" rel="noreferrer" className="text-sky text-[12px] no-underline hover:underline">View all →</a>
       </div>
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
         {shown.map((x) => {
-          const price = nzd(x.price_cents);
           const caption = [x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Untagged';
           return (
-            <Link key={x.id} href={`/photos/${x.id}`} aria-label={caption}
+            <a key={x.id} href={bossPhotoUrl(x.id)} target="_blank" rel="noreferrer" aria-label={`${caption} — opens on Boss Media`}
               className="group flex flex-col rounded-lg border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
               <div className="relative aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                 {x.thumb_url || x.preview_url
@@ -56,18 +54,18 @@ export default function PhotoStrip({ query, title = 'Photos', moreHref = '/photo
                 <div className="text-[12.5px] font-bold text-white truncate group-hover:text-gold transition">{caption}</div>
                 <div className="mt-auto flex items-center justify-between pt-0.5">
                   <span className="text-[10.5px] text-faint">{x.kind === 'reel' ? 'Video' : 'Photo'}</span>
-                  {price && <span className="text-[11.5px] font-bold text-gold tabular-nums">from {price}</span>}
+                  <span className="text-[10.5px] text-faint">Boss Media ↗</span>
                 </div>
               </div>
-            </Link>
+            </a>
           );
         })}
         {!!extra && (
-          <Link href={moreHref}
+          <a href={moreHref} target="_blank" rel="noreferrer"
               className="group flex min-h-[120px] flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-gold/40 bg-goldbg/10 no-underline hover:border-gold hover:bg-goldbg/20 transition">
             <span className="text-[20px] font-extrabold text-gold">+{extra}</span>
             <span className="text-[11.5px] font-bold text-muted group-hover:text-gold">View all →</span>
-          </Link>
+          </a>
         )}
       </div>
     </section>

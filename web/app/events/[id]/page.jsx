@@ -8,6 +8,7 @@ import { EventDifficultyTable } from '../../../components/EventTables';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 import PhotoStrip from '../../../components/PhotoStrip';
 import MediaDoorway from '../../../components/MediaDoorway';
+import { bossEventUrl, bossPhotosUrl } from '../../../lib/bossmedia';
 
 export const revalidate = 30;
 
@@ -237,9 +238,9 @@ export default async function EventDetail({ params }) {
         </div>
       </section>
 
-      <PhotoStrip query={{ event_id: params.id }} title="Event photos" moreHref={`/photos?event=${params.id}`} />
+      <PhotoStrip query={{ event_id: params.id }} title="Event photos" moreHref={bossEventUrl(e.slug || e.id)} />
 
-      <PhotoStrip query={{ event_id: params.id, kind: 'reel' }} title="Event reels" moreHref={`/photos?event=${params.id}&kind=reel`} />
+      <PhotoStrip query={{ event_id: params.id, kind: 'reel' }} title="Event reels" moreHref={bossPhotosUrl({ q: e.name, kind: 'reel' })} />
 
       <div className="mb-6">
         <MediaDoorway eventId={e.id} eventSlug={e.slug} eventName={e.name} />

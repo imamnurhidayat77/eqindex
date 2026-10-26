@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useMemo, useRef, useState } from 'react';
 import SearchSelect from './SearchSelect';
+import DateField from './DateField';
 import { addToCart } from '../lib/cart';
 import { nzd } from '../lib/figma-data';
 import { Icon, SiteFooter, SiteHeader } from './figma';
@@ -73,7 +74,7 @@ export default function PreBookClient({ events, products }) {
       back_number: String(fd.get('backNumber') || ''),
       shooting_date: String(fd.get('date') || manual?.date || ''),
       phone: String(fd.get('phone') || ''),
-      email: String(fd.get('email') || ''),
+      // No email field — receipt and timing confirmation go to the account email (see /api/reel-orders fallback).
       music_mode: music,
       music_title: music === 'title' ? String(fd.get('musicTitle') || '') : undefined,
       notes: notes || undefined,
@@ -197,9 +198,8 @@ export default function PreBookClient({ events, products }) {
                 <label className="booking-field"><span>Horse</span><input name="horse" required placeholder="e.g. Apollo" /></label>
                 <label className="booking-field"><span>Class</span><input name="className" placeholder="e.g. 1.30m Grand Prix" /></label>
                 <label className="booking-field"><span>Back number</span><input name="backNumber" placeholder="e.g. 214" /></label>
-                <label className="booking-field"><span>Competition date</span><input name="date" type="date" /></label>
+                <label className="booking-field"><span>Competition date</span><DateField name="date" key={event?.id || manual?.date || 'none'} defaultValue={(manual?.date || event?.date_start || '').slice(0, 10)} /></label>
                 <label className="booking-field"><span>Phone</span><input name="phone" required type="tel" placeholder="+64" /></label>
-                <label className="booking-field"><span>Email</span><input name="email" required type="email" placeholder="you@example.nz" /></label>
               </div>
             </section>
             <section>

@@ -29,9 +29,8 @@ export const NAV = [
   { href: '/stallions', label: 'Stallions', match: (p) => p.startsWith('/stallions') },
   { href: '/breeders', label: 'Breeders', match: (p) => p.startsWith('/breeders') },
   // Watchlists — the old /dashboard URL redirects here.
+  // Photos & reels live on Boss Media now (no nav entries here).
   { href: '/watchlist', label: 'Watchlist', match: (p) => p.startsWith('/watchlist') || p.startsWith('/dashboard') },
-  { href: '/reels/order', label: 'Reels', match: (p) => p.startsWith('/reels') },
-  { href: '/photos', label: 'Photos', match: (p) => p.startsWith('/photos') },
 ];
 
 export default function Navbar() {

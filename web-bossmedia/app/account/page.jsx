@@ -161,7 +161,7 @@ export default function AccountPage() {
                     <p className="empty-note">Nothing bought yet. <Link href="/events" className="text-link">Browse the gallery</Link></p>
                   ) : (
                     <table className="st-table">
-                      <thead><tr><th>Date</th><th>Photo</th><th>License</th><th style={{ textAlign: 'right' }}>Paid</th></tr></thead>
+                      <thead><tr><th>Date</th><th>Photo</th><th>License</th><th style={{ textAlign: 'right' }}>Paid</th><th style={{ textAlign: 'right' }}>Receipt</th></tr></thead>
                       <tbody>
                         {photos.slice(0, 20).map((p) => (
                           <tr key={`${p.purchase_id}-${p.media_id}`}>
@@ -169,6 +169,7 @@ export default function AccountPage() {
                             <td>{[p.horse, p.rider].filter(Boolean).join(' × ') || p.event_name || 'Photo'}</td>
                             <td>{p.license_tier}</td>
                             <td style={{ textAlign: 'right' }}>{nzd(p.amount_cents)}</td>
+                            <td style={{ textAlign: 'right' }}><Link href={`/receipts?purchases=${p.purchase_id}`} className="text-link">View</Link></td>
                           </tr>
                         ))}
                       </tbody>

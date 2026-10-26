@@ -29,13 +29,6 @@ const MANAGE_GROUPS = [
     ['/admin/categories', '⛉', 'Categories'],
     ['/admin/scoring', '✦', 'Scoring'],
     ['/admin/rating', '◎', 'Rating'],
-    ['/admin/pricing', '◆', 'Pricing'],
-  ]},
-  { title: 'Media', items: [
-    ['/admin/media', '◍', 'Media Library'],
-    ['/admin/media/upload', '⇪', 'Media Upload'],
-    ['/admin/reels', '▶', 'Reel Orders'],
-    ['/admin/sales', '◈', 'Transactions'],
   ]},
 ];
 
@@ -60,8 +53,7 @@ const STORE_KEY = 'eqindex-adminnav-open-v1';
 const startsWithPath = (pathname, href) =>
   href === '/admin' ? pathname === '/admin' : pathname.startsWith(href);
 
-// All nav hrefs, for longest-prefix-wins active state (so /admin/media
-// doesn't also light up on /admin/media/upload).
+// All nav hrefs, for longest-prefix-wins active state.
 const ALL_HREFS = [
   ...MANAGE_TOP.map(([href]) => href),
   ...MANAGE_GROUPS.flatMap((g) => g.items.map(([href]) => href)),
@@ -75,17 +67,12 @@ export default function AdminNav({ user }) {
   const pathname = usePathname() || '/admin';
   const [counts, setCounts] = useState({});
   const [palOpen, setPalOpen] = useCommandPalette();
-  // Photographers see Media + Pricing — every other console page stays
-  // API-blocked for them anyway; the nav just doesn't advertise it.
+  // Photographers work in Boss Media studio now — no photo/media pages
+  // remain in this console, so they get an empty nav (the API blocks
+  // them from every console page anyway).
   const isPhoto = user?.role === 'PHOTOGRAPHER';
   const top = isPhoto ? [] : MANAGE_TOP;
-  const setup = MANAGE_GROUPS.find((g) => g.title === 'Setup');
-  const groups = isPhoto
-    ? [
-        MANAGE_GROUPS.find((g) => g.title === 'Media'),
-        setup && { ...setup, items: setup.items.filter(([href]) => href === '/admin/pricing') },
-      ].filter(Boolean)
-    : MANAGE_GROUPS;
+  const groups = isPhoto ? [] : MANAGE_GROUPS;
   const flat = isPhoto ? [] : FLAT_GROUPS;
   // Collapsed state only affects desktop (lg+); on mobile the headers are
   // hidden and every item stays visible in the horizontal scroll row.
@@ -134,8 +121,7 @@ export default function AdminNav({ user }) {
   const active = (href) => {
     if (!startsWithPath(pathname, href)) return false;
     if (href === '/admin') return true;
-    // Longest matching href wins — /admin/media/upload must not also
-    // activate /admin/media.
+    // Longest matching href wins.
     return ALL_HREFS.every((h) =>
       h.length <= href.length || !(pathname === h || pathname.startsWith(`${h}/`)));
   };

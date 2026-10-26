@@ -1,7 +1,7 @@
 'use client';
-import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../lib/api';
+import { bossPhotoUrl } from '../lib/bossmedia';
 import Dropdown from './Dropdown';
 import { CARD } from '../lib/tokens';
 import { PhotoCardSk } from './Skeletons';
@@ -148,7 +148,7 @@ export default function EventWallGrid({ initialRows = [], eventId, kind }) {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {filtered.map((x, i) => (
-              <Link key={x.id} href={`/photos/${x.id}`} style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }} aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Photo'} className="rise group flex flex-col rounded-lg border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
+              <a key={x.id} href={bossPhotoUrl(x.id)} target="_blank" rel="noreferrer" style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }} aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Photo'} className="rise group flex flex-col rounded-lg border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
                 <div className="relative aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                   {x.thumb_url || x.preview_url
                     ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
@@ -167,12 +167,10 @@ export default function EventWallGrid({ initialRows = [], eventId, kind }) {
                   <div className="text-[11px] text-faint truncate">{x.class_name || ''}</div>
                   <div className="mt-auto flex items-center justify-between pt-1">
                     <span className="text-[11px] text-faint">{x.kind === 'reel' ? 'Video' : 'Photo'}</span>
-                    {x.price_cents !== null && x.price_cents !== undefined && (
-                      <span className="text-[12px] font-bold text-gold tabular-nums">from NZ${(Number(x.price_cents) / 100).toFixed(2)}</span>
-                    )}
+                    <span className="text-[11px] text-faint">Boss Media ↗</span>
                   </div>
                 </div>
-              </Link>
+              </a>
             ))}
           </div>
           <div className="mt-4 text-center">

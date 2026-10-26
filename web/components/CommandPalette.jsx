@@ -20,9 +20,6 @@ const COMMANDS = [
   ['Rider Claims', '/admin/claims', '✔', 'Approve ownership'],
   ['Corrections', '/admin/corrections', '✉', 'Triage public reports'],
   ['Users', '/admin/users', '●', 'Roles & sessions'],
-  ['Transactions', '/admin/sales', '◈', 'Sales & settlement report'],
-  ['Pricing', '/admin/pricing', '◆', 'License tiers, packages & reels'],
-  ['Reel Orders', '/admin/reels', '▶', 'Reel fulfillment queue'],
   ['Audit Log', '/admin/activity', '☰', 'Every change'],
   ['Data Tools', '/admin/data', '▣', 'Backup & wipe'],
   ['Settings', '/admin/settings', '⚙', 'Workspace'],
@@ -57,12 +54,10 @@ export default function CommandPalette({ open, onClose, role }) {
   const [searching, setSearching] = useState(false);
   const [hi, setHi] = useState(0);
   const inputRef = useRef(null);
-  // Photographers only jump between their media pages; record lookup needs
-  // /admin/lookup which stays admin-only.
+  // Photographers work in Boss Media studio now — nothing to jump to here;
+  // record lookup stays admin-only.
   const isPhoto = role === 'PHOTOGRAPHER';
-  const commands = isPhoto
-    ? COMMANDS.filter(([, href]) => ['/admin/media', '/admin/reels', '/admin/sales', '/admin/pricing'].some((p) => href === p || href.startsWith(`${p}/`)))
-    : COMMANDS;
+  const commands = isPhoto ? [] : COMMANDS;
 
   useEffect(() => {
     if (open) {

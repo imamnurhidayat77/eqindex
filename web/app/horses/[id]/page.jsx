@@ -7,6 +7,7 @@ import ExportCsv from '../../../components/ExportCsv';
 import HistoryTable from '../../../components/HistoryTable';
 import PhotoStrip from '../../../components/PhotoStrip';
 import MediaDoorway from '../../../components/MediaDoorway';
+import { bossPhotosUrl } from '../../../lib/bossmedia';
 import SeasonTimeline from '../../../components/SeasonTimeline';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 
@@ -293,9 +294,9 @@ export default async function HorseProfile({ params, searchParams }) {
         <HistoryTable rows={bandHistory} mode="horse" />
       </section>
 
-      <PhotoStrip query={{ horse_id: h.id }} title="Photos" moreHref={`/photos?horse=${h.slug || h.id}`} />
+      <PhotoStrip query={{ horse_id: h.id }} title="Photos" moreHref={bossPhotosUrl({ q: h.name })} />
 
-      <PhotoStrip query={{ horse_id: h.id, kind: 'reel' }} title="Reels" moreHref={`/photos?horse=${h.slug || h.id}&kind=reel`} />
+      <PhotoStrip query={{ horse_id: h.id, kind: 'reel' }} title="Reels" moreHref={bossPhotosUrl({ q: h.name, kind: 'reel' })} />
 
       <section className="rounded-lg border border-line bg-card p-5">
         <h2 className="mb-2 text-[15px] font-bold">Registry</h2>

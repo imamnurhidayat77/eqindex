@@ -1,40 +1,35 @@
 'use client';
-import Link from 'next/link';
+import { BOSSMEDIA_URL, bossEventUrl, bossPhotosUrl } from '../lib/bossmedia';
 import { CARD, BTN_PRIMARY } from '../lib/tokens';
 
-// Single commerce doorway for data pages (event / horse / rider profiles).
-// IA rule: data pages never sell inline — they link out to the shop.
-// Photos go to the gallery, reels to the order form. No prices here;
-// buying happens on the photo detail page and the reels checkout.
+// Single media doorway for data pages (event / horse / rider profiles).
+// IA rule: data pages never sell inline — they link out to the Boss Media
+// shop in a new tab. Photos go to the shop, reels to pre-book.
 export default function MediaDoorway({
   eventId, eventSlug, eventName,
   horseId, horseSlug, horseName,
   riderId, riderSlug, riderName,
 }) {
-  const eq = (v) => encodeURIComponent(v);
+  let photosHref = `${BOSSMEDIA_URL}/photos`;
+  if (eventSlug || eventId) photosHref = bossEventUrl(eventSlug || eventId);
+  else if (horseName || horseSlug || horseId) photosHref = bossPhotosUrl({ q: horseName || horseSlug || horseId });
+  else if (riderName || riderSlug || riderId) photosHref = bossPhotosUrl({ q: riderName || riderSlug || riderId });
 
-  let photosHref = '/photos';
-  if (eventSlug) photosHref = `/photos/${encodeURIComponent(eventSlug)}`;
-  else if (eventId) photosHref = `/photos?event=${eq(eventId)}`;
-  else if (horseId || horseSlug) photosHref = `/photos?horse=${eq(horseSlug || horseId)}`;
-  else if (riderId || riderSlug) photosHref = `/photos?rider=${eq(riderSlug || riderId)}`;
-
-  let reelsHref = '/reels/order';
-  if (eventId || eventSlug) reelsHref = `/reels/order?event=${eq(eventSlug || eventId)}`;
+  const reelsHref = `${BOSSMEDIA_URL}/pre-book`;
 
   return (
     <section className={CARD}>
       <h2 className="text-[15px] font-bold">📷 Photos &amp; video</h2>
       <p className="mt-0.5 mb-3 text-[12.5px] text-muted">
-        Relive the moment — browse the photo gallery or order a custom video reel.
+        Relive the moment — browse the photo gallery or order a custom video reel on Boss Media.
       </p>
       <div className="flex flex-wrap gap-2">
-        <Link href={photosHref} className="text-sky text-[13px] no-underline hover:underline border border-line rounded px-4 py-2">
+        <a href={photosHref} target="_blank" rel="noreferrer" className="text-sky text-[13px] no-underline hover:underline border border-line rounded px-4 py-2">
           Browse photos →
-        </Link>
-        <Link href={reelsHref} className={`${BTN_PRIMARY} no-underline`}>
+        </a>
+        <a href={reelsHref} target="_blank" rel="noreferrer" className={`${BTN_PRIMARY} no-underline`}>
           Order a reel →
-        </Link>
+        </a>
       </div>
     </section>
   );

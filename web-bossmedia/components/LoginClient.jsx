@@ -74,7 +74,7 @@ function LoginInner({ visual }) {
             </label>
             <div className="login-options">
               <label><input type="checkbox" /><span>Remember me</span></label>
-              <Link href="/contact">Forgot password?</Link>
+              <Link href="/forgot">Forgot password?</Link>
             </div>
             {err && <p className="auth-error" role="alert">{err}</p>}
             <button type="submit" disabled={busy}>

@@ -2,8 +2,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { API } from '../lib/api';
-import PackageUpsell from './PackageUpsell';
-import CreditBuyButton from './CreditBuyButton';
+import { bossPhotoUrl, bossPhotosUrl } from '../lib/bossmedia';
 
 async function deleteWatch(watchId) {
   const res = await fetch(`${API}/watchlist/${watchId}`, {
@@ -50,13 +49,13 @@ function ThumbGrid({ photos }) {
   return (
     <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
       {photos.map((x) => (
-        <Link key={x.id} href={`/photos/${x.id}`} aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Photo'} className="block rounded-md border border-line bg-card overflow-hidden no-underline hover:border-gold/50">
+        <a key={x.id} href={bossPhotoUrl(x.id)} target="_blank" rel="noreferrer" aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Photo'} className="block rounded-md border border-line bg-card overflow-hidden no-underline hover:border-gold/50">
           <div className="aspect-square flex items-center justify-center overflow-hidden">
             {x.thumb_url || x.preview_url
               ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" className="w-full h-full object-cover" />
               : <span className="text-lg" aria-hidden="true">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
           </div>
-        </Link>
+        </a>
       ))}
     </div>
   );
@@ -134,13 +133,11 @@ function EventAthleteCard({ a, onUnwatch }) {
   );
 }
 
-// Foto per atlet per event (tab Foto): thumbs + upsell paket/kredit.
-// Jualan hanya terjadi di sini dan halaman detail foto — tab Hasil steril.
-function EventPhotoCard({ a, photos, eventId, viewAllHref, onUnwatch }) {
+// Foto per atlet per event (tab Foto): thumbs only. Nothing is sold here —
+// every thumb opens the photo on Boss Media. Tab Hasil steril.
+function EventPhotoCard({ a, photos, viewAllHref, onUnwatch }) {
   const shots = (photos || []).slice(0, 4);
   const profileHref = `/${a.kind === 'horse' ? 'horses' : 'riders'}/${a.slug || a.id}`;
-  const horseId = a.kind === 'horse' ? a.id : null;
-  const riderId = a.kind === 'horse' ? null : a.id;
   if (!shots.length) return null;
   return (
     <div className="rounded bg-card2 border border-rowline px-3 py-2.5">
@@ -152,18 +149,12 @@ function EventPhotoCard({ a, photos, eventId, viewAllHref, onUnwatch }) {
         </span>
         <span className="flex-1" />
         {viewAllHref && (
-          <Link href={viewAllHref} className="text-sky text-[11.5px] no-underline hover:underline">View all →</Link>
+          <a href={viewAllHref} target="_blank" rel="noreferrer" className="text-sky text-[11.5px] no-underline hover:underline">View all →</a>
         )}
         <UnwatchBtn watchId={a.watchId} name={a.name} onUnwatch={onUnwatch} />
       </div>
       <div className="mt-2 border-t border-rowline pt-2">
         <ThumbGrid photos={shots} />
-        {eventId && (
-          <>
-            <CreditBuyButton eventId={eventId} horseId={horseId} riderId={riderId} />
-            <PackageUpsell eventId={eventId} horseId={horseId} riderId={riderId} />
-          </>
-        )}
       </div>
     </div>
   );
@@ -243,12 +234,10 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
     return map;
   }, [photoGroups]);
 
-  const athleteHref = (g, a) => {
-    const qp = new URLSearchParams();
-    if (g.event_id) qp.set('event', g.event_id);
-    qp.set(a.kind === 'horse' ? 'horse' : 'rider', a.id);
-    return `/photos?${qp}`;
-  };
+  const athleteHref = (g, a) => bossPhotosUrl({
+    ...(g.event_id ? { event: g.event_id } : {}),
+    [a.kind === 'horse' ? 'horse' : 'rider']: a.id,
+  });
 
   // Match photos to athletes FIRST (before leftovers), otherwise every
   // photo also lands in the leftover strip. Shared by both tabs.
@@ -275,11 +264,7 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
     return n;
   }, [eventShots]);
 
-  const evHrefOf = (g) => {
-    const qp = new URLSearchParams();
-    if (g.event_id) qp.set('event', g.event_id);
-    return `/photos?${qp}`;
-  };
+  const evHrefOf = (g) => bossPhotosUrl(g.event_id ? { event: g.event_id } : {});
 
 
   return (
@@ -393,7 +378,7 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
       ) : (
       <div className="min-w-0 space-y-4">
         {!evGroups.some((g) => groupShots(g).shots.length) && (
-          <p className="text-faint text-sm">No photos of your stable yet — published photos appear here. <Link href="/photos" className="text-sky no-underline hover:underline">Browse the gallery →</Link></p>
+          <p className="text-faint text-sm">No photos of your stable yet — published photos appear here. <a href={bossPhotosUrl()} target="_blank" rel="noreferrer" className="text-sky no-underline hover:underline">Browse the shop →</a></p>
         )}
           {evGroups.map((g) => {
             const key = g.event_id || g.event;
@@ -415,7 +400,7 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
                 <div className="space-y-1.5">
                   {g.athletes.map((a) => (
                     <EventPhotoCard key={`${a.kind}-${a.id}`} a={a}
-                      photos={byAth.get(`${a.kind}:${a.id}`) || []} eventId={g.event_id} viewAllHref={athleteHref(g, a)}
+                      photos={byAth.get(`${a.kind}:${a.id}`) || []} viewAllHref={athleteHref(g, a)}
                       onUnwatch={handleUnwatch} />
                   ))}
                 </div>
@@ -426,7 +411,7 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
                         📷 More from this event ({leftover.length})
                       </span>
                       <span className="flex-1" />
-                      <Link href={evHrefOf(g)} className="text-sky text-[11.5px] no-underline hover:underline">View all →</Link>
+                      <a href={evHrefOf(g)} target="_blank" rel="noreferrer" className="text-sky text-[11.5px] no-underline hover:underline">View all →</a>
                     </div>
                     <ThumbGrid photos={leftover.slice(0, 4)} />
                   </div>

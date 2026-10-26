@@ -54,13 +54,15 @@ function Inner() {
           <><h1 style={{ fontSize: 44 }}>{details.length === 1 ? 'Payment confirmed.' : `${details.length} payments confirmed.`}</h1>
           {details.map((detail) => (
             <div key={detail.id} style={{ marginTop: 18, paddingTop: 18, borderTop: '1px solid #333' }}>
-              <p className="empty-note">{detail.horse || detail.rider ? `${[detail.horse, detail.rider].filter(Boolean).join(' × ')} · ` : ''}{detail.event_name || detail.reel_product || 'Your media'} — watermark-free, yours forever.</p>
+              <p className="empty-note">{detail.reel_product
+                ? `${detail.reel_product}${detail.horse ? ` — ${detail.horse}` : ''} · production started, track it in My media.`
+                : `${detail.horse || detail.rider ? `${[detail.horse, detail.rider].filter(Boolean).join(' × ')} · ` : ''}${detail.event_name || 'Your media'} — watermark-free, yours forever.`}</p>
               <div style={{ display: 'flex', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
                 {detail.media_id && <a href={`${API}/api/media/${detail.media_id}/download`} className="st-btn" style={{ textDecoration: 'none' }}>Download full file</a>}
               </div>
             </div>
           ))}
-          <p style={{ marginTop: 22 }}><Link href="/media" className="st-btn-ghost" style={{ textDecoration: 'none' }}>Open my library</Link></p></>
+          <p style={{ marginTop: 22, display: 'flex', gap: 12, flexWrap: 'wrap' }}><Link href={`/receipts?purchases=${ids.join(',')}`} className="st-btn" style={{ textDecoration: 'none' }}>Download receipt</Link><Link href="/media" className="st-btn-ghost" style={{ textDecoration: 'none' }}>Open my library</Link></p></>
         )}
         {state === 'unknown' && (<><h1 style={{ fontSize: 44 }}>Can’t find that order.</h1><p className="empty-note">The link may have expired — check your email receipt or library.</p><p style={{ marginTop: 18 }}><Link href="/media" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Open my library</Link></p></>)}
       </main>

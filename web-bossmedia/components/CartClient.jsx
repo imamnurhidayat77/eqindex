@@ -10,7 +10,8 @@ import { Icon, SiteFooter, SiteHeader } from './figma';
 export default function CartClient() {
   const router = useRouter();
   const [items] = useCart();
-  const [email, setEmail] = useState('');
+  const [meEmail, setMeEmail] = useState(null);
+  const [meChecked, setMeChecked] = useState(false);
   const [busyKey, setBusyKey] = useState(null);
   const [err, setErr] = useState('');
   const [balance, setBalance] = useState(0);
@@ -32,12 +33,12 @@ export default function CartClient() {
 
   const needLogin = () => { router.push('/login?next=/cart'); };
 
-  const subtotal = items.reduce((t, it) => t + Number(it.priceCents || 0), 0);
-  const gst = Math.round((subtotal / 1.15) * 0.15);
-  const total = subtotal;
   const photoItems = items.filter((it) => it.kind !== 'reel' && it.mediaId);
   const reelItems = items.filter((it) => it.kind === 'reel');
-  const photoTotal = photoItems.reduce((t, it) => t + Number(it.priceCents || 0), 0);
+  // One button pays the whole cart: photos and pre-books go through a
+  // single Stripe session (/api/checkout/combined).
+  const subtotal = items.reduce((t, it) => t + Number(it.priceCents || 0), 0);
+  const gst = Math.round((subtotal / 1.15) * 0.15);
 
   const genKey = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
 
@@ -78,22 +79,23 @@ export default function CartClient() {
 
   async function payAll() {
     if (!meEmail) { needLogin(); return; }
-    if (!photoItems.length || busyKey) return;
+    if (!items.length || busyKey) return;
     setBusyKey('__all'); setErr('');
     try {
-      const use_balance_cents = Math.min(balance, photoTotal);
-      const res = await fetch(`${API}/api/checkout/batch`, {
+      const use_balance_cents = Math.min(balance, subtotal);
+      const res = await fetch(`${API}/api/checkout/combined`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...checkoutBase(),
           items: photoItems.map((it) => ({ media_id: it.mediaId, license_tier: it.tierId })),
+          reels: reelItems.map((it) => it.reelPayload),
           cancel_path: '/cart', email: meEmail, idempotency_key: genKey(),
           ...(use_balance_cents ? { use_balance_cents } : {}),
         }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'Checkout failed — try again.');
-      photoItems.forEach((it) => removeFromCart(it.key));
+      items.forEach((it) => removeFromCart(it.key));
       if (j.data?.paid && j.data?.purchase_ids?.length) {
         window.location.assign(`/photos/success?purchases=${j.data.purchase_ids.join(',')}`);
         return;
@@ -162,11 +164,11 @@ export default function CartClient() {
                 </p>
               )}
               {err && <p className="auth-error" role="alert" style={{ marginTop: 12 }}>{err}</p>}
-              <div className="cart-total"><span>Total</span><strong>{nzd(total)}</strong></div>
-              {meEmail && balance > 0 && photoTotal > 0 && (
+              <div className="cart-total"><span>Total</span><strong>{nzd(subtotal)}</strong></div>
+              {meEmail && balance > 0 && subtotal > 0 && (
                 <p style={{ margin: '16px 0 0', color: '#ccc', fontSize: 13, lineHeight: 1.5 }}>
-                  {nzd(Math.min(balance, photoTotal))} balance applied
-                  {Math.min(balance, photoTotal) < photoTotal ? ` · ${nzd(photoTotal - Math.min(balance, photoTotal))} left by card` : ' · covers it fully'}
+                  {nzd(Math.min(balance, subtotal))} balance applied
+                  {Math.min(balance, subtotal) < subtotal ? ` · ${nzd(subtotal - Math.min(balance, subtotal))} left by card` : ' · covers it fully'}
                   <span style={{ display: 'block', marginTop: 4, color: '#777', fontSize: 11 }}>Balance payments are final — no refunds to balance.</span>
                 </p>
               )}
@@ -174,23 +176,19 @@ export default function CartClient() {
                 <button type="button" className="pay-all" disabled>Checking…</button>
               ) : !meEmail ? (
                 <Link href="/login?next=/cart" className="pay-all" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>Sign in to check out</Link>
-              ) : !!photoItems.length && (
+              ) : (
                 <button type="button" className="pay-all" disabled={busyKey}
                   onClick={payAll}>
                   {busyKey === '__all' ? 'Opening secure checkout…' : (() => {
-                    const used = Math.min(balance, photoTotal);
-                    const rest = photoTotal - used;
-                    if (rest <= 0) return `Pay ${nzd(photoTotal)} with balance`;
-                    if (used <= 0) return photoItems.length === items.length && !reelItems.length
-                      ? `Pay ${nzd(photoTotal)}`
-                      : `Pay ${photoItems.length} photo${photoItems.length === 1 ? '' : 's'} · ${nzd(photoTotal)}`;
+                    const used = Math.min(balance, subtotal);
+                    const rest = subtotal - used;
+                    if (rest <= 0) return `Pay ${nzd(subtotal)} with balance`;
+                    if (used <= 0) return `Pay ${nzd(subtotal)}`;
                     return `Pay ${nzd(rest)} by card · ${nzd(used)} balance`;
                   })()}
                 </button>
               )}
-              <p>{reelItems.length
-                ? 'Photos pay together above — each reel needs its own Buy now (it starts a production order).'
-                : 'One secure Stripe checkout for everything — no per-item payments.'}</p>
+              <p>One secure Stripe checkout for everything — photos unlock instantly, pre-books start production.</p>
               <div className="cart-trust"><span>Secure payment</span><span>Instant delivery</span><span>NZ support</span></div>
             </aside>
           </div>

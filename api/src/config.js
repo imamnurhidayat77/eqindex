@@ -8,4 +8,7 @@ module.exports = {
   SESSION_DAYS: 30,
   WEB_ORIGINS: (process.env.WEB_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean),
   EMAIL_RE: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+  RESEND_API_KEY: process.env.RESEND_API_KEY || '',
+  MAIL_FROM: process.env.MAIL_FROM || 'Boss Media <hello@bossmedia.nz>',
+  APP_URL: (process.env.APP_URL || '').replace(/\/$/, ''),
 };

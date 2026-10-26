@@ -245,10 +245,9 @@ export default async function Watchlist() {
     .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 
   // My Photos: published media for watched horses/riders, grouped
-  // Event -> Horse (rider-centric buying: riders want photos of themselves).
-  // One catalog request per watched subject (same count as before, higher
-  // limit so groups have depth); package/credit upsells fetch client-side
-  // per rendered group via the existing PackageUpsell + CreditBuyButton.
+  // Event -> Horse. Display only — thumbs open on Boss Media, where
+  // buying happens. One catalog request per watched subject (higher
+  // limit so groups have depth).
   let photoGroups = [];
   try {
     const seen = new Map();

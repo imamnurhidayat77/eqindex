@@ -80,7 +80,7 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
           </div>
           <div className="event-tools">
             <div className="tabs" role="tablist" aria-label="Event status">
-              {['Gallery live', 'Pre-book open', 'All events'].map((t) => (
+              {['Gallery live', 'All events'].map((t) => (
                 <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t}</button>
               ))}
             </div>
@@ -144,7 +144,10 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
               <p className="eyebrow">Motion / Recent reels</p>
               <h2>See the whole ride.</h2>
             </div>
-            <p className="reel-hint">Select a reel to watch</p>
+            <div style={{ display: 'grid', gap: 10, justifyItems: 'end' }}>
+              <p className="reel-hint">Select a reel to watch</p>
+              <Link href="/reels" className="text-link">View all reels</Link>
+            </div>
           </div>
           <div className="reels-grid">
             {reels.map((reel, i) => (
@@ -154,6 +157,19 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
                 <span className="reel-info"><strong>{reel.rider}</strong><small>{reel.event}</small></span>
               </button>
             ))}
+          </div>
+        </section>
+        <section className="photo-cta section-gutter" id="join">
+          <p className="eyebrow light">Contributors / Shoot for us</p>
+          <div className="photo-cta-row">
+            <h2>Shoot the show.<br />We’ll sell the shots.</h2>
+            <div className="photo-cta-aside">
+              <p>Join as a Boss Media photographer: upload once, we handle the shop, checkout and delivery — you keep shooting.</p>
+              <div className="hero-links">
+                <Link href="/register/photographer" className="primary-link">Apply as photographer <Icon name="arrow" size={17} /></Link>
+                <Link href="/sell" className="text-link">How it works</Link>
+              </div>
+            </div>
           </div>
         </section>
       </main>

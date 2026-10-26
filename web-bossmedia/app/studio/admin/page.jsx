@@ -307,7 +307,9 @@ function Applications() {
       const r = await studio.post(path, { correction_id: c.id });
       setRows((xs) => (xs || []).filter((x) => x.id !== c.id));
       setViewing(null);
-      notify(`Approved — ${r.user.email} is now a${isOrg ? 'n organizer' : ' photographer'}`);
+      // studio.post returns the raw body ({ data }) — unlike studio.get.
+      const approved = (r.data || r).user || {};
+      notify(`Approved — ${approved.email || c.email} is now a${isOrg ? 'n organizer' : ' photographer'}`);
     } catch (e) { notify(e.message, true); }
   }
 

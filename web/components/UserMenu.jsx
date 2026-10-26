@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { API } from '../lib/api';
+import { BOSSMEDIA_URL } from '../lib/bossmedia';
 import { useAuth } from './auth';
 import { useDismiss } from './useDismiss';
 
@@ -55,12 +56,12 @@ export default function UserMenu() {
           <span className="block px-2 py-1.5 text-[13px] font-bold text-white truncate">{user.name}</span>
           <span className="block px-2 pb-1.5 text-[11px] text-muted">{user.email} · {user.role}</span>
           <Link href="/watchlist" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">My Watchlist</Link>
-          <Link href="/media" onClick={() => setOpen(false)} className="flex items-center justify-between px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">
-            <span>My Media</span>
+          <a href={`${BOSSMEDIA_URL}/media`} target="_blank" rel="noreferrer" onClick={() => setOpen(false)} className="flex items-center justify-between px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">
+            <span>My Media ↗</span>
             {Number(creditLeft) > 0 && (
               <span className="rounded-full bg-goldbg px-1.5 py-px text-[10.5px] font-bold text-gold">{creditLeft} credits</span>
             )}
-          </Link>
+          </a>
           {user.role === 'ADMIN' && (
             <>
               <Link href="/admin" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-gold no-underline hover:text-white">⛨ Admin Console</Link>
@@ -68,7 +69,7 @@ export default function UserMenu() {
             </>
           )}
           {user.role === 'PHOTOGRAPHER' && (
-            <Link href="/admin/media" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-gold no-underline hover:text-white">⛨ Media Console</Link>
+            <a href={`${BOSSMEDIA_URL}/studio`} target="_blank" rel="noreferrer" onClick={() => setOpen(false)} className="block px-2 py-1.5 text-[13px] text-gold no-underline hover:text-white">⛨ Media Studio ↗</a>
           )}
           <button onClick={handleLogout} disabled={busy}
             className="flex w-full items-center gap-2 text-left px-2 py-1.5 text-[13px] text-blood bg-none border-0 cursor-pointer disabled:opacity-60 disabled:cursor-wait">

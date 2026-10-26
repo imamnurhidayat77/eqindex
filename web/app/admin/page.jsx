@@ -33,11 +33,6 @@ const GROUPS = [
     ['✔', 'Rider claims', 'Ownership claims awaiting approval', '/admin/claims', 'pendingClaims'],
     ['✉', 'Corrections inbox', 'Public reports awaiting triage', '/admin/corrections', false],
   ]],
-  ['Commerce', [
-    ['◈', 'Transactions', 'Sales, revenue report & settlement', '/admin/sales', false],
-    ['◆', 'Pricing', 'License tiers & photo packages', '/admin/pricing', false],
-    ['◍', 'Media library', 'Photos, reels & publishing', '/admin/media', false],
-  ]],
   ['System', [
     ['●', 'Users', 'Roles and session control', '/admin/users', 'users'],
     ['▣', 'Data tools', 'Backup export & danger-zone wipe', '/admin/data', false],
@@ -49,7 +44,7 @@ const GROUPS = [
 export default async function AdminOverview() {
   const token = cookies().get('eq_session')?.value;
   let d = null;
-  // Photographers land straight in their workspace (overview APIs stay
+  // Photographers work in Boss Media studio now (overview APIs stay
   // admin-only, so they'd only see "unavailable" here).
   try {
     const me = await fetch(`${API}/auth/me`, {
@@ -57,7 +52,8 @@ export default async function AdminOverview() {
     }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
     if (me?.data?.role === 'PHOTOGRAPHER') {
       const { redirect } = await import('next/navigation');
-      redirect('/admin/media');
+      const { BOSSMEDIA_URL } = await import('../../lib/bossmedia');
+      redirect(`${BOSSMEDIA_URL}/studio`);
     }
   } catch { /* fall through to the admin overview */ }
   let daily = null;

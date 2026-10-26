@@ -272,7 +272,9 @@ function VolunteersTab() {
     setBusy(true); setMsg(null);
     try {
       const r = await studio.post('/api/wallet/grant', { to_user_id: found.id, amount_cents: cents, reason: reason.trim() || undefined });
-      setMsg({ text: `Granted ${nzdc(r.granted_cents)}. New balance ${nzdc(r.balance_cents)}.` });
+      // studio.post returns the raw body ({ data }) — unlike studio.get.
+      const g = r.data || r;
+      setMsg({ text: `Granted ${nzdc(g.granted_cents)}. New balance ${nzdc(g.balance_cents)}.` });
       setFound(null); setEmail(''); setAmount(''); setReason('');
     } catch (err) { setMsg({ err: true, text: err.message }); }
     setBusy(false);

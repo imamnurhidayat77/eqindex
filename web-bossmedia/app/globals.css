@@ -120,6 +120,15 @@ button { color: inherit; }
 .primary-link { color: var(--ink); background: white; padding: 15px 18px; display: flex; align-items: center; gap: 40px; transition: background .2s, transform .2s; }
 .primary-link:hover { background: #d8d8d8; transform: translateY(-2px); }
 .text-link { color: #ddd; border-bottom: 1px solid #555; padding: 8px 0; }
+/* Photographer recruiting band (home, below reels) */
+.photo-cta { margin: 56px 0 88px; padding: 48px; background: #101010; border: 1px solid #2a2a2a; }
+.photo-cta-row { display: grid; grid-template-columns: 1.2fr 1fr; gap: 48px; align-items: center; margin-top: 14px; }
+.photo-cta h2 { margin: 0; font-size: clamp(38px, 4.5vw, 64px); line-height: .95; font-weight: 500; letter-spacing: -.04em; }
+.photo-cta-aside p { margin: 0 0 8px; color: #999; font-size: 14px; line-height: 1.65; }
+@media (max-width: 800px) {
+  .photo-cta { margin: 60px 0 80px; padding: 36px 24px; }
+  .photo-cta-row { grid-template-columns: 1fr; gap: 24px; }
+}
 .hero-collage { position: absolute; inset: 0; z-index: 0; min-width: 0; height: auto; }
 .hero-image { position: relative; margin: 0; min-width: 0; background: #1b1b1b; overflow: hidden; }
 .hero-image img { height: 100%; object-fit: cover; filter: grayscale(100%) contrast(1.06) brightness(.72); transition: filter .6s ease, transform 1.2s ease; }
@@ -331,6 +340,7 @@ button { color: inherit; }
 .booking-field input, .booking-field select, .booking-field textarea { width: 100%; min-height: 50px; padding: 0 14px; color: white; background: #0b0b0b; border: 1px solid #333; outline: 0; font-size: 14px; transition: border-color .2s; }
 .booking-field textarea { min-height: 110px; padding-top: 14px; resize: vertical; }
 .booking-field input:focus, .booking-field select:focus, .booking-field textarea:focus { border-color: #777; }
+.booking-field input[type='date']::-webkit-calendar-picker-indicator { opacity: .55; cursor: pointer; }
 
 .booking-field > svg { position: absolute; right: 15px; bottom: 17px; color: #777; pointer-events: none; }
 .booking-field.full { width: 100%; }
@@ -343,7 +353,7 @@ button { color: inherit; }
 .coverage-options p { margin: 9px 0; color: #888; font-size: 12px; line-height: 1.5; }
 .coverage-options small { color: #aaa; font-size: 11px; }
 .coverage-options b { margin-top: auto; padding-top: 18px; font-size: 15px; }
-.booking-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 14px; }
+.booking-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 22px 20px; }
 .music-options { display: grid; gap: 14px; margin: 0 0 22px; padding: 18px; border: 1px solid #303030; }
 .music-options legend { padding: 0 8px; color: #777; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; }
 .music-options label { display: flex; align-items: flex-start; gap: 11px; cursor: pointer; }
@@ -1017,6 +1027,22 @@ button.license-option { width: 100%; padding: 13px; background: transparent; cur
 .prose-page details.card-dark summary::after { content: '+'; flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid #4d4d4d; border-radius: 50%; color: #bbb; font-size: 17px; font-weight: 400; line-height: 1; transition: transform .25s, background .2s, color .2s; }
 .prose-page details.card-dark[open] summary::after { content: '–'; background: #fff; border-color: #fff; color: #0c0c0c; }
 .prose-page details.card-dark .faq-a { margin: 0; padding: 0 20px 20px; color: #b5b5b5; font-size: 14px; line-height: 1.7; }
+/* ---- Receipt: screen card, ink-friendly print ---- */
+.receipt-page { padding-top: 72px; padding-bottom: 110px; }
+.receipt-page h1 { margin: 14px 0 12px; font-size: clamp(42px, 5vw, 64px); line-height: .95; font-weight: 500; letter-spacing: -.058em; }
+.rc-meta { margin: 0 0 30px; color: #888; font-size: 13px; }
+.rc-lines { width: 100%; max-width: 720px; }
+.rc-totals { max-width: 720px; margin-top: 6px; }
+.rc-totals p { display: flex; justify-content: space-between; margin: 0; padding: 10px 0; border-bottom: 1px solid #2c2c2c; color: #999; font-size: 13px; }
+.rc-totals .rc-grand { border-bottom: 0; padding-top: 16px; color: #fff; font-size: 17px; font-weight: 700; }
+.rc-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
+@media print {
+  .receipt-print-no, .header, .footer, .mobile-menu { display: none !important; }
+  .gallery-page, .receipt-page { background: #fff !important; color: #111 !important; }
+  .receipt-page h1, .rc-totals .rc-grand { color: #000 !important; }
+  .rc-meta, .rc-totals p { color: #444 !important; border-color: #ddd !important; }
+  .st-table th, .st-table td { color: #111 !important; border-color: #ddd !important; }
+}
 .prose-page .btn-row { display: flex; gap: 16px; align-items: center; margin-top: 20px; flex-wrap: wrap; }
 .prose-page a.btn-light { display: inline-flex; align-items: center; gap: 12px; min-height: 50px; padding: 0 18px; color: var(--ink); background: #fff; font-size: 13px; font-weight: 700; }
 .prose-page a.btn-ghost { display: inline-flex; padding-bottom: 6px; border-bottom: 1px solid #555; font-size: 13px; color: #aaa; }
@@ -1319,6 +1345,20 @@ button.license-option { width: 100%; padding: 13px; background: transparent; cur
 .ss-empty { padding: 14px 12px; color: #777; font-size: 13px; }
 .ss-add { display: block; width: 100%; text-align: left; margin-top: 4px; padding: 11px 12px; background: none; border: 0; border-top: 1px solid #2c2c2c; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
 .ss-add:hover { background: #222; }
+/* DateField calendar (reuses .ss-btn/.ss-panel chrome) */
+.cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.cal-head strong { font-size: 13px; font-weight: 700; }
+.cal-head button { background: none; border: 0; color: #bbb; font-size: 15px; padding: 6px 10px; cursor: pointer; }
+.cal-head button:hover { color: white; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.cal-dow { padding: 6px 0; color: #666; font-size: 10px; font-weight: 700; text-align: center; text-transform: uppercase; }
+.cal-day { aspect-ratio: 1; border: 0; background: none; color: #ddd; font-size: 12px; border-radius: 50%; cursor: pointer; }
+.cal-day:hover { background: #2a2a2a; }
+.cal-day.today { border: 1px solid #555; }
+.cal-day.sel { background: white; color: #101010; font-weight: 700; }
+.cal-foot { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid #2c2c2c; }
+.cal-foot button { background: none; border: 0; color: #bbb; font-size: 12px; font-weight: 600; padding: 6px 4px; cursor: pointer; }
+.cal-foot button:hover { color: white; }
 
 /* ---- Studio modal dialog ---- */
 .st-modal { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.7); display: grid; place-items: center; padding: 20px; animation: fadeIn .2s both; }

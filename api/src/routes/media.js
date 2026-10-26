@@ -1171,6 +1171,166 @@ module.exports = function mountMediaRoutes(app) {
     res.status(201).json({ data: { purchase_id: purchaseId, checkout_url: session.url } });
   }));
 
+  // Prices one batch photo/package item (read-only). Throws with .status.
+  async function priceBatchItem(q, authUser, it, idx, fail) {
+    const { media_id, package_id, license_tier } = it || {};
+    if (!!media_id === !!package_id) fail(idx, 400, 'each item needs exactly one of {media_id, package_id}');
+    if (media_id && !UUID_RE.test(String(media_id))) fail(idx, 400, 'bad media_id');
+    if (package_id && !UUID_RE.test(String(package_id))) fail(idx, 400, 'bad package_id');
+    if (license_tier !== undefined && license_tier !== null && !TIER_RE.test(String(license_tier))) fail(idx, 400, 'bad license_tier');
+    let tierId = license_tier || null, amount, title, mediaId = null, packageId = null;
+    if (media_id) {
+      const m = await q.query(
+        `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label,
+            t.applies_to AS tier_applies
+           FROM media m LEFT JOIN license_tiers t ON t.id = $2
+          WHERE m.id = $1 AND m.status = 'published'`,
+        [media_id, tierId]
+      );
+      if (!m.rows.length) fail(idx, 404, 'photo not found or not for sale');
+      try {
+        const buyerUid = await privateOrderBuyer(q, String(media_id));
+        if (buyerUid && buyerUid !== authUser.id) fail(idx, 404, 'photo not found or not for sale');
+      } catch { /* gate optional */ }
+      const row = m.rows[0];
+      if (tierId && !row.tier_label) fail(idx, 400, 'unknown license tier');
+      if (tierId) {
+        const vis = await q.query(
+          'SELECT COALESCE(is_hidden, FALSE) AS hidden FROM license_tiers WHERE id = $1', [tierId]);
+        if (vis.rows.length && vis.rows[0].hidden) fail(idx, 400, 'license tier is not available');
+        if (row.tier_applies && row.tier_applies !== 'both' && row.tier_applies !== row.kind) {
+          fail(idx, 400, `license tier does not apply to ${row.kind}s`);
+        }
+      }
+      if (!tierId) {
+        const dflt = await q.query('SELECT * FROM license_tiers WHERE id = $1', [row.license_default || 'web']);
+        const applies = dflt.rows[0]?.applies_to || 'both';
+        if (dflt.rows[0] && (applies === 'both' || applies === row.kind)) {
+          tierId = dflt.rows[0].id;
+          amount = dflt.rows[0].price_cents;
+        } else {
+          const web = await q.query(`SELECT * FROM license_tiers WHERE id = 'web'`);
+          tierId = web.rows[0]?.id || 'web';
+          amount = web.rows[0]?.price_cents;
+        }
+      } else {
+        amount = row.tier_price;
+      }
+      if (!Number.isInteger(amount) || amount <= 0) fail(idx, 409, 'no price set for this photo');
+      const owned = await q.query(
+        `SELECT id, license_tier FROM purchases
+          WHERE status = 'paid' AND buyer_user_id = $2
+            AND (media_id = $1 OR package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))
+          LIMIT 1`,
+        [media_id, authUser.id]
+      );
+      if (owned.rows.length) fail(idx, 409, 'you already own this photo — download it from My photos');
+      const credOwned = await q.query(
+        `SELECT 1 WHERE ${creditOwnedSql('$2', '$1')} LIMIT 1`,
+        [media_id, authUser.id]
+      );
+      if (credOwned.rows.length) fail(idx, 409, 'you already unlocked this photo with credits');
+      title = `${row.horse_id || row.rider_id ? '' : 'Event '}photo${row.moment ? ` (${row.moment})` : ''} · ${tierId}`;
+      mediaId = row.id;
+    } else {
+      const pk = await q.query(`SELECT * FROM packages WHERE id = $1 AND status = 'published'`, [package_id]);
+      if (!pk.rows.length) fail(idx, 404, 'package not found or not for sale');
+      amount = earlyPriceOf(pk.rows[0]) ?? pk.rows[0].price_cents;
+      if (!Number.isInteger(amount) || amount <= 0) fail(idx, 409, 'no price set for this package');
+      const owned = await q.query(
+        `SELECT id FROM purchases WHERE status = 'paid' AND buyer_user_id = $2 AND package_id = $1 LIMIT 1`,
+        [package_id, authUser.id]
+      );
+      if (owned.rows.length) fail(idx, 409, 'you already own this package — download it from My photos');
+      title = pk.rows[0].title;
+      packageId = pk.rows[0].id;
+    }
+    return { mediaId, packageId, tierId, amount, title };
+  }
+
+  // Validates a reel-order payload (read-only). Throws with .status.
+  // Returns prepared fields for insertReelOrder.
+  async function prepareReelOrder(q, authUser, buyerEmail, b) {
+    const bad = (status, error) => { const e = new Error(error); e.status = status; throw e; };
+    if (!b.product_id || !UUID_RE.test(String(b.product_id))) bad(400, 'need {product_id}');
+    const horseName = String(b.horse_name || '').trim().slice(0, 120);
+    if (!horseName) bad(400, 'need {horse_name} (one horse per order)');
+    const musicMode = String(b.music_mode || 'choose_for_me');
+    if (!REEL_MUSIC.includes(musicMode)) bad(400, 'music_mode must be choose_for_me|title|none');
+    const musicTitle = String(b.music_title || '').trim().slice(0, 160);
+    if (musicMode === 'title' && !musicTitle) bad(400, 'music_title is required when music_mode=title');
+    const prod = await q.query(
+      `SELECT rp.*, e.name AS event_name FROM reel_products rp
+        LEFT JOIN events e ON e.id = rp.event_id WHERE rp.id = $1`, [String(b.product_id)]);
+    if (!prod.rows.length || prod.rows[0].status !== 'published') {
+      bad(404, 'reel product not found or not for sale');
+    }
+    const product = prod.rows[0];
+    // Event-scoped products can only be ordered for their own event.
+    let eventId = null;
+    if (product.event_id) {
+      eventId = product.event_id;
+    } else if (b.event_id) {
+      if (!UUID_RE.test(String(b.event_id))) bad(400, 'bad event_id');
+      const ev = await q.query('SELECT id FROM events WHERE id = $1', [String(b.event_id)]);
+      if (!ev.rows.length) bad(404, 'event not found');
+      eventId = String(b.event_id);
+    }
+    if (!Number.isInteger(product.price_cents) || product.price_cents <= 0) {
+      bad(409, 'no price set for this reel product');
+    }
+    let shootingDate = null;
+    if (b.shooting_date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.shooting_date))) bad(400, 'shooting_date must be YYYY-MM-DD');
+      shootingDate = String(b.shooting_date);
+    }
+    return {
+      product, eventId, shootingDate, horseName, musicMode,
+      musicTitle: musicMode === 'title' ? musicTitle : null,
+      ring: String(b.ring || '').slice(0, 80) || null,
+      className: String(b.class_name || '').slice(0, 160) || null,
+      backNumber: String(b.back_number || '').slice(0, 40) || null,
+      phone: String(b.phone || '').slice(0, 40) || null,
+      // Showcase opt-in: buyer allows the finished teaser in public galleries.
+      // Unticked (default) = private to the buyer. Full file is always buyer-only.
+      showcase: b.showcase === true || String(b.showcase).toLowerCase() === 'true',
+      amount: product.price_cents,
+      title: `${product.name} — ${horseName}`.slice(0, 120),
+    };
+  }
+
+  // Inserts reel_orders + its purchases row (status pending/awaiting_payment).
+  // used/stripe record wallet-balance splits so the batch webhook sum check
+  // sees the same numbers for reel rows as for photo rows.
+  async function insertReelOrder(q, authUser, buyerEmail, prep, idempotencyKey, used = 0, stripe = null) {
+    const { rows: orows } = await q.query(
+      `INSERT INTO reel_orders
+        (product_id, event_id, buyer_user_id, buyer_email, shooting_date, ring, class_name,
+         back_number, horse_name, music_mode, music_title, phone, price_cents, showcase, status)
+        VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'awaiting_payment')
+        RETURNING id`,
+      [prep.product.id, prep.eventId, authUser.id, buyerEmail, prep.shootingDate,
+        prep.ring, prep.className, prep.backNumber,
+        prep.horseName, prep.musicMode, prep.musicTitle,
+        prep.phone, prep.amount, prep.showcase]
+    );
+    const orderId = orows[0].id;
+    let purchaseId;
+    try {
+      const { rows } = await q.query(
+        `INSERT INTO purchases (reel_order_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents)
+          VALUES ($1, $2, $3, NULL, $4, 'NZD', 'pending', $5, $6, $7) RETURNING id`,
+        [orderId, buyerEmail, authUser.id, prep.amount, idempotencyKey, used, stripe === null ? prep.amount : stripe]
+      );
+      purchaseId = rows[0].id;
+    } catch (e) {
+      await q.query(`UPDATE reel_orders SET status = 'cancelled' WHERE id = $1`, [orderId]);
+      throw e;
+    }
+    await q.query(`UPDATE reel_orders SET purchase_id = $2 WHERE id = $1`, [orderId, purchaseId]);
+    return { orderId, purchaseId };
+  }
+
   // POST /api/checkout/batch {items: [{media_id?, package_id?, license_tier?}...], email?, idempotency_key?}
   // One Stripe session for up to 20 photo/package items (the cart "Pay all"
   // button). Reel orders are excluded — they go through /api/reel-orders one
@@ -1222,80 +1382,7 @@ module.exports = function mountMediaRoutes(app) {
     }
     const priced = [];
     for (let idx = 0; idx < items.length; idx++) {
-      const it = items[idx] || {};
-      const { media_id, package_id, license_tier } = it;
-      if (!!media_id === !!package_id) fail(idx, 400, 'each item needs exactly one of {media_id, package_id}');
-      if (media_id && !UUID_RE.test(String(media_id))) fail(idx, 400, 'bad media_id');
-      if (package_id && !UUID_RE.test(String(package_id))) fail(idx, 400, 'bad package_id');
-      if (license_tier !== undefined && license_tier !== null && !TIER_RE.test(String(license_tier))) fail(idx, 400, 'bad license_tier');
-      let tierId = license_tier || null, amount, title, mediaId = null, packageId = null;
-      if (media_id) {
-        const m = await pool.query(
-          `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label,
-              t.applies_to AS tier_applies
-             FROM media m LEFT JOIN license_tiers t ON t.id = $2
-            WHERE m.id = $1 AND m.status = 'published'`,
-          [media_id, tierId]
-        );
-        if (!m.rows.length) fail(idx, 404, 'photo not found or not for sale');
-        try {
-          const buyerUid = await privateOrderBuyer(pool, String(media_id));
-          if (buyerUid && buyerUid !== req.authUser.id) fail(idx, 404, 'photo not found or not for sale');
-        } catch { /* gate optional */ }
-        const row = m.rows[0];
-        if (tierId && !row.tier_label) fail(idx, 400, 'unknown license tier');
-        if (tierId) {
-          const vis = await pool.query(
-            'SELECT COALESCE(is_hidden, FALSE) AS hidden FROM license_tiers WHERE id = $1', [tierId]);
-          if (vis.rows.length && vis.rows[0].hidden) fail(idx, 400, 'license tier is not available');
-          if (row.tier_applies && row.tier_applies !== 'both' && row.tier_applies !== row.kind) {
-            fail(idx, 400, `license tier does not apply to ${row.kind}s`);
-          }
-        }
-        if (!tierId) {
-          const dflt = await pool.query('SELECT * FROM license_tiers WHERE id = $1', [row.license_default || 'web']);
-          const applies = dflt.rows[0]?.applies_to || 'both';
-          if (dflt.rows[0] && (applies === 'both' || applies === row.kind)) {
-            tierId = dflt.rows[0].id;
-            amount = dflt.rows[0].price_cents;
-          } else {
-            const web = await pool.query(`SELECT * FROM license_tiers WHERE id = 'web'`);
-            tierId = web.rows[0]?.id || 'web';
-            amount = web.rows[0]?.price_cents;
-          }
-        } else {
-          amount = row.tier_price;
-        }
-        if (!Number.isInteger(amount) || amount <= 0) fail(idx, 409, 'no price set for this photo');
-        const owned = await pool.query(
-          `SELECT id, license_tier FROM purchases
-            WHERE status = 'paid' AND buyer_user_id = $2
-              AND (media_id = $1 OR package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))
-            LIMIT 1`,
-          [media_id, req.authUser.id]
-        );
-        if (owned.rows.length) fail(idx, 409, 'you already own this photo — download it from My photos');
-        const credOwned = await pool.query(
-          `SELECT 1 WHERE ${creditOwnedSql('$2', '$1')} LIMIT 1`,
-          [media_id, req.authUser.id]
-        );
-        if (credOwned.rows.length) fail(idx, 409, 'you already unlocked this photo with credits');
-        title = `${row.horse_id || row.rider_id ? '' : 'Event '}photo${row.moment ? ` (${row.moment})` : ''} · ${tierId}`;
-        mediaId = row.id;
-      } else {
-        const pk = await pool.query(`SELECT * FROM packages WHERE id = $1 AND status = 'published'`, [package_id]);
-        if (!pk.rows.length) fail(idx, 404, 'package not found or not for sale');
-        amount = earlyPriceOf(pk.rows[0]) ?? pk.rows[0].price_cents;
-        if (!Number.isInteger(amount) || amount <= 0) fail(idx, 409, 'no price set for this package');
-        const owned = await pool.query(
-          `SELECT id FROM purchases WHERE status = 'paid' AND buyer_user_id = $2 AND package_id = $1 LIMIT 1`,
-          [package_id, req.authUser.id]
-        );
-        if (owned.rows.length) fail(idx, 409, 'you already own this package — download it from My photos');
-        title = pk.rows[0].title;
-        packageId = pk.rows[0].id;
-      }
-      priced.push({ mediaId, packageId, tierId, amount, title });
+      priced.push(await priceBatchItem(pool, req.authUser, items[idx], idx, fail));
     }
     const gross = priced.reduce((s, p) => s + p.amount, 0);
     // P1 wallet: balance covers part of the cart total, distributed
@@ -1407,6 +1494,182 @@ module.exports = function mountMediaRoutes(app) {
       cancel_url: `${base}${cancelPath}`,
       metadata: { purchase_ids: JSON.stringify(ids) },
     }, { idempotencyKey: idempotency_key ? `cob-${idempotency_key}` : `cob-${ids[0]}` });
+    await pool.query(`UPDATE purchases SET stripe_session_id = $2 WHERE id = ANY($1::UUID[])`, [ids, session.id]);
+    res.status(201).json({ data: { purchase_ids: ids, total_cents: total, checkout_url: session.url } });
+  }));
+
+  // POST /api/checkout/combined {items: [{media_id?, package_id?, license_tier?}...],
+  //   reels: [{product_id, horse_name, music_mode, ...}...], email?, idempotency_key?,
+  //   cancel_path?, success_path?, use_balance_cents?}
+  // ONE Stripe session for the whole cart: photo/package purchases AND
+  // pre-book reel orders together. All rows are created in a single DB
+  // transaction; the existing batch webhook path fulfills both kinds
+  // (markPurchasesPaid flips awaiting_payment reel orders to pending).
+  app.post('/api/checkout/combined', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (throttled(req.ip, 'checkout')) return res.status(429).json({ error: 'too many requests, try again later' });
+    const { items = [], reels = [], email, idempotency_key } = req.body || {};
+    if (!Array.isArray(items) || !Array.isArray(reels)) {
+      return res.status(400).json({ error: 'need {items[], reels[]}' });
+    }
+    const count = items.length + reels.length;
+    if (count < 1 || count > 20) {
+      return res.status(400).json({ error: 'need 1..20 items total (photos and pre-books together)' });
+    }
+    if (idempotency_key !== undefined && idempotency_key !== null && !/^[A-Za-z0-9_-]{8,128}$/.test(String(idempotency_key))) {
+      return res.status(400).json({ error: 'bad idempotency_key' });
+    }
+    const buyerEmail = normEmail(email || req.authUser.email);
+    if (!EMAIL_RE.test(buyerEmail)) {
+      return res.status(400).json({ error: 'need a valid {email}' });
+    }
+    if (idempotency_key) {
+      // Same guards as batch: one key = one payment, never a second charge.
+      const paidDup = await pool.query(
+        `SELECT id FROM purchases WHERE idempotency_key = $1 AND buyer_user_id = $2 AND status = 'paid' LIMIT 1`,
+        [String(idempotency_key), req.authUser.id]
+      ).catch(() => ({ rows: [] }));
+      if (paidDup.rows.length) {
+        return res.status(409).json({ error: 'this cart was already paid — check My photos instead of paying again', paid: true });
+      }
+      const dup = await pool.query(
+        `SELECT id FROM purchases WHERE idempotency_key = $1 AND buyer_user_id = $2 AND status = 'pending' LIMIT 1`,
+        [String(idempotency_key), req.authUser.id]
+      ).catch(() => ({ rows: [] }));
+      if (dup.rows.length) return res.status(409).json({ error: 'a checkout for this cart is already in progress — finish it or wait a minute and retry', pending: true });
+    }
+    const fail = (idx, status, error) => {
+      const e = new Error(count > 1 ? `Item ${idx + 1}: ${error}` : error);
+      e.status = status; throw e;
+    };
+    // Same double-charge guards as batch, extended to reel payloads.
+    const seen = new Set();
+    for (let idx = 0; idx < items.length; idx++) {
+      const it = items[idx] || {};
+      const sig = it.media_id ? `m:${it.media_id}:${it.license_tier || ''}`
+        : it.package_id ? `p:${it.package_id}` : `x:${idx}`;
+      if (seen.has(sig)) fail(idx, 400, 'duplicate item in cart — remove it and retry');
+      seen.add(sig);
+    }
+    // Price photos/packages (read-only) and validate reel payloads (read-only).
+    const priced = [];
+    for (let idx = 0; idx < items.length; idx++) {
+      priced.push({ kind: 'photo', ...(await priceBatchItem(pool, req.authUser, items[idx], idx, fail)) });
+    }
+    const preps = [];
+    for (let i = 0; i < reels.length; i++) {
+      const b = reels[i] || {};
+      const sig = `r:${String(b.product_id || '').toLowerCase()}:${String(b.horse_name || '').trim().toLowerCase()}`;
+      if (seen.has(sig)) fail(items.length + i, 400, 'duplicate pre-book in cart — remove it and retry');
+      seen.add(sig);
+      try {
+        preps.push(await prepareReelOrder(pool, req.authUser, buyerEmail, b));
+      } catch (e) {
+        fail(items.length + i, e.status || 500, e.message);
+      }
+    }
+    const rows = [
+      ...priced,
+      ...preps.map((prep) => ({ kind: 'reel', prep, mediaId: null, packageId: null, tierId: null, amount: prep.amount, title: prep.title })),
+    ];
+    const gross = rows.reduce((s, p) => s + p.amount, 0);
+    // P1 wallet: balance covers part of the combined total, distributed
+    // proportionally (exact to the cent) — same math as batch.
+    let useBalance = Number(req.body?.use_balance_cents);
+    if (!Number.isFinite(useBalance) || useBalance < 0) useBalance = 0;
+    useBalance = Math.min(Math.floor(useBalance), gross);
+    expireHolds(pool).catch(() => {});
+    let assigned = 0;
+    const splits = rows.map((p, i) => {
+      const used = i === rows.length - 1 ? useBalance - assigned : Math.floor((p.amount * useBalance) / gross);
+      assigned += used;
+      return { ...p, used, stripe: p.amount - used };
+    });
+    const ids = [];
+    const idem = idempotency_key ? String(idempotency_key) : null;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [req.authUser.id]);
+      if (!locked.rows.length) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'account not found' });
+      }
+      // Sufficiency is checked ONCE against pre-checkout state: sibling rows
+      // of this same checkout must not count as competing holds.
+      const held = await client.query(
+        `SELECT COALESCE(SUM(balance_used_cents), 0)::INT AS held FROM purchases
+          WHERE buyer_user_id = $1 AND status = 'pending'`,
+        [req.authUser.id]
+      );
+      if (useBalance > Number(locked.rows[0].balance_cents) - Number(held.rows[0].held)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'insufficient balance for this checkout' });
+      }
+      let running = Number(locked.rows[0].balance_cents);
+      for (const p of splits) {
+        if (p.kind === 'reel') {
+          const { purchaseId } = await insertReelOrder(
+            client, req.authUser, buyerEmail, p.prep, idem, p.used, p.stripe);
+          ids.push(purchaseId);
+        } else {
+          const { rows } = await client.query(
+            `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents)
+              VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9) RETURNING id`,
+            [p.mediaId, p.packageId, buyerEmail, req.authUser.id, p.tierId, p.amount, idem, p.used, p.stripe]
+          );
+          ids.push(rows[0].id);
+        }
+        if (p.used > 0) {
+          running -= p.used;
+          await client.query('UPDATE users SET balance_cents = $2 WHERE id = $1', [req.authUser.id, running]);
+          await client.query(
+            `INSERT INTO wallet_transactions (user_id, kind, amount_cents, balance_after_cents, purchase_id)
+              VALUES ($1, 'spend', $2, $3, $4)`,
+            [req.authUser.id, -p.used, running, ids[ids.length - 1]]
+          );
+        }
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      if (e.code === '23505' && e.constraint === 'purchases_paid_media_owner') {
+        const bad = new Error('you already own this photo — download it from My photos');
+        bad.status = 409; throw bad;
+      }
+      throw e;
+    } finally {
+      client.release();
+    }
+    const total = rows.reduce((s, p) => s + p.amount, 0);
+    const stripeTotal = splits.reduce((s, p) => s + p.stripe, 0);
+    // Fully covered by balance: no Stripe session — complete inline.
+    if (stripeTotal <= 0) {
+      const paid = await markPurchasesPaid(pool, ids, {
+        auditFn: (rows) => audit(req, 'media.purchase.combined.balance', 'purchase', rows.map((r) => r.id).join(','), { balance_used_cents: useBalance }),
+      });
+      if (!paid.length) return res.status(409).json({ error: 'checkout expired — try again' });
+      return res.status(201).json({ data: { purchase_ids: ids, total_cents: total, paid: true } });
+    }
+    const base = returnBase(req.body);
+    const successPath = returnPath(req.body?.success_path, '/photos/success');
+    const cancelPath = returnPath(req.body?.cancel_path, '/photos');
+    const sep = successPath.includes('?') ? '&' : '?';
+    const session = await stripe().checkout.sessions.create({
+      mode: 'payment',
+      customer_email: buyerEmail,
+      line_items: splits.filter((p) => p.stripe > 0).map((p) => ({
+        price_data: {
+          currency: 'nzd',
+          product_data: { name: p.title.slice(0, 120) },
+          unit_amount: p.stripe,
+        },
+        quantity: 1,
+      })),
+      success_url: `${base}${successPath}${sep}purchases=${ids.join(',')}`,
+      cancel_url: `${base}${cancelPath}`,
+      metadata: { purchase_ids: JSON.stringify(ids) },
+    }, { idempotencyKey: idempotency_key ? `coc-${idempotency_key}` : `coc-${ids[0]}` });
     await pool.query(`UPDATE purchases SET stripe_session_id = $2 WHERE id = ANY($1::UUID[])`, [ids, session.id]);
     res.status(201).json({ data: { purchase_ids: ids, total_cents: total, checkout_url: session.url } });
   }));
@@ -2470,17 +2733,6 @@ module.exports = function mountMediaRoutes(app) {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
     if (throttled(req.ip, 'reel-order')) return res.status(429).json({ error: 'too many requests, try again later' });
     const b = req.body || {};
-    if (!b.product_id || !UUID_RE.test(String(b.product_id))) {
-      return res.status(400).json({ error: 'need {product_id}' });
-    }
-    const horseName = String(b.horse_name || '').trim().slice(0, 120);
-    if (!horseName) return res.status(400).json({ error: 'need {horse_name} (one horse per order)' });
-    const musicMode = String(b.music_mode || 'choose_for_me');
-    if (!REEL_MUSIC.includes(musicMode)) return res.status(400).json({ error: 'music_mode must be choose_for_me|title|none' });
-    const musicTitle = String(b.music_title || '').trim().slice(0, 160);
-    if (musicMode === 'title' && !musicTitle) {
-      return res.status(400).json({ error: 'music_title is required when music_mode=title' });
-    }
     if (b.idempotency_key !== undefined && b.idempotency_key !== null &&
       !/^[A-Za-z0-9_-]{8,128}$/.test(String(b.idempotency_key))) {
       return res.status(400).json({ error: 'bad idempotency_key' });
@@ -2488,32 +2740,11 @@ module.exports = function mountMediaRoutes(app) {
     const buyerEmail = normEmail(b.email || req.authUser.email);
     if (!EMAIL_RE.test(buyerEmail)) return res.status(400).json({ error: 'need a valid {email}' });
 
-    const prod = await pool.query(
-      `SELECT rp.*, e.name AS event_name FROM reel_products rp
-        LEFT JOIN events e ON e.id = rp.event_id WHERE rp.id = $1`, [String(b.product_id)]);
-    if (!prod.rows.length || prod.rows[0].status !== 'published') {
-      return res.status(404).json({ error: 'reel product not found or not for sale' });
-    }
-    const product = prod.rows[0];
-    // Event-scoped products can only be ordered for their own event.
-    let eventId = null;
-    if (product.event_id) {
-      eventId = product.event_id;
-    } else if (b.event_id) {
-      if (!UUID_RE.test(String(b.event_id))) return res.status(400).json({ error: 'bad event_id' });
-      const ev = await pool.query('SELECT id FROM events WHERE id = $1', [String(b.event_id)]);
-      if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
-      eventId = String(b.event_id);
-    }
-    if (!Number.isInteger(product.price_cents) || product.price_cents <= 0) {
-      return res.status(409).json({ error: 'no price set for this reel product' });
-    }
-    let shootingDate = null;
-    if (b.shooting_date) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.shooting_date))) {
-        return res.status(400).json({ error: 'shooting_date must be YYYY-MM-DD' });
-      }
-      shootingDate = String(b.shooting_date);
+    let prep;
+    try {
+      prep = await prepareReelOrder(pool, req.authUser, buyerEmail, b);
+    } catch (e) {
+      return res.status(e.status || 500).json({ error: e.message || 'invalid reel order' });
     }
     if (b.idempotency_key) {
       const prior = await pool.query(
@@ -2526,42 +2757,14 @@ module.exports = function mountMediaRoutes(app) {
         return res.status(200).json({ data: { ...prior.rows[0], reused: true } });
       }
     }
-    const { rows: orows } = await pool.query(
-      `INSERT INTO reel_orders
-        (product_id, event_id, buyer_user_id, buyer_email, shooting_date, ring, class_name,
-         back_number, horse_name, music_mode, music_title, phone, price_cents, showcase, status)
-        VALUES ($1, $2, $3, $4, $5::date, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'awaiting_payment')
-        RETURNING id`,
-      [product.id, eventId, req.authUser.id, buyerEmail, shootingDate,
-        String(b.ring || '').slice(0, 80) || null,
-        String(b.class_name || '').slice(0, 160) || null,
-        String(b.back_number || '').slice(0, 40) || null,
-        horseName, musicMode, musicMode === 'title' ? musicTitle : null,
-        String(b.phone || '').slice(0, 40) || null, product.price_cents,
-        // Showcase opt-in: buyer allows the finished teaser in public galleries.
-        // Unticked (default) = private to the buyer. Full file is always buyer-only.
-        b.showcase === true || String(b.showcase).toLowerCase() === 'true']
-    );
-    const orderId = orows[0].id;
-    let purchaseId;
-    try {
-      const { rows } = await pool.query(
-        `INSERT INTO purchases (reel_order_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key)
-          VALUES ($1, $2, $3, NULL, $4, 'NZD', 'pending', $5) RETURNING id`,
-        [orderId, buyerEmail, req.authUser.id, product.price_cents, b.idempotency_key || null]
-      );
-      purchaseId = rows[0].id;
-    } catch (e) {
-      await pool.query(`UPDATE reel_orders SET status = 'cancelled' WHERE id = $1`, [orderId]);
-      throw e;
-    }
-    await pool.query(`UPDATE reel_orders SET purchase_id = $2 WHERE id = $1`, [orderId, purchaseId]);
-    const label = `${product.name} — ${horseName}`.slice(0, 120);
+    const { orderId, purchaseId } = await insertReelOrder(
+      pool, req.authUser, buyerEmail, prep, b.idempotency_key || null);
+    const label = prep.title;
     const session = await stripe().checkout.sessions.create({
       mode: 'payment',
       customer_email: buyerEmail,
       line_items: [{
-        price_data: { currency: 'nzd', product_data: { name: label }, unit_amount: product.price_cents },
+        price_data: { currency: 'nzd', product_data: { name: label }, unit_amount: prep.product.price_cents },
         quantity: 1,
       }],
       ...stripeReturnUrls(b, purchaseId),
