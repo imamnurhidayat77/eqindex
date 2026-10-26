@@ -8,6 +8,11 @@ import QueryFilter from '../../components/QueryFilter';
 export const revalidate = 30;
 export const dynamic = 'force-dynamic';
 
+export const metadata = {
+  title: 'All photos',
+  description: 'Browse every Boss Media photo and reel: search by horse, rider or event.',
+};
+
 export default async function PhotosPage({ searchParams }) {
   const sp = searchParams || {};
   const LIMIT = 48;
@@ -54,11 +59,11 @@ export default async function PhotosPage({ searchParams }) {
             <Link style={{ display: 'block' }} href={`/p/${x.id}`}
               aria-label={`${x.horse || ''} ${x.rider || ''}`.trim() || 'Photo'}>
               {x.thumb_url || x.preview_url
-                ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" />
+                ? <img src={x.thumb_url || x.preview_url} alt={`${[x.horse, x.rider].filter(Boolean).join(' ridden by ') || 'Equestrian photo'} at ${x.event_name || 'a New Zealand show'}`} loading="lazy" />
                 : <span className="cover-fallback">Boss Media</span>}
               <span className="media-kind">{x.kind === 'reel' && <Icon name="play" size={13} />}{x.kind === 'reel' ? 'Reel' : 'Photo'}</span>
               <span className="media-card-footer">
-                <small>{x.event_name || '—'}</small>
+                <small title={x.event_name || ''}>{x.event_name || '—'}</small>
                 <span className="media-card-title">
                   <strong>{[x.horse, x.rider].filter(Boolean).join(' · ') || x.other_people || x.event_name || 'Untagged'}</strong>
                   <Icon name="arrow" size={15} />

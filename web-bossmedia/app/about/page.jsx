@@ -1,5 +1,7 @@
 import PageShell from '../../components/PageShell';
 
+export const metadata = { title: 'About' };
+
 export default function AboutPage() {
   return (
     <PageShell eyebrow="Studio" title="About Boss Media." intro="Riders and Horses. Elevated.">

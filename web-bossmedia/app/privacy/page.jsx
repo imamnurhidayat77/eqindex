@@ -1,5 +1,7 @@
 import PageShell from '../../components/PageShell';
 
+export const metadata = { title: 'Privacy' };
+
 export default function PrivacyPage() {
   return (
     <PageShell eyebrow="Legal" title="Privacy."

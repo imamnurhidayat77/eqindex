@@ -189,6 +189,7 @@ model Event {
   season            String
   event_type        String?
   status            String    @default("Completed")
+  prebook_open      Boolean?
   description       String?
   image_url         String?
   source            String    @default("MANUAL")

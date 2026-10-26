@@ -1205,7 +1205,7 @@ module.exports = function mountAdminRoutes(app) {
     .toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
   const HORSE_FIELDS = ['name', 'breed', 'gender', 'sire', 'dam', 'damsire', 'breeder', 'year_of_birth', 'color', 'height', 'country', 'image_url', 'visibility', 'photo_hidden'];
   const RIDER_FIELDS = ['name', 'region', 'series_category', 'nationality', 'bio', 'image_url', 'first_name', 'last_name', 'visibility', 'photo_hidden'];
-  const EVENT_FIELDS = ['name', 'venue', 'region', 'date_start', 'date_end', 'arena_type', 'event_type', 'status', 'description', 'image_url', 'is_active', 'tier', 'event_kind'];
+  const EVENT_FIELDS = ['name', 'venue', 'region', 'date_start', 'date_end', 'arena_type', 'event_type', 'status', 'description', 'image_url', 'is_active', 'tier', 'event_kind', 'prebook_open'];
 
   function patcher(table, fields, label) {
     return asyncH(async (req, res) => {
@@ -1261,6 +1261,43 @@ module.exports = function mountAdminRoutes(app) {
   app.patch('/admin/horses/:id', needRole('ADMIN'), patcher('horses', HORSE_FIELDS, 'horse'));
   app.patch('/admin/riders/:id', needRole('ADMIN'), patcher('riders', RIDER_FIELDS, 'rider'));
   app.patch('/admin/events/:id', needRole('ADMIN'), patcher('events', EVENT_FIELDS, 'event'));
+
+  const ADMIN_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const adminSlug = (name, date) => String(name || '').toLowerCase().normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    .slice(0, 60) + `-${String(date || '').slice(0, 10)}`;
+  // Boss Media studio: create an event for the pre-book listing (or anything
+  // else). Same anti-clone guard as organizer creation.
+  app.post('/admin/events', needRole('ADMIN'), asyncH(async (req, res) => {
+    const b = req.body || {};
+    const name = String(b.name || '').trim().slice(0, 160);
+    const venue = String(b.venue || '').trim().slice(0, 160);
+    const ds = String(b.date_start || ''), de = String(b.date_end || b.date_start || '');
+    if (!name) return res.status(400).json({ error: 'need {name}' });
+    if (!ADMIN_DATE_RE.test(ds) || !ADMIN_DATE_RE.test(de)) {
+      return res.status(400).json({ error: 'need {date_start, date_end} as YYYY-MM-DD' });
+    }
+    if (de < ds) return res.status(400).json({ error: 'date_end is before date_start' });
+    const dupe = await pool.query(
+      'SELECT id, name FROM events WHERE lower(name) = lower($1) AND date_start = $2 LIMIT 1',
+      [name, ds]);
+    if (dupe.rows.length) {
+      return res.status(409).json({ error: 'this event already exists — edit it instead', event_id: dupe.rows[0].id });
+    }
+    const y = Number(ds.slice(0, 4)), m = Number(ds.slice(5, 7));
+    const season = m >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+    let slug = adminSlug(name, ds);
+    const taken = await pool.query('SELECT 1 FROM events WHERE slug = $1', [slug]);
+    if (taken.rows.length) slug += `-${Math.random().toString(36).slice(2, 6)}`;
+    const { rows } = await pool.query(
+      `INSERT INTO events (name, venue, region, date_start, date_end, season, arena_type, slug, source)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'MANUAL') RETURNING *`,
+      [name, venue || 'TBC', String(b.region || '').trim() || null, ds, de, season,
+        String(b.arena_type || '').trim() || null, slug]);
+    audit(req, 'event.create', 'event', rows[0].id, { name });
+    bustCache('/events');
+    res.status(201).json({ data: rows[0] });
+  }));
   app.patch('/admin/classes/:id', needRole('ADMIN'), patcher('classes', CLASS_FIELDS, 'class'));
 
   app.delete('/admin/horses/:id', needRole('ADMIN'), asyncH(async (req, res) => {

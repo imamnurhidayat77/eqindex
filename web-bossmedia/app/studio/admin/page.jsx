@@ -212,9 +212,9 @@ function UserTable({ rows, selfId, setRole, revoke }) {
               const n = v ? rows.filter((u) => u.role === v).length : rows.length;
               return (
                 <button key={v} role="tab" aria-selected={roleFilter === v} className="st-btn-ghost"
-                  style={{ minHeight: 34, ...(roleFilter === v ? { borderColor: '#fff' } : undefined })}
+                  style={{ minHeight: 34, ...(roleFilter === v ? { borderColor: '#fff' } : undefined) }}
                   onClick={() => { setRoleFilter(v); setOffset(0); }}>
-                  {label}{n > 0 ? ` (${n})` : ''}
+                  {label + (n > 0 ? ' (' + n + ')' : '')}
                 </button>
               );
             })}
@@ -436,10 +436,23 @@ function Events() {
       message: organizerId ? 'Their dashboard, revenue share and pre-book listing follow this event.' : undefined,
     })) return;
     try {
-      const updated = await studio.patch(`/admin/events/${ev.id}/organizer`, { organizer_id: organizerId || null });
+      const j = await studio.patch(`/admin/events/${ev.id}/organizer`, { organizer_id: organizerId || null });
+      const updated = j.data || j;
       setRows((xs) => (xs || []).map((x) => (x.id === ev.id
         ? { ...x, organizer_id: updated.organizer_id, organizer_name: org?.name || null } : x)));
       notify(organizerId ? 'Event linked' : 'Event unlinked');
+    } catch (e) { notify(e.message, true); }
+  }
+
+  // Pre-book visibility: auto (date rule) / show (pinned) / hide (never).
+  const pbVal = (ev) => (ev.prebook_open === true ? 'show' : ev.prebook_open === false ? 'hide' : 'auto');
+  async function setPrebook(ev, v) {
+    try {
+      const j = await studio.patch(`/admin/events/${ev.id}`,
+        { prebook_open: v === 'auto' ? '' : v === 'show' });
+      const updated = j.data || j;
+      setRows((xs) => (xs || []).map((x) => (x.id === ev.id ? { ...x, prebook_open: updated.prebook_open } : x)));
+      notify(v === 'auto' ? 'Pre-book: automatic' : v === 'show' ? 'Pinned to pre-book' : 'Hidden from pre-book');
     } catch (e) { notify(e.message, true); }
   }
 
@@ -449,12 +462,13 @@ function Events() {
         <label><span>Search events</span>
           <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type event name…" autoComplete="off" /></label>
       </form>
+      <NewEventForm onCreated={(ev) => { setRows((xs) => [ev, ...(xs || [])]); search(''); }} />
       {rows === null ? <p className="empty-note">Loading…</p> : !rows.length ? (
         <p className="empty-note">No events found.</p>
       ) : (
         <div className="st-card" style={{ padding: '6px 22px' }}>
           <table className="st-table">
-            <thead><tr><th>Event</th><th>Date</th><th>Data</th><th>Organizer</th></tr></thead>
+            <thead><tr><th>Event</th><th>Date</th><th>Data</th><th>Pre-book</th><th>Organizer</th></tr></thead>
             <tbody>
               {rows.map((ev) => (
                 <tr key={ev.id}>
@@ -464,22 +478,60 @@ function Events() {
                   <td style={{ fontSize: 12, color: '#888' }}>
                     {ev.class_count ? `${ev.class_count} classes` : 'no results'}
                   </td>
-                  <td>
-                    <select value={ev.organizer_id || ''} onChange={(e) => link(ev, e.target.value)}
-                      aria-label={`Organizer for ${ev.name}`} style={{ background: '#0b0b0b', border: '1px solid #333', color: '#fff', fontSize: 12, padding: '8px', maxWidth: 220 }}>
-                      <option value="">— none —</option>
-                      {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                    </select>
+                  <td style={{ minWidth: 130 }}>
+                    <SearchSelect value={pbVal(ev)} clearable={false} placeholder="Pre-book"
+                      options={[{ id: 'auto', label: 'Auto' }, { id: 'show', label: 'Show' }, { id: 'hide', label: 'Hide' }]}
+                      onChange={(id) => setPrebook(ev, id)} />
+                  </td>
+                  <td style={{ minWidth: 170 }}>
+                    <SearchSelect value={ev.organizer_id || ''} clearable={false} placeholder="Organizer"
+                      options={[{ id: '', label: '— none —' }, ...orgs.map((o) => ({ id: o.id, label: o.name }))]}
+                      onChange={(id) => link(ev, id)} />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
           <p style={{ color: '#777', fontSize: 12, padding: '0 0 12px' }}>
-            Linking gives the organizer this event — no cloning, no name clashes.
+            Pre-book: auto follows the date rule, show pins the event, hide removes it. Linking gives the organizer this event — no cloning, no name clashes.
           </p>
         </div>
       )}
     </>
+  );
+}
+
+function NewEventForm({ onCreated }) {
+  const notify = useToast();
+  const [f, setF] = useState({ name: '', venue: '', region: '', date_start: '', date_end: '' });
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  async function submit(e) {
+    e.preventDefault();
+    if (!f.name.trim() || !f.date_start) { notify('Name and start date are required.', true); return; }
+    try {
+      const j = await studio.post('/admin/events', {
+        name: f.name.trim(), venue: f.venue.trim(), region: f.region.trim(),
+        date_start: f.date_start, date_end: f.date_end || f.date_start,
+      });
+      const ev = j.data || j;
+      if (!ev?.id) throw new Error('Event created — refresh the list to see it.');
+      setF({ name: '', venue: '', region: '', date_start: '', date_end: '' });
+      notify(`“${ev.name}” created`);
+      onCreated(ev);
+    } catch (err) { notify(err.message, true); }
+  }
+  const input = { minHeight: 44, padding: '0 12px', color: '#fff', background: '#0b0b0b', border: '1px solid #333', outline: 0, fontSize: 13 };
+  return (
+    <form onSubmit={submit} className="st-card" style={{ marginBottom: 16, display: 'grid', gap: 10 }}>
+      <p style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>New event</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.4fr 1fr 1fr 1fr auto', gap: 10 }}>
+        <input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Event name" aria-label="Event name" style={input} />
+        <input value={f.venue} onChange={(e) => set('venue', e.target.value)} placeholder="Venue" aria-label="Venue" style={input} />
+        <input value={f.region} onChange={(e) => set('region', e.target.value)} placeholder="Region" aria-label="Region" style={input} />
+        <input type="date" value={f.date_start} onChange={(e) => set('date_start', e.target.value)} aria-label="Start date" style={{ ...input, colorScheme: 'dark' }} />
+        <input type="date" value={f.date_end} onChange={(e) => set('date_end', e.target.value)} aria-label="End date" style={{ ...input, colorScheme: 'dark' }} />
+        <button type="submit" className="st-btn" style={{ minHeight: 44, whiteSpace: 'nowrap' }}>Add event</button>
+      </div>
+    </form>
   );
 }

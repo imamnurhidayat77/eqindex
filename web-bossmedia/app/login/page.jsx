@@ -1,6 +1,6 @@
 import LoginClient from '../../components/LoginClient';
 
-export const metadata = { title: 'Sign in — Boss Media' };
+export const metadata = { title: 'Sign in', robots: { index: false } };
 
 // Sama persis dengan Figma (bossmedia/src/App.tsx -> photos.action)
 const FIGMA_LOGIN_VISUAL =

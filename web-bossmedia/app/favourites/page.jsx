@@ -52,10 +52,10 @@ export default function FavouritesPage() {
             <article className="event-media-card" key={x.id} style={{ position: 'relative' }}>
               <Link href={`/p/${x.id}`} style={{ display: 'block' }} aria-label={`${x.horse || ''} ${x.rider || ''}`.trim() || 'Photo'}>
                 {x.thumb_url || x.preview_url
-                  ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" />
+                  ? <img src={x.thumb_url || x.preview_url} alt={`${[x.horse, x.rider].filter(Boolean).join(' ridden by ') || 'Saved equestrian photo'}${x.event_name ? ` at ${x.event_name}` : ''}`} loading="lazy" />
                   : <span className="cover-fallback">Boss Media</span>}
                 <span className="media-card-footer">
-                  <small>{x.event_name || '—'}</small>
+                  <small title={x.event_name || ''}>{x.event_name || '—'}</small>
                   <span className="media-card-title">
                     <strong>{[x.horse, x.rider].filter(Boolean).join(' · ') || x.other_people || x.event_name || 'Untagged'}</strong>
                     <Icon name="arrow" size={15} />

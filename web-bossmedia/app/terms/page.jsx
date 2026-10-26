@@ -1,5 +1,7 @@
 import PageShell from '../../components/PageShell';
 
+export const metadata = { title: 'Terms' };
+
 export default function TermsPage() {
   return (
     <PageShell eyebrow="Legal" title="Terms."

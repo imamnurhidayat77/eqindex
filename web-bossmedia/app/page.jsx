@@ -4,6 +4,10 @@ import HomeClient from '../components/HomeClient';
 
 export const revalidate = 60;
 
+export const metadata = {
+  description: 'Find your event, then your photos: official NZ showjumping galleries by horse and rider — plus pre-booked reel coverage.',
+};
+
 export default async function Home() {
   const [items, { data: reelPhotos }] = await Promise.all([
     galleryEvents(),

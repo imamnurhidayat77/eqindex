@@ -1,7 +1,10 @@
 import { getJSON } from '../../lib/api';
 import ReelsClient from '../../components/ReelsClient';
 
-export const revalidate = 60;
+export const metadata = {
+  title: 'Reels',
+  description: 'Watch recent equestrian reels, then pre-book dedicated coverage of your own rounds.',
+};
 
 export default async function ReelsPage() {
   const [{ data: reels }, { data: events }] = await Promise.all([

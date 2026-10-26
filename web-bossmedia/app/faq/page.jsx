@@ -1,5 +1,7 @@
 import PageShell from '../../components/PageShell';
 
+export const metadata = { title: 'Help & FAQ' };
+
 const QA = [
   ['When will my photos be ready?', 'Galleries are published within 48 hours of the event. Custom reels start after payment — track them under My media.'],
   ['What do I actually download?', 'Watermark-free full resolution files. What you see in the preview is exactly what you get, minus the watermark.'],

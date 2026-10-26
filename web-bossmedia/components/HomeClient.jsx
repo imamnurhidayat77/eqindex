@@ -152,7 +152,7 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
           <div className="reels-grid">
             {reels.map((reel, i) => (
               <button className="reel-card" key={reel.id} onClick={() => setActiveReel(i)} aria-label={`Play reel featuring ${reel.rider}`}>
-                {reel.image ? <img src={reel.image} alt="" loading="lazy" /> : <span className="cover-fallback">Boss Media</span>}
+                {reel.image ? <img src={reel.image} alt={`${reel.rider || 'Rider'}${reel.horse ? ` on ${reel.horse}` : ''}${reel.event ? ` at ${reel.event}` : ''}`} loading="lazy" /> : <span className="cover-fallback">Boss Media</span>}
                 <span className="play"><Icon name="play" size={22} /></span>
                 <span className="reel-info"><strong>{reel.rider}</strong><small>{reel.event}</small></span>
               </button>

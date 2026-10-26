@@ -433,7 +433,14 @@ module.exports = function mountPublicRoutes(app) {
     // ?has_data=1 is accepted as an explicit alias of the default.
     const wantUpcoming = req.query.upcoming === '1' || req.query.upcoming === 'true';
     const wantFinished = req.query.finished === '1' || req.query.finished === 'true';
-    if (wantUpcoming) {
+    // ?prebook=1 → the pre-book listing, curated by admins via
+    // events.prebook_open: pinned (TRUE) always shows, hidden (FALSE) never
+    // shows, auto (NULL) follows the upcoming date rule. Implies
+    // include_empty (pinned events may have no results yet).
+    const wantPrebook = req.query.prebook === '1' || req.query.prebook === 'true';
+    if (wantPrebook) {
+      conds.push('((e.prebook_open IS NOT FALSE AND e.date_start > CURRENT_DATE) OR e.prebook_open IS TRUE)');
+    } else if (wantUpcoming) {
       // Fixtures not yet started. They have no results by definition,
       // so this implies include_empty.
       conds.push('e.date_start > CURRENT_DATE');
@@ -448,8 +455,9 @@ module.exports = function mountPublicRoutes(app) {
     // callers pass ?include_inactive=1.
     if (!req.query.include_inactive) conds.push('e.is_active IS NOT FALSE');
     const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
-    // Upcoming fixtures read soonest-first; everything else newest-first.
-    const orderDir = wantUpcoming ? 'ASC' : 'DESC';
+    // Upcoming fixtures (and the pre-book listing) read soonest-first;
+    // everything else newest-first.
+    const orderDir = (wantUpcoming || wantPrebook) ? 'ASC' : 'DESC';
     const { rows } = await pool.query(
       `SELECT e.*,
          (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id) AS class_count,

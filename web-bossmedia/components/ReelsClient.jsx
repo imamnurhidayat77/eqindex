@@ -56,7 +56,7 @@ export default function ReelsClient({ items, eventOptions }) {
               return (
                 <div key={r.id} style={{ position: 'relative' }}>
                 <Link href={href} aria-label={`Play ${r.rider} at ${r.event}`}>
-                  {r.image ? <img src={r.image} alt="" loading="lazy" /> : <span className="cover-fallback">Boss Media</span>}
+                  {r.image ? <img src={r.image} alt={`${r.rider || 'Rider'}${r.horse ? ` on ${r.horse}` : ''} at ${r.event || 'a New Zealand show'}`} loading="lazy" /> : <span className="cover-fallback">Boss Media</span>}
                   <span className="archive-reel-duration">{r.horse ? r.horse.slice(0, 12) : ''}</span>
                   <span className="archive-reel-play"><Icon name="play" size={22} /></span>
                   <span className="archive-reel-info"><strong>{r.rider}</strong><small>{r.event}</small></span>

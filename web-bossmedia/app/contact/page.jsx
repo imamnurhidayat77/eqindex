@@ -1,5 +1,7 @@
 import PageShell from '../../components/PageShell';
 
+export const metadata = { title: 'Contact' };
+
 export default function ContactPage() {
   const email = 'hello@bossmedia.nz';
   return (

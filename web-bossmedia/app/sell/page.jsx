@@ -1,6 +1,11 @@
 import Link from 'next/link';
 import PageShell from '../../components/PageShell';
 
+export const metadata = {
+  title: 'Sell your work',
+  description: 'Photographers: sell your equestrian photography on Boss Media. We handle shop, checkout and delivery.',
+};
+
 export default function SellPage() {
   const email = 'hello@bossmedia.nz';
   const subject = encodeURIComponent('Photographer request access — Boss Media');

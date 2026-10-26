@@ -1,5 +1,7 @@
 import PageShell from '../../components/PageShell';
 
+export const metadata = { title: 'Licensing' };
+
 const TIERS = [
   ['Social — NZ$15', '1417×945px, not printable. For social media posts.'],
   ['Web — NZ$35', '2400×1600px, not printable. For websites and presentations. Our most popular.'],
