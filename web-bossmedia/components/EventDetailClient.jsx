@@ -97,9 +97,11 @@ export default function EventDetailClient({ event, media }) {
                     <img src={m.thumb_url || m.preview_url} alt={`${m.horse || ''} ${m.rider || ''}`.trim() || 'Event media'} loading="lazy" />
                     <span className="media-kind">{isReel && <Icon name="play" size={13} />}{isReel ? 'Reel' : 'Photo'}</span>
                     <span className="media-card-footer">
-                      <small>{m.class_name ? m.class_name.slice(0, 8) : '—'}</small>
-                      <strong>{[m.rider, m.horse].filter(Boolean).join(' · ') || m.event_name || 'Untitled'}</strong>
-                      <Icon name="arrow" size={15} />
+                      <small>{m.class_name || m.event_name || '—'}</small>
+                      <span className="media-card-title">
+                        <strong>{[m.rider, m.horse].filter(Boolean).join(' · ') || m.other_people || m.event_name || 'Untitled'}</strong>
+                        <Icon name="arrow" size={15} />
+                      </span>
                     </span>
                   </Link>
                   <SaveButton id={m.id} />

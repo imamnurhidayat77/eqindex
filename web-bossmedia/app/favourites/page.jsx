@@ -55,9 +55,11 @@ export default function FavouritesPage() {
                   ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" />
                   : <span className="cover-fallback">Boss Media</span>}
                 <span className="media-card-footer">
-                  <small>{x.event_name ? x.event_name.slice(0, 10) : '—'}</small>
-                  <strong>{[x.horse, x.rider].filter(Boolean).join(' · ') || x.event_name || ''}</strong>
-                  <Icon name="arrow" size={15} />
+                  <small>{x.event_name || '—'}</small>
+                  <span className="media-card-title">
+                    <strong>{[x.horse, x.rider].filter(Boolean).join(' · ') || x.other_people || x.event_name || 'Untagged'}</strong>
+                    <Icon name="arrow" size={15} />
+                  </span>
                 </span>
               </Link>
               <button onClick={() => remove(x.id)} aria-label="Remove from favourites"

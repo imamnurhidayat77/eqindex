@@ -58,9 +58,11 @@ export default async function PhotosPage({ searchParams }) {
                 : <span className="cover-fallback">Boss Media</span>}
               <span className="media-kind">{x.kind === 'reel' && <Icon name="play" size={13} />}{x.kind === 'reel' ? 'Reel' : 'Photo'}</span>
               <span className="media-card-footer">
-                <small>{x.event_name ? x.event_name.slice(0, 10) : '—'}</small>
-                <strong>{[x.horse, x.rider].filter(Boolean).join(' · ') || x.event_name || 'Untagged'}</strong>
-                <Icon name="arrow" size={15} />
+                <small>{x.event_name || '—'}</small>
+                <span className="media-card-title">
+                  <strong>{[x.horse, x.rider].filter(Boolean).join(' · ') || x.other_people || x.event_name || 'Untagged'}</strong>
+                  <Icon name="arrow" size={15} />
+                </span>
               </span>
             </Link>
             <SaveButton id={x.id} />

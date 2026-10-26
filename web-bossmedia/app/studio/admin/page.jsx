@@ -5,7 +5,28 @@ import SearchSelect from '../../../components/SearchSelect';
 import { dayOf, nzdc, studio, useStudioUser } from '../../../lib/studio';
 
 const SECTIONS = [['commission', 'Commission'], ['users', 'Users'], ['applications', 'Applications'], ['events', 'Events']];
+// Pickable roles (mirrors the API allowlist — PHOTOGRAPHER and ORGANIZER are
+// granted only by approving an application, never picked here).
 const ROLES = ['PUBLIC', 'RIDER', 'COACH', 'OWNER', 'BREEDER', 'ADMIN'];
+
+const ROLE_BADGE = {
+  ADMIN: { color: '#e08a8a', border: '#6b3a3a' },
+  PHOTOGRAPHER: { color: '#e3b95c', border: '#6b5326' },
+  ORGANIZER: { color: '#8fc3e8', border: '#2f4d63' },
+};
+function RoleBadge({ role }) {
+  const s = ROLE_BADGE[role];
+  if (!s) return null;
+  return (
+    <span style={{
+      display: 'inline-block', marginTop: 4, fontSize: 10, fontWeight: 700,
+      letterSpacing: '.07em', color: s.color, border: `1px solid ${s.border}`,
+      borderRadius: 999, padding: '2px 8px',
+    }}>
+      {role}
+    </span>
+  );
+}
 
 export default function AdminPage() {
   return (
@@ -176,23 +197,40 @@ function Users({ selfId }) {
   );
 }
 
+const ROLE_FILTERS = [['', 'All'], ['PHOTOGRAPHER', 'Photographers'], ['ORGANIZER', 'Organizers'], ['ADMIN', 'Admins']];
+
 function UserTable({ rows, selfId, setRole, revoke }) {
   const [offset, setOffset] = useState(0);
+  const [roleFilter, setRoleFilter] = useState('');
   const PAGE = 15;
-  const safe = Math.min(offset, Math.max(0, (Math.ceil(rows.length / PAGE) - 1) * PAGE));
+  const list = roleFilter ? rows.filter((u) => u.role === roleFilter) : rows;
+  const safe = Math.min(offset, Math.max(0, (Math.ceil(list.length / PAGE) - 1) * PAGE));
   return (
         <div className="st-card" style={{ padding: '6px 22px' }}>
+          <div className="st-filters" role="tablist" aria-label="Filter by role" style={{ margin: '14px 0 4px' }}>
+            {ROLE_FILTERS.map(([v, label]) => {
+              const n = v ? rows.filter((u) => u.role === v).length : rows.length;
+              return (
+                <button key={v} role="tab" aria-selected={roleFilter === v} className="st-btn-ghost"
+                  style={{ minHeight: 34, ...(roleFilter === v ? { borderColor: '#fff' } : undefined })}
+                  onClick={() => { setRoleFilter(v); setOffset(0); }}>
+                  {label}{n > 0 ? ` (${n})` : ''}
+                </button>
+              );
+            })}
+          </div>
           <table className="st-table">
             <thead><tr><th>User</th><th>Role</th><th>Sessions</th><th>Joined</th><th></th></tr></thead>
             <tbody>
-              {rows.slice(safe, safe + PAGE).map((u) => (
+              {list.slice(safe, safe + PAGE).map((u) => (
                 <tr key={u.id}>
                   <td><div style={{ fontWeight: 600 }}>{u.name}</div>
-                    <div style={{ color: '#777', fontSize: 11 }}>{u.email}</div></td>
+                    <div style={{ color: '#777', fontSize: 11 }}>{u.email}</div>
+                    <RoleBadge role={u.role} /></td>
                   <td>
                     <SearchSelect value={u.role} disabled={u.id === selfId} onChange={(id) => setRole(u, id)}
                       placeholder="Role" clearable={false}
-                      options={ROLES.map((r) => ({ id: r, label: r }))} />
+                      options={(ROLES.includes(u.role) ? ROLES : [...ROLES, u.role]).map((r) => ({ id: r, label: r }))} />
                     {u.id === selfId && <div style={{ color: '#777', fontSize: 11, marginTop: 4 }}>That’s you</div>}
                   </td>
                   <td>{u.active_sessions}</td>
@@ -205,7 +243,8 @@ function UserTable({ rows, selfId, setRole, revoke }) {
               ))}
             </tbody>
           </table>
-          <Pager total={rows.length} limit={PAGE} offset={safe} onPage={setOffset} />
+          {!list.length && <p className="empty-note">No users with this role.</p>}
+          <Pager total={list.length} limit={PAGE} offset={safe} onPage={setOffset} />
             <p style={{ color: '#777', fontSize: 12, padding: '0 0 12px' }}>
               PHOTOGRAPHER and ORGANIZER are granted only by approving an application — they can’t be picked here.
             </p>
