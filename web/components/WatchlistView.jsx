@@ -49,10 +49,10 @@ function ThumbGrid({ photos }) {
   return (
     <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
       {photos.map((x) => (
-        <a key={x.id} href={bossPhotoUrl(x.id)} target="_blank" rel="noreferrer" aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Photo'} className="block rounded-md border border-line bg-card overflow-hidden no-underline hover:border-gold/50">
+        <a key={x.id} href={bossPhotoUrl(x.id)} target="_blank" rel="noreferrer" aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.other_people || x.event_name || 'Photo'} className="block rounded-md border border-line bg-card overflow-hidden no-underline hover:border-gold/50">
           <div className="aspect-square flex items-center justify-center overflow-hidden">
             {x.thumb_url || x.preview_url
-              ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" className="w-full h-full object-cover" />
+              ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || x.other_people || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" className="w-full h-full object-cover" />
               : <span className="text-lg" aria-hidden="true">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
           </div>
         </a>

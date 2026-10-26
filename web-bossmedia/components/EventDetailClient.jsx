@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Icon, SiteFooter, SiteHeader } from './figma';
 import GalleryPager from './GalleryPager';
+import SaveButton from './SaveButton';
 import SearchSelect from './SearchSelect';
 
 const LIMIT = 24;
@@ -90,7 +91,8 @@ export default function EventDetailClient({ event, media }) {
               {pageItems.map((m) => {
                 const isReel = m.kind === 'reel';
                 return (
-                  <Link className={`event-media-card ${isReel ? 'reel' : 'photo'}`} key={m.id}
+                  <article className={`event-media-card ${isReel ? 'reel' : 'photo'}`} key={m.id}>
+                  <Link style={{ display: 'block' }}
                     href={`/events/${event.slug}/media/${m.id}`} aria-label={`Preview ${m.horse || ''} ${m.rider || ''}`}>
                     <img src={m.thumb_url || m.preview_url} alt={`${m.horse || ''} ${m.rider || ''}`.trim() || 'Event media'} loading="lazy" />
                     <span className="media-kind">{isReel && <Icon name="play" size={13} />}{isReel ? 'Reel' : 'Photo'}</span>
@@ -100,6 +102,8 @@ export default function EventDetailClient({ event, media }) {
                       <Icon name="arrow" size={15} />
                     </span>
                   </Link>
+                  <SaveButton id={m.id} />
+                  </article>
                 );
               })}
             </div>

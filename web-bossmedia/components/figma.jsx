@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { cartCount, onCartChange } from '../lib/cart';
+import { favCount, onFavChange } from '../lib/favourites';
 import SearchSelect from './SearchSelect';
 
 export function Icon({ name, size = 18 }) {
@@ -19,6 +20,8 @@ export function Icon({ name, size = 18 }) {
     muted: (<><path d="M4 10v4h4l5 4V6l-5 4H4Z" /><path d="m16 10 5 5M21 10l-5 5" /></>),
     expand: (<><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" /></>),
     close: <path d="M5 5l14 14M19 5 5 19" />,
+    heart: <path d="M12 20.5C7 16.5 3 13.3 3 9.3 3 6.4 5.2 4.5 7.7 4.5c1.7 0 3.3.9 4.3 2.4 1-1.5 2.6-2.4 4.3-2.4 2.5 0 4.7 1.9 4.7 4.8 0 4-4 7.2-9 11.2Z" />,
+    'heart-fill': <path d="M12 20.5C7 16.5 3 13.3 3 9.3 3 6.4 5.2 4.5 7.7 4.5c1.7 0 3.3.9 4.3 2.4 1-1.5 2.6-2.4 4.3-2.4 2.5 0 4.7 1.9 4.7 4.8 0 4-4 7.2-9 11.2Z" fill="currentColor" stroke="none" />,
     menu: <path d="M3 7h18M3 17h18" />,
     chevron: <path d="m8 10 4 4 4-4" />,
     instagram: (<><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4" /><path d="M17.2 6.8h.01" /></>),
@@ -62,6 +65,8 @@ export function SiteHeader({ transparent = false }) {
     : pathname === '/reels' ? 'reels' : null;
 
   useEffect(() => { setCount(cartCount()); return onCartChange(() => setCount(cartCount())); }, [pathname]);
+  const [favs, setFavs] = useState(0);
+  useEffect(() => { setFavs(favCount()); return onFavChange(() => setFavs(favCount())); }, [pathname]);
   useEffect(() => {
     setAcctOpen(false);
     const ctl = new AbortController();
@@ -99,6 +104,9 @@ export function SiteHeader({ transparent = false }) {
           ))}
         </nav>
         <div className="header-actions">
+          <Link href="/favourites" className="icon-button" aria-label="View favourites">
+            <Icon name="heart" /><span>{favs}</span>
+          </Link>
           <Link href="/cart" className="icon-button cart" aria-label="View cart">
             <Icon name="cart" /><span>{count}</span>
           </Link>

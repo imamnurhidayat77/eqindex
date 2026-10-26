@@ -383,6 +383,11 @@ module.exports = function mountMediaRoutes(app) {
       set('rider_id', b.rider_id ? await resolveId('riders', b.rider_id, res) : null);
       if (b.rider_id && !vals[vals.length - 1]) return;
     }
+    // Free-text tag for people who are neither horse nor rider
+    // (judges, volunteers, crew). Display + search only.
+    if (b.other_people !== undefined) {
+      set('other_people', String(b.other_people || '').trim().slice(0, 200) || null);
+    }
     // Per-photo price overrides are retired (migration 059, tier-only
     // pricing) — silently ignore legacy clients still sending the field.
     if (b.license_default !== undefined) set('license_default', b.license_default || null);
@@ -562,6 +567,7 @@ module.exports = function mountMediaRoutes(app) {
       `SELECT m.id, m.kind, m.event_id, m.class_id, m.horse_id, m.rider_id,
           m.thumb_key, m.preview_key, m.width, m.height, m.taken_at,
           t.price_cents AS price_cents, m.license_default, m.moment, m.created_at,
+          m.other_people,
           e.name AS event_name, h.name AS horse, r.name AS rider,
           p.name AS photographer
         FROM media m LEFT JOIN events e ON e.id = m.event_id
@@ -1956,6 +1962,17 @@ module.exports = function mountMediaRoutes(app) {
       return res.status(400).json({ error: 'need {date_start, date_end} as YYYY-MM-DD' });
     }
     if (de < ds) return res.status(400).json({ error: 'date_end is before date_start' });
+    // Anti-collision with results events: same name + same start date means
+    // the event already exists — ask an admin to link it instead of cloning.
+    const dupe = await pool.query(
+      'SELECT id, name FROM events WHERE lower(name) = lower($1) AND date_start = $2 LIMIT 1',
+      [name, ds]);
+    if (dupe.rows.length) {
+      return res.status(409).json({
+        error: 'this event already exists — ask an admin to link it to your organization',
+        event_id: dupe.rows[0].id, event_name: dupe.rows[0].name,
+      });
+    }
     const y = Number(ds.slice(0, 4)), m = Number(ds.slice(5, 7));
     const season = m >= 8 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
     let slug = orgSlug(name, ds);

@@ -1192,9 +1192,10 @@ module.exports = function mountAdminRoutes(app) {
   app.get('/admin/events', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const q = `%${String(req.query.q || '').trim()}%`;
     const { rows } = await pool.query(
-      `SELECT e.*, (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id) AS class_count,
-         (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.event_id = e.id) AS round_count
-       FROM events e ${req.query.q ? 'WHERE e.name ILIKE $1' : ''}
+      `SELECT e.*, o.id AS organizer_id, o.name AS organizer_name,
+        (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id) AS class_count,
+        (SELECT COUNT(*)::INT FROM round_results rr WHERE rr.event_id = e.id) AS round_count
+       FROM events e LEFT JOIN organizers o ON o.id = e.organizer_id ${req.query.q ? 'WHERE e.name ILIKE $1' : ''}
        ORDER BY e.date_start DESC LIMIT ${req.query.q ? '50' : '200'}`,
       req.query.q ? [q] : []);
     res.json({ data: rows });
@@ -1450,6 +1451,36 @@ module.exports = function mountAdminRoutes(app) {
     } finally {
       client.release();
     }
+  }));
+
+  // ---- Organizers registry (for the admin console link UI) ----
+  app.get('/admin/organizers', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT o.*, u.email AS user_email,
+        (SELECT COUNT(*)::INT FROM events e WHERE e.organizer_id = o.id) AS events
+       FROM organizers o LEFT JOIN users u ON u.id = o.user_id
+       ORDER BY o.created_at DESC LIMIT 100`);
+    res.json({ data: rows });
+  }));
+
+  // Link an event to an organizer (claim), or unlink with {organizer_id: null}.
+  // This is how an organizer gets "our" results event without cloning it.
+  app.patch('/admin/events/:id/organizer', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { organizer_id } = req.body || {};
+    if (organizer_id !== null && organizer_id !== undefined && !UUID_RE.test(String(organizer_id))) {
+      return res.status(400).json({ error: 'organizer_id must be a UUID or null' });
+    }
+    const ev = await pool.query('SELECT id FROM events WHERE id = $1', [req.params.id]);
+    if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
+    if (organizer_id) {
+      const org = await pool.query('SELECT id FROM organizers WHERE id = $1 AND is_active', [String(organizer_id)]);
+      if (!org.rows.length) return res.status(404).json({ error: 'organizer not found or inactive' });
+    }
+    const { rows } = await pool.query(
+      'UPDATE events SET organizer_id = $2 WHERE id = $1 RETURNING id, name, organizer_id',
+      [req.params.id, organizer_id || null]);
+    audit(req, 'event.link_organizer', 'event', req.params.id, { organizer_id: organizer_id || null });
+    res.json({ data: rows[0] });
   }));
 
   // ---- Seasons master (events.season FK lands here — new seasons must

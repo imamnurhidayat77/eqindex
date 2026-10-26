@@ -4,7 +4,7 @@ import StudioShell, { Pager, useDialog, useToast } from '../../../components/stu
 import SearchSelect from '../../../components/SearchSelect';
 import { dayOf, nzdc, studio, useStudioUser } from '../../../lib/studio';
 
-const SECTIONS = [['commission', 'Commission'], ['users', 'Users'], ['applications', 'Applications']];
+const SECTIONS = [['commission', 'Commission'], ['users', 'Users'], ['applications', 'Applications'], ['events', 'Events']];
 const ROLES = ['PUBLIC', 'RIDER', 'COACH', 'OWNER', 'BREEDER', 'ADMIN'];
 
 export default function AdminPage() {
@@ -39,6 +39,7 @@ function AdminBody() {
       {section === 'commission' && <Commission />}
       {section === 'users' && <Users selfId={user.id} />}
       {section === 'applications' && <Applications />}
+      {section === 'events' && <Events />}
     </>
   );
 }
@@ -221,7 +222,9 @@ function parseApplication(message) {
   let cur = null;
   for (const raw of String(message || '').split('\n')) {
     const line = raw.trim();
-    if (!line || /^photographer application from/i.test(line)) continue;
+    // Header line ("…application from Name <email>") repeats the modal
+    // header — skip it so it doesn't render as a redundant Notes row.
+    if (!line || /^(photographer|organizer) application from/i.test(line)) continue;
     const m = line.match(/^([^:]{2,30}):\s*(.*)$/);
     if (m && APP_LABELS.includes(m[1].toLowerCase())) {
       cur = { label: m[1], value: m[2] };
@@ -246,11 +249,11 @@ function AppDetail({ c }) {
       <p style={{ color: '#999', fontSize: 13 }}>{c.email}</p>
       <dl style={{ display: 'grid', gap: 0, margin: '16px 0 4px', borderTop: '1px solid #2c2c2c', fontSize: 13 }}>
         {fields.map((f, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 12, padding: '10px 0', borderBottom: '1px solid #2c2c2c' }}>
+          <div key={i} style={{ padding: '10px 0', borderBottom: '1px solid #2c2c2c' }}>
             <dt style={{ color: '#777', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em' }}>
               {f.label || 'Notes'}
             </dt>
-            <dd style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+            <dd style={{ margin: '5px 0 0', color: '#eee', lineHeight: 1.6, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
               {f.label.toLowerCase() === 'portfolio' && /^https?:\/\//i.test(f.value.trim()) ? (
                 <a href={f.value.trim()} target="_blank" rel="noreferrer" style={{ color: '#fff', borderBottom: '1px solid #666' }}>
                   {f.value.trim()}
@@ -349,15 +352,93 @@ function Applications() {
           onMouseDown={(e) => { if (e.target === e.currentTarget) setViewing(null); }}>
           <div className="st-modal-card" role="document" style={{ maxWidth: 640 }}>
             <AppDetail c={viewing} />
-            <div className="st-modal-actions" style={{ flexWrap: 'wrap' }}>
-              <button className="st-btn-ghost" onClick={() => setViewing(null)}>Close</button>
-              {(viewing.entity_type === 'other' || viewing.entity_type === 'organizer') && status === 'open' && (
-                <button className="st-btn" onClick={() => approve(viewing)}>Approve</button>
-              )}
-              <button className="st-btn-ghost" onClick={() => decide(viewing, 'resolved')}>Resolve</button>
-              <button className="st-btn-ghost st-btn-danger" onClick={() => decide(viewing, 'rejected')}>Reject</button>
+            <div className="st-modal-actions" style={{ flexWrap: 'wrap', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button className="st-btn-ghost" onClick={() => setViewing(null)}>Close</button>
+                <button className="st-btn-ghost" title="Mark as handled without granting access"
+                  onClick={() => decide(viewing, 'resolved')}>Resolve</button>
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button className="st-btn-ghost st-btn-danger" onClick={() => decide(viewing, 'rejected')}>Reject</button>
+                {(viewing.entity_type === 'other' || viewing.entity_type === 'organizer') && status === 'open' && (
+                  <button className="st-btn" onClick={() => approve(viewing)}>Approve</button>
+                )}
+              </div>
             </div>
           </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ---------- events: link results events to organizers (claim) ---------- */
+function Events() {
+  const notify = useToast();
+  const dialog = useDialog();
+  const [q, setQ] = useState('');
+  const [rows, setRows] = useState(null);
+  const [orgs, setOrgs] = useState([]);
+
+  const search = (term = q) => {
+    studio.get(`/admin/events${term.trim() ? `?q=${encodeURIComponent(term.trim())}` : ''}`)
+      .then(setRows).catch((e) => notify(e.message, true));
+  };
+  useEffect(() => {
+    search('');
+    studio.get('/admin/organizers').then(setOrgs).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function link(ev, organizerId) {
+    const org = orgs.find((o) => o.id === organizerId);
+    const verb = organizerId ? `Link “${ev.name}” to ${org?.name || 'organizer'}?` : `Unlink “${ev.name}” from its organizer?`;
+    if (!await dialog.confirm({
+      title: verb,
+      message: organizerId ? 'Their dashboard, revenue share and pre-book listing follow this event.' : undefined,
+    })) return;
+    try {
+      const updated = await studio.patch(`/admin/events/${ev.id}/organizer`, { organizer_id: organizerId || null });
+      setRows((xs) => (xs || []).map((x) => (x.id === ev.id
+        ? { ...x, organizer_id: updated.organizer_id, organizer_name: org?.name || null } : x)));
+      notify(organizerId ? 'Event linked' : 'Event unlinked');
+    } catch (e) { notify(e.message, true); }
+  }
+
+  return (
+    <>
+      <form className="st-form" style={{ marginBottom: 16 }} onSubmit={(e) => { e.preventDefault(); search(); }}>
+        <label><span>Search events</span>
+          <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type event name…" autoComplete="off" /></label>
+      </form>
+      {rows === null ? <p className="empty-note">Loading…</p> : !rows.length ? (
+        <p className="empty-note">No events found.</p>
+      ) : (
+        <div className="st-card" style={{ padding: '6px 22px' }}>
+          <table className="st-table">
+            <thead><tr><th>Event</th><th>Date</th><th>Data</th><th>Organizer</th></tr></thead>
+            <tbody>
+              {rows.map((ev) => (
+                <tr key={ev.id}>
+                  <td><div style={{ fontWeight: 600 }}>{ev.name}</div>
+                    <div style={{ color: '#777', fontSize: 11 }}>{[ev.venue, ev.region].filter(Boolean).join(' · ')}</div></td>
+                  <td style={{ fontSize: 12 }}>{(ev.date_start || '').slice(0, 10)}</td>
+                  <td style={{ fontSize: 12, color: '#888' }}>
+                    {ev.class_count ? `${ev.class_count} classes` : 'no results'}
+                  </td>
+                  <td>
+                    <select value={ev.organizer_id || ''} onChange={(e) => link(ev, e.target.value)}
+                      aria-label={`Organizer for ${ev.name}`} style={{ background: '#0b0b0b', border: '1px solid #333', color: '#fff', fontSize: 12, padding: '8px', maxWidth: 220 }}>
+                      <option value="">— none —</option>
+                      {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p style={{ color: '#777', fontSize: 12, padding: '0 0 12px' }}>
+            Linking gives the organizer this event — no cloning, no name clashes.
+          </p>
         </div>
       )}
     </>

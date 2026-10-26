@@ -4,8 +4,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { addToCart } from '../lib/cart';
+import { addFavourite } from '../lib/favourites';
 import { checkoutBase, nzd } from '../lib/figma-data';
 import { Icon } from './figma';
+import { useToast } from './Toaster';
 import ReelPlayer from './ReelPlayer';
 
 // Honest per-tier subline when the DB has no custom description. Never
@@ -21,6 +23,7 @@ function licenseSubline(t) {
 export default function MediaPurchase({ media, eventName, eventSlug, backHref, backLabel }) {
   const router = useRouter();
   const pathname = usePathname();
+  const toast = useToast();
   const [tiers, setTiers] = useState([]);
   const [tierId, setTierId] = useState(media.license_default || null);
   const [bundle, setBundle] = useState(null); // rider/horse x event package
@@ -35,8 +38,9 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   const [added, setAdded] = useState(false);
 
   const isReel = media.kind === 'reel';
-  const rider = media.rider || 'Unknown rider';
-  const horse = media.horse || 'Unknown horse';
+  const rider = media.rider || media.other_people || 'Unknown rider';
+  const horse = media.horse || (media.rider || media.other_people ? '' : 'Unknown horse');
+  const subject = [horse, rider].filter(Boolean).join(' × ');
 
   useEffect(() => {
     fetch(`${API}/api/license-tiers?kind=${media.kind === 'reel' ? 'reel' : 'photo'}`)
@@ -172,7 +176,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
       kind: 'media',
       image: media.thumb_url || media.preview_url,
       type: `${isReel ? 'Reel' : 'Photo'} license`,
-      name: `${horse} × ${rider}`,
+      name: subject,
       detail: `${eventName} · ${t.label}`,
       priceCents: t.price_cents,
       mediaId: media.id,
@@ -180,14 +184,16 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
       tierLabel: t.label,
     });
     setAdded(true);
+    toast('Added to cart', { action: { label: 'View cart', href: '/cart' } });
   }
 
   function saveFavourite() {
-    try {
-      const raw = localStorage.getItem('bossmedia:favourites');
-      const ids = raw ? JSON.parse(raw) : [];
-      if (!ids.includes(media.id)) localStorage.setItem('bossmedia:favourites', JSON.stringify([...ids, media.id]));
-    } catch {}
+    if (addFavourite(media.id)) {
+      toast('Saved to favourites', { action: { label: 'View', href: '/favourites' } });
+    } else {
+      toast('Already in favourites', { type: 'info', action: { label: 'View', href: '/favourites' } });
+      return;
+    }
     router.push('/favourites');
   }
 
@@ -200,7 +206,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
       <div className="media-purchase-title">
         <div>
           <p className="eyebrow">{isReel ? 'Reel' : 'Photo'}{media.class_name ? ` · ${media.class_name}` : ''}</p>
-          <h1>{horse} <span aria-hidden="true">×</span> {rider}</h1>
+          <h1>{subject}</h1>
           <p>{eventName}</p>
         </div>
         <Link href={backHref} aria-label={`${backLabel} — back to ${eventName}`}><span aria-hidden="true">←</span> {backLabel}</Link>
@@ -210,9 +216,9 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
           <figure className="purchase-preview">
             {isReel ? (
               <span className="rp-wrap"><ReelPlayer src={media.preview_url} poster={media.thumb_url || undefined}
-                label={`${horse} × ${rider} reel`} /></span>
+                label={`${subject} reel`} /></span>
             ) : (
-              <img src={media.preview_url || media.thumb_url} alt={`${horse} and ${rider}`} loading="eager" />
+              <img src={media.preview_url || media.thumb_url} alt={subject} loading="eager" />
             )}
             <figcaption>
               <span>Boss Media preview</span>

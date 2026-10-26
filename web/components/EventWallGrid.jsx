@@ -115,7 +115,7 @@ export default function EventWallGrid({ initialRows = [], eventId, kind }) {
   }, [rows]);
 
   const filtered = useMemo(() => (rows || []).filter((x) =>
-    (!dq || [x.horse, x.rider, x.class_name].filter(Boolean).some((v) => v.toLowerCase().includes(dq)))), [rows, dq]);
+    (!dq || [x.horse, x.rider, x.class_name, x.other_people].filter(Boolean).some((v) => v.toLowerCase().includes(dq)))), [rows, dq]);
 
   // Picker options only know loaded rows; a pick refetches server-side so
   // nothing is ever missed. Typing in the search box keeps the pick.
@@ -148,10 +148,10 @@ export default function EventWallGrid({ initialRows = [], eventId, kind }) {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {filtered.map((x, i) => (
-              <a key={x.id} href={bossPhotoUrl(x.id)} target="_blank" rel="noreferrer" style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }} aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Photo'} className="rise group flex flex-col rounded-lg border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
+              <a key={x.id} href={bossPhotoUrl(x.id)} target="_blank" rel="noreferrer" style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }} aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.other_people || x.event_name || 'Photo'} className="rise group flex flex-col rounded-lg border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
                 <div className="relative aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                   {x.thumb_url || x.preview_url
-                    ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
+                    ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || x.other_people || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
                     : <span className="text-xl" aria-hidden="true">📷</span>}
                   {x.kind === 'reel' && (
                     <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-white">▶ Reel</span>
@@ -162,7 +162,7 @@ export default function EventWallGrid({ initialRows = [], eventId, kind }) {
                 </div>
                 <div className="flex grow flex-col gap-0.5 p-2.5">
                   <div className="text-[13px] font-bold text-white truncate group-hover:text-gold transition">
-                    {[x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Untagged'}
+                    {[x.horse, x.rider].filter(Boolean).join(' × ') || x.other_people || x.event_name || 'Untagged'}
                   </div>
                   <div className="text-[11px] text-faint truncate">{x.class_name || ''}</div>
                   <div className="mt-auto flex items-center justify-between pt-1">

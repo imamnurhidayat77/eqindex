@@ -13,7 +13,7 @@ export default async function ReelsPage() {
   const items = (reels || []).map((r) => ({
     id: r.id,
     // Never show "Unknown rider" on a card — fall back to horse, then event.
-    rider: r.rider || r.horse || r.event_name || 'Boss Media reel',
+    rider: r.rider || r.horse || r.other_people || r.event_name || 'Boss Media reel',
     horse: r.horse || '',
     event: r.event_name || '',
     eventSlug: r.event_id && slugById[r.event_id] ? slugById[r.event_id] : null,

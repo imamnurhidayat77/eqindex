@@ -2,8 +2,10 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../../lib/api';
+import { readFavourites, removeFavourite } from '../../lib/favourites';
 import { Icon } from '../../components/figma';
 import GalleryPager from '../../components/GalleryPager';
+import { useToast } from '../../components/Toaster';
 import PageShell from '../../components/PageShell';
 
 const LIMIT = 12;
@@ -11,12 +13,12 @@ const LIMIT = 12;
 // Favourites live in the browser (no account needed). Buying happens on
 // the photo page.
 export default function FavouritesPage() {
+  const toast = useToast();
   const [items, setItems] = useState(null);
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    let ids = [];
-    try { ids = JSON.parse(localStorage.getItem('bossmedia:favourites') || '[]'); } catch {}
+    const ids = readFavourites();
     if (!ids.length) { setItems([]); return; }
     Promise.all(ids.map((id) =>
       fetch(`${API}/photos/${id}`).then((r) => (r.ok ? r.json() : null)).catch(() => null)
@@ -24,12 +26,10 @@ export default function FavouritesPage() {
   }, []);
 
   function remove(id) {
+    const gone = (items || []).find((x) => x.id === id);
     setItems((xs) => (xs || []).filter((x) => x.id !== id));
-    try {
-      const ids = JSON.parse(localStorage.getItem('bossmedia:favourites') || '[]').filter((x) => x !== id);
-      localStorage.setItem('bossmedia:favourites', JSON.stringify(ids));
-      window.dispatchEvent(new CustomEvent('bm-cart'));
-    } catch {}
+    toast(`Removed${gone ? ` — ${[gone.horse, gone.rider].filter(Boolean).join(' · ') || 'photo'}` : ''}`, { type: 'info' });
+    removeFavourite(id);
   }
 
   const pages = Math.max(1, Math.ceil((items || []).length / LIMIT));

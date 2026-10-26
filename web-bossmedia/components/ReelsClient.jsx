@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Icon, SiteFooter, SiteHeader } from './figma';
 import GalleryPager from './GalleryPager';
+import SaveButton from './SaveButton';
 import SearchSelect from './SearchSelect';
 
 const LIMIT = 12;
@@ -53,12 +54,15 @@ export default function ReelsClient({ items, eventOptions }) {
             {pageItems.map((r) => {
               const href = r.eventSlug ? `/events/${r.eventSlug}/media/${r.id}?rider=${encodeURIComponent(r.rider)}&horse=${encodeURIComponent(r.horse)}` : `/p/${r.id}`;
               return (
-                <Link key={r.id} href={href} aria-label={`Play ${r.rider} at ${r.event}`}>
+                <div key={r.id} style={{ position: 'relative' }}>
+                <Link href={href} aria-label={`Play ${r.rider} at ${r.event}`}>
                   {r.image ? <img src={r.image} alt="" loading="lazy" /> : <span className="cover-fallback">Boss Media</span>}
                   <span className="archive-reel-duration">{r.horse ? r.horse.slice(0, 12) : ''}</span>
                   <span className="archive-reel-play"><Icon name="play" size={22} /></span>
                   <span className="archive-reel-info"><strong>{r.rider}</strong><small>{r.event}</small></span>
                 </Link>
+                <SaveButton id={r.id} />
+                </div>
               );
             })}
           </div>
@@ -71,13 +75,21 @@ export default function ReelsClient({ items, eventOptions }) {
             <button onClick={() => { setSearch(''); setEventFilter('All events'); setPage(1); }}>Clear filters</button>
           </div>
         )}
-        <section className="reels-booking-cta">
-          <div>
-            <p className="eyebrow">Your next ride</p>
-            <h2>Made to move.</h2>
+        <section className="reel-close" aria-label="Pre-book reel coverage">
+          <div className="reel-close-card">
+            <div className="reel-close-top">
+              <div>
+                <h2>Made to move.</h2>
+                <p>Pre-book a dedicated reel and let our team follow your full round.</p>
+              </div>
+              <Link href="/pre-book" className="booking-cta-btn">Book reel coverage <Icon name="arrow" size={17} /></Link>
+            </div>
+            <ol className="reel-close-steps">
+              <li><span aria-hidden="true">01</span><div><strong>Choose your event</strong><small>Browse open coverage dates</small></div></li>
+              <li><span aria-hidden="true">02</span><div><strong>Reserve your rider</strong><small>Tell us your classes and times</small></div></li>
+              <li><span aria-hidden="true">03</span><div><strong>Ride. We’ll cover it.</strong><small>Stills and reels in your private gallery</small></div></li>
+            </ol>
           </div>
-          <p>Pre-book a dedicated reel and let our team follow your full round.</p>
-          <Link href="/pre-book">Book reel coverage <Icon name="arrow" size={18} /></Link>
         </section>
       </main>
       <SiteFooter />

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getJSON } from '../../lib/api';
 import { Icon } from '../../components/figma';
+import SaveButton from '../../components/SaveButton';
 import PageShell from '../../components/PageShell';
 import QueryFilter from '../../components/QueryFilter';
 
@@ -18,7 +19,7 @@ export default async function PhotosPage({ searchParams }) {
   const { data } = await getJSON(`/photos?${p}`).catch(() => ({ data: [] }));
   let rows = data || [];
   const q = (sp.q || '').trim().toLowerCase();
-  if (q) rows = rows.filter((x) => [x.horse, x.rider, x.event_name].filter(Boolean).some((v) => v.toLowerCase().includes(q)));
+  if (q) rows = rows.filter((x) => [x.horse, x.rider, x.event_name, x.other_people].filter(Boolean).some((v) => v.toLowerCase().includes(q)));
   const hasNext = !q && rows.length > LIMIT;
   if (hasNext) rows = rows.slice(0, LIMIT);
   const base = { ...(sp.q ? { q: sp.q } : {}), ...(sp.kind ? { kind: sp.kind } : {}) };
@@ -49,7 +50,8 @@ export default async function PhotosPage({ searchParams }) {
       ) : (
         <div className="event-media-grid">
           {rows.map((x) => (
-            <Link className="event-media-card" key={x.id} href={`/p/${x.id}`}
+            <article className="event-media-card" key={x.id}>
+            <Link style={{ display: 'block' }} href={`/p/${x.id}`}
               aria-label={`${x.horse || ''} ${x.rider || ''}`.trim() || 'Photo'}>
               {x.thumb_url || x.preview_url
                 ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" />
@@ -61,6 +63,8 @@ export default async function PhotosPage({ searchParams }) {
                 <Icon name="arrow" size={15} />
               </span>
             </Link>
+            <SaveButton id={x.id} />
+            </article>
           ))}
         </div>
       )}

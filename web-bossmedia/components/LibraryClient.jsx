@@ -142,7 +142,7 @@ function ItemCard({ m, checked, onCheck, onOpen }) {
       {m.thumb_url || m.preview_url ? <img src={m.thumb_url || m.preview_url} alt="" loading="lazy" /> : <span className="cover-fallback">No preview</span>}
       <footer>
         <span><Chip status={m.status} /> {m.kind === 'reel' && <Chip status="reel" />}</span>
-        <strong>{[m.horse, m.rider].filter(Boolean).join(' · ') || 'Untagged'}</strong>
+          <strong>{[m.horse, m.rider].filter(Boolean).join(' · ') || m.other_people || 'Untagged'}</strong>
         <span>{m.event_name || 'No event'} · 👁 {m.view_count || 0} · 🛒 {m.purchase_count || 0}</span>
         <button className="st-link" style={{ background: 'none', border: 0, borderBottom: '1px solid #555', padding: 0, paddingBottom: 3, cursor: 'pointer', justifySelf: 'start', marginTop: 4, color: '#bbb', fontSize: 12 }} onClick={onOpen}>
           Tag &amp; publish

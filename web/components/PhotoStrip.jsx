@@ -30,7 +30,7 @@ export default function PhotoStrip({ query, title = 'Photos', moreHref = '/photo
       </div>
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
         {shown.map((x) => {
-          const caption = [x.horse, x.rider].filter(Boolean).join(' × ') || x.event_name || 'Untagged';
+          const caption = [x.horse, x.rider].filter(Boolean).join(' × ') || x.other_people || x.event_name || 'Untagged';
           return (
             <a key={x.id} href={bossPhotoUrl(x.id)} target="_blank" rel="noreferrer" aria-label={`${caption} — opens on Boss Media`}
               className="group flex flex-col rounded-lg border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">

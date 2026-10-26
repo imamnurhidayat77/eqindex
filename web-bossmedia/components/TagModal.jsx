@@ -14,6 +14,7 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
   const [riderId, setRiderId] = useState(m.rider_id || '');
   const [horse, setHorse] = useState(m.horse || '');
   const [horseId, setHorseId] = useState(m.horse_id || '');
+  const [others, setOthers] = useState(m.other_people || '');
   const [moment, setMoment] = useState(m.moment || '');
   const [tier, setTier] = useState(m.license_default || '');
   const [busy, setBusy] = useState(false);
@@ -38,7 +39,7 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
   async function save() {
     setBusy(true);
     try {
-      const body = { event_id: ev || null, rider_id: riderId || undefined, horse_id: horseId || undefined, moment: moment || null, license_default: tier || null };
+      const body = { event_id: ev || null, rider_id: riderId || undefined, horse_id: horseId || undefined, other_people: others.trim() || null, moment: moment || null, license_default: tier || null };
       // Fall back to typed names only when no id picked: backend resolves slugs, not names.
       if (!riderId && rider) { notify('Pick a rider from the suggestions (names alone don’t resolve)', true); setBusy(false); return; }
       if (!horseId && horse) { notify('Pick a horse from the suggestions (names alone don’t resolve)', true); setBusy(false); return; }
@@ -81,7 +82,7 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
               : <span className="st-modal-thumb-fallback">No preview</span>}
             <div>
               <p className="eyebrow">Tag &amp; publish</p>
-              <h3>{[m.horse, m.rider].filter(Boolean).join(' · ') || 'Untagged asset'}</h3>
+              <h3>{[m.horse, m.rider].filter(Boolean).join(' · ') || m.other_people || 'Untagged asset'}</h3>
               <small>{m.event_name || 'No event'} · <Chip status={m.status} /></small>
             </div>
           </div>
@@ -117,6 +118,11 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
               onChange={(id, o) => { setHorseId(id || ''); setHorse(o?.label || ''); }}
               placeholder="Type to search horses…"
               emptyHint="Type at least 2 letters to search horses" />
+          </label>
+          <label>
+            <span>Other people (judges, volunteers…)</span>
+            <input value={others} onChange={(e) => setOthers(e.target.value)}
+              placeholder="e.g. Judge S. Lee" maxLength={200} aria-label="Other people" />
           </label>
           <div className="st-modal-row">
             <label>

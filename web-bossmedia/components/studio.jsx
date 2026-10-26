@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useStudioUser } from '../lib/studio';
+import { toast } from './Toaster';
 import { Icon, SiteFooter, SiteHeader } from './figma';
 
 const ToastCtx = createContext(() => {});
@@ -23,13 +24,12 @@ const TABS = [
 export default function StudioShell({ active, kpis, children }) {
   const { user, state } = useStudioUser();
   const pathname = usePathname();
-  const [toasts, setToasts] = useState([]);
   const [dialog, setDialog] = useState(null);
 
+  // All studio feedback goes through the global Toaster (same design as
+  // the shop). Signature kept so existing call sites don't change.
   const notify = useCallback((msg, err = false) => {
-    const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, msg, err }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4200);
+    toast(String(msg), err ? { type: 'error' } : { type: 'success' });
   }, []);
 
   const confirm = useCallback((opts) => new Promise((resolve) => {
@@ -118,9 +118,6 @@ export default function StudioShell({ active, kpis, children }) {
         </ToastCtx.Provider>
       </main>
       <SiteFooter />
-      <div className="st-toast-wrap" aria-live="polite">
-        {toasts.map((t) => <div key={t.id} className={t.err ? 'st-toast err' : 'st-toast'}>{t.msg}</div>)}
-      </div>
       {dialog && (
         <div className="st-modal" role="dialog" aria-modal="true" aria-label={dialog.title}
           onMouseDown={(e) => { if (e.target === e.currentTarget) closeDialog(dialog.kind === 'confirm' ? false : null); }}>

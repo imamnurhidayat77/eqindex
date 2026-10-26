@@ -6,9 +6,11 @@ import { API } from '../lib/api';
 import { removeFromCart, useCart } from '../lib/cart';
 import { checkoutBase, nzd } from '../lib/figma-data';
 import { Icon, SiteFooter, SiteHeader } from './figma';
+import { useToast } from './Toaster';
 
 export default function CartClient() {
   const router = useRouter();
+  const toast = useToast();
   const [items] = useCart();
   const [meEmail, setMeEmail] = useState(null);
   const [meChecked, setMeChecked] = useState(false);
@@ -129,7 +131,7 @@ export default function CartClient() {
                     <h2>{item.name}</h2>
                     <span>{item.detail}</span>
                     <div className="cart-item-actions">
-                      <button onClick={() => removeFromCart(item.key)}>Remove</button>
+                      <button onClick={() => { removeFromCart(item.key); toast(`Removed — ${item.name}`, { type: 'info' }); }}>Remove</button>
                       {!meChecked ? (
                         <button disabled>Buy now</button>
                       ) : !meEmail ? (

@@ -6,6 +6,7 @@ import DateField from './DateField';
 import { addToCart } from '../lib/cart';
 import { nzd } from '../lib/figma-data';
 import { Icon, SiteFooter, SiteHeader } from './figma';
+import { useToast } from './Toaster';
 
 const MUSIC = [
   ['choose_for_me', 'Choose for me', 'Our editor selects a licensed track that fits.'],
@@ -14,6 +15,7 @@ const MUSIC = [
 ];
 
 export default function PreBookClient({ events, products }) {
+  const toast = useToast();
   const [eventId, setEventId] = useState(null);
   const [manual, setManual] = useState(null); // {name, date, venue} when event added by hand
   const [productId, setProductId] = useState(products[0]?.id || '');
@@ -98,6 +100,7 @@ export default function PreBookClient({ events, products }) {
       reelPayload: payload,
     });
     setAdded(true);
+    toast('Coverage added to cart', { action: { label: 'View cart', href: '/cart' } });
   }
 
   if (!products.length) {
