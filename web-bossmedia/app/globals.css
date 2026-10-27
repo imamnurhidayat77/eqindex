@@ -1353,11 +1353,15 @@ button.license-option { width: 100%; padding: 13px; background: transparent; cur
 .ss-search input { width: 100%; height: 46px; background: transparent; border: 0; outline: 0; color: #fff; font-size: 14px; }
 .ss-search input::placeholder { color: #9a9a9a; }
 .ss-list { max-height: 264px; overflow-y: auto; padding: 6px; }
-.ss-opt { display: grid; gap: 2px; width: 100%; text-align: left; background: none; border: 0; padding: 10px 12px; cursor: pointer; color: #ddd; }
-.ss-opt.hi { background: #222; }
+.ss-opt { display: grid; gap: 2px; width: 100%; min-height: 46px; align-content: center; text-align: left; background: none; border: 0; border-left: 2px solid transparent; padding: 9px 12px 9px 10px; cursor: pointer; color: #ddd; }
+.ss-opt.hi { background: #2b2b2b; }
+.ss-opt.hi .ss-opt-label { color: #fff; }
+.ss-opt.sel { border-left-color: #fff; }
 .ss-opt.sel .ss-opt-label { color: #fff; font-weight: 700; }
+.ss-opt.sel .ss-opt-label::before { content: '✓ '; }
 .ss-opt-label { font-size: 13px; }
 .ss-opt-sub { font-size: 11px; color: #888; }
+.ss-search:focus-within { border-bottom-color: #777; }
 .ss-empty { padding: 14px 12px; color: #777; font-size: 13px; }
 .ss-add { display: block; width: 100%; text-align: left; margin-top: 4px; padding: 11px 12px; background: none; border: 0; border-top: 1px solid #2c2c2c; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
 .ss-add:hover { background: #222; }

@@ -190,7 +190,9 @@ module.exports = function mountMediaRoutes(app) {
 
   // Single admin media row (finalize polling target).
   app.get('/admin/media/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
-    const { rows } = await pool.query('SELECT * FROM media WHERE id = $1', [req.params.id]);
+    const { rows } = await pool.query(
+      `SELECT m.*, c.name AS class_name FROM media m LEFT JOIN classes c ON c.id = m.class_id WHERE m.id = $1`,
+      [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'media not found' });
     const r = rows[0];
     try {
@@ -509,6 +511,16 @@ module.exports = function mountMediaRoutes(app) {
   }
 
   // ---- Public catalog (published only; previews/thumbs are CDN-public) ----
+  // Classes of one event for the studio tag picker (photographers tag
+  // photos; admins pass needRole too). Optional tag — photos work without it.
+  app.get('/api/event-classes', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+    if (!UUID_RE.test(String(req.query.event_id || ''))) return res.status(400).json({ error: 'need ?event_id=' });
+    const { rows } = await pool.query(
+      'SELECT id, name, class_date, height_cm FROM classes WHERE event_id = $1 ORDER BY class_date NULLS LAST, name',
+      [req.query.event_id]);
+    res.json({ data: rows });
+  }));
+
   // License tiers with prices (public by design — buyers pick one, Sportfot-style).
   // Hidden tiers (admin Pricing) are excluded — buyers can't pick or pay them.
   app.get('/api/license-tiers', asyncH(async (req, res) => {

@@ -15,6 +15,16 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
   const [horse, setHorse] = useState(m.horse || '');
   const [horseId, setHorseId] = useState(m.horse_id || '');
   const [others, setOthers] = useState(m.other_people || '');
+  const [classId, setClassId] = useState(m.class_id || '');
+  const [cls, setCls] = useState(m.class_name || '');
+  const [classes, setClasses] = useState([]);
+
+  // Classes belong to the event — reload when it changes.
+  useEffect(() => {
+    if (!ev) { setClasses([]); return; }
+    fetch(`${API}/api/event-classes?event_id=${encodeURIComponent(ev)}`, { credentials: 'include' })
+      .then((r) => r.json()).then((j) => setClasses(j.data || [])).catch(() => setClasses([]));
+  }, [ev]);
   const [moment, setMoment] = useState(m.moment || '');
   const [tier, setTier] = useState(m.license_default || '');
   const [busy, setBusy] = useState(false);
@@ -39,7 +49,7 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
   async function save() {
     setBusy(true);
     try {
-      const body = { event_id: ev || null, rider_id: riderId || undefined, horse_id: horseId || undefined, other_people: others.trim() || null, moment: moment || null, license_default: tier || null };
+      const body = { event_id: ev || null, rider_id: riderId || undefined, horse_id: horseId || undefined, class_id: classId || null, other_people: others.trim() || null, moment: moment || null, license_default: tier || null };
       // Fall back to typed names only when no id picked: backend resolves slugs, not names.
       if (!riderId && rider) { notify('Pick a rider from the suggestions (names alone don’t resolve)', true); setBusy(false); return; }
       if (!horseId && horse) { notify('Pick a horse from the suggestions (names alone don’t resolve)', true); setBusy(false); return; }
@@ -94,7 +104,7 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
             <SearchSelect
               options={[{ id: '', label: '— No event —' }, ...events.map((e) => ({ id: e.id, label: e.name }))]}
               value={ev || ''}
-              onChange={(id) => setEv(id || '')}
+              onChange={(id) => { setEv(id || ''); setClassId(''); setCls(''); }}
               placeholder="Search events…" />
           </label>
           <label>
@@ -118,6 +128,19 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
               onChange={(id, o) => { setHorseId(id || ''); setHorse(o?.label || ''); }}
               placeholder="Type to search horses…"
               emptyHint="Type at least 2 letters to search horses" />
+          </label>
+          <label>
+            <span>Class (optional)</span>
+            <SearchSelect
+              options={classes.map((c) => ({
+                id: c.id, label: c.name,
+                sub: [c.class_date, c.height_cm ? `${c.height_cm}cm` : ''].filter(Boolean).join(' · '),
+              }))}
+              value={classId || null}
+              selectedOption={classId ? { id: classId, label: cls || 'Selected class' } : null}
+              onChange={(id, o) => { setClassId(id || ''); setCls(o?.label || ''); }}
+              placeholder={ev ? 'Pick a class…' : 'Pick an event first'}
+              emptyHint="No classes for this event" />
           </label>
           <label>
             <span>Other people (judges, volunteers…)</span>

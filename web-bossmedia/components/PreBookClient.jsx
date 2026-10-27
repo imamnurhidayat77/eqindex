@@ -17,7 +17,6 @@ const MUSIC = [
 export default function PreBookClient({ events, products }) {
   const toast = useToast();
   const [eventId, setEventId] = useState(null);
-  const [manual, setManual] = useState(null); // {name, date, venue} when event added by hand
   const [productId, setProductId] = useState(products[0]?.id || '');
   const [music, setMusic] = useState('choose_for_me');
   const [added, setAdded] = useState(false);
@@ -36,21 +35,12 @@ export default function PreBookClient({ events, products }) {
     sub: [e.date_start ? new Date(e.date_start).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' }) : '', e.venue].filter(Boolean).join(' · '),
   })), [upcoming]);
 
-  const event = manual ? null : upcoming.find((e) => String(e.id) === String(eventId)) || null;
+  const event = upcoming.find((e) => String(e.id) === String(eventId)) || null;
   const product = products.find((p) => String(p.id) === String(productId)) || products[0];
   const musicLabel = MUSIC.find(([v]) => v === music)?.[1] || '';
 
   const summary = useMemo(() => {
     if (!product) return null;
-    if (manual) {
-      return {
-        eventName: manual.name || 'Custom event',
-        eventMeta: [manual.date ? new Date(`${manual.date}T00:00`).toLocaleDateString('en-NZ', { day: 'numeric', month: 'long', year: 'numeric' }) : '', manual.venue].filter(Boolean).join(' · ') || 'Date TBC',
-        coverage: product.name,
-        delivery: [product.coverage, product.includes_raw ? 'Raw footage included' : null].filter(Boolean).join(' · ') || product.description || '',
-        total: nzd(product.price_cents),
-      };
-    }
     if (!event) return null;
     const d = event.date_start ? new Date(event.date_start) : null;
     return {
@@ -60,21 +50,18 @@ export default function PreBookClient({ events, products }) {
       delivery: [product.coverage, product.includes_raw ? 'Raw footage included' : null].filter(Boolean).join(' · ') || product.description || '',
       total: nzd(product.price_cents),
     };
-  }, [event, manual, product]);
+  }, [event, product]);
 
   function collect(form) {
     const fd = new FormData(form);
-    const customLine = manual
-      ? `Custom event: ${manual.name}${manual.date ? ` on ${manual.date}` : ''}${manual.venue ? ` at ${manual.venue}` : ''}`
-      : '';
-    const notes = [customLine, String(fd.get('notes') || '')].filter(Boolean).join('\n');
+    const notes = String(fd.get('notes') || '');
     return {
       product_id: product?.id,
       event_id: event?.id || undefined,
       horse_name: String(fd.get('horse') || ''),
       class_name: String(fd.get('className') || ''),
       back_number: String(fd.get('backNumber') || ''),
-      shooting_date: String(fd.get('date') || manual?.date || ''),
+      shooting_date: String(fd.get('date') || ''),
       phone: String(fd.get('phone') || ''),
       // No email field — receipt and timing confirmation go to the account email (see /api/reel-orders fallback).
       music_mode: music,
@@ -141,41 +128,16 @@ export default function PreBookClient({ events, products }) {
                 <div><h2>Event &amp; coverage</h2><p>Choose an event and the coverage you need.</p></div>
               </div>
               <label className="booking-field full">
-                <span>Event — upcoming dates only</span>
-                {manual ? (
-                  <div className="st-card" style={{ padding: 16 }}>
-                    <div className="st-form">
-                      <label><span>Event name</span>
-                        <input value={manual.name} onChange={(e) => { setManual({ ...manual, name: e.target.value }); setAdded(false); }} placeholder="e.g. Mystery Creek Spring Show" />
-                      </label>
-                      <div className="st-form-row">
-                        <label><span>Date</span>
-                          <input type="date" value={manual.date} onChange={(e) => { setManual({ ...manual, date: e.target.value }); setAdded(false); }} />
-                        </label>
-                        <label><span>Venue (optional)</span>
-                          <input value={manual.venue} onChange={(e) => { setManual({ ...manual, venue: e.target.value }); setAdded(false); }} placeholder="e.g. Mystery Creek" />
-                        </label>
-                      </div>
-                    </div>
-                    <button type="button" className="st-link" style={{ background: 'none', border: 0, borderBottom: '1px solid #555', padding: 0, paddingBottom: 3, color: '#aaa', fontSize: 12, cursor: 'pointer', marginTop: 12 }}
-                      onClick={() => setManual(null)}>
-                      ← Pick from the event list instead
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <SearchSelect
-                      options={options}
-                      value={eventId}
-                      onChange={(id) => { setEventId(id); setAdded(false); }}
-                      placeholder={options.length ? 'Search upcoming events…' : 'No upcoming events — add yours manually'}
-                      onRequestCustom={(name) => { setManual({ name, date: '', venue: '' }); setEventId(null); setAdded(false); }}
-                    />
-                    <span style={{ marginTop: 8, display: 'block', color: '#9a9a9a', fontSize: 12 }}>
-                      Can’t find it? Type the name, hit Enter, and add it manually.
-                    </span>
-                  </>
-                )}
+                <span>Event</span>
+                <SearchSelect
+                  options={options}
+                  value={eventId}
+                  onChange={(id) => { setEventId(id); setAdded(false); }}
+                  placeholder={options.length ? 'Search events…' : 'No events open for pre-book right now'}
+                />
+                <span style={{ marginTop: 8, display: 'block', color: '#9a9a9a', fontSize: 12 }}>
+                  Only events opened by Boss Media can be booked.
+                </span>
               </label>
               <div className="coverage-options">
                 {products.map((p) => (
@@ -201,7 +163,7 @@ export default function PreBookClient({ events, products }) {
                 <label className="booking-field"><span>Horse</span><input name="horse" required placeholder="e.g. Apollo" /></label>
                 <label className="booking-field"><span>Class</span><input name="className" placeholder="e.g. 1.30m Grand Prix" /></label>
                 <label className="booking-field"><span>Back number</span><input name="backNumber" placeholder="e.g. 214" /></label>
-                <label className="booking-field"><span>Competition date</span><DateField name="date" key={event?.id || manual?.date || 'none'} defaultValue={(manual?.date || event?.date_start || '').slice(0, 10)} /></label>
+                <label className="booking-field"><span>Competition date</span><DateField name="date" key={event?.id || 'none'} defaultValue={(event?.date_start || '').slice(0, 10)} /></label>
                 <label className="booking-field"><span>Phone</span><input name="phone" required type="tel" placeholder="+64" /></label>
               </div>
             </section>
@@ -249,7 +211,7 @@ export default function PreBookClient({ events, products }) {
                 <div className="summary-total"><span>Total</span><strong>{summary.total}</strong></div>
               </>
             )}
-            <button className={added ? 'added' : ''} disabled={!event && !manual?.name?.trim()} title={!event && !manual?.name?.trim() ? 'Pick an event or add yours manually first' : undefined} onClick={() => formRef.current?.requestSubmit()}>
+            <button className={added ? 'added' : ''} disabled={!event} title={!event ? 'Pick an event from the list first' : undefined} onClick={() => formRef.current?.requestSubmit()}>
               {added ? 'Booking added' : 'Add booking to cart'}
               <Icon name={added ? 'cart' : 'arrow'} size={18} />
             </button>
