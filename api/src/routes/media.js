@@ -2692,9 +2692,44 @@ module.exports = function mountMediaRoutes(app) {
     if (paid.rows[0].n > 0) {
       return res.status(409).json({ error: 'has paid purchases — archive instead of deleting' });
     }
-    await pool.query('DELETE FROM package_items WHERE media_id = $1', [req.params.id]);
-    await pool.query('DELETE FROM media WHERE id = $1', [req.params.id]);
+    // In-flight checkouts must settle first: deleting now would take the
+    // money with no file to unlock when their webhook lands.
+    const pending = await pool.query(
+      `SELECT COUNT(*)::INT AS n FROM purchases
+        WHERE status = 'pending' AND (media_id = $1 OR package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))`,
+      [req.params.id]
+    );
+    if (pending.rows[0].n > 0) {
+      return res.status(409).json({ error: 'has pending checkouts — archive instead for now' });
+    }
+    const linked = await pool.query(
+      `SELECT COUNT(*)::INT AS n FROM reel_orders WHERE media_id = $1 AND status <> 'cancelled'`,
+      [req.params.id]
+    );
+    if (linked.rows[0].n > 0) {
+      return res.status(409).json({ error: 'linked to a reel order — archive instead' });
+    }
     const m = cur.rows[0];
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Dead history (refunded/cancelled) keeps its rows but releases the
+      // file link — otherwise its FK blocks the delete.
+      await client.query(
+        `UPDATE purchases SET media_id = NULL WHERE media_id = $1 AND status IN ('refunded', 'cancelled')`,
+        [req.params.id]);
+      await client.query(
+        `UPDATE reel_orders SET media_id = NULL WHERE media_id = $1 AND status = 'cancelled'`,
+        [req.params.id]);
+      await client.query('DELETE FROM package_items WHERE media_id = $1', [req.params.id]);
+      await client.query('DELETE FROM media WHERE id = $1', [req.params.id]);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
     try {
       await mediaStore.deleteKeys([m.storage_key, m.preview_key, m.thumb_key, m.poster_key]);
     } catch (e) { console.error('[media.delete] R2 cleanup failed:', e.message); }

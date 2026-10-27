@@ -80,8 +80,9 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
     if (!ok) return;
     try { await studio.del(`/admin/media/${m.id}`); onDeleted(); notify('Deleted'); }
     catch (e) {
-      // Sold photos can't be deleted (buyers keep access) — offer archive.
-      if (String(e.message || '').includes('paid purchases')) {
+      // Paid/pending/reel-linked photos can't be deleted (buyers keep
+      // access) — the API message always offers archiving in that case.
+      if (String(e.message || '').includes('archive instead')) {
         const arch = await dialog.confirm({ title: 'Already sold — archive instead?', message: 'Archiving removes it from the shop while buyers keep their files.', confirmLabel: 'Archive' });
         if (arch) { await setStatus('archived'); return; }
         return;
