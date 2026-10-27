@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
-import StudioShell, { Chip, Pager, useDialog, useToast } from './studio';
+import StudioShell, { Chip, Pager } from './studio';
+import { useNotify } from './Toaster';
+import { useConfirm } from './ConfirmModal';
 import StudioTable from './StudioTable';
 import SearchSelect from './SearchSelect';
 import { API } from '../lib/api';
@@ -22,7 +24,7 @@ function qualityHelp(v) {
 }
 
 export default function PricingClient({ events }) {
-  const notify = useToast();
+  const notify = useNotify();
   const [tiers, setTiers] = useState(null);
   const [packages, setPackages] = useState(null);
   const [products, setProducts] = useState(null);
@@ -104,8 +106,7 @@ function StatusSelect({ value, onChange }) {
   );
 }
 
-function useReprice(applyPrice) {
-  const dialog = useDialog();
+function useReprice(applyPrice, dialog) {
   return async (item) => {
     const v = await dialog.prompt({
       title: 'Set a new price',
@@ -121,8 +122,8 @@ function useReprice(applyPrice) {
 
 /* ---------- license tiers (split photo / reel by applies_to) ---------- */
 function TierTable({ kind, tiers, reload }) {
-  const notify = useToast();
-  const dialog = useDialog();
+  const notify = useNotify();
+  const [confirmUI, dialog] = useConfirm();
   const [edits, setEdits] = useState({});
   const [offset, setOffset] = useState(0);
   const PAGE = 10;
@@ -205,13 +206,14 @@ function TierTable({ kind, tiers, reload }) {
       </tbody>
     </table>
     <Pager total={list.length} limit={PAGE} offset={safe} onPage={setOffset} />
+    {confirmUI}
     </>
   );
 }
 const inp = { background: '#0b0b0b', border: '1px solid #333', color: '#fff', fontSize: 13, minHeight: 36, padding: '0 8px' };
 
 function TierForm({ kind, onDone }) {
-  const notify = useToast();
+  const notify = useNotify();
   const [f, setF] = useState({ label: '', price: '', quality: 'original' });
   const previewId = slug(f.label);
   const submit = async () => {
@@ -252,12 +254,12 @@ function TierForm({ kind, onDone }) {
 
 /* ---------- packages ---------- */
 function PackageTable({ packages, reload }) {
-  const notify = useToast();
-  const dialog = useDialog();
+  const notify = useNotify();
+  const [confirmUI, dialog] = useConfirm();
   const [offset, setOffset] = useState(0);
   const PAGE = 10;
   const safe = Math.min(offset, Math.max(0, (Math.ceil(((packages || []).length) / PAGE) - 1) * PAGE));
-  const reprice = useReprice((p, price_cents) => save(p, { price_cents }));
+  const reprice = useReprice((p, price_cents) => save(p, { price_cents }), dialog);
   if (packages === null) return <p className="empty-note">Loading bundles…</p>;
   if (!packages.length) return <p className="empty-note">No bundles yet — make one below and it will appear in the shop.</p>;
   const save = async (p, body) => {
@@ -291,12 +293,13 @@ function PackageTable({ packages, reload }) {
       </tbody>
     </table>
     <Pager total={(packages || []).length} limit={PAGE} offset={safe} onPage={setOffset} />
+    {confirmUI}
     </>
   );
 }
 
 function PackageForm({ events, onDone }) {
-  const notify = useToast();
+  const notify = useNotify();
   const [eventId, setEventId] = useState('');
   const [subject, setSubject] = useState('');
   const [subjectId, setSubjectId] = useState('');
@@ -345,12 +348,12 @@ function PackageForm({ events, onDone }) {
 
 /* ---------- reel products ---------- */
 function ProductTable({ products, reload }) {
-  const notify = useToast();
-  const dialog = useDialog();
+  const notify = useNotify();
+  const [confirmUI, dialog] = useConfirm();
   const [offset, setOffset] = useState(0);
   const PAGE = 10;
   const safe = Math.min(offset, Math.max(0, (Math.ceil(((products || []).length) / PAGE) - 1) * PAGE));
-  const reprice = useReprice((p, price_cents) => save(p, { price_cents }));
+  const reprice = useReprice((p, price_cents) => save(p, { price_cents }), dialog);
   if (products === null) return <p className="empty-note">Loading reel options…</p>;
   if (!products.length) return <p className="empty-note">No reel options yet — add one below.</p>;
   const save = async (p, body) => {
@@ -384,12 +387,13 @@ function ProductTable({ products, reload }) {
       </tbody>
     </table>
     <Pager total={(products || []).length} limit={PAGE} offset={safe} onPage={setOffset} />
+    {confirmUI}
     </>
   );
 }
 
 function ProductForm({ events, onDone }) {
-  const notify = useToast();
+  const notify = useNotify();
   const [f, setF] = useState({ name: '', price: '', scope: 'round', coverage: 'ring', event_id: '', description: '' });
   const submit = async () => {
     try {
@@ -417,9 +421,9 @@ function ProductForm({ events, onDone }) {
 
 /* ---------- credit packs ---------- */
 function PackTable({ packs, reload }) {
-  const notify = useToast();
-  const dialog = useDialog();
-  const reprice = useReprice((p, price_cents) => save(p, { price_cents }));
+  const notify = useNotify();
+  const [confirmUI, dialog] = useConfirm();
+  const reprice = useReprice((p, price_cents) => save(p, { price_cents }), dialog);
   if (packs === null) return <p className="empty-note">Loading credit packs…</p>;
   if (!packs.length) return <p className="empty-note">No credit packs yet — add one below.</p>;
   const save = async (p, body) => {
@@ -433,6 +437,8 @@ function PackTable({ packs, reload }) {
     catch (e) { notify(e.message, true); }
   };
   return (
+    <>
+    {confirmUI}
     <StudioTable
       rows={packs}
       loading={packs === null}
@@ -453,11 +459,12 @@ function PackTable({ packs, reload }) {
         ) },
       ]}
     />
+    </>
   );
 }
 
 function PackForm({ events, onDone }) {
-  const notify = useToast();
+  const notify = useNotify();
   const [f, setF] = useState({ scope_type: 'rider', slots: '5', price: '', event_id: '' });
   const submit = async () => {
     try {
@@ -483,7 +490,7 @@ function PackForm({ events, onDone }) {
 
 /* ---------- settings ---------- */
 function SettingsForm({ settings, onDone }) {
-  const notify = useToast();
+  const notify = useNotify();
   const [val, setVal] = useState(null);
   useEffect(() => {
     if (settings) setVal(settings.event_package_price_cents ?? '');

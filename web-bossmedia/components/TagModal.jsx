@@ -1,14 +1,14 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Chip, useDialog } from './studio';
+import { Chip } from './studio';
 import { API } from '../lib/api';
 import { studio } from '../lib/studio';
+import ConfirmModal from './ConfirmModal';
 import SearchSelect from './SearchSelect';
 
 // Shared tag & publish dialog — used by the Library grid and inline by the
 // Upload page so photographers never have to leave the upload flow.
 export default function TagModal({ m, events, tiers, notify, onClose, onSaved, onDeleted }) {
-  const dialog = useDialog();
   const [ev, setEv] = useState(m.event_id || '');
   const [rider, setRider] = useState(m.rider || '');
   const [riderId, setRiderId] = useState(m.rider_id || '');
@@ -75,16 +75,18 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
     } catch (e) { notify(e.message, true); }
   }
 
+  // Delete confirmation is local state driving <ConfirmModal/> directly —
+  // no dialog context in the path, so it cannot fail silently.
+  const [confirmDelete, setConfirmDelete] = useState(false);
   async function remove() {
-    const ok = await dialog.confirm({ title: `Delete “${m.horse || m.rider || String(m.id).slice(0, 8)}”?`, message: 'Files leave the shop. This can’t be undone.', confirmLabel: 'Delete', danger: true });
-    if (!ok) return;
     try { await studio.del(`/admin/media/${m.id}`); onDeleted(); notify('Deleted'); }
     catch (e) {
       // Paid/pending/reel-linked photos can't be deleted (buyers keep
-      // access) — the API message always offers archiving in that case.
+      // access) — the delete was already confirmed twice, so fall straight
+      // through to archiving, which is reversible via Publish.
       if (String(e.message || '').includes('archive instead')) {
-        const arch = await dialog.confirm({ title: 'Already sold — archive instead?', message: 'Archiving removes it from the shop while buyers keep their files.', confirmLabel: 'Archive' });
-        if (arch) { await setStatus('archived'); return; }
+        await setStatus('archived');
+        notify('In use — archived instead so buyers keep their files');
         return;
       }
       notify(e.message, true);
@@ -189,7 +191,12 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
           {m.status !== 'published'
             ? <button type="button" className="st-btn-ghost" disabled={busy} onClick={() => setStatus('published')}>Publish</button>
             : <button type="button" className="st-btn-ghost" disabled={busy} onClick={() => setStatus('archived')}>Unpublish</button>}
-          <button type="button" className="st-btn-ghost st-btn-danger" onClick={remove}>Delete</button>
+          <button type="button" className="st-btn-ghost st-btn-danger" onClick={() => setConfirmDelete(true)}>Delete</button>
+          <ConfirmModal open={confirmDelete} danger confirmLabel="Delete"
+            title={`Delete “${m.horse || m.rider || String(m.id).slice(0, 8)}”?`}
+            message="Files leave the shop. This can’t be undone."
+            onCancel={() => setConfirmDelete(false)}
+            onConfirm={() => { setConfirmDelete(false); remove(); }} />
         </footer>
       </div>
     </div>

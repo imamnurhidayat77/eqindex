@@ -1,15 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useStudioUser } from '../lib/studio';
-import { toast } from './Toaster';
 import { Icon, SiteFooter, SiteHeader } from './figma';
-
-const ToastCtx = createContext(() => {});
-export const useToast = () => useContext(ToastCtx);
-const DialogCtx = createContext({ confirm: async () => false, prompt: async () => null });
-export const useDialog = () => useContext(DialogCtx);
 
 const TABS = [
   ['/studio', 'Overview', 'overview'],
@@ -24,32 +17,6 @@ const TABS = [
 export default function StudioShell({ active, kpis, children }) {
   const { user, state } = useStudioUser();
   const pathname = usePathname();
-  const [dialog, setDialog] = useState(null);
-
-  // All studio feedback goes through the global Toaster (same design as
-  // the shop). Signature kept so existing call sites don't change.
-  const notify = useCallback((msg, err = false) => {
-    toast(String(msg), err ? { type: 'error' } : { type: 'success' });
-  }, []);
-
-  const confirm = useCallback((opts) => new Promise((resolve) => {
-    setDialog({ kind: 'confirm', input: '', ...opts, resolve });
-  }), []);
-
-  const prompt = useCallback((opts) => new Promise((resolve) => {
-    setDialog({ kind: 'prompt', input: opts.initial ?? '', ...opts, resolve });
-  }), []);
-
-  const closeDialog = useCallback((value) => {
-    setDialog((d) => { if (d) d.resolve(value); return null; });
-  }, []);
-
-  useEffect(() => {
-    if (!dialog) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') closeDialog(dialog.kind === 'confirm' ? false : null); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [dialog, closeDialog]);
 
   if (state === 'loading') {
     return (
@@ -111,38 +78,9 @@ export default function StudioShell({ active, kpis, children }) {
             })}
           </nav>
         </div>
-        <ToastCtx.Provider value={notify}>
-          <DialogCtx.Provider value={{ confirm, prompt }}>
-            <div style={{ paddingBottom: 90 }}>{children}</div>
-          </DialogCtx.Provider>
-        </ToastCtx.Provider>
+        <div style={{ paddingBottom: 90 }}>{children}</div>
       </main>
       <SiteFooter />
-      {dialog && (
-        <div className="st-modal" role="dialog" aria-modal="true" aria-label={dialog.title}
-          onMouseDown={(e) => { if (e.target === e.currentTarget) closeDialog(dialog.kind === 'confirm' ? false : null); }}>
-          <div className="st-modal-card" role="document">
-            <p className="eyebrow">{dialog.eyebrow || (dialog.kind === 'confirm' ? 'Confirm' : 'Input')}</p>
-            <h3>{dialog.title}</h3>
-            {dialog.message && <p>{dialog.message}</p>}
-            {dialog.kind === 'prompt' && (
-              <input autoFocus value={dialog.input} placeholder={dialog.placeholder || ''}
-                onChange={(e) => setDialog((d) => ({ ...d, input: e.target.value }))}
-                onKeyDown={(e) => { if (e.key === 'Enter') closeDialog(dialog.input); }}
-                inputMode={dialog.numeric ? 'decimal' : undefined} />
-            )}
-            <div className="st-modal-actions">
-              <button className="st-btn-ghost" onClick={() => closeDialog(dialog.kind === 'confirm' ? false : null)}>
-                {dialog.cancelLabel || 'Cancel'}
-              </button>
-              <button className={dialog.danger ? 'st-btn st-btn-danger-fill' : 'st-btn'}
-                onClick={() => closeDialog(dialog.kind === 'confirm' ? true : dialog.input)}>
-                {dialog.confirmLabel || (dialog.kind === 'confirm' ? 'Confirm' : 'Save')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

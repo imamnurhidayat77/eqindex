@@ -1,7 +1,9 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import StudioShell, { Chip, Pager, useDialog, useToast } from '../../../components/studio';
+import StudioShell, { Chip, Pager } from '../../../components/studio';
+import { useNotify } from '../../../components/Toaster';
+import { useConfirm } from '../../../components/ConfirmModal';
 import { dayOf, nzdc, studio } from '../../../lib/studio';
 
 const LIMIT = 20;
@@ -25,8 +27,7 @@ const ACTION = {
 const actionLabel = (s) => ACTION[s] || s.replace(/_/g, ' ');
 
 export default function ReelsPage() {
-  const notify = useToast();
-  const dialog = useDialog();
+  const notify = useNotify();
   const [orders, setOrders] = useState(null);
   const [filter, setFilter] = useState('');
   const [busyId, setBusyId] = useState(null);
@@ -91,6 +92,7 @@ export default function ReelsPage() {
 }
 
 function OrderRow({ o, busy, onAdvance }) {
+  const [confirmUI, dialog] = useConfirm();
   const [linking, setLinking] = useState(false);
   const [mediaId, setMediaId] = useState(o.media_id || '');
   const nexts = FLOW[o.status] || [];
@@ -116,10 +118,13 @@ function OrderRow({ o, busy, onAdvance }) {
           )
         ))}
         {nexts.includes('cancelled') && (
-          <button className="st-btn-ghost st-btn-danger" style={{ minHeight: 36 }} disabled={busy} onClick={async () => {
-            const ok = await dialog.confirm({ title: 'Cancel this order?', message: 'The buyer is not refunded automatically — handle the refund in Stripe if needed.', confirmLabel: 'Cancel order', danger: true });
-            if (ok) onAdvance(o, 'cancelled');
-          }}>Cancel order</button>
+          <>
+            <button className="st-btn-ghost st-btn-danger" style={{ minHeight: 36 }} disabled={busy} onClick={async () => {
+              const ok = await dialog.confirm({ title: 'Cancel this order?', message: 'The buyer is not refunded automatically — handle the refund in Stripe if needed.', confirmLabel: 'Cancel order', danger: true });
+              if (ok) onAdvance(o, 'cancelled');
+            }}>Cancel order</button>
+            {confirmUI}
+          </>
         )}
         {linking && (
           <span style={{ display: 'inline-flex', gap: 6, marginLeft: 4 }}>

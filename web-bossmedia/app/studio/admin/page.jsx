@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
-import StudioShell, { Pager, useDialog, useToast } from '../../../components/studio';
+import StudioShell, { Pager } from '../../../components/studio';
+import { useNotify } from '../../../components/Toaster';
+import { useConfirm } from '../../../components/ConfirmModal';
 import SearchSelect from '../../../components/SearchSelect';
 import { dayOf, nzdc, studio, useStudioUser } from '../../../lib/studio';
 
@@ -67,8 +69,8 @@ function AdminBody() {
 
 /* ---------- commission: platform/organizer rates + package price + settlement ---------- */
 function Commission() {
-  const notify = useToast();
-  const dialog = useDialog();
+  const notify = useNotify();
+  const [confirmUI, dialog] = useConfirm();
   const [form, setForm] = useState(null); // {platform, organizer, packagePrice} as text
   const [settle, setSettle] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -146,14 +148,15 @@ function Commission() {
           {settle && !settle.length && <p className="empty-note">No paid sales yet.</p>}
           <Pager total={(settle || []).length} limit={SETTLE_PAGE} offset={settleSafe} onPage={setSettleOffset} />
         </div>
+      {confirmUI}
     </>
   );
 }
 
 /* ---------- users: search, role change, session revoke ---------- */
 function Users({ selfId }) {
-  const notify = useToast();
-  const dialog = useDialog();
+  const notify = useNotify();
+  const [confirmUI, dialog] = useConfirm();
   const [q, setQ] = useState('');
   const [rows, setRows] = useState(null);
 
@@ -193,6 +196,7 @@ function Users({ selfId }) {
       ) : (
         <UserTable rows={rows} selfId={selfId} setRole={setRole} revoke={revoke} />
       )}
+      {confirmUI}
     </>
   );
 }
@@ -306,8 +310,8 @@ function AppDetail({ c }) {
   );
 }
 function Applications() {
-  const notify = useToast();
-  const dialog = useDialog();
+  const notify = useNotify();
+  const [confirmUI, dialog] = useConfirm();
   const [status, setStatus] = useState('open');
   const [rows, setRows] = useState(null);
   const [viewing, setViewing] = useState(null);
@@ -407,14 +411,15 @@ function Applications() {
           </div>
         </div>
       )}
+      {confirmUI}
     </>
   );
 }
 
 /* ---------- events: link results events to organizers (claim) ---------- */
 function Events() {
-  const notify = useToast();
-  const dialog = useDialog();
+  const notify = useNotify();
+  const [confirmUI, dialog] = useConfirm();
   const [q, setQ] = useState('');
   const [rows, setRows] = useState(null);
   const [orgs, setOrgs] = useState([]);
@@ -500,12 +505,13 @@ function Events() {
           </p>
         </div>
       )}
+      {confirmUI}
     </>
   );
 }
 
 function NewEventForm({ onCreated }) {
-  const notify = useToast();
+  const notify = useNotify();
   const [f, setF] = useState({ name: '', venue: '', region: '', date_start: '', date_end: '' });
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   async function submit(e) {

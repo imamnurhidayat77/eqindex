@@ -1,7 +1,9 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import StudioShell, { Chip, Pager, useDialog, useToast } from './studio';
+import StudioShell, { Chip, Pager } from './studio';
+import { useNotify } from './Toaster';
+import ConfirmModal from './ConfirmModal';
 import SearchSelect from './SearchSelect';
 import TagModal from './TagModal';
 import { studio } from '../lib/studio';
@@ -11,8 +13,7 @@ const KINDS = ['', 'photo', 'reel'];
 const LIMIT = 24;
 
 export default function LibraryClient({ events, initial }) {
-  const notify = useToast();
-  const dialog = useDialog();
+  const notify = useNotify();
   const [items, setItems] = useState(null);
   const [tiers, setTiers] = useState([]);
   const [q, setQ] = useState('');
@@ -55,12 +56,13 @@ export default function LibraryClient({ events, initial }) {
     return updated.data;
   }
 
+  // Delete confirmation is local state driving <ConfirmModal/> directly —
+  // no dialog context in the path, so it cannot fail silently.
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => { setConfirmDelete(false); }, [selected]);
+
   async function bulk(patch, label) {
     if (!selected.size) return;
-    if (label === 'delete') {
-      const ok = await dialog.confirm({ title: `Delete ${selected.size} asset(s)?`, message: 'Files are archived and leave the shop. This can’t be undone.', confirmLabel: 'Delete', danger: true });
-      if (!ok) return;
-    }
     setBusy(true);
     let ok = 0; const fails = [];
     for (const id of selected) {
@@ -103,7 +105,13 @@ export default function LibraryClient({ events, initial }) {
         <button className="st-btn-ghost" onClick={toggleAll}>{allVisible ? 'Deselect all' : `Select all (${visible.length})`}</button>
         <button className="st-btn-ghost" disabled={!selected.size || busy} onClick={() => bulk({ status: 'published' }, 'publish')}>Publish ({selected.size})</button>
         <button className="st-btn-ghost" disabled={!selected.size || busy} onClick={() => bulk({ status: 'archived' }, 'archive')}>Archive</button>
-        <button className="st-btn-ghost st-btn-danger" disabled={!selected.size || busy} onClick={() => bulk(null, 'delete')}>Delete</button>
+        <button className="st-btn-ghost st-btn-danger" disabled={!selected.size || busy} onClick={() => selected.size && setConfirmDelete(true)}>Delete</button>
+        <ConfirmModal open={confirmDelete} danger confirmLabel="Delete"
+          title={`Delete ${selected.size} asset(s)?`}
+          message="Files are archived and leave the shop. This can’t be undone."
+          busy={busy}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => { setConfirmDelete(false); bulk(null, 'delete'); }} />
         <span style={{ color: '#777', fontSize: 12 }}>{items === null ? 'Loading…' : `${visible.length} shown`}</span>
       </div>
       {items !== null && !visible.length ? (

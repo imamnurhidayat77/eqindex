@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import StudioShell, { Bars, Chip, Pager, Stat, useToast } from './studio';
+import StudioShell, { Bars, Chip, Pager, Stat } from './studio';
+import { useNotify } from './Toaster';
 import SearchSelect from './SearchSelect';
 import { API } from '../lib/api';
 import { dayOf, nzdc, studio } from '../lib/studio';
@@ -8,7 +9,7 @@ import { dayOf, nzdc, studio } from '../lib/studio';
 const LIMIT = 25;
 
 export default function SalesPage({ events, initialStatus }) {
-  const notify = useToast();
+  const notify = useNotify();
   const [status, setStatus] = useState(initialStatus || '');
   const [kind, setKind] = useState('');
   const [eventId, setEventId] = useState('');

@@ -1,7 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import StudioShell, { useToast } from './studio';
+import StudioShell from './studio';
+import { useNotify } from './Toaster';
 import TagModal from './TagModal';
 import SearchSelect from './SearchSelect';
 import { Icon } from './figma';
@@ -74,7 +75,7 @@ function EventPicker({ events, value, onChange }) {
 }
 
 export default function UploadClient({ events }) {
-  const notify = useToast();
+  const notify = useNotify();
   const [eventId, setEventId] = useState('');
   const [files, setFiles] = useState([]); // {file, kind, status, progress, id, error, preview}
   const [drag, setDrag] = useState(false);

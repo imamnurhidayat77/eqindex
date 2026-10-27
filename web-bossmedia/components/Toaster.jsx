@@ -28,6 +28,12 @@ export function ToastProvider({ children }) {
   return <ToastCtx.Provider value={push}>{children}</ToastCtx.Provider>;
 }
 
+// Studio-compatible notify shape notify(msg) / notify(msg, true=error).
+export const useNotify = () => {
+  const push = useToast();
+  return useCallback((msg, err = false) => push(msg, err === true ? { type: 'error' } : err || undefined), [push]);
+};
+
 function ToastIcon({ type }) {
   if (type === 'error') {
     return (
