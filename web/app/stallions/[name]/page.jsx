@@ -6,12 +6,18 @@ import { StatCard, StatGrid } from '../../../components/StatCard';
 
 export const revalidate = 30;
 
-export default async function StallionProfile({ params }) {
+const OFFSPRING_PER_PAGE = 25;
+
+export default async function StallionProfile({ params, searchParams }) {
   const name = decodeURIComponent(params.name);
   const res = await getJSON(`/stallions/${encodeURIComponent(name)}`).catch(() => null);
   if (!res || !res.data) notFound();
   const d = res.data;
   const horses = res.horses || [];
+  const pages = Math.max(1, Math.ceil(horses.length / OFFSPRING_PER_PAGE));
+  const page = Math.min(Math.max(1, parseInt(searchParams?.page, 10) || 1), pages);
+  const view = horses.slice((page - 1) * OFFSPRING_PER_PAGE, page * OFFSPRING_PER_PAGE);
+  const pageHref = (n) => `/stallions/${params.name}${n > 1 ? `?page=${n}` : ''}`;
   const num = (v) => (v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString());
 
   return (
@@ -32,7 +38,7 @@ export default async function StallionProfile({ params }) {
         <table className={TABLE}>
           <thead><tr><th className={TH}>Offspring</th><th className={TH}>Dam</th><th className={TH}>Breeder</th><th className={TH}>Born</th><th className={`${TH} ${NUM}`}>Starts</th><th className={`${TH} ${NUM}`}>Wins</th><th className={`${TH} ${NUM}`}>Points</th></tr></thead>
           <tbody>
-            {horses.map((h) => (
+            {view.map((h) => (
               <tr key={h.horse_id}>
                 <td className={TD}><Link href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold">{h.horse}</Link></td>
                 <td className={TD}>{h.dam || '—'}</td>
@@ -47,6 +53,17 @@ export default async function StallionProfile({ params }) {
           </tbody>
         </table>
         </div>
+        {pages > 1 && (
+          <nav aria-label="Offspring pages" className="mt-3 flex items-center justify-between text-[12.5px] text-muted">
+            {page > 1
+              ? <Link href={pageHref(page - 1)} className="text-sky no-underline hover:underline">← Prev</Link>
+              : <span />}
+            <span>Page {page} of {pages} · {horses.length} offspring</span>
+            {page < pages
+              ? <Link href={pageHref(page + 1)} className="text-sky no-underline hover:underline">Next →</Link>
+              : <span />}
+          </nav>
+        )}
       </section>
     </>
   );

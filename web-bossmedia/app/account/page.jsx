@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../../lib/api';
 import { nzd } from '../../lib/figma-data';
 import { Icon, SiteFooter, SiteHeader } from '../../components/figma';
+import { Pager } from '../../components/studio';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const fmtDay = (iso) => {
@@ -22,6 +23,11 @@ export default function AccountPage() {
   const [wallet, setWallet] = useState(undefined);
   const [credits, setCredits] = useState(undefined);
   const [photos, setPhotos] = useState(undefined);
+  const PAGE = 10;
+  const [wOff, setWOff] = useState(0);
+  const [cOff, setCOff] = useState(0);
+  const [hOff, setHOff] = useState(0);
+  const clamp = (off, n) => Math.min(off, Math.max(0, (Math.ceil(n / PAGE) - 1) * PAGE));
 
   useEffect(() => {
     fetch(`${API}/auth/me`, { credentials: 'include' })
@@ -107,21 +113,24 @@ export default function AccountPage() {
                     {wallet === undefined ? 'Loading…' : wallet ? `Balance ${nzd(wallet.balance_cents)} — top-ups and spending.` : 'No wallet activity yet — top-ups and spending will show here.'}
                   </p>
                   {wallet !== undefined && !!wallet?.transactions?.length && (
-                    <table className="st-table">
-                      <thead><tr><th>Date</th><th>What</th><th style={{ textAlign: 'right' }}>Amount</th><th style={{ textAlign: 'right' }}>Balance</th></tr></thead>
-                      <tbody>
-                        {wallet.transactions.map((t, i) => (
-                          <tr key={`${t.created_at}-${i}`}>
-                            <td style={{ whiteSpace: 'nowrap' }}>{fmtDay(t.created_at)}</td>
-                            <td>{t.reason || t.kind}</td>
-                            <td style={{ textAlign: 'right', color: Number(t.amount_cents) < 0 ? '#ddd' : '#8fd694' }}>
-                              {Number(t.amount_cents) > 0 ? '+' : ''}{nzd(t.amount_cents)}
-                            </td>
-                            <td style={{ textAlign: 'right' }}>{nzd(t.balance_after_cents)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <>
+                      <table className="st-table">
+                        <thead><tr><th>Date</th><th>What</th><th style={{ textAlign: 'right' }}>Amount</th><th style={{ textAlign: 'right' }}>Balance</th></tr></thead>
+                        <tbody>
+                          {wallet.transactions.slice(clamp(wOff, wallet.transactions.length), clamp(wOff, wallet.transactions.length) + PAGE).map((t, i) => (
+                            <tr key={`${t.created_at}-${i}`}>
+                              <td style={{ whiteSpace: 'nowrap' }}>{fmtDay(t.created_at)}</td>
+                              <td>{t.reason || t.kind}</td>
+                              <td style={{ textAlign: 'right', color: Number(t.amount_cents) < 0 ? '#ddd' : '#8fd694' }}>
+                                {Number(t.amount_cents) > 0 ? '+' : ''}{nzd(t.amount_cents)}
+                              </td>
+                              <td style={{ textAlign: 'right' }}>{nzd(t.balance_after_cents)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <Pager total={wallet.transactions.length} limit={PAGE} offset={clamp(wOff, wallet.transactions.length)} onPage={setWOff} />
+                    </>
                   )}
                 </div>
               )}
@@ -135,18 +144,21 @@ export default function AccountPage() {
                   ) : !credits.length ? (
                     <p className="empty-note">No credit packs yet. <Link href="/media" className="text-link">Get credits in your library</Link></p>
                   ) : (
-                    <table className="st-table">
-                      <thead><tr><th>Pack</th><th>Event</th><th style={{ textAlign: 'right' }}>Left</th></tr></thead>
-                      <tbody>
-                        {credits.map((b) => (
-                          <tr key={b.id}>
-                            <td>{[b.horse, b.rider].filter(Boolean).join(' × ') || 'Bundle'} · {b.slots_total} photos</td>
-                            <td>{b.event_name || '—'}</td>
-                            <td style={{ textAlign: 'right' }}>{b.slots_left} of {b.slots_total}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <>
+                      <table className="st-table">
+                        <thead><tr><th>Pack</th><th>Event</th><th style={{ textAlign: 'right' }}>Left</th></tr></thead>
+                        <tbody>
+                          {credits.slice(clamp(cOff, credits.length), clamp(cOff, credits.length) + PAGE).map((b) => (
+                            <tr key={b.id}>
+                              <td>{[b.horse, b.rider].filter(Boolean).join(' × ') || 'Bundle'} · {b.slots_total} photos</td>
+                              <td>{b.event_name || '—'}</td>
+                              <td style={{ textAlign: 'right' }}>{b.slots_left} of {b.slots_total}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <Pager total={credits.length} limit={PAGE} offset={clamp(cOff, credits.length)} onPage={setCOff} />
+                    </>
                   )}
                 </div>
               )}
@@ -160,20 +172,23 @@ export default function AccountPage() {
                   ) : !photos.length ? (
                     <p className="empty-note">Nothing bought yet. <Link href="/events" className="text-link">Browse the gallery</Link></p>
                   ) : (
-                    <table className="st-table">
-                      <thead><tr><th>Date</th><th>Photo</th><th>License</th><th style={{ textAlign: 'right' }}>Paid</th><th style={{ textAlign: 'right' }}>Receipt</th></tr></thead>
-                      <tbody>
-                        {photos.slice(0, 20).map((p) => (
-                          <tr key={`${p.purchase_id}-${p.media_id}`}>
-                            <td style={{ whiteSpace: 'nowrap' }}>{fmtDay(p.created_at)}</td>
-                            <td>{[p.horse, p.rider].filter(Boolean).join(' × ') || p.event_name || 'Photo'}</td>
-                            <td>{p.license_tier}</td>
-                            <td style={{ textAlign: 'right' }}>{nzd(p.amount_cents)}</td>
-                            <td style={{ textAlign: 'right' }}><Link href={`/receipts?purchases=${p.purchase_id}`} className="text-link">View</Link></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <>
+                      <table className="st-table">
+                        <thead><tr><th>Date</th><th>Photo</th><th>License</th><th style={{ textAlign: 'right' }}>Paid</th><th style={{ textAlign: 'right' }}>Receipt</th></tr></thead>
+                        <tbody>
+                          {photos.slice(clamp(hOff, photos.length), clamp(hOff, photos.length) + PAGE).map((p) => (
+                            <tr key={`${p.purchase_id}-${p.media_id}`}>
+                              <td style={{ whiteSpace: 'nowrap' }}>{fmtDay(p.created_at)}</td>
+                              <td>{[p.horse, p.rider].filter(Boolean).join(' × ') || p.event_name || 'Photo'}</td>
+                              <td>{p.license_tier}</td>
+                              <td style={{ textAlign: 'right' }}>{nzd(p.amount_cents)}</td>
+                              <td style={{ textAlign: 'right' }}><Link href={`/receipts?purchases=${p.purchase_id}`} className="text-link">View</Link></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <Pager total={photos.length} limit={PAGE} offset={clamp(hOff, photos.length)} onPage={setHOff} />
+                    </>
                   )}
                   {!!photos?.length && <p style={{ marginTop: 14 }}><Link href="/media" className="text-link">Open full library with downloads</Link></p>}
                 </div>

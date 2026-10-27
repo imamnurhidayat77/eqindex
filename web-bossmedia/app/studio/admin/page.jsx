@@ -418,6 +418,9 @@ function Events() {
   const [q, setQ] = useState('');
   const [rows, setRows] = useState(null);
   const [orgs, setOrgs] = useState([]);
+  const [offset, setOffset] = useState(0);
+  const PAGE = 15;
+  const safe = Math.min(offset, Math.max(0, (Math.ceil(((rows || []).length) / PAGE) - 1) * PAGE));
 
   const search = (term = q) => {
     studio.get(`/admin/events${term.trim() ? `?q=${encodeURIComponent(term.trim())}` : ''}`)
@@ -444,15 +447,14 @@ function Events() {
     } catch (e) { notify(e.message, true); }
   }
 
-  // Pre-book visibility: auto (date rule) / show (pinned) / hide (never).
-  const pbVal = (ev) => (ev.prebook_open === true ? 'show' : ev.prebook_open === false ? 'hide' : 'auto');
+  // Pre-book visibility: hidden by default, only enabled events show.
+  const pbVal = (ev) => (ev.prebook_open === true ? 'show' : 'hide');
   async function setPrebook(ev, v) {
     try {
-      const j = await studio.patch(`/admin/events/${ev.id}`,
-        { prebook_open: v === 'auto' ? '' : v === 'show' });
+      const j = await studio.patch(`/admin/events/${ev.id}`, { prebook_open: v === 'show' });
       const updated = j.data || j;
       setRows((xs) => (xs || []).map((x) => (x.id === ev.id ? { ...x, prebook_open: updated.prebook_open } : x)));
-      notify(v === 'auto' ? 'Pre-book: automatic' : v === 'show' ? 'Pinned to pre-book' : 'Hidden from pre-book');
+      notify(v === 'show' ? 'Shown in pre-book' : 'Hidden from pre-book');
     } catch (e) { notify(e.message, true); }
   }
 
@@ -470,7 +472,7 @@ function Events() {
           <table className="st-table">
             <thead><tr><th>Event</th><th>Date</th><th>Data</th><th>Pre-book</th><th>Organizer</th></tr></thead>
             <tbody>
-              {rows.map((ev) => (
+              {rows.slice(safe, safe + PAGE).map((ev) => (
                 <tr key={ev.id}>
                   <td><div style={{ fontWeight: 600 }}>{ev.name}</div>
                     <div style={{ color: '#777', fontSize: 11 }}>{[ev.venue, ev.region].filter(Boolean).join(' · ')}</div></td>
@@ -480,7 +482,7 @@ function Events() {
                   </td>
                   <td style={{ minWidth: 130 }}>
                     <SearchSelect value={pbVal(ev)} clearable={false} placeholder="Pre-book"
-                      options={[{ id: 'auto', label: 'Auto' }, { id: 'show', label: 'Show' }, { id: 'hide', label: 'Hide' }]}
+                      options={[{ id: 'show', label: 'Show' }, { id: 'hide', label: 'Hide' }]}
                       onChange={(id) => setPrebook(ev, id)} />
                   </td>
                   <td style={{ minWidth: 170 }}>
@@ -492,8 +494,9 @@ function Events() {
               ))}
             </tbody>
           </table>
+          <Pager total={rows.length} limit={PAGE} offset={safe} onPage={setOffset} />
           <p style={{ color: '#777', fontSize: 12, padding: '0 0 12px' }}>
-            Pre-book: auto follows the date rule, show pins the event, hide removes it. Linking gives the organizer this event — no cloning, no name clashes.
+            Pre-book is opt-in: only events set to Show appear on the pre-book page. Linking gives the organizer this event — no cloning, no name clashes.
           </p>
         </div>
       )}

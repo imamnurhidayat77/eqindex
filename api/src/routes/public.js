@@ -434,12 +434,12 @@ module.exports = function mountPublicRoutes(app) {
     const wantUpcoming = req.query.upcoming === '1' || req.query.upcoming === 'true';
     const wantFinished = req.query.finished === '1' || req.query.finished === 'true';
     // ?prebook=1 → the pre-book listing, curated by admins via
-    // events.prebook_open: pinned (TRUE) always shows, hidden (FALSE) never
-    // shows, auto (NULL) follows the upcoming date rule. Implies
-    // include_empty (pinned events may have no results yet).
+    // events.prebook_open. Only explicitly enabled events (TRUE) show —
+    // everything else (FALSE or NULL) stays hidden. Implies include_empty
+    // (listed events may have no results yet).
     const wantPrebook = req.query.prebook === '1' || req.query.prebook === 'true';
     if (wantPrebook) {
-      conds.push('((e.prebook_open IS NOT FALSE AND e.date_start > CURRENT_DATE) OR e.prebook_open IS TRUE)');
+      conds.push('e.prebook_open IS TRUE');
     } else if (wantUpcoming) {
       // Fixtures not yet started. They have no results by definition,
       // so this implies include_empty.

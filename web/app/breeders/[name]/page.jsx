@@ -25,7 +25,9 @@ const divisionFor = (heightCm, divs) => {
     (d.max === null || d.max === undefined || hgt < d.max)) || null;
 };
 
-export default async function BreederProfile({ params }) {
+const HORSES_PER_PAGE = 25;
+
+export default async function BreederProfile({ params, searchParams }) {
   const name = decodeURIComponent(params.name);
   const [res, scoring] = await Promise.all([
     getJSON(`/breeders/${encodeURIComponent(name)}`).catch(() => null),
@@ -35,6 +37,10 @@ export default async function BreederProfile({ params }) {
   const divisions = scoring?.data?.params?.divisions?.length ? scoring.data.params.divisions : DEFAULT_DIVS;
   const d = res.data;
   const horses = res.horses || [];
+  const pages = Math.max(1, Math.ceil(horses.length / HORSES_PER_PAGE));
+  const page = Math.min(Math.max(1, parseInt(searchParams?.page, 10) || 1), pages);
+  const view = horses.slice((page - 1) * HORSES_PER_PAGE, page * HORSES_PER_PAGE);
+  const pageHref = (n) => `/breeders/${params.name}${n > 1 ? `?page=${n}` : ''}`;
   const divSummary = divisions
     .map((div) => {
       const rows = (res.heights || []).filter(
@@ -124,7 +130,7 @@ export default async function BreederProfile({ params }) {
         <table className={TABLE}>
           <thead><tr><th className={TH}>Horse</th><th className={TH}>Sire × Dam</th><th className={TH}>Born</th><th className={`${TH} ${NUM}`}>Starts</th><th className={`${TH} ${NUM}`}>Wins</th></tr></thead>
           <tbody>
-            {horses.map((h) => (
+            {view.map((h) => (
               <tr key={h.horse_id}>
                 <td className={TD}><Link href={`/horses/${h.horse_slug || h.horse_id}`} className="text-white font-semibold">{h.horse}</Link></td>
                 <td className={TD}>{[h.sire, h.dam].filter(Boolean).join(' × ') || '—'}</td>
@@ -136,6 +142,17 @@ export default async function BreederProfile({ params }) {
           </tbody>
         </table>
         </div>
+        {pages > 1 && (
+          <nav aria-label="Horses pages" className="mt-3 flex items-center justify-between text-[12.5px] text-muted">
+            {page > 1
+              ? <Link href={pageHref(page - 1)} className="text-sky no-underline hover:underline">← Prev</Link>
+              : <span />}
+            <span>Page {page} of {pages} · {horses.length} horses</span>
+            {page < pages
+              ? <Link href={pageHref(page + 1)} className="text-sky no-underline hover:underline">Next →</Link>
+              : <span />}
+          </nav>
+        )}
       </section>
     </>
   );
