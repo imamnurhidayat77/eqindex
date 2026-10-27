@@ -76,10 +76,18 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
   }
 
   async function remove() {
-    const ok = await dialog.confirm({ title: `Delete “${m.horse || m.rider || String(m.id).slice(0, 8)}”?`, message: 'This archives the files.', confirmLabel: 'Delete', danger: true });
+    const ok = await dialog.confirm({ title: `Delete “${m.horse || m.rider || String(m.id).slice(0, 8)}”?`, message: 'Files leave the shop. This can’t be undone.', confirmLabel: 'Delete', danger: true });
     if (!ok) return;
     try { await studio.del(`/admin/media/${m.id}`); onDeleted(); notify('Deleted'); }
-    catch (e) { notify(e.message, true); }
+    catch (e) {
+      // Sold photos can't be deleted (buyers keep access) — offer archive.
+      if (String(e.message || '').includes('paid purchases')) {
+        const arch = await dialog.confirm({ title: 'Already sold — archive instead?', message: 'Archiving removes it from the shop while buyers keep their files.', confirmLabel: 'Archive' });
+        if (arch) { await setStatus('archived'); return; }
+        return;
+      }
+      notify(e.message, true);
+    }
   }
 
   return (

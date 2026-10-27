@@ -1391,9 +1391,7 @@ button.license-option { width: 100%; padding: 13px; background: transparent; cur
 .st-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; }
 .st-btn-danger-fill { background: #a33; color: #fff; }
 
-/* ---- SearchSelect flip-up + TagModal width ---- */
-.ss-panel.up { top: auto; bottom: calc(100% + 6px); animation: riseUp .18s both; }
-@keyframes riseUp { from { opacity: 0; transform: translateY(8px); } }
+/* ---- SearchSelect TagModal width ---- */
 .st-modal-card-wide { width: min(620px, 100%); }
 .st-modal-card { max-height: calc(100vh - 60px); overflow-y: auto; }
 

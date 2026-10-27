@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import StudioShell, { useToast } from './studio';
 import TagModal from './TagModal';
+import SearchSelect from './SearchSelect';
 import { Icon } from './figma';
+import { API } from '../lib/api';
 import { studio } from '../lib/studio';
 
 const PHOTO_OK = ['image/jpeg', 'image/png', 'image/webp'];
@@ -81,6 +83,7 @@ export default function UploadClient({ events }) {
   const [tagged, setTagged] = useState([]); // full media rows for uploaded files
   const [tiers, setTiers] = useState([]);
   const [tagId, setTagId] = useState(null);
+  const [sel, setSel] = useState([]); // bulk-tag selection (media ids)
   const inputRef = useRef(null);
 
   useEffect(() => { studio.get('/admin/license-tiers').then((r) => setTiers(r || [])).catch(() => {}); }, []);
@@ -117,7 +120,10 @@ export default function UploadClient({ events }) {
     setFiles((fs) => {
       const target = fs[i];
       if (target?.preview) URL.revokeObjectURL(target.preview);
-      if (target?.id) setTagged((ts) => ts.filter((t) => t.id !== target.id));
+      if (target?.id) {
+        setTagged((ts) => ts.filter((t) => t.id !== target.id));
+        setSel((ss) => ss.filter((id) => id !== target.id));
+      }
       return fs.filter((_, j) => j !== i);
     });
   }
@@ -126,6 +132,7 @@ export default function UploadClient({ events }) {
     setFiles((fs) => { revoke(fs); return []; });
     setTagged([]);
     setTagId(null);
+    setSel([]);
   }
 
   async function uploadPhoto(item, setOne) {
@@ -306,12 +313,32 @@ export default function UploadClient({ events }) {
                 <span className="st-step-n">04</span>
                 <div>
                   <h3>Tag &amp; publish — right here</h3>
-                  <p>Horse, rider, moment and tier per file, then publish. Live the second you hit it.</p>
+                  <p>Horse, rider, moment and tier per file — or tick several and tag them together. Live the second you hit publish.</p>
                 </div>
               </header>
+              <BulkBar tiers={tiers} eventId={eventId} ids={sel.filter((id) => tagged.some((t) => t.id === id && t.status !== 'published'))}
+                notify={notify}
+                onEach={(id, row) => setTagged((ts) => ts.map((t) => (t.id === id ? { ...t, ...row } : t)))}
+                onFinished={() => setSel([])} />
+              {tagged.some((m) => m.status !== 'published') && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '2px 0 10px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#aaa', cursor: 'pointer' }}>
+                    <input type="checkbox" style={{ accentColor: '#fff', width: 16, height: 16, cursor: 'pointer' }}
+                      checked={tagged.filter((m) => m.status !== 'published').every((m) => sel.includes(m.id))}
+                      onChange={(e) => setSel(e.target.checked ? tagged.filter((m) => m.status !== 'published').map((m) => m.id) : [])} />
+                    Select all drafts
+                  </label>
+                  {!!sel.length && <span style={{ fontSize: 12, color: '#777' }}>{sel.length} selected</span>}
+                </div>
+              )}
               <ul className="st-taglist">
                 {tagged.map((m) => (
                   <li key={m.id} className="st-tagrow">
+                    {m.status !== 'published' && (
+                      <input type="checkbox" checked={sel.includes(m.id)} aria-label={`Select ${[m.horse, m.rider].filter(Boolean).join(' · ') || m.id.slice(0, 8)} for bulk tagging`}
+                        onChange={(e) => setSel((ss) => (e.target.checked ? [...ss, m.id] : ss.filter((id) => id !== m.id)))}
+                        style={{ accentColor: '#fff', width: 18, height: 18, flex: 'none', cursor: 'pointer' }} />
+                    )}
                     {m.thumb_url || m.preview_url
                       ? <span className="st-tagthumb">{m.kind === 'reel' && <i aria-hidden="true">▶</i>}<img src={m.thumb_url || m.preview_url} alt="" /></span>
                       : <span className="st-tagthumb-fallback">{m.kind === 'reel' ? '▶' : '…'}</span>}
@@ -395,3 +422,104 @@ export default function UploadClient({ events }) {
     </StudioShell>
   );
 }
+
+// Bulk tag bar: applies the filled fields to every selected draft.
+// Empty fields are skipped (never cleared in bulk). Class needs the batch
+// event — without it the field stays hidden since lists are per-event.
+function BulkBar({ tiers, eventId, ids, notify, onEach, onFinished }) {
+  const [riderId, setRiderId] = useState('');
+  const [rider, setRider] = useState('');
+  const [horseId, setHorseId] = useState('');
+  const [horse, setHorse] = useState('');
+  const [classId, setClassId] = useState('');
+  const [cls, setCls] = useState('');
+  const [classes, setClasses] = useState([]);
+  const [moment, setMoment] = useState('');
+  const [tier, setTier] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!eventId) { setClasses([]); return; }
+    fetch(`${API}/api/event-classes?event_id=${encodeURIComponent(eventId)}`, { credentials: 'include' })
+      .then((r) => r.json()).then((j) => setClasses(j.data || [])).catch(() => setClasses([]));
+  }, [eventId]);
+
+  const searchPeople = (kind) => async (v) => {
+    if (v.trim().length < 2) return [];
+    try {
+      const res = await fetch(`${API}/api/${kind}/search?q=${encodeURIComponent(v)}&limit=8`);
+      const j = await res.json().catch(() => ({}));
+      return (j.data || []).map((o) => ({ id: o.id, label: o.name }));
+    } catch { return []; }
+  };
+
+  if (!ids.length) return null;
+  const apply = async () => {
+    const body = {};
+    if (riderId) body.rider_id = riderId;
+    if (horseId) body.horse_id = horseId;
+    if (classId) body.class_id = classId;
+    if (moment) body.moment = moment;
+    if (tier) body.license_default = tier;
+    if (!Object.keys(body).length) { notify('Fill at least one field to apply.', true); return; }
+    setBusy(true);
+    let ok = 0;
+    let firstErr = '';
+    for (const id of ids) {
+      try {
+        const u = await studio.patch(`/admin/media/${id}`, body);
+        onEach(id, u.data || u);
+        ok++;
+      } catch (e) { if (!firstErr) firstErr = e.message; }
+    }
+    setBusy(false);
+    const failed = ids.length - ok;
+    notify(failed ? `${ok} tagged, ${failed} failed — ${firstErr}` : `Tags applied to ${ok} photo${ok === 1 ? '' : 's'}`, failed > 0);
+    if (!failed) onFinished();
+  };
+
+  const fld = { minWidth: 180, flex: '1 1 180px', display: 'grid', gap: 6 };
+  return (
+    <div className="st-card" style={{ padding: 16, marginBottom: 12 }}>
+      <p style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700 }}>
+        Tag {ids.length} selected <span style={{ color: '#777', fontWeight: 400 }}>— filled fields apply to all, empty ones are skipped</span>
+      </p>
+      <div className="st-filters" style={{ margin: 0 }}>
+        <label style={fld}><span style={lbl}>Rider</span>
+          <SearchSelect options={[]} loadOptions={searchPeople('riders')} value={riderId || null}
+            selectedOption={riderId ? { id: riderId, label: rider } : null}
+            onChange={(id, o) => { setRiderId(id || ''); setRider(o?.label || ''); }}
+            placeholder="Same rider…" emptyHint="Type at least 2 letters" />
+        </label>
+        <label style={fld}><span style={lbl}>Horse</span>
+          <SearchSelect options={[]} loadOptions={searchPeople('horses')} value={horseId || null}
+            selectedOption={horseId ? { id: horseId, label: horse } : null}
+            onChange={(id, o) => { setHorseId(id || ''); setHorse(o?.label || ''); }}
+            placeholder="Same horse…" emptyHint="Type at least 2 letters" />
+        </label>
+        {!!eventId && (
+          <label style={fld}><span style={lbl}>Class</span>
+            <SearchSelect options={classes.map((c) => ({ id: c.id, label: c.name }))}
+              value={classId || null}
+              selectedOption={classId ? { id: classId, label: cls } : null}
+              onChange={(id, o) => { setClassId(id || ''); setCls(o?.label || ''); }}
+              placeholder="Same class…" emptyHint="No classes for this event" />
+          </label>
+        )}
+        <label style={fld}><span style={lbl}>Moment</span>
+          <SearchSelect options={['win', 'clear', 'debut', 'pb'].map((v) => ({ id: v, label: v[0].toUpperCase() + v.slice(1) }))}
+            value={moment || null} onChange={(id) => setMoment(id || '')} placeholder="Same moment…" />
+        </label>
+        <label style={fld}><span style={lbl}>Tier</span>
+          <SearchSelect options={(tiers || []).map((t) => ({ id: t.id, label: t.label }))}
+            value={tier || null} onChange={(id) => setTier(id || '')} placeholder="Same tier…" />
+        </label>
+        <button className="st-btn" disabled={busy} onClick={apply} style={{ alignSelf: 'end' }}>
+          {busy ? 'Applying…' : `Apply to ${ids.length}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const lbl = { color: '#777', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' };

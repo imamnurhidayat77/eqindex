@@ -1,6 +1,10 @@
 'use client';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './figma';
+
+// Panel height estimate for flip decisions (list caps at 60 rows + search).
+const PANEL_H = 320;
 
 // Searchable select in Figma voice. Props:
 // options: [{ id, label, sub }], value: id|null, onChange(id),
@@ -9,13 +13,14 @@ import { Icon } from './figma';
 // loader (debounced) instead of local filtering.
 export default function SearchSelect({ options, value, onChange, placeholder = 'Select…', onRequestCustom, disabled = false, loadOptions = null, selectedOption = null, clearable = true, emptyHint = null }) {
   const [open, setOpen] = useState(false);
-  const [up, setUp] = useState(false);
+  const [pos, setPos] = useState(null);
   const [q, setQ] = useState('');
   const [hi, setHi] = useState(0);
   const [remote, setRemote] = useState(null);
   const [loading, setLoading] = useState(false);
   const rootRef = useRef(null);
   const inputRef = useRef(null);
+  const panelRef = useRef(null);
   const listId = useId();
   const seq = useRef(0);
 
@@ -46,11 +51,40 @@ export default function SearchSelect({ options, value, onChange, placeholder = '
     }, 250);
     return () => clearTimeout(t);
   }, [q, loadOptions]);
+  // Panel lives in a body portal (fixed position) so no overflow container
+  // — modal cards included — can clip it. Flips above when room is short.
+  const measure = (btn) => {
+    if (!btn) return null;
+    const r = btn.getBoundingClientRect();
+    const fitsBelow = r.bottom + PANEL_H <= window.innerHeight - 12;
+    return {
+      left: Math.max(8, Math.min(r.left, window.innerWidth - 8)),
+      width: Math.min(r.width, window.innerWidth - 16),
+      ...(fitsBelow || r.top < PANEL_H
+        ? { top: r.bottom + 6, bottom: undefined }
+        : { top: undefined, bottom: window.innerHeight - r.top + 6 }),
+    };
+  };
+  const place = () => {
+    const m = measure(rootRef.current?.querySelector('.ss-btn'));
+    if (m) setPos(m);
+  };
   useEffect(() => {
     if (!open) return;
-    const close = (e) => { if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false); };
+    place();
+    const close = (e) => {
+      if (rootRef.current?.contains(e.target)) return;
+      if (panelRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
   }, [open ]);
   useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 0); }, [open ]);
 
@@ -76,17 +110,12 @@ export default function SearchSelect({ options, value, onChange, placeholder = '
         onClick={() => {
           if (disabled) return;
           const willOpen = !open;
-          setOpen(willOpen);
           if (willOpen) {
             setQ('');
-            requestAnimationFrame(() => {
-              const el = rootRef.current?.querySelector('.ss-panel');
-              if (el) {
-                const r = el.getBoundingClientRect();
-                setUp(r.bottom > window.innerHeight - 12 && r.top > 280);
-              }
-            });
+            const m = measure(rootRef.current?.querySelector('.ss-btn'));
+            if (m) setPos(m);
           }
+          setOpen(willOpen);
         }}>
         <span className={selected ? 'ss-val' : 'ss-ph'}>
           {selected ? selected.label : placeholder}
@@ -100,8 +129,9 @@ export default function SearchSelect({ options, value, onChange, placeholder = '
         )}
         <Icon name="chevron" size={16} />
       </button>
-      {open && !disabled && (
-        <div className={`ss-panel${up ? ' up' : ''}`} role="listbox" id={listId} aria-label={placeholder}>
+      {open && !disabled && pos && createPortal(
+        <div ref={panelRef} className="ss-panel" role="listbox" id={listId} aria-label={placeholder}
+          style={{ position: 'fixed', zIndex: 90, left: pos.left ?? undefined, width: pos.width, top: pos.top, bottom: pos.bottom }}>
           <div className="ss-search">
             <Icon name="search" size={15} />
             <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey}
@@ -126,7 +156,8 @@ export default function SearchSelect({ options, value, onChange, placeholder = '
               </button>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
