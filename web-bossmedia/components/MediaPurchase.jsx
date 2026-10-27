@@ -187,7 +187,15 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
     toast('Added to cart', { action: { label: 'View cart', href: '/cart' } });
   }
 
-  function saveFavourite() {
+  async function saveFavourite() {
+    // Members only — guests log in first, then land back here.
+    try {
+      const r = await fetch(`${API}/auth/me`, { credentials: 'include' });
+      if (!r.ok) throw new Error('login required');
+    } catch {
+      router.push(`/login?next=${encodeURIComponent(pathname || `/p/${media.id}`)}`);
+      return;
+    }
     if (addFavourite(media.id)) {
       toast('Saved to favourites', { action: { label: 'View', href: '/favourites' } });
     } else {

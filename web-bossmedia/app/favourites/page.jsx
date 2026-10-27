@@ -14,16 +14,25 @@ const LIMIT = 12;
 // the photo page.
 export default function FavouritesPage() {
   const toast = useToast();
+  const [me, setMe] = useState(undefined); // undefined = checking
   const [items, setItems] = useState(null);
   const [page, setPage] = useState(1);
 
   useEffect(() => {
+    fetch(`${API}/auth/me`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setMe(j?.data || null))
+      .catch(() => setMe(null));
+  }, []);
+
+  useEffect(() => {
+    if (!me) return;
     const ids = readFavourites();
     if (!ids.length) { setItems([]); return; }
     Promise.all(ids.map((id) =>
       fetch(`${API}/photos/${id}`).then((r) => (r.ok ? r.json() : null)).catch(() => null)
     )).then((rs) => setItems(rs.map((r) => r?.data).filter(Boolean)));
-  }, []);
+  }, [me]);
 
   function remove(id) {
     const gone = (items || []).find((x) => x.id === id);
@@ -36,9 +45,17 @@ export default function FavouritesPage() {
   const safePage = Math.min(page, pages);
 
   return (
-    <PageShell eyebrow="Saved / This device" title="Favourites." wide
-      intro="Saved on this device — no account needed. Tap a card to buy.">
-      {items === null ? (
+    <PageShell eyebrow="Saved / Members" title="Favourites." wide
+      intro="Your saved photos on this device — members only. Tap a card to buy.">
+      {me === undefined ? (
+        <div className="event-media-empty"><p className="eyebrow">Loading…</p></div>
+      ) : !me ? (
+        <div className="event-media-empty">
+          <p className="eyebrow">Members only</p>
+          <h3>Log in to see your favourites.</h3>
+          <Link href="/login?next=/favourites" style={{ paddingBottom: 6, borderBottom: '1px solid #555', fontSize: 13, color: '#bbb' }}>Log in</Link>
+        </div>
+      ) : items === null ? (
         <div className="event-media-empty"><p className="eyebrow">Loading…</p></div>
       ) : !items.length ? (
         <div className="event-media-empty">

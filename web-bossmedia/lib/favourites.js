@@ -1,5 +1,6 @@
 'use client';
-// Device-local favourites (photos + reels, no account needed) — mirrors lib/cart.
+// Device-local favourites (photos + reels, members only) — mirrors lib/cart.
+// Login is enforced at the UI layer (page + save buttons), not here.
 import { useEffect, useState } from 'react';
 
 const KEY = 'bossmedia:favourites';

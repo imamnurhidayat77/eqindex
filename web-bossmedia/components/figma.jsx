@@ -104,9 +104,11 @@ export function SiteHeader({ transparent = false }) {
           ))}
         </nav>
         <div className="header-actions">
-          <Link href="/favourites" className="icon-button" aria-label="View favourites">
-            <Icon name="heart" /><span>{favs}</span>
-          </Link>
+          {me && (
+            <Link href="/favourites" className="icon-button" aria-label="View favourites">
+              <Icon name="heart" /><span>{favs}</span>
+            </Link>
+          )}
           <Link href="/cart" className="icon-button cart" aria-label="View cart">
             <Icon name="cart" /><span>{count}</span>
           </Link>
