@@ -356,7 +356,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
               <Icon name="cart" size={17} />
             </button>
             {!meEmail && (
-              <label htmlFor="license-email" style={{ display: 'grid', gap: 8, margin: '0 0 12px' }}>
+              <label htmlFor="license-email" style={{ display: 'grid', gap: 8, margin: '20px 0 12px' }}>
                 <span style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' }}>Email for receipt</span>
                 <input id="license-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.nz"
                   style={{ minHeight: 46, padding: '0 12px', color: 'white', background: '#0b0b0b', border: '1px solid #333', outline: 0, fontSize: 13 }} />
