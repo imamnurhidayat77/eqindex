@@ -10,7 +10,7 @@ const fmt = (s) => {
 
 // Custom reel chrome: click video to toggle, auto-hiding bar, arrows/space shortcuts.
 // Props: src, poster?, autoPlay?, label? (fills parent — parent must be positioned).
-export default function ReelPlayer({ src, poster = null, autoPlay = true, label = 'Reel', onProgress = null, onEnded = null }) {
+export default function ReelPlayer({ src, poster = null, autoPlay = false, label = 'Reel', onProgress = null, onEnded = null }) {
   const ref = useRef(null);
   const idleTimer = useRef(null);
   const [playing, setPlaying] = useState(false);
@@ -110,7 +110,9 @@ export default function ReelPlayer({ src, poster = null, autoPlay = true, label 
       {failed ? (
         <div className="rp-error">
           <p>Video won’t play here.</p>
-          <a href={src} target="_blank" rel="noreferrer">Open original file</a>
+          {/^https:\/\//i.test(src || '')
+            ? <a href={src} target="_blank" rel="noreferrer">Open original file</a>
+            : <span>Check back shortly.</span>}
         </div>
       ) : (
         <>
@@ -121,7 +123,7 @@ export default function ReelPlayer({ src, poster = null, autoPlay = true, label 
           )}
           <div className="rp-bar" onClick={(e) => e.stopPropagation()}>
             <input className="rp-track" type="range" min={0} max={Math.max(0, dur || 0)} step={0.1}
-              value={Math.min(time, dur || 0)} onChange={seek} aria-label="Seek"
+              value={Math.min(time, dur || 0)} onChange={seek} aria-label="Seek reel position"
               style={{ '--p': `${pct}%` }} />
             <div className="rp-row">
               <button type="button" onClick={toggle} aria-label={playing ? 'Pause' : 'Play'}>

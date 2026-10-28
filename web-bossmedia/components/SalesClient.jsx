@@ -30,7 +30,7 @@ export default function SalesPage({ events, initialStatus }) {
     studio.get(`/admin/sales?${query}`)
       .then((j) => { setRows(j.data || []); setTotal(j.totals ? j.pagination.total : (j.data || []).length); })
       .catch((e) => notify(e.message, true));
-  }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, notify]);
 
   useEffect(() => { studio.get('/admin/sales/summary').then(setSummary).catch(() => {}); }, []);
 
@@ -70,7 +70,7 @@ export default function SalesPage({ events, initialStatus }) {
           <h3>Photographer payout</h3>
           <p className="st-csub">Gross − commission − Stripe fees</p>
           {(summary?.settlement || []).length ? (
-            <table className="st-table">
+            <div className="table-scroll"><table className="st-table">
               <thead><tr><th>Who</th><th>Gross</th><th>Payout</th></tr></thead>
               <tbody>
                 {summary.settlement.map((s) => (
@@ -81,12 +81,12 @@ export default function SalesPage({ events, initialStatus }) {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></div>
           ) : <p className="empty-note">No settlement data yet.</p>}
         </div>
       </div>
       <div className="st-card" style={{ marginTop: 18, padding: '6px 22px' }}>
-        <table className="st-table">
+        <div className="table-scroll"><table className="st-table">
           <thead><tr><th>Date</th><th>Buyer</th><th>Item</th><th>Tier</th><th>Amount</th><th>Status</th></tr></thead>
           <tbody>
             {(rows || []).map((s) => (
@@ -100,7 +100,7 @@ export default function SalesPage({ events, initialStatus }) {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
         {!rows?.length && <p className="empty-note" style={{ padding: '18px 0' }}>{rows === null ? 'Loading…' : 'No sales match these filters.'}</p>}
         <Pager total={total} limit={LIMIT} offset={offset} onPage={setOffset} />
         <div style={{ height: 12 }} />

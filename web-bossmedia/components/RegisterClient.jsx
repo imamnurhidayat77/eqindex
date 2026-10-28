@@ -138,11 +138,16 @@ function RegisterInner({ visual }) {
                 </span>
               </label>
               {form.password.length > 0 && (
-                <div className={`auth-meter ${score >= 3 ? 'good' : score >= 1 ? 'mid' : ''}`} aria-hidden="true">
-                  {[1, 2, 3].map((i) => (
-                    <i key={i} className={score >= i ? 'on' : ''} />
-                  ))}
-                </div>
+                <>
+                  <div className={`auth-meter ${score >= 3 ? 'good' : score >= 1 ? 'mid' : ''}`} aria-hidden="true">
+                    {[1, 2, 3].map((i) => (
+                      <i key={i} className={score >= i ? 'on' : ''} />
+                    ))}
+                  </div>
+                  <p className="auth-meter-text" role="status">
+                    {score >= 3 ? 'Strong password — nice.' : score >= 1 ? 'Getting there — 8+ characters with a mix.' : 'Weak — use 8+ characters.'}
+                  </p>
+                </>
               )}
               <label><span>Confirm password</span>
                 <input required type="password" value={form.password2} onChange={(e) => setForm({ ...form, password2: e.target.value })}

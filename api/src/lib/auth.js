@@ -12,14 +12,9 @@ async function newSession(res, req, userId) {
   setSessionCookie(req, res, token);
 }
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const loginHits = new Map(); // ip -> {n, reset}
-function throttled(ip) {
-  const now = Date.now();
-  const rec = loginHits.get(ip) || { n: 0, reset: now + 10 * 60e3 };
-  if (now > rec.reset) { rec.n = 0; rec.reset = now + 10 * 60e3; }
-  rec.n += 1; loginHits.set(ip, rec);
-  return rec.n > 10;
-}
+// Rate limiting lives in lib/ratelimit.js (Postgres-backed, per-bucket).
+// The old in-memory throttled() was removed: it reset per process and
+// ignored its bucket argument.
 
 async function ownOrAdmin(req, res, table, label) {
   if (!req.authUser) { res.status(401).json({ error: 'login required' }); return null; }
@@ -51,4 +46,4 @@ function needRole(role) {
     next();
   };
 }
-module.exports = { EMAIL_RE, newSession, throttled, needRole, needUser, ownOrAdmin };
+module.exports = { EMAIL_RE, newSession, needRole, needUser, ownOrAdmin };

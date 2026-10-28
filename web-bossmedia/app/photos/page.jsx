@@ -6,7 +6,6 @@ import PageShell from '../../components/PageShell';
 import QueryFilter from '../../components/QueryFilter';
 
 export const revalidate = 30;
-export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'All photos',

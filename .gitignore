@@ -1,6 +1,7 @@
 .env
 api/.env
 web/.env.local
+web-bossmedia/.env*
 __pycache__/
 *.pyc
 ingest/.venv/

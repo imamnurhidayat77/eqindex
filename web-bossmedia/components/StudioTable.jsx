@@ -22,6 +22,7 @@ export default function StudioTable({
   const page = (rows || []).slice(safe, safe + pageSize);
   return (
     <>
+      <div className="table-scroll">
       <table className="st-table">
         <thead>
           <tr>{columns.map((c) => <th key={c.key}>{c.label}</th>)}</tr>
@@ -34,6 +35,7 @@ export default function StudioTable({
           ))}
         </tbody>
       </table>
+      </div>
       <Pager total={total} limit={pageSize} offset={safe} onPage={setOffset} />
     </>
   );

@@ -2,27 +2,20 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { nzdc, studio } from '../../lib/studio';
-import { Icon } from '../../components/figma';
+import { useAuthed } from '../../lib/use-authed';
+import { Icon, SiteFooter, SiteHeader } from '../../components/figma';
 
-const TABS = [['events', 'My events'], ['balance', 'Balance'], ['volunteers', 'Volunteers']];
+import { useDocumentTitle } from '../../lib/use-document-title';
+
+const TABS = [['events', 'My events'], ['balance', 'Balance']];
 
 export default function OrganizerPage() {
-  const [user, setUser] = useState(null);
-  const [state, setState] = useState('loading');
+  useDocumentTitle('Organizer');
+  const { user, loading } = useAuthed();
   const [tab, setTab] = useState('events');
-
-  useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include' })
-      .then(async (r) => {
-        if (!r.ok) return setState('login');
-        const j = await r.json().catch(() => ({}));
-        const u = j?.data;
-        if (!u) return setState('login');
-        setUser(u);
-        setState(u.role === 'ORGANIZER' || u.role === 'ADMIN' ? 'ok' : 'denied');
-      })
-      .catch(() => setState('login'));
-  }, []);
+  const state = loading ? 'loading'
+    : !user ? 'login'
+    : (user.role === 'ORGANIZER' || user.role === 'ADMIN' ? 'ok' : 'denied');
 
   if (state === 'loading') {
     return <div className="studio-page"><main className="section-gutter st-hero"><p className="eyebrow">Organizers</p><p style={{ color: '#777' }}>Loading…</p></main></div>;
@@ -47,12 +40,7 @@ export default function OrganizerPage() {
 
   return (
     <div className="studio-page">
-      <header className="header">
-        <Link href="/" className="wordmark" aria-label="Boss Media home">BOSS<span>MEDIA</span></Link>
-        <div className="header-actions">
-          <Link href="/organizer" className="signin">{user?.name?.split(' ')[0] || 'Organizer'}</Link>
-        </div>
-      </header>
+      <SiteHeader />
       <main className="section-gutter">
         <div className="st-hero">
           <p className="eyebrow">Boss Media · Organizer</p>
@@ -69,13 +57,15 @@ export default function OrganizerPage() {
         </div>
         {tab === 'events' && <EventsTab />}
         {tab === 'balance' && <BalanceTab />}
-        {tab === 'volunteers' && <VolunteersTab />}
-      </main>
-      <footer className="footer section-gutter" style={{ borderTop: '1px solid #242424' }}>
-        <div className="footer-bottom" style={{ borderTop: 0, marginTop: 0 }}>
-          <p>© 2026 Boss Media Limited</p>
+        <div className="st-card" style={{ padding: 18, marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <strong>Volunteers</strong>
+            <p className="st-csub" style={{ margin: '4px 0 0' }}>Roster the crew per event and share commission as spend-only balance.</p>
+          </div>
+          <Link href="/organizer/volunteers" className="st-btn" style={{ textDecoration: 'none' }}>Open volunteers <Icon name="arrow" size={15} /></Link>
         </div>
-      </footer>
+      </main>
+      <SiteFooter />
     </div>
   );
 }
@@ -95,7 +85,7 @@ function EventsTab() {
   const [msg, setMsg] = useState(null);
 
   const load = () => studio.get('/api/organizer/events').then(setRows).catch((e) => setMsg({ err: true, text: e.message }));
-  useEffect(load, []);
+  useEffect(() => { load(); }, []);
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
 
   async function create(e) {
@@ -128,6 +118,8 @@ function EventsTab() {
     <>
       <Note msg={msg} />
       <div className="st-card" style={{ padding: 18, marginBottom: 16 }}>
+        <h3 style={{ margin: '0 0 4px' }}>New event</h3>
+        <p className="st-csub">List a show to open pre-book coverage and earn 10% of every photo sale.</p>
         <form className="st-form" onSubmit={create}>
           <div className="st-form-row">
             <label><span>Event name</span>
@@ -148,7 +140,13 @@ function EventsTab() {
           <div><button className="st-btn" disabled={busy}>{busy ? 'Creating…' : 'Create event'}</button></div>
         </form>
       </div>
-      {!rows.length ? <p className="empty-note">No events yet — create your first above.</p> : (
+      {!rows.length ? (
+        <div className="event-media-empty">
+          <p className="eyebrow">No events yet</p>
+          <h3>Create your first event above.</h3>
+          <p>It takes a minute — riders can pre-book as soon as it’s listed.</p>
+        </div>
+      ) : (
         <div className="st-card" style={{ padding: '6px 22px' }}>
           <table className="st-table">
             <thead><tr><th>Event</th><th>Dates</th><th>Photos</th><th>Gross</th><th></th></tr></thead>
@@ -245,65 +243,4 @@ function BalanceTab() {
   );
 }
 
-/* ---------------- volunteers: look up by email, grant balance ---------------- */
-function VolunteersTab() {
-  const [email, setEmail] = useState('');
-  const [found, setFound] = useState(null);
-  const [amount, setAmount] = useState('');
-  const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState(null);
 
-  async function lookup(e) {
-    e.preventDefault();
-    if (busy) return;
-    setBusy(true); setMsg(null); setFound(null);
-    try {
-      const u = await studio.get(`/api/organizer/lookup?email=${encodeURIComponent(email.trim())}`);
-      setFound(u);
-    } catch (err) { setMsg({ err: true, text: err.message }); }
-    setBusy(false);
-  }
-
-  async function grant() {
-    const cents = Math.round(Number(amount) * 100);
-    if (!found || !Number.isInteger(cents) || cents < 1) { setMsg({ err: true, text: 'Enter an amount of at least NZ$1.' }); return; }
-    if (!window.confirm(`Grant ${nzdc(cents)} to ${found.name} (${found.email})? This cannot be undone.`)) return;
-    setBusy(true); setMsg(null);
-    try {
-      const r = await studio.post('/api/wallet/grant', { to_user_id: found.id, amount_cents: cents, reason: reason.trim() || undefined });
-      // studio.post returns the raw body ({ data }) — unlike studio.get.
-      const g = r.data || r;
-      setMsg({ text: `Granted ${nzdc(g.granted_cents)}. New balance ${nzdc(g.balance_cents)}.` });
-      setFound(null); setEmail(''); setAmount(''); setReason('');
-    } catch (err) { setMsg({ err: true, text: err.message }); }
-    setBusy(false);
-  }
-
-  return (
-    <>
-      <Note msg={msg} />
-      <div className="st-card" style={{ padding: 18, marginBottom: 16 }}>
-        <form className="st-form" onSubmit={lookup}>
-          <label><span>Volunteer email</span>
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="volunteer@example.nz" autoComplete="off" /></label>
-          <div><button className="st-btn-ghost" disabled={busy}>{busy ? 'Looking up…' : 'Find volunteer'}</button></div>
-        </form>
-      </div>
-      {found && (
-        <div className="st-card" style={{ padding: 18 }}>
-          <div className="st-form">
-            <p style={{ margin: 0 }}>Granting to <strong>{found.name}</strong> <span style={{ color: '#777' }}>({found.email})</span></p>
-            <div className="st-form-row">
-              <label><span>Amount (NZ$)</span>
-                <input type="text" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 25" /></label>
-              <label><span>Note (optional)</span>
-                <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Gate crew, Saturday" maxLength={200} /></label>
-            </div>
-            <div><button className="st-btn" disabled={busy} onClick={grant}>{busy ? 'Granting…' : 'Grant balance'}</button></div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}

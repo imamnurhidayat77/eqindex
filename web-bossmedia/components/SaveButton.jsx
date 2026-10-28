@@ -24,7 +24,7 @@ export default function SaveButton({ id, label = 'Save to favourites' }) {
   return (
     <button type="button" onClick={onClick}
       aria-label={saved ? 'Remove from favourites' : label} aria-pressed={saved}
-      style={{ position: 'absolute', top: 17, right: 17, zIndex: 2, width: 34, height: 34, display: 'grid', placeItems: 'center', borderRadius: '50%', border: '1px solid rgba(255,255,255,.6)', background: 'rgba(0,0,0,.6)', color: '#fff', cursor: 'pointer' }}>
+      style={{ position: 'absolute', top: 12, right: 12, zIndex: 2, width: 44, height: 44, display: 'grid', placeItems: 'center', borderRadius: '50%', border: '1px solid rgba(255,255,255,.6)', background: 'rgba(0,0,0,.6)', color: '#fff', cursor: 'pointer' }}>
       <Icon name={saved ? 'heart-fill' : 'heart'} size={15} />
     </button>
   );

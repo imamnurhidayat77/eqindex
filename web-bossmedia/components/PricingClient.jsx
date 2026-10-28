@@ -1,10 +1,11 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import StudioShell, { Chip, Pager } from './studio';
 import { useNotify } from './Toaster';
 import { useConfirm } from './ConfirmModal';
 import StudioTable from './StudioTable';
 import SearchSelect from './SearchSelect';
+import { searchSubjects } from '../lib/search-subjects';
 import { API } from '../lib/api';
 import { nzdc, studio } from '../lib/studio';
 
@@ -31,14 +32,14 @@ export default function PricingClient({ events }) {
   const [packs, setPacks] = useState(null);
   const [settings, setSettings] = useState(null);
 
-  const load = () => {
+  const load = useCallback(() => {
     studio.get('/admin/license-tiers').then((r) => setTiers(r || [])).catch((e) => notify(e.message, true));
     studio.get('/admin/packages').then((r) => setPackages(r || [])).catch(() => {});
     studio.get('/admin/reel-products').then((r) => setProducts(r || [])).catch(() => {});
     studio.get('/admin/credit-packs').then((r) => setPacks(r || [])).catch(() => {});
     studio.get('/admin/settings').then(setSettings).catch(() => {});
-  };
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [notify]);
+  useEffect(() => { load(); }, [load]);
 
   return (
     <StudioShell active="pricing">
@@ -152,7 +153,7 @@ function TierTable({ kind, tiers, reload }) {
   };
   return (
     <>
-    <table className="st-table">
+    <div className="table-scroll"><table className="st-table">
       <thead><tr><th>Buyer option</th><th>Price (NZ$)</th><th>File quality</th><th>Print-ready</th><th>In shop</th><th></th></tr></thead>
       <tbody>
         {list.slice(safe, safe + PAGE).map((t) => {
@@ -204,7 +205,7 @@ function TierTable({ kind, tiers, reload }) {
           );
         })}
       </tbody>
-    </table>
+    </table></div>
     <Pager total={list.length} limit={PAGE} offset={safe} onPage={setOffset} />
     {confirmUI}
     </>
@@ -274,7 +275,7 @@ function PackageTable({ packages, reload }) {
   };
   return (
     <>
-    <table className="st-table">
+    <div className="table-scroll"><table className="st-table">
       <thead><tr><th>Bundle</th><th>Event</th><th>Photos</th><th>Price</th><th>Status</th><th></th></tr></thead>
       <tbody>
         {packages.slice(safe, safe + PAGE).map((p) => (
@@ -291,7 +292,7 @@ function PackageTable({ packages, reload }) {
           </tr>
         ))}
       </tbody>
-    </table>
+    </table></div>
     <Pager total={(packages || []).length} limit={PAGE} offset={safe} onPage={setOffset} />
     {confirmUI}
     </>
@@ -306,12 +307,8 @@ function PackageForm({ events, onDone }) {
   const [subjectName, setSubjectName] = useState('');
   const [price, setPrice] = useState('');
   const searchSubject = async (v) => {
-    if (!subject || v.trim().length < 2) return [];
-    try {
-      const res = await fetch(`${API}/api/${subject === 'horse' ? 'horses' : 'riders'}/search?q=${encodeURIComponent(v)}&limit=8`);
-      const j = await res.json().catch(() => ({}));
-      return (j.data || []).map((o) => ({ id: o.id, label: o.name }));
-    } catch { return []; }
+    if (!subject) return [];
+    return searchSubjects(subject, v);
   };
   const submit = async () => {
     try {
@@ -368,7 +365,7 @@ function ProductTable({ products, reload }) {
   };
   return (
     <>
-    <table className="st-table">
+    <div className="table-scroll"><table className="st-table">
       <thead><tr><th>Reel option</th><th>Covers</th><th>Price</th><th>Orders</th><th>Status</th><th></th></tr></thead>
       <tbody>
         {products.slice(safe, safe + PAGE).map((p) => (
@@ -385,7 +382,7 @@ function ProductTable({ products, reload }) {
           </tr>
         ))}
       </tbody>
-    </table>
+    </table></div>
     <Pager total={(products || []).length} limit={PAGE} offset={safe} onPage={setOffset} />
     {confirmUI}
     </>

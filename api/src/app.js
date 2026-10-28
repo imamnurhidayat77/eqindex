@@ -17,6 +17,10 @@ const mountMediaRoutes = require('./routes/media');
 // same file in their original order.
 function createApp() {
   const app = express();
+  // Behind Cloud Run/Vercel the direct peer is always a proxy: without this,
+  // req.ip is the proxy's (rate-limit misfires) and req.secure lies (the
+  // Secure cookie flag can silently drop, logging everyone out).
+  app.set('trust proxy', 1);
   // Stripe webhook needs the raw body — security middleware skips the
   // JSON parser for /api/stripe/webhook (raw parsed in the route itself).
   if (!process.env.STRIPE_SECRET_KEY) console.error('[boot] STRIPE_SECRET_KEY unset — checkout disabled');

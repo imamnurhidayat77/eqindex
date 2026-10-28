@@ -1,8 +1,10 @@
 'use client';
 import { useState } from 'react';
 import { API } from '../../lib/api';
+import { safeError } from '../../lib/errors';
 import PageShell from '../../components/PageShell';
 import SearchSelect from '../../components/SearchSelect';
+import { useDocumentTitle } from '../../lib/use-document-title';
 
 const RELATIONSHIPS = [
   "That's me",
@@ -13,6 +15,7 @@ const RELATIONSHIPS = [
 ];
 
 export default function TakedownPage() {
+  useDocumentTitle('Takedown request');
   const [form, setForm] = useState({ url: '', reason: '', relationship: '', contact: '' });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -38,7 +41,7 @@ export default function TakedownPage() {
         body: JSON.stringify({ reason: `${form.relationship ? `[${form.relationship}] ` : ''}${form.reason} — contact: ${form.contact}`.slice(0, 500) }),
       });
       const j = await res.json().catch(() => ({}));
-      if (res.status === 401) throw new Error('Log in first so we can link the request to your account.');
+      if (res.status === 401) throw new Error('Sign in first so we can link the request to your account.');
       if (!res.ok) throw new Error(j.error || 'Request failed — try again.');
       setDone(true);
     } catch (e2) { setMsg(e2.message); setBusy(false); }
@@ -68,7 +71,7 @@ export default function TakedownPage() {
             <input value={form.reason} onChange={(e) => set('reason', e.target.value)} placeholder="e.g. that's my child, please remove" maxLength={300} /></label>
           <label className="booking-field full" style={{ marginTop: 20 }}><span>Your contact (email or phone)</span>
             <input value={form.contact} onChange={(e) => set('contact', e.target.value)} placeholder="How we confirm the outcome" /></label>
-          {msg && <p className="auth-error" role="alert" style={{ marginTop: 16 }}>{msg}</p>}
+          {msg && <p className="auth-error" role="alert" style={{ marginTop: 16 }}>{safeError(msg)}</p>}
           <button type="submit" disabled={busy}
             style={{ marginTop: 22, width: '100%', minHeight: 52, display: 'flex', justifyContent: 'center', alignItems: 'center', border: 0, color: '#101010', background: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
             {busy ? 'Sending…' : 'Request takedown'}

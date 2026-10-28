@@ -1,10 +1,11 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import StudioShell, { Chip, Pager } from '../../../components/studio';
 import { useNotify } from '../../../components/Toaster';
 import { useConfirm } from '../../../components/ConfirmModal';
 import { dayOf, nzdc, studio } from '../../../lib/studio';
+import { useDocumentTitle } from '../../../lib/use-document-title';
 
 const LIMIT = 20;
 
@@ -27,14 +28,15 @@ const ACTION = {
 const actionLabel = (s) => ACTION[s] || s.replace(/_/g, ' ');
 
 export default function ReelsPage() {
+  useDocumentTitle('Pre-book orders');
   const notify = useNotify();
   const [orders, setOrders] = useState(null);
   const [filter, setFilter] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [offset, setOffset] = useState(0);
 
-  const load = () => { studio.get('/admin/reel-orders').then((r) => setOrders(r || [])).catch((e) => notify(e.message, true)); };
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => { studio.get('/admin/reel-orders').then((r) => setOrders(r || [])).catch((e) => notify(e.message, true)); }, [notify]);
+  useEffect(() => { load(); }, [load]);
   useEffect(() => { setOffset(0); }, [filter]);
 
   const counts = useMemo(() => {
@@ -58,9 +60,12 @@ export default function ReelsPage() {
     setBusyId(null);
   }
 
+  const setOrderMedia = (orderId, mediaId) =>
+    setOrders((xs) => (xs || []).map((x) => (x.id === orderId ? { ...x, media_id: mediaId } : x)));
+
   return (
     <StudioShell active="reels" kpis={{ reels: queue }}>
-      <div className="st-filters" role="tablist" aria-label="Order status">
+      <div className="st-filters" role="group" aria-label="Order status">
         <button className="st-btn-ghost" style={!filter ? { borderColor: '#fff' } : undefined} onClick={() => setFilter('')}>All ({(orders || []).length})</button>
         {ORDER.filter((s) => counts[s]).map((s) => (
           <button key={s} className="st-btn-ghost" style={filter === s ? { borderColor: '#fff' } : undefined} onClick={() => setFilter(filter === s ? '' : s)}>
@@ -76,14 +81,14 @@ export default function ReelsPage() {
         </div>
       ) : (
         <div className="st-card" style={{ padding: '6px 22px' }}>
-          <table className="st-table">
+          <div className="table-scroll"><table className="st-table">
             <thead><tr><th>Order</th><th>Rider / horse</th><th>Event</th><th>Status</th><th>Payment</th><th></th></tr></thead>
             <tbody>
               {pageOrders.map((o) => (
-                <OrderRow key={o.id} o={o} busy={busyId === o.id} onAdvance={advance} />
+                <OrderRow key={o.id} o={o} busy={busyId === o.id} onAdvance={advance} onMediaLinked={setOrderMedia} />
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
       <Pager total={visible.length} limit={LIMIT} offset={safeOffset} onPage={setOffset} />
@@ -91,10 +96,39 @@ export default function ReelsPage() {
   );
 }
 
-function OrderRow({ o, busy, onAdvance }) {
+function OrderRow({ o, busy, onAdvance, onMediaLinked }) {
+  const notify = useNotify();
   const [confirmUI, dialog] = useConfirm();
-  const [linking, setLinking] = useState(false);
+  const [linking, setLinking] = useState(null); // null | 'link' | 'change'
   const [mediaId, setMediaId] = useState(o.media_id || '');
+  const [reels, setReels] = useState(null);
+  const [picked, setPicked] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const startLinking = (mode) => {
+    setLinking(mode);
+    setPicked(mode === 'change' ? (o.media_id || null) : null);
+    setReels(null);
+    studio.get('/admin/media?kind=reel&limit=100').then((r) => setReels(r || [])).catch((e) => notify(e.message, true));
+  };
+  async function savePicked() {
+    if (!picked || saving) return;
+    setSaving(true);
+    try {
+      if (linking === 'change') {
+        await studio.patch(`/admin/reel-orders/${o.id}`, { media_id: picked });
+        onMediaLinked(o.id, picked);
+        notify('Reel updated');
+      } else {
+        await onAdvance(o, 'ready', { media_id: picked });
+      }
+      setLinking(null);
+    } catch (e) { notify(e.message, true); }
+    setSaving(false);
+  }
+  // Most relevant first: same event, then same horse.
+  const sorted = (reels || []).slice().sort((a, b) =>
+    ((b.event_name === o.event_name) - (a.event_name === o.event_name))
+    || ((b.horse === o.horse_name) - (a.horse === o.horse_name)));
   const nexts = FLOW[o.status] || [];
   return (
     <tr>
@@ -109,7 +143,7 @@ function OrderRow({ o, busy, onAdvance }) {
       <td style={{ whiteSpace: 'nowrap' }}>
         {nexts.filter((s) => s !== 'cancelled').map((s) => (
           s === 'ready' && !o.media_id && !linking ? (
-            <button key={s} className="st-btn-ghost" style={{ minHeight: 36, marginRight: 8 }} disabled={busy} onClick={() => setLinking(true)}>Link reel…</button>
+            <button key={s} className="st-btn-ghost" style={{ minHeight: 36, marginRight: 8 }} disabled={busy} onClick={() => startLinking('link')}>Link reel…</button>
           ) : (
             <button key={s} className="st-btn-ghost" style={{ minHeight: 36, marginRight: 8 }} disabled={busy}
               onClick={() => onAdvance(o, s, s === 'ready' && mediaId ? { media_id: mediaId } : {})}>
@@ -126,12 +160,43 @@ function OrderRow({ o, busy, onAdvance }) {
             {confirmUI}
           </>
         )}
+        {o.media_id && o.status !== 'delivered' && (
+          <button className="st-btn-ghost" style={{ minHeight: 36, marginRight: 8 }} disabled={busy} onClick={() => startLinking('change')}>Change…</button>
+        )}
         {linking && (
-          <span style={{ display: 'inline-flex', gap: 6, marginLeft: 4 }}>
-            <input value={mediaId} onChange={(e) => setMediaId(e.target.value)} placeholder="Reel media UUID"
-              style={{ height: 36, width: 220, background: '#0b0b0b', border: '1px solid #333', color: '#fff', fontSize: 12, padding: '0 8px' }} />
-            <button className="st-btn" style={{ minHeight: 36 }} disabled={busy || !mediaId} onClick={() => { onAdvance(o, 'ready', { media_id: mediaId }); setLinking(false); }}>Save</button>
-          </span>
+          <div className="st-modal" role="dialog" aria-modal="true" aria-label="Choose the finished reel"
+            onMouseDown={(e) => { if (e.target === e.currentTarget) setLinking(null); }}>
+            <div className="st-modal-card st-modal-card-xwide" role="document">
+              <p className="eyebrow">{linking === 'change' ? 'Swap linked reel' : 'Link finished reel'}</p>
+              <h3>Which cut is {o.horse_name || 'this order'}?</h3>
+              {reels === null ? <p className="empty-note">Loading reels…</p>
+              : !sorted.length ? <p className="empty-note">No finished reels in the library yet.</p> : (
+                <div className="reel-pick-grid">
+                  {sorted.map((m) => (
+                    <button type="button" key={m.id} className={`st-media-card reel-pick${picked === m.id ? ' sel' : ''}`}
+                      onClick={() => setPicked(picked === m.id ? null : m.id)}
+                      aria-label={`Pick reel ${[m.horse, m.rider].filter(Boolean).join(' · ') || 'untagged'}`}
+                      aria-pressed={picked === m.id}>
+                      {picked === m.id && <span className="reel-pick-check" aria-hidden="true">✓</span>}
+                      {m.thumb_url || m.preview_url
+                        ? <img src={m.thumb_url || m.preview_url} alt="" loading="lazy" />
+                        : <span className="cover-fallback">No preview</span>}
+                      <footer>
+                        <strong>{[m.horse, m.rider].filter(Boolean).join(' · ') || m.other_people || 'Untagged'}</strong>
+                        <span>{m.event_name || 'No event'}</span>
+                      </footer>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="st-modal-actions">
+                <button type="button" className="st-btn-ghost" onClick={() => setLinking(null)}>Cancel</button>
+                <button type="button" className="st-btn" disabled={!picked || saving} onClick={savePicked}>
+                  {saving ? 'Saving…' : 'Use this reel'}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </td>
     </tr>

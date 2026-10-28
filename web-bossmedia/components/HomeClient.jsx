@@ -57,7 +57,7 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
               <Link href="/events" className="text-link">Explore our work</Link>
             </div>
           </div>
-          <div className="hero-collage" aria-label="Featured equestrian photography">
+          <div className="hero-collage" role="img" aria-label="Featured equestrian photography">
             <figure className="hero-image hero-image-main">
               {heroImage ? <img src={heroImage} alt="Horse and rider moving through an equestrian event" loading="eager" fetchPriority="high" />
                 : <span className="cover-fallback" aria-hidden="true">Boss Media</span>}
@@ -79,9 +79,9 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
             </div>
           </div>
           <div className="event-tools">
-            <div className="tabs" role="tablist" aria-label="Event status">
+            <div className="tabs" role="group" aria-label="Event status">
               {['Gallery live', 'All events'].map((t) => (
-                <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t}</button>
+                <button key={t} aria-pressed={tab === t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>{t}</button>
               ))}
             </div>
             <label className="search-box">

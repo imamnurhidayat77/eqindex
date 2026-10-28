@@ -2,7 +2,9 @@ import { SITE_URL, getJSON } from '../lib/api';
 
 export const revalidate = 3600;
 
-// Public crawl surface: static pages + every gallery event + every photo.
+// Public crawl surface: static pages + gallery events + photos. The photo
+// list is intentionally capped at the newest 200 (API limit) — deep archive
+// pages stay out of the sitemap but remain crawlable via event galleries.
 // Fail-open: a down API at build time yields the static routes, never a
 // broken sitemap.
 export default async function sitemap() {

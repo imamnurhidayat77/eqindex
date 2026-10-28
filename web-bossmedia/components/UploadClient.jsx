@@ -5,6 +5,7 @@ import StudioShell from './studio';
 import { useNotify } from './Toaster';
 import TagModal from './TagModal';
 import SearchSelect from './SearchSelect';
+import { searchSubjects } from '../lib/search-subjects';
 import { Icon } from './figma';
 import { API } from '../lib/api';
 import { studio } from '../lib/studio';
@@ -162,13 +163,18 @@ export default function UploadClient({ events }) {
     const fin = await studio.post(`/admin/media/${media_id}/finalize`, {});
     if (fin.data?.done) { setOne({ status: 'done', progress: 100 }); return media_id; }
     // Poll until the poster + teaser exist (transcode takes minutes).
-    for (let i = 0; i < 40; i++) {
+    // Capped ~5 min: 3 straight failures abort loudly instead of hanging.
+    let fails = 0;
+    for (let i = 0; i < 20; i++) {
       await new Promise((r) => setTimeout(r, 15000));
       try {
         const m = await studio.get(`/admin/media/${media_id}`);
         if (m.thumb_key) { setOne({ status: 'done', progress: 100 }); return media_id; }
+        fails = 0;
         setOne({ progress: Math.min(95, 70 + i) });
-      } catch {}
+      } catch (e) {
+        if (++fails >= 3) throw new Error(e?.message || 'Render check failed — retry from the Library');
+      }
     }
     setOne({ status: 'processing', progress: 95 });
     return media_id;
@@ -445,14 +451,7 @@ function BulkBar({ tiers, eventId, ids, notify, onEach, onFinished }) {
       .then((r) => r.json()).then((j) => setClasses(j.data || [])).catch(() => setClasses([]));
   }, [eventId]);
 
-  const searchPeople = (kind) => async (v) => {
-    if (v.trim().length < 2) return [];
-    try {
-      const res = await fetch(`${API}/api/${kind}/search?q=${encodeURIComponent(v)}&limit=8`);
-      const j = await res.json().catch(() => ({}));
-      return (j.data || []).map((o) => ({ id: o.id, label: o.name }));
-    } catch { return []; }
-  };
+  const searchPeople = (kind) => (v) => searchSubjects(kind, v);
 
   if (!ids.length) return null;
   const apply = async () => {

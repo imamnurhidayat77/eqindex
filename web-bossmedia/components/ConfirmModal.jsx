@@ -1,5 +1,6 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusTrap } from '../lib/focus-trap';
 
 // Controlled confirm modal — deliberately context-free. The parent owns
 // `open` state, so open=true always paints: no promise chain or provider
@@ -10,20 +11,20 @@ export default function ConfirmModal({
   numeric = false, onConfirm, onCancel,
 }) {
   const [input, setInput] = useState(initial);
+  const rootRef = useRef(null);
   useEffect(() => { if (open) setInput(initial); }, [open, initial]);
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') onCancel?.(); };
-    window.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
-  }, [open, onCancel]);
+    return () => { document.body.style.overflow = prev; };
+  }, [open ]);
+  useFocusTrap(rootRef, { onClose: onCancel, active: open });
 
   if (!open) return null;
   const submit = (v) => onConfirm?.(v);
   return (
-    <div className="st-modal" role="alertdialog" aria-modal="true" aria-label={title}
+    <div className="st-modal" ref={rootRef} role="alertdialog" aria-modal="true" aria-label={title}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onCancel?.(); }}>
       <div className="st-modal-card" role="document">
         <p className="eyebrow">Please confirm</p>

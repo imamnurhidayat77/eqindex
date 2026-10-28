@@ -6,32 +6,28 @@ import { readFavourites, removeFavourite } from '../../lib/favourites';
 import { Icon } from '../../components/figma';
 import GalleryPager from '../../components/GalleryPager';
 import { useToast } from '../../components/Toaster';
+import { useAuthed } from '../../lib/use-authed';
 import PageShell from '../../components/PageShell';
+import { useDocumentTitle } from '../../lib/use-document-title';
 
 const LIMIT = 12;
 
 // Favourites live in the browser (no account needed). Buying happens on
 // the photo page.
 export default function FavouritesPage() {
+  useDocumentTitle('Favourites');
   const toast = useToast();
-  const [me, setMe] = useState(undefined); // undefined = checking
+  const { user: me, loading: meLoading } = useAuthed();
   const [items, setItems] = useState(null);
   const [page, setPage] = useState(1);
-
-  useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => setMe(j?.data || null))
-      .catch(() => setMe(null));
-  }, []);
 
   useEffect(() => {
     if (!me) return;
     const ids = readFavourites();
     if (!ids.length) { setItems([]); return; }
-    Promise.all(ids.map((id) =>
-      fetch(`${API}/photos/${id}`).then((r) => (r.ok ? r.json() : null)).catch(() => null)
-    )).then((rs) => setItems(rs.map((r) => r?.data).filter(Boolean)));
+    fetch(`${API}/photos?ids=${ids.map(encodeURIComponent).join(',')}`)
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null)
+      .then((j) => setItems(Array.isArray(j?.data) ? j.data : []));
   }, [me]);
 
   function remove(id) {
@@ -45,15 +41,15 @@ export default function FavouritesPage() {
   const safePage = Math.min(page, pages);
 
   return (
-    <PageShell eyebrow="Saved / Members" title="Favourites." wide
+    <PageShell eyebrow="Favourites / Members" title="Favourites." wide
       intro="Your saved photos on this device — members only. Tap a card to buy.">
-      {me === undefined ? (
+      {meLoading ? (
         <div className="event-media-empty"><p className="eyebrow">Loading…</p></div>
       ) : !me ? (
         <div className="event-media-empty">
           <p className="eyebrow">Members only</p>
-          <h3>Log in to see your favourites.</h3>
-          <Link href="/login?next=/favourites" style={{ paddingBottom: 6, borderBottom: '1px solid #555', fontSize: 13, color: '#bbb' }}>Log in</Link>
+          <h3>Sign in to see your favourites.</h3>
+          <Link href="/login?next=/favourites" style={{ paddingBottom: 6, borderBottom: '1px solid #555', fontSize: 13, color: '#bbb' }}>Sign in</Link>
         </div>
       ) : items === null ? (
         <div className="event-media-empty"><p className="eyebrow">Loading…</p></div>
@@ -69,7 +65,7 @@ export default function FavouritesPage() {
             <article className="event-media-card" key={x.id} style={{ position: 'relative' }}>
               <Link href={`/p/${x.id}`} style={{ display: 'block' }} aria-label={`${x.horse || ''} ${x.rider || ''}`.trim() || 'Photo'}>
                 {x.thumb_url || x.preview_url
-                  ? <img src={x.thumb_url || x.preview_url} alt={`${[x.horse, x.rider].filter(Boolean).join(' ridden by ') || 'Saved equestrian photo'}${x.event_name ? ` at ${x.event_name}` : ''}`} loading="lazy" />
+                  ? <img src={x.thumb_url || x.preview_url} alt={`${[x.horse, x.rider].filter(Boolean).join(' ridden by ') || 'Favourite equestrian photo'}${x.event_name ? ` at ${x.event_name}` : ''}`} loading="lazy" />
                   : <span className="cover-fallback">Boss Media</span>}
                 <span className="media-card-footer">
                   <small title={x.event_name || ''}>{x.event_name || '—'}</small>

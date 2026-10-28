@@ -60,6 +60,7 @@ export function SiteHeader({ transparent = false }) {
   const [me, setMe] = useState(null);
   const [acctOpen, setAcctOpen] = useState(false);
   const studio = !!me && (me.role === 'PHOTOGRAPHER' || me.role === 'ADMIN');
+  const organizer = !!me && (me.role === 'ORGANIZER' || me.role === 'ADMIN');
   const active = pathname.startsWith('/events') ? 'events'
     : pathname === '/pre-book' ? 'pre-book'
     : pathname === '/reels' ? 'reels' : null;
@@ -125,8 +126,10 @@ export function SiteHeader({ transparent = false }) {
                   <div className="acct-menu" role="menu">
                     <p className="acct-who">{me.name || me.email}<small>{me.role?.toLowerCase()}</small></p>
                     {studio && <Link href="/studio" role="menuitem" onClick={() => setAcctOpen(false)}>My Studio</Link>}
+                    {organizer && <Link href="/organizer" role="menuitem" onClick={() => setAcctOpen(false)}>My events</Link>}
                     <Link href="/account" role="menuitem" onClick={() => setAcctOpen(false)}>My account</Link>
                     <Link href="/media" role="menuitem" onClick={() => setAcctOpen(false)}>My media</Link>
+                    <Link href="/watchlist" role="menuitem" onClick={() => setAcctOpen(false)}>Watchlist</Link>
                     <button type="button" role="menuitem" className="acct-signout" onClick={signOut}>Sign out</button>
                   </div>
                 </>
@@ -149,13 +152,14 @@ export function SiteHeader({ transparent = false }) {
             </button>
           </div>
           <nav>
-            {[...NAV.map(([href, label], i) => ({ href, label, n: `0${i + 1}` })),
-              ...(studio ? [{ href: '/studio', label: `My Studio · ${(me?.name || '').split(' ')[0] || 'photo'}`, n: '04' }] : []),
-              ...(me ? [{ href: '/account', label: 'My account', n: studio ? '05' : '04' }, { href: '/media', label: 'My media', n: studio ? '06' : '05' }] : [{ href: '/login', label: 'Sign in', n: studio ? '05' : '04' }]),
-              { href: '/cart', label: 'Cart', n: studio ? '07' : me ? '06' : '05' },
-            ].map((l) => (
+            {[...NAV.map(([href, label]) => ({ href, label })),
+              ...(studio ? [{ href: '/studio', label: `My Studio · ${(me?.name || '').split(' ')[0] || 'photo'}` }] : []),
+              ...(organizer ? [{ href: '/organizer', label: 'My events' }] : []),
+              ...(me ? [{ href: '/account', label: 'My account' }, { href: '/media', label: 'My media' }, { href: '/watchlist', label: 'Watchlist' }] : [{ href: '/login', label: 'Sign in' }]),
+              { href: '/cart', label: 'Cart' },
+            ].map((l, i) => (
               <Link key={l.href} href={l.href} onClick={() => setMenuOpen(false)}>
-                <span>{l.n}</span>{l.label} <Icon name="arrow" />
+                <span>{`0${i + 1}`}</span>{l.label} <Icon name="arrow" />
               </Link>
             ))}
             {me && (
@@ -246,7 +250,7 @@ export function EventCard({ item, view }) {
         </div>
       </div>
       {view === 'list' && (
-        <Link className="list-arrow" href={href} aria-label={`Open ${item.name}`}>
+        <Link className="list-arrow" href={href} aria-hidden="true" tabIndex={-1}>
           <Icon name="arrow" size={24} />
         </Link>
       )}

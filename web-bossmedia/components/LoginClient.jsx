@@ -17,11 +17,14 @@ function LoginInner({ visual }) {
   const src = visual || FIGMA_FALLBACK;
   const router = useRouter();
   const sp = useSearchParams();
-  const next = safeNext(sp.get('next'));
+  const rawNext = sp.get('next');
+  const next = safeNext(rawNext);
   const [form, setForm] = useState({ email: '', password: '' });
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [challenge, setChallenge] = useState(null);
+  const [code, setCode] = useState('');
 
   async function submit(e) {
     e.preventDefault();
@@ -36,7 +39,30 @@ function LoginInner({ visual }) {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'That didn’t work — check your details and try again.');
-      router.push(next);
+      if (j.data?.mfa_required) { setChallenge(j.data.challenge); setBusy(false); return; }
+      land(j.data?.role);
+    } catch (e2) { setErr(e2.message); setBusy(false); }
+  }
+
+  function land(role) {
+    // Staff land in their workspace unless a deep link asked otherwise.
+    router.push(!rawNext && (role === 'ADMIN' || role === 'PHOTOGRAPHER') ? '/studio' : next);
+  }
+
+  async function submitCode(e) {
+    e.preventDefault();
+    if (busy) return;
+    setErr('');
+    if (!/^\d{6}$/.test(code.trim())) { setErr('Enter the 6-digit code from your authenticator app.'); return; }
+    setBusy(true);
+    try {
+      const res = await fetch(`${API}/auth/mfa/challenge`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challenge, token: code.trim() }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || 'That didn’t work — try again.');
+      land(j.data?.role);
     } catch (e2) { setErr(e2.message); setBusy(false); }
   }
 
@@ -58,6 +84,19 @@ function LoginInner({ visual }) {
           <p className="eyebrow">Boss Media account</p>
           <h1>Welcome back.</h1>
           <p className="login-intro">Sign in to access purchased media, private galleries, and coverage bookings.</p>
+          {challenge ? (
+            <form onSubmit={submitCode}>
+              <label><span>Authenticator code</span>
+                <input required inputMode="numeric" autoComplete="one-time-code" value={code}
+                  onChange={(e) => setCode(e.target.value)} placeholder="123456" maxLength={6} />
+              </label>
+              {err && <p className="auth-error" role="alert">{err}</p>}
+              <button type="submit" disabled={busy}>
+                {busy ? 'Checking…' : 'Verify and sign in'}
+                <Icon name="arrow" size={18} />
+              </button>
+            </form>
+          ) : (
           <form onSubmit={submit}>
             <label><span>Email address</span>
               <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@example.com" autoComplete="email" />
@@ -73,7 +112,6 @@ function LoginInner({ visual }) {
               </span>
             </label>
             <div className="login-options">
-              <label><input type="checkbox" /><span>Remember me</span></label>
               <Link href="/forgot">Forgot password?</Link>
             </div>
             {err && <p className="auth-error" role="alert">{err}</p>}
@@ -82,6 +120,7 @@ function LoginInner({ visual }) {
               <Icon name="arrow" size={18} />
             </button>
           </form>
+          )}
           <p className="login-register">
             New to Boss Media? <Link href={`/register?next=${encodeURIComponent(next)}`}>Create an account</Link>
           </p>

@@ -1,10 +1,11 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import StudioShell, { Pager } from '../../../components/studio';
 import { useNotify } from '../../../components/Toaster';
 import { useConfirm } from '../../../components/ConfirmModal';
 import SearchSelect from '../../../components/SearchSelect';
 import { dayOf, nzdc, studio, useStudioUser } from '../../../lib/studio';
+import { useDocumentTitle } from '../../../lib/use-document-title';
 
 const SECTIONS = [['commission', 'Commission'], ['users', 'Users'], ['applications', 'Applications'], ['events', 'Events']];
 // Pickable roles (mirrors the API allowlist — PHOTOGRAPHER and ORGANIZER are
@@ -31,6 +32,7 @@ function RoleBadge({ role }) {
 }
 
 export default function AdminPage() {
+  useDocumentTitle('Admin');
   return (
     <StudioShell active="admin">
       <AdminBody />
@@ -53,7 +55,7 @@ function AdminBody() {
   }
   return (
     <>
-      <div className="st-filters" role="tablist" aria-label="Admin sections">
+      <div className="st-filters" role="group" aria-label="Admin sections">
         {SECTIONS.map(([key, label]) => (
           <button key={key} className="st-btn-ghost" style={section === key ? { borderColor: '#fff' } : undefined}
             onClick={() => setSection(key)}>{label}</button>
@@ -78,15 +80,15 @@ function Commission() {
   const SETTLE_PAGE = 10;
   const settleSafe = Math.min(settleOffset, Math.max(0, (Math.ceil(((settle || []).length) / SETTLE_PAGE) - 1) * SETTLE_PAGE));
 
-  const load = () => {
+  const load = useCallback(() => {
     studio.get('/admin/settings').then((s) => setForm({
       platform: s.platform_commission_rate === '' ? '' : String(Number(s.platform_commission_rate) * 100),
       organizer: s.organizer_share_rate === '' ? '' : String(Number(s.organizer_share_rate) * 100),
       packagePrice: s.event_package_price_cents === '' ? '' : String(Number(s.event_package_price_cents) / 100),
     })).catch((e) => notify(e.message, true));
     studio.get('/admin/sales/summary').then((d) => setSettle(d.settlement || [])).catch(() => {});
-  };
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [notify]);
+  useEffect(() => { load(); }, [load]);
 
   async function save() {
     const platform = form.platform.trim() === '' ? '' : Number(form.platform) / 100;
@@ -131,7 +133,7 @@ function Commission() {
         </div>
       </div>
       <div className="st-card" style={{ padding: '6px 22px' }}>
-        <table className="st-table">
+        <div className="table-scroll"><table className="st-table">
           <thead><tr><th>Photographer</th><th>Sales</th><th>Gross</th><th>Platform fee</th><th>Payout</th></tr></thead>
           <tbody>
             {(settle || []).slice(settleSafe, settleSafe + SETTLE_PAGE).map((s) => (
@@ -144,7 +146,7 @@ function Commission() {
               </tr>
             ))}
           </tbody>
-          </table>
+          </table></div>
           {settle && !settle.length && <p className="empty-note">No paid sales yet.</p>}
           <Pager total={(settle || []).length} limit={SETTLE_PAGE} offset={settleSafe} onPage={setSettleOffset} />
         </div>
@@ -160,11 +162,11 @@ function Users({ selfId }) {
   const [q, setQ] = useState('');
   const [rows, setRows] = useState(null);
 
-  const search = (term = q) => {
+  const search = useCallback((term) => {
     studio.get(`/admin/users${term.trim() ? `?q=${encodeURIComponent(term.trim())}` : ''}`)
       .then(setRows).catch((e) => notify(e.message, true));
-  };
-  useEffect(() => { search(''); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [notify]);
+  useEffect(() => { search(''); }, [search]);
 
   async function setRole(u, role) {
     if (role === u.role) return;
@@ -187,7 +189,7 @@ function Users({ selfId }) {
 
   return (
     <>
-      <form className="st-form" style={{ marginBottom: 16 }} onSubmit={(e) => { e.preventDefault(); search(); }}>
+      <form className="st-form" style={{ marginBottom: 16 }} onSubmit={(e) => { e.preventDefault(); search(q); }}>
         <label><span>Search name or email</span>
           <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type to search…" autoComplete="off" /></label>
       </form>
@@ -211,11 +213,11 @@ function UserTable({ rows, selfId, setRole, revoke }) {
   const safe = Math.min(offset, Math.max(0, (Math.ceil(list.length / PAGE) - 1) * PAGE));
   return (
         <div className="st-card" style={{ padding: '6px 22px' }}>
-          <div className="st-filters" role="tablist" aria-label="Filter by role" style={{ margin: '14px 0 4px' }}>
+          <div className="st-filters" role="group" aria-label="Filter by role" style={{ margin: '14px 0 4px' }}>
             {ROLE_FILTERS.map(([v, label]) => {
               const n = v ? rows.filter((u) => u.role === v).length : rows.length;
               return (
-                <button key={v} role="tab" aria-selected={roleFilter === v} className="st-btn-ghost"
+                <button key={v} aria-pressed={roleFilter === v} className="st-btn-ghost"
                   style={{ minHeight: 34, ...(roleFilter === v ? { borderColor: '#fff' } : undefined) }}
                   onClick={() => { setRoleFilter(v); setOffset(0); }}>
                   {label + (n > 0 ? ' (' + n + ')' : '')}
@@ -223,7 +225,7 @@ function UserTable({ rows, selfId, setRole, revoke }) {
               );
             })}
           </div>
-          <table className="st-table">
+          <div className="table-scroll"><table className="st-table">
             <thead><tr><th>User</th><th>Role</th><th>Sessions</th><th>Joined</th><th></th></tr></thead>
             <tbody>
               {list.slice(safe, safe + PAGE).map((u) => (
@@ -246,7 +248,7 @@ function UserTable({ rows, selfId, setRole, revoke }) {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           {!list.length && <p className="empty-note">No users with this role.</p>}
           <Pager total={list.length} limit={PAGE} offset={safe} onPage={setOffset} />
             <p style={{ color: '#777', fontSize: 12, padding: '0 0 12px' }}>
@@ -318,11 +320,11 @@ function Applications() {
   const [offset, setOffset] = useState(0);
   const PAGE = 10;
 
-  const load = (s = status) => {
+  const load = useCallback((s = status) => {
     setOffset(0);
     studio.get(`/admin/corrections?status=${s}`).then(setRows).catch((e) => notify(e.message, true));
-  };
-  useEffect(() => { load(); }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, notify]);
+  useEffect(() => { load(); }, [load]);
   const safe = Math.min(offset, Math.max(0, (Math.ceil(((rows || []).length) / PAGE) - 1) * PAGE));
 
   async function decide(c, to) {
@@ -361,7 +363,7 @@ function Applications() {
 
   return (
     <>
-      <div className="st-filters" role="tablist" aria-label="Application status">
+      <div className="st-filters" role="group" aria-label="Application status">
         {['open', 'in_review'].map((s) => (
           <button key={s} className="st-btn-ghost" style={status === s ? { borderColor: '#fff' } : undefined}
             onClick={() => setStatus(s)}>{s === 'open' ? 'Open' : 'In review'}</button>
@@ -371,7 +373,7 @@ function Applications() {
         <p className="empty-note">Nothing here.</p>
       ) : (
         <div className="st-card" style={{ padding: '6px 22px' }}>
-          <table className="st-table">
+          <div className="table-scroll"><table className="st-table">
             <thead><tr><th>Applicant</th><th>Subject</th><th>Date</th><th></th></tr></thead>
             <tbody>
               {rows.slice(safe, safe + PAGE).map((c) => (
@@ -386,7 +388,7 @@ function Applications() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           <Pager total={rows.length} limit={PAGE} offset={safe} onPage={setOffset} />
         </div>
       )}
@@ -427,14 +429,14 @@ function Events() {
   const PAGE = 15;
   const safe = Math.min(offset, Math.max(0, (Math.ceil(((rows || []).length) / PAGE) - 1) * PAGE));
 
-  const search = (term = q) => {
+  const search = useCallback((term) => {
     studio.get(`/admin/events${term.trim() ? `?q=${encodeURIComponent(term.trim())}` : ''}`)
       .then(setRows).catch((e) => notify(e.message, true));
-  };
+  }, [notify]);
   useEffect(() => {
     search('');
     studio.get('/admin/organizers').then(setOrgs).catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [search]);
 
   async function link(ev, organizerId) {
     const org = orgs.find((o) => o.id === organizerId);
@@ -465,7 +467,7 @@ function Events() {
 
   return (
     <>
-      <form className="st-form" style={{ marginBottom: 16 }} onSubmit={(e) => { e.preventDefault(); search(); }}>
+      <form className="st-form" style={{ marginBottom: 16 }} onSubmit={(e) => { e.preventDefault(); search(q); }}>
         <label><span>Search events</span>
           <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type event name…" autoComplete="off" /></label>
       </form>
@@ -474,7 +476,7 @@ function Events() {
         <p className="empty-note">No events found.</p>
       ) : (
         <div className="st-card" style={{ padding: '6px 22px' }}>
-          <table className="st-table">
+          <div className="table-scroll"><table className="st-table">
             <thead><tr><th>Event</th><th>Date</th><th>Data</th><th>Pre-book</th><th>Organizer</th></tr></thead>
             <tbody>
               {rows.slice(safe, safe + PAGE).map((ev) => (
@@ -498,7 +500,7 @@ function Events() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
           <Pager total={rows.length} limit={PAGE} offset={safe} onPage={setOffset} />
           <p style={{ color: '#777', fontSize: 12, padding: '0 0 12px' }}>
             Pre-book is opt-in: only events set to Show appear on the pre-book page. Linking gives the organizer this event — no cloning, no name clashes.

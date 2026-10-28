@@ -63,20 +63,25 @@ export async function coverFor(eventId) {
   } catch { return null; }
 }
 
-export async function eventsWithCovers(limit = 12, { withCovers = true } = {}) {
-  const { data } = await getJSON(`/events?limit=${limit}`).catch(() => ({ data: [] }));
-  const rows = data || [];
-  if (!withCovers) return rows.map((e, i) => ({ ...toCardItem(e, i), cover: null }));
-  const out = await Promise.all(rows.map(async (e, i) => ({ ...toCardItem(e, i), cover: await coverFor(e.id) })));
-  return out;
-}
-
 export const nzd = (cents) => `NZ$${(Number(cents || 0) / 100).toFixed(2).replace(/\.00$/, '')}`;
 
 // Stripe return override so buyers land back on THIS storefront after
 // paying (backend defaults to the EQIndex APP_URL). Backend validates the
 // origin against its allowlist; unknown origins fall back to the default.
 export const checkoutBase = () => ({ return_base: window.location.origin });
+
+// Unique key per checkout attempt so double-clicks/retries never double-charge.
+export const newIdempotencyKey = () =>
+  [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+// Never follow a backend URL blindly — only Stripe-hosted checkout pages.
+export function stripeCheckoutUrl(data) {
+  const u = data?.checkout_url;
+  if (typeof u !== 'string' || !/^https:\/\/(checkout|buy)\.stripe\.com\//.test(u)) {
+    throw new Error('Checkout failed — try again.');
+  }
+  return u;
+}
 
 // Gallery truth, shared by home + archive: events that actually have
 // published photos, with cover. Photo-only shells have no classes/rounds,

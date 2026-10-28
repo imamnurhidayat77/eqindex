@@ -41,7 +41,7 @@ export default async function PhotoDetail({ params }) {
         eventName={d.event_name || 'Event gallery'}
         eventSlug={null}
         backHref="/photos"
-        backLabel="Back to photos"
+        backLabel="Back to collection"
       />
       <SiteFooter />
     </div>

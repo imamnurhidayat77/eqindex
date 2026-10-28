@@ -1,0 +1,28 @@
+# Minimal CI: install health (lockfiles valid) + DB-free unit tests.
+# Runs on every PR (including Dependabot) and on master. The DB-backed
+# suites (smoke, checkout.security) stay manual: they need a live API + DB.
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [master]
+jobs:
+  api-unit:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: api } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: api/package-lock.json }
+      - run: npm ci
+      - run: node --test src/lib/wallet.test.mjs src/lib/seriesKeys.test.mjs src/lib/evoevents.test.mjs src/scoring/calc.test.mjs src/lib/totp.test.mjs
+  web-install:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: { dir: [web-bossmedia, web] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: ${{ matrix.dir }}/package-lock.json }
+      - run: npm ci
+        working-directory: ${{ matrix.dir }}

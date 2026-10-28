@@ -120,15 +120,14 @@ export default function SearchSelect({ options, value, onChange, placeholder = '
         <span className={selected ? 'ss-val' : 'ss-ph'}>
           {selected ? selected.label : placeholder}
         </span>
-        {clearable && selected && !disabled && (
-          <span className="ss-clear" role="button" aria-label="Clear selection" tabIndex={0}
-            onClick={(e) => { e.stopPropagation(); onChange(null, null); }}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); onChange(null, null); } }}>
-            <Icon name="close" size={14} />
-          </span>
-        )}
         <Icon name="chevron" size={16} />
       </button>
+      {clearable && selected && !disabled && (
+        <button type="button" className="ss-clear" aria-label="Clear selection"
+          onClick={() => onChange(null, null)}>
+          <Icon name="close" size={14} />
+        </button>
+      )}
       {open && !disabled && pos && createPortal(
         <div ref={panelRef} className="ss-panel" role="listbox" id={listId} aria-label={placeholder}
           style={{ position: 'fixed', zIndex: 90, left: pos.left ?? undefined, width: pos.width, top: pos.top, bottom: pos.bottom }}>

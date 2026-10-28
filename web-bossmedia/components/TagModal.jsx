@@ -5,6 +5,7 @@ import { API } from '../lib/api';
 import { studio } from '../lib/studio';
 import ConfirmModal from './ConfirmModal';
 import SearchSelect from './SearchSelect';
+import { searchSubjects } from '../lib/search-subjects';
 
 // Shared tag & publish dialog — used by the Library grid and inline by the
 // Upload page so photographers never have to leave the upload flow.
@@ -30,14 +31,7 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
   const [busy, setBusy] = useState(false);
   const [suggest, setSuggest] = useState(null);
 
-  const searchPeople = (kind) => async (v) => {
-    if (v.trim().length < 2) return [];
-    try {
-      const res = await fetch(`${API}/api/${kind}/search?q=${encodeURIComponent(v)}&limit=8`);
-      const j = await res.json().catch(() => ({}));
-      return (j.data || []).map((o) => ({ id: o.id, label: o.name }));
-    } catch { return []; }
-  };
+  const searchPeople = (kind) => (v) => searchSubjects(kind, v);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';

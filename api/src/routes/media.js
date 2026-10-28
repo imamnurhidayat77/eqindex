@@ -1,10 +1,14 @@
 const express = require('express');
 const pool = require('../db');
 const { asyncH } = require('../lib/async');
-const { EMAIL_RE, needRole, throttled } = require('../lib/auth');
+const { EMAIL_RE, needRole } = require('../lib/auth');
+const { throttled } = require('../lib/ratelimit');
 const { audit } = require('../lib/audit');
 const { recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds } = require('../lib/wallet');
 const { resolveId } = require('../lib/resolve');
+const { sendMail } = require('../lib/mailer');
+const { APP_URL } = require('../config');
+const crypto = require('crypto');
 const multer = require('multer');
 const sharp = require('sharp');
 const mediaStore = require('../lib/mediaStore');
@@ -73,16 +77,48 @@ async function activePhotographer(poolQ, id) {
   return r.rows[0];
 }
 
+// Ownership guard: a client-supplied photographer_id for SOMEONE ELSE is
+// rejected. ADMIN keeps the legacy behavior (explicit id, else first
+// active); anyone else is bound to their own linked profile.
+async function ownPhotographer(poolQ, authUser, requestedId) {
+  if (!authUser || authUser.role === 'ADMIN') return activePhotographer(poolQ, requestedId || null);
+  const own = await poolQ.query(
+    'SELECT * FROM photographers WHERE user_id = $1 AND is_active', [authUser.id]);
+  if (!own.rows.length) {
+    const err = new Error('no photographer profile — ask an admin to link your account');
+    err.status = 403; throw err;
+  }
+  if (requestedId && String(requestedId) !== String(own.rows[0].id)) {
+    const err = new Error('cannot act as another photographer');
+    err.status = 403; throw err;
+  }
+  return own.rows[0];
+}
+
+// Row-level ownership for reads/mutations: non-ADMIN photographers only
+// touch their own rows (ADMIN → null = unscoped). Missing profile is 403.
+async function ownPhotographerId(poolQ, authUser) {
+  if (!authUser || authUser.role === 'ADMIN') return null;
+  const { rows } = await poolQ.query(
+    'SELECT id FROM photographers WHERE user_id = $1 AND is_active', [authUser.id]);
+  if (!rows.length) {
+    const err = new Error('no photographer profile — ask an admin to link your account');
+    err.status = 403; throw err;
+  }
+  return rows[0].id;
+}
+
 module.exports = function mountMediaRoutes(app) {
   // ---- Upload batch (photos get 3 renditions; reels store original only) ----
   app.post('/admin/media/upload', needRole('PHOTOGRAPHER'), upload.array('files', 20), asyncH(async (req, res) => {
-    const photographer = await activePhotographer(pool, req.body?.photographer_id);
+    const photographer = await ownPhotographer(pool, req.authUser, req.body?.photographer_id);
     const eventId = req.body?.event_id || null;
     if (eventId) {
       const ev = await pool.query('SELECT id FROM events WHERE id = $1', [eventId]);
       if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
     }
     if (!req.files?.length) return res.status(400).json({ error: 'need files[] (multipart, ≤15MB each, ≤20)' });
+    const { fileTypeFromBuffer } = await import('file-type');
     const out = [];
     for (const f of req.files) {
       const isPhoto = PHOTO_MIMES.includes(f.mimetype);
@@ -91,8 +127,22 @@ module.exports = function mountMediaRoutes(app) {
         out.push({ file: f.originalname, ok: false, error: `unsupported type ${f.mimetype}` });
         continue;
       }
+      // Never trust the client MIME/extension: sniff the real magic bytes.
+      const detected = await fileTypeFromBuffer(f.buffer).catch(() => null);
+      const real = detected?.mime || '';
+      if (isPhoto && !real.startsWith('image/')) {
+        out.push({ file: f.originalname, ok: false, error: 'file is not a real image' });
+        continue;
+      }
+      if (isReel && !real.startsWith('video/')) {
+        out.push({ file: f.originalname, ok: false, error: 'file is not a real video' });
+        continue;
+      }
       const kind = isPhoto ? 'photo' : 'reel';
-      const ext = (f.originalname.split('.').pop() || (isPhoto ? 'jpg' : 'mp4')).toLowerCase().slice(0, 8);
+      // Extension allowlist (filename can carry ../%2f): prefer the sniffed
+      // type, fall back to the claimed name, always alphanumerics.
+      const ext = ((detected?.ext || f.originalname.split('.').pop() || (isPhoto ? 'jpg' : 'mp4'))
+        .toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 8) || (isPhoto ? 'jpg' : 'mp4'));
       const { rows } = await pool.query(
         `INSERT INTO media (photographer_id, event_id, kind, status) VALUES ($1, $2, $3, 'draft') RETURNING id`,
         [photographer.id, eventId, kind]
@@ -153,7 +203,7 @@ module.exports = function mountMediaRoutes(app) {
     if (!Number.isFinite(size) || size <= 0 || size > REEL_MAX_BYTES) {
       return res.status(400).json({ error: 'size_bytes must be 1–200MB' });
     }
-    const photographer = await activePhotographer(pool, b.photographer_id);
+    const photographer = await ownPhotographer(pool, req.authUser, b.photographer_id);
     let eventId = null;
     if (b.event_id) {
       const ev = await pool.query('SELECT id FROM events WHERE id = $1', [String(b.event_id)]);
@@ -195,6 +245,8 @@ module.exports = function mountMediaRoutes(app) {
       [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'media not found' });
     const r = rows[0];
+    const ownGet = await ownPhotographerId(pool, req.authUser);
+    if (ownGet && r.photographer_id !== ownGet) return res.status(404).json({ error: 'media not found' });
     try {
       if (r.preview_key) r.preview_url = mediaStore.publicUrlOrPassthrough(r.preview_key);
       if (r.thumb_key) r.thumb_url = mediaStore.publicUrlOrPassthrough(r.thumb_key);
@@ -209,6 +261,8 @@ module.exports = function mountMediaRoutes(app) {
   app.post('/admin/media/:id/finalize', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { rows } = await pool.query('SELECT * FROM media WHERE id = $1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'media not found' });
+    const ownFin = await ownPhotographerId(pool, req.authUser);
+    if (ownFin && rows[0].photographer_id !== ownFin) return res.status(404).json({ error: 'media not found' });
     const m = rows[0];
     if (m.kind !== 'reel') return res.status(400).json({ error: 'finalize is for reels only' });
     if (m.thumb_key && m.preview_key) return res.status(200).json({ data: { media_id: m.id, done: true } });
@@ -330,6 +384,8 @@ module.exports = function mountMediaRoutes(app) {
   app.get('/admin/media', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const conds = [], params = [];
     const push = (sql, v) => { params.push(v); conds.push(sql.replace('?', `$${params.length}`)); };
+    const ownList = await ownPhotographerId(pool, req.authUser);
+    if (ownList) push('m.photographer_id = ?', ownList);
     if (req.query.status) push('m.status = ?', String(req.query.status));
     if (req.query.event_id) push('m.event_id = ?', String(req.query.event_id));
     if (req.query.horse_id) {
@@ -366,6 +422,13 @@ module.exports = function mountMediaRoutes(app) {
 
   app.patch('/admin/media/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const b = req.body || {};
+    const ownPat = await ownPhotographerId(pool, req.authUser);
+    if (ownPat) {
+      const owner = await pool.query('SELECT photographer_id FROM media WHERE id = $1', [req.params.id]);
+      if (!owner.rows.length || owner.rows[0].photographer_id !== ownPat) {
+        return res.status(404).json({ error: 'media not found' });
+      }
+    }
     const sets = [], vals = [];
     // $1 is the media id (params are [id, ...vals]), so columns start at $2.
     const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length + 1}`); };
@@ -572,6 +635,14 @@ module.exports = function mountMediaRoutes(app) {
       push('m.rider_id = ?', rid);
     }
     if (req.query.kind) push('m.kind = ?', String(req.query.kind));
+    // Batch fetch for libraries (favourites, receipts): ?ids=a,b,c — UUIDs
+    // only, capped, published-only like everything else on this route.
+    if (req.query.ids) {
+      const ids = String(req.query.ids).split(',').map((s) => s.trim()).filter((s) => UUID_RE.test(s)).slice(0, 50);
+      if (!ids.length) return res.json({ data: [] });
+      params.push(ids);
+      conds.push(`m.id = ANY($${params.length}::UUID[])`);
+    }
     const limit = Math.min(parseInt(req.query.limit, 10) || 48, 200);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     params.push(limit, offset);
@@ -596,6 +667,30 @@ module.exports = function mountMediaRoutes(app) {
 
   // NOTE: static sub-paths must be registered BEFORE '/photos/:id',
   // otherwise Express matches ":id" first ("packages" is not a UUID).
+  // Neighbors for prev/next browsing on the photo page: position within
+  // the event's published photos (oldest first, stable by id).
+  app.get('/photos/:id/neighbors', asyncH(async (req, res) => {
+    if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
+    const m = await pool.query(
+      `SELECT event_id FROM media WHERE id = $1 AND status = 'published'`, [req.params.id]);
+    if (!m.rows.length || !m.rows[0].event_id) {
+      return res.json({ data: { prev: null, next: null, index: 0, total: 1 } });
+    }
+    const { rows } = await pool.query(
+      `SELECT id FROM media WHERE event_id = $1 AND status = 'published' ORDER BY created_at, id`,
+      [m.rows[0].event_id]);
+    const i = rows.findIndex((r) => r.id === req.params.id);
+    if (i < 0) return res.json({ data: { prev: null, next: null, index: 0, total: rows.length } });
+    res.json({
+      data: {
+        prev: (rows[i - 1] || {}).id || null,
+        next: (rows[i + 1] || {}).id || null,
+        index: i,
+        total: rows.length,
+      },
+    });
+  }));
+
   // Public: events that have published photos (gallery event cards).
   // Newest event first, only events with photos. ?kind=photo|reel optional.
   app.get('/photos/events', asyncH(async (req, res) => {
@@ -735,6 +830,7 @@ module.exports = function mountMediaRoutes(app) {
     );
     if (!rows.length) return res.status(404).json({ error: 'photo not found' });
     withUrls(rows);
+    delete rows[0].storage_key; // R2 layout is internal (list route already omits it)
     // Private order reels: invisible to everyone except the buyer (who gets
     // signed teaser URLs instead of the public CDN ones).
     try {
@@ -887,13 +983,82 @@ module.exports = function mountMediaRoutes(app) {
   const TIER_RE = /^[a-z0-9_-]{1,32}$/i;
   const normEmail = (v) => String(v || '').trim().toLowerCase().slice(0, 254);
 
+  // Guest checkout: buyers without an account check out with just an email.
+  // Returns { id, email, guest }. No session is created; the paid webhook
+  // emails password-less buyers a claim link (password reset) so they can
+  // access downloads. Wallet balance is never spent as guest (card only) —
+  // spending account money requires a login.
+  async function checkoutBuyer(req, email) {
+    if (req.authUser) return { id: req.authUser.id, email: req.authUser.email, guest: false };
+    const clean = normEmail(email);
+    if (!EMAIL_RE.test(clean)) {
+      const err = new Error('need a valid {email}');
+      err.status = 400;
+      throw err;
+    }
+    const found = await pool.query(
+      'SELECT id, email, password_hash FROM users WHERE lower(email) = lower($1)', [clean]);
+    if (found.rows.length) return { id: found.rows[0].id, email: found.rows[0].email, guest: !found.rows[0].password_hash };
+    const name = clean.split('@')[0].replace(/[^a-zA-Z0-9 _.-]/g, '').trim().slice(0, 100) || 'Guest buyer';
+    try {
+      const created = await pool.query(
+        `INSERT INTO users (name, email, role) VALUES ($1, $2, 'PUBLIC') RETURNING id, email`,
+        [name, clean]);
+      return { id: created.rows[0].id, email: created.rows[0].email, guest: true };
+    } catch (e) {
+      // Lost a concurrent-create race — the other row is ours to use.
+      if (e.code !== '23505') throw e;
+      const again = await pool.query(
+        'SELECT id, email, password_hash FROM users WHERE lower(email) = lower($1)', [clean]);
+      if (!again.rows.length) throw e;
+      return { id: again.rows[0].id, email: again.rows[0].email, guest: !again.rows[0].password_hash };
+    }
+  }
+
+  // Guest claim email: password-less buyers get a one-time access link
+  // (password reset) so they can reach their downloads. Idempotent per
+  // buyer — skipped when they already have a password or a live link.
+  // Failures never break the webhook (payment already succeeded).
+  async function sendGuestClaimEmails(purchaseIds) {
+    try {
+      const buyers = await pool.query(
+        `SELECT DISTINCT u.id, u.name, u.email FROM users u
+          JOIN purchases p ON p.buyer_user_id = u.id
+          WHERE p.id = ANY($1::UUID[]) AND u.password_hash IS NULL`,
+        [purchaseIds]);
+      for (const u of buyers.rows) {
+        const live = await pool.query(
+          `SELECT 1 FROM password_resets WHERE user_id = $1 AND used_at IS NULL AND expires_at > NOW()`,
+          [u.id]);
+        if (live.rows.length) continue;
+        const raw = crypto.randomBytes(32).toString('hex');
+        const sha = crypto.createHash('sha256').update(raw).digest('hex');
+        await pool.query(
+          `INSERT INTO password_resets (user_id, token_hash, expires_at)
+            VALUES ($1, $2, NOW() + INTERVAL '1 hour')`,
+          [u.id, sha]);
+        const base = (APP_URL || '').replace(/\/$/, '');
+        if (!base) { console.error('[claim] APP_URL unset — guest claim link unsent'); continue; }
+        const link = `${base}/reset?token=${raw}`;
+        await sendMail({
+          to: u.email,
+          subject: 'Your Boss Media photos are ready',
+          text: `Hi ${u.name || 'there'},\n\nThanks for your purchase! Set a password to access your downloads anytime:\n${link}\n\nThis link expires in 1 hour. Didn't buy anything? Ignore this email.`,
+          html: `<p>Hi ${u.name || 'there'},</p><p>Thanks for your purchase! <a href="${link}">Set a password to access your downloads anytime</a>.</p><p>This link expires in 1 hour. Didn't buy anything? Ignore this email.</p>`,
+        });
+      }
+    } catch (e) {
+      console.error('[claim] guest claim email failed:', e.message);
+    }
+  }
+
   // POST /api/checkout {media_id|package_id|whole_event+event_id[+horse_id|rider_id], license_tier?, email?, idempotency_key?}
-  // Login required: purchases bind to the buyer account (buyer_user_id).
+  // Purchases bind to the buyer account (buyer_user_id); guests check out
+  // with just an email and get a password-less account (see checkoutBuyer).
   // whole_event: buys the managed package for a whole event or one
   // event x subject, materializing its row on demand (no manual creation).
   app.post('/api/checkout', asyncH(async (req, res) => {
-    if (!req.authUser) return res.status(401).json({ error: 'login required' });
-    if (throttled(req.ip, 'checkout')) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (await throttled(pool, req.ip, 'checkout')) return res.status(429).json({ error: 'too many requests, try again later' });
     const { media_id, package_id, event_id, whole_event, license_tier, email, idempotency_key } = req.body || {};
     if (!!media_id === !!package_id && !whole_event) {
       return res.status(400).json({ error: 'need exactly one of {media_id, package_id} or {whole_event + event_id}' });
@@ -912,7 +1077,8 @@ module.exports = function mountMediaRoutes(app) {
     if (idempotency_key !== undefined && idempotency_key !== null && !/^[A-Za-z0-9_-]{8,128}$/.test(String(idempotency_key))) {
       return res.status(400).json({ error: 'bad idempotency_key' });
     }
-    const buyerEmail = normEmail(email || req.authUser.email);
+    const buyer = await checkoutBuyer(req, email);
+    const buyerEmail = normEmail(email || buyer.email);
     if (!EMAIL_RE.test(buyerEmail)) {
       return res.status(400).json({ error: 'need a valid {email}' });
     }
@@ -929,7 +1095,7 @@ module.exports = function mountMediaRoutes(app) {
       // Private order reels can't be bought by anyone but their buyer.
       try {
         const buyerUid = await privateOrderBuyer(pool, String(media_id));
-        if (buyerUid && buyerUid !== req.authUser.id) {
+        if (buyerUid && buyerUid !== buyer.id) {
           return res.status(404).json({ error: 'photo not found or not for sale' });
         }
       } catch { /* gate optional */ }
@@ -985,7 +1151,7 @@ module.exports = function mountMediaRoutes(app) {
       if (!Number.isInteger(snap.price) || snap.price <= 0) {
         return res.status(409).json({ error: 'no price set for this package' });
       }
-      const photographer = await activePhotographer(pool, null);
+      const photographer = await ownPhotographer(pool, req.authUser, null);
       const scopeCond = wHorse ? 'horse_id = $2 AND rider_id IS NULL'
         : wRider ? 'rider_id = $2 AND horse_id IS NULL'
         : 'horse_id IS NULL AND rider_id IS NULL';
@@ -1043,7 +1209,7 @@ module.exports = function mountMediaRoutes(app) {
           WHERE status = 'paid' AND buyer_user_id = $2
             AND (media_id = $1 OR package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))
           LIMIT 1`,
-        [mediaId, req.authUser.id]
+        [mediaId, buyer.id]
       );
       if (owned.rows.length) {
         return res.status(409).json({
@@ -1053,7 +1219,7 @@ module.exports = function mountMediaRoutes(app) {
       }
       const credOwned = await pool.query(
         `SELECT 1 WHERE ${creditOwnedSql('$2', '$1')} LIMIT 1`,
-        [mediaId, req.authUser.id]
+        [mediaId, buyer.id]
       );
       if (credOwned.rows.length) {
         return res.status(409).json({
@@ -1065,7 +1231,7 @@ module.exports = function mountMediaRoutes(app) {
       const owned = await pool.query(
         `SELECT id FROM purchases
           WHERE status = 'paid' AND buyer_user_id = $2 AND package_id = $1 LIMIT 1`,
-        [packageId, req.authUser.id]
+        [packageId, buyer.id]
       );
       if (owned.rows.length) {
         return res.status(409).json({
@@ -1080,7 +1246,7 @@ module.exports = function mountMediaRoutes(app) {
       // on across requests).
       const paidDup = await pool.query(
         `SELECT id FROM purchases WHERE idempotency_key = $1 AND buyer_user_id = $2 AND status = 'paid' LIMIT 1`,
-        [String(idempotency_key), req.authUser.id]
+        [String(idempotency_key), buyer.id]
       ).catch(() => ({ rows: [] }));
       if (paidDup.rows.length) {
         return res.status(409).json({ error: 'already paid — download it from My photos instead of paying again', paid: true });
@@ -1089,7 +1255,7 @@ module.exports = function mountMediaRoutes(app) {
         `SELECT p.id, p.status, s.checkout_url FROM purchases p
           LEFT JOIN (SELECT purchase_id, checkout_url FROM stripe_checkout_cache) s ON s.purchase_id = p.id
           WHERE p.idempotency_key = $1 AND p.buyer_user_id = $2`,
-        [String(idempotency_key), req.authUser.id]
+        [String(idempotency_key), buyer.id]
       ).catch(() => ({ rows: [] }));
       if (prior.rows.length && prior.rows[0].checkout_url) {
         return res.status(200).json({ data: { purchase_id: prior.rows[0].id, checkout_url: prior.rows[0].checkout_url, reused: true } });
@@ -1097,8 +1263,10 @@ module.exports = function mountMediaRoutes(app) {
     }
     // P1 wallet: buyer may cover part (or all) with account balance.
     // Abandoned holds are released by the janitor + buyer cancel endpoint.
+    // Guests always pay by card — spending account balance requires a login.
     let useBalance = Number(req.body?.use_balance_cents);
     if (!Number.isFinite(useBalance) || useBalance < 0) useBalance = 0;
+    if (buyer.guest) useBalance = 0;
     useBalance = Math.min(Math.floor(useBalance), amount);
     expireHolds(pool).catch(() => {});
     let purchaseId;
@@ -1107,7 +1275,7 @@ module.exports = function mountMediaRoutes(app) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const locked = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [req.authUser.id]);
+        const locked = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [buyer.id]);
         if (!locked.rows.length) {
           await client.query('ROLLBACK');
           return res.status(404).json({ error: 'account not found' });
@@ -1115,10 +1283,10 @@ module.exports = function mountMediaRoutes(app) {
         const ins = await client.query(
           `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents)
             VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9) RETURNING id`,
-          [mediaId, packageId, buyerEmail, req.authUser.id, tierId, amount, idempotency_key || null, useBalance, amount - useBalance]
+          [mediaId, packageId, buyerEmail, buyer.id, tierId, amount, idempotency_key || null, useBalance, amount - useBalance]
         );
         purchaseId = ins.rows[0].id;
-        await reserveBalance(client, req.authUser.id, useBalance, purchaseId);
+        await reserveBalance(client, buyer.id, useBalance, purchaseId);
         await client.query('COMMIT');
       } catch (e) {
         await client.query('ROLLBACK').catch(() => {});
@@ -1136,7 +1304,7 @@ module.exports = function mountMediaRoutes(app) {
       const { rows } = await pool.query(
         `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, stripe_amount_cents)
           VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8) RETURNING id`,
-        [mediaId, packageId, buyerEmail, req.authUser.id, tierId, amount, idempotency_key || null, amount]
+        [mediaId, packageId, buyerEmail, buyer.id, tierId, amount, idempotency_key || null, amount]
       );
       purchaseId = rows[0].id;
     } catch (e) {
@@ -1148,7 +1316,7 @@ module.exports = function mountMediaRoutes(app) {
       if (e.code === '23505' && idempotency_key) {
         const prior = await pool.query(
           'SELECT id, stripe_session_id FROM purchases WHERE idempotency_key = $1 AND buyer_user_id = $2',
-          [String(idempotency_key), req.authUser.id]
+          [String(idempotency_key), buyer.id]
         );
         if (prior.rows.length) {
           return res.status(200).json({ data: { purchase_id: prior.rows[0].id, checkout_url: null, reused: true, pending: true } });
@@ -1354,8 +1522,7 @@ module.exports = function mountMediaRoutes(app) {
   // button). Reel orders are excluded — they go through /api/reel-orders one
   // by one because each spins up its own fulfillment flow.
   app.post('/api/checkout/batch', asyncH(async (req, res) => {
-    if (!req.authUser) return res.status(401).json({ error: 'login required' });
-    if (throttled(req.ip, 'checkout')) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (await throttled(pool, req.ip, 'checkout')) return res.status(429).json({ error: 'too many requests, try again later' });
     const { items, email, idempotency_key } = req.body || {};
     if (!Array.isArray(items) || !items.length || items.length > 20) {
       return res.status(400).json({ error: 'need items[1..20] (photos and packages only)' });
@@ -1363,7 +1530,8 @@ module.exports = function mountMediaRoutes(app) {
     if (idempotency_key !== undefined && idempotency_key !== null && !/^[A-Za-z0-9_-]{8,128}$/.test(String(idempotency_key))) {
       return res.status(400).json({ error: 'bad idempotency_key' });
     }
-    const buyerEmail = normEmail(email || req.authUser.email);
+    const buyer = await checkoutBuyer(req, email);
+    const buyerEmail = normEmail(email || buyer.email);
     if (!EMAIL_RE.test(buyerEmail)) {
       return res.status(400).json({ error: 'need a valid {email}' });
     }
@@ -1373,14 +1541,14 @@ module.exports = function mountMediaRoutes(app) {
       // cannot be relied on across requests).
       const paidDup = await pool.query(
         `SELECT id FROM purchases WHERE idempotency_key = $1 AND buyer_user_id = $2 AND status = 'paid' LIMIT 1`,
-        [String(idempotency_key), req.authUser.id]
+        [String(idempotency_key), buyer.id]
       ).catch(() => ({ rows: [] }));
       if (paidDup.rows.length) {
         return res.status(409).json({ error: 'this cart was already paid — check My photos instead of paying again', paid: true });
       }
       const dup = await pool.query(
         `SELECT id FROM purchases WHERE idempotency_key = $1 AND buyer_user_id = $2 AND status = 'pending' LIMIT 1`,
-        [String(idempotency_key), req.authUser.id]
+        [String(idempotency_key), buyer.id]
       ).catch(() => ({ rows: [] }));
       if (dup.rows.length) return res.status(409).json({ error: 'a checkout for this cart is already in progress — finish it or wait a minute and retry', pending: true });
     }
@@ -1400,13 +1568,14 @@ module.exports = function mountMediaRoutes(app) {
     }
     const priced = [];
     for (let idx = 0; idx < items.length; idx++) {
-      priced.push(await priceBatchItem(pool, req.authUser, items[idx], idx, fail));
+      priced.push(await priceBatchItem(pool, buyer, items[idx], idx, fail));
     }
     const gross = priced.reduce((s, p) => s + p.amount, 0);
     // P1 wallet: balance covers part of the cart total, distributed
-    // proportionally (exact to the cent).
+    // proportionally (exact to the cent). Guests pay by card only.
     let useBalance = Number(req.body?.use_balance_cents);
     if (!Number.isFinite(useBalance) || useBalance < 0) useBalance = 0;
+    if (buyer.guest) useBalance = 0;
     useBalance = Math.min(Math.floor(useBalance), gross);
     expireHolds(pool).catch(() => {});
     let assigned = 0;
@@ -1420,7 +1589,7 @@ module.exports = function mountMediaRoutes(app) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        const locked = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [req.authUser.id]);
+        const locked = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [buyer.id]);
         if (!locked.rows.length) {
           await client.query('ROLLBACK');
           return res.status(404).json({ error: 'account not found' });
@@ -1430,7 +1599,7 @@ module.exports = function mountMediaRoutes(app) {
         const held = await client.query(
           `SELECT COALESCE(SUM(balance_used_cents), 0)::INT AS held FROM purchases
             WHERE buyer_user_id = $1 AND status = 'pending'`,
-          [req.authUser.id]
+          [buyer.id]
         );
         if (useBalance > Number(locked.rows[0].balance_cents) - Number(held.rows[0].held)) {
           await client.query('ROLLBACK');
@@ -1441,16 +1610,16 @@ module.exports = function mountMediaRoutes(app) {
           const { rows } = await client.query(
             `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents)
               VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9) RETURNING id`,
-            [p.mediaId, p.packageId, buyerEmail, req.authUser.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.used, p.stripe]
+            [p.mediaId, p.packageId, buyerEmail, buyer.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.used, p.stripe]
           );
           ids.push(rows[0].id);
           if (p.used > 0) {
             running -= p.used;
-            await client.query('UPDATE users SET balance_cents = $2 WHERE id = $1', [req.authUser.id, running]);
+            await client.query('UPDATE users SET balance_cents = $2 WHERE id = $1', [buyer.id, running]);
             await client.query(
               `INSERT INTO wallet_transactions (user_id, kind, amount_cents, balance_after_cents, purchase_id)
                VALUES ($1, 'spend', $2, $3, $4)`,
-              [req.authUser.id, -p.used, running, rows[0].id]
+              [buyer.id, -p.used, running, rows[0].id]
             );
           }
         }
@@ -1471,7 +1640,7 @@ module.exports = function mountMediaRoutes(app) {
         const { rows } = await pool.query(
           `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents)
             VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, 0, $8) RETURNING id`,
-          [p.mediaId, p.packageId, buyerEmail, req.authUser.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.amount]
+          [p.mediaId, p.packageId, buyerEmail, buyer.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.amount]
         );
         ids.push(rows[0].id);
       } catch (e) {
@@ -1524,8 +1693,7 @@ module.exports = function mountMediaRoutes(app) {
   // transaction; the existing batch webhook path fulfills both kinds
   // (markPurchasesPaid flips awaiting_payment reel orders to pending).
   app.post('/api/checkout/combined', asyncH(async (req, res) => {
-    if (!req.authUser) return res.status(401).json({ error: 'login required' });
-    if (throttled(req.ip, 'checkout')) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (await throttled(pool, req.ip, 'checkout')) return res.status(429).json({ error: 'too many requests, try again later' });
     const { items = [], reels = [], email, idempotency_key } = req.body || {};
     if (!Array.isArray(items) || !Array.isArray(reels)) {
       return res.status(400).json({ error: 'need {items[], reels[]}' });
@@ -1537,7 +1705,11 @@ module.exports = function mountMediaRoutes(app) {
     if (idempotency_key !== undefined && idempotency_key !== null && !/^[A-Za-z0-9_-]{8,128}$/.test(String(idempotency_key))) {
       return res.status(400).json({ error: 'bad idempotency_key' });
     }
-    const buyerEmail = normEmail(email || req.authUser.email);
+    const buyer = await checkoutBuyer(req, email);
+    // Helpers below take an authUser-shaped object; guests get a minimal one
+    // (id + email are all the checkout flow ever reads).
+    const buyerAuth = req.authUser || { id: buyer.id, email: buyer.email, role: 'PUBLIC' };
+    const buyerEmail = normEmail(email || buyer.email);
     if (!EMAIL_RE.test(buyerEmail)) {
       return res.status(400).json({ error: 'need a valid {email}' });
     }
@@ -1545,14 +1717,14 @@ module.exports = function mountMediaRoutes(app) {
       // Same guards as batch: one key = one payment, never a second charge.
       const paidDup = await pool.query(
         `SELECT id FROM purchases WHERE idempotency_key = $1 AND buyer_user_id = $2 AND status = 'paid' LIMIT 1`,
-        [String(idempotency_key), req.authUser.id]
+        [String(idempotency_key), buyerAuth.id]
       ).catch(() => ({ rows: [] }));
       if (paidDup.rows.length) {
         return res.status(409).json({ error: 'this cart was already paid — check My photos instead of paying again', paid: true });
       }
       const dup = await pool.query(
         `SELECT id FROM purchases WHERE idempotency_key = $1 AND buyer_user_id = $2 AND status = 'pending' LIMIT 1`,
-        [String(idempotency_key), req.authUser.id]
+        [String(idempotency_key), buyerAuth.id]
       ).catch(() => ({ rows: [] }));
       if (dup.rows.length) return res.status(409).json({ error: 'a checkout for this cart is already in progress — finish it or wait a minute and retry', pending: true });
     }
@@ -1572,7 +1744,7 @@ module.exports = function mountMediaRoutes(app) {
     // Price photos/packages (read-only) and validate reel payloads (read-only).
     const priced = [];
     for (let idx = 0; idx < items.length; idx++) {
-      priced.push({ kind: 'photo', ...(await priceBatchItem(pool, req.authUser, items[idx], idx, fail)) });
+      priced.push({ kind: 'photo', ...(await priceBatchItem(pool, buyerAuth, items[idx], idx, fail)) });
     }
     const preps = [];
     for (let i = 0; i < reels.length; i++) {
@@ -1581,7 +1753,7 @@ module.exports = function mountMediaRoutes(app) {
       if (seen.has(sig)) fail(items.length + i, 400, 'duplicate pre-book in cart — remove it and retry');
       seen.add(sig);
       try {
-        preps.push(await prepareReelOrder(pool, req.authUser, buyerEmail, b));
+        preps.push(await prepareReelOrder(pool, buyerAuth, buyerEmail, b));
       } catch (e) {
         fail(items.length + i, e.status || 500, e.message);
       }
@@ -1595,6 +1767,7 @@ module.exports = function mountMediaRoutes(app) {
     // proportionally (exact to the cent) — same math as batch.
     let useBalance = Number(req.body?.use_balance_cents);
     if (!Number.isFinite(useBalance) || useBalance < 0) useBalance = 0;
+    if (buyer.guest) useBalance = 0; // card only without a login
     useBalance = Math.min(Math.floor(useBalance), gross);
     expireHolds(pool).catch(() => {});
     let assigned = 0;
@@ -1608,7 +1781,7 @@ module.exports = function mountMediaRoutes(app) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const locked = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [req.authUser.id]);
+      const locked = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [buyerAuth.id]);
       if (!locked.rows.length) {
         await client.query('ROLLBACK');
         return res.status(404).json({ error: 'account not found' });
@@ -1618,7 +1791,7 @@ module.exports = function mountMediaRoutes(app) {
       const held = await client.query(
         `SELECT COALESCE(SUM(balance_used_cents), 0)::INT AS held FROM purchases
           WHERE buyer_user_id = $1 AND status = 'pending'`,
-        [req.authUser.id]
+        [buyerAuth.id]
       );
       if (useBalance > Number(locked.rows[0].balance_cents) - Number(held.rows[0].held)) {
         await client.query('ROLLBACK');
@@ -1628,23 +1801,23 @@ module.exports = function mountMediaRoutes(app) {
       for (const p of splits) {
         if (p.kind === 'reel') {
           const { purchaseId } = await insertReelOrder(
-            client, req.authUser, buyerEmail, p.prep, idem, p.used, p.stripe);
+            client, buyerAuth, buyerEmail, p.prep, idem, p.used, p.stripe);
           ids.push(purchaseId);
         } else {
           const { rows } = await client.query(
             `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents)
               VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9) RETURNING id`,
-            [p.mediaId, p.packageId, buyerEmail, req.authUser.id, p.tierId, p.amount, idem, p.used, p.stripe]
+            [p.mediaId, p.packageId, buyerEmail, buyerAuth.id, p.tierId, p.amount, idem, p.used, p.stripe]
           );
           ids.push(rows[0].id);
         }
         if (p.used > 0) {
           running -= p.used;
-          await client.query('UPDATE users SET balance_cents = $2 WHERE id = $1', [req.authUser.id, running]);
+          await client.query('UPDATE users SET balance_cents = $2 WHERE id = $1', [buyerAuth.id, running]);
           await client.query(
             `INSERT INTO wallet_transactions (user_id, kind, amount_cents, balance_after_cents, purchase_id)
               VALUES ($1, 'spend', $2, $3, $4)`,
-            [req.authUser.id, -p.used, running, ids[ids.length - 1]]
+            [buyerAuth.id, -p.used, running, ids[ids.length - 1]]
           );
         }
       }
@@ -1705,6 +1878,7 @@ module.exports = function mountMediaRoutes(app) {
       event = stripe().webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
     } catch (e) {
       console.error('[webhook] signature failed:', e.message);
+      audit(req, 'stripe.webhook.rejected', 'webhook', null, { reason: 'bad_signature' });
       return res.status(400).json({ error: 'webhook signature failed' });
     }
     const ok = (extra) => res.json({ received: true, ...extra });
@@ -1723,23 +1897,27 @@ module.exports = function mountMediaRoutes(app) {
           'SELECT id, amount_cents, stripe_amount_cents, buyer_email FROM purchases WHERE id = ANY($1::UUID[])', [batchIds]);
         if (!cur.rows.length || cur.rows.length !== batchIds.length) {
           console.error('[webhook] batch items missing', { want: batchIds.length, got: cur.rows.length });
+          audit(req, 'stripe.webhook.rejected', 'webhook', session.id, { reason: 'items_missing', want: batchIds.length, got: cur.rows.length });
           return ok();
         }
         const sum = cur.rows.reduce((s, r) => s + Number(r.stripe_amount_cents ?? r.amount_cents), 0);
         if (typeof session.amount_total === 'number' && session.amount_total !== sum) {
           console.error('[webhook] batch amount mismatch', { expected: sum, got: session.amount_total });
+          audit(req, 'stripe.webhook.rejected', 'webhook', session.id, { reason: 'amount_mismatch', expected: sum, got: session.amount_total });
           return ok();
         }
         const email0 = cur.rows[0].buyer_email;
         if (session.customer_email && email0 &&
           String(session.customer_email).toLowerCase() !== String(email0).toLowerCase()) {
           console.error('[webhook] batch email mismatch');
+          audit(req, 'stripe.webhook.rejected', 'webhook', session.id, { reason: 'email_mismatch' });
           return ok();
         }
         await markPurchasesPaid(pool, batchIds, {
           paymentIntent: session.payment_intent || null,
           auditFn: (rows) => audit(req, 'media.purchase.batch', 'purchase', rows.map((r) => r.id).join(','), { session: session.id, count: rows.length }),
         });
+        await sendGuestClaimEmails(batchIds);
         return ok();
       }
       const purchaseId = session.metadata?.purchase_id;
@@ -1752,17 +1930,20 @@ module.exports = function mountMediaRoutes(app) {
       const expected = cur.rows[0].stripe_amount_cents ?? cur.rows[0].amount_cents;
       if (typeof session.amount_total === 'number' && session.amount_total !== expected) {
         console.error('[webhook] amount mismatch', { purchaseId, expected, got: session.amount_total });
+        audit(req, 'stripe.webhook.rejected', 'webhook', session.id, { reason: 'amount_mismatch', purchaseId, expected, got: session.amount_total });
         return ok();
       }
       if (session.customer_email && cur.rows[0].buyer_email &&
         String(session.customer_email).toLowerCase() !== String(cur.rows[0].buyer_email).toLowerCase()) {
         console.error('[webhook] email mismatch', { purchaseId });
+        audit(req, 'stripe.webhook.rejected', 'webhook', session.id, { reason: 'email_mismatch', purchaseId });
         return ok();
       }
       await markPurchasesPaid(pool, [purchaseId], {
         paymentIntent: session.payment_intent || null,
         auditFn: (rows) => audit(req, 'media.purchase', 'purchase', purchaseId, { session: session.id }),
       });
+      await sendGuestClaimEmails([purchaseId]);
       return ok();
     }
     if (event.type === 'charge.refunded' || event.type === 'charge.refund.updated') {
@@ -1809,8 +1990,10 @@ module.exports = function mountMediaRoutes(app) {
   // ---- Moment badges: suggest win/clear/debut from round_results ----
   // POST /admin/media/:id/suggest-moment
   app.post('/admin/media/:id/suggest-moment', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
-    const m = await pool.query('SELECT horse_id, rider_id, event_id FROM media WHERE id = $1', [req.params.id]);
+    const m = await pool.query('SELECT photographer_id, horse_id, rider_id, event_id FROM media WHERE id = $1', [req.params.id]);
     if (!m.rows.length) return res.status(404).json({ error: 'media not found' });
+    const ownSug = await ownPhotographerId(pool, req.authUser);
+    if (ownSug && m.rows[0].photographer_id !== ownSug) return res.status(404).json({ error: 'media not found' });
     const { horse_id, rider_id, event_id } = m.rows[0];
     const out = { suggested: null, reasons: [] };
     if (horse_id || rider_id) {
@@ -1896,6 +2079,30 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows[0] });
   }));
 
+  // Batch purchase status (owner-only; powers receipts + success polling
+  // without one request per purchase).
+  app.get('/api/purchases', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    const ids = String(req.query.ids || '').split(',').map((s) => s.trim()).filter((s) => UUID_RE.test(s)).slice(0, 20);
+    if (!ids.length) return res.json({ data: [] });
+    const { rows } = await pool.query(
+      `SELECT p.id, p.status, p.license_tier, p.amount_cents, p.created_at,
+          m.id AS media_id, m.kind, COALESCE(e.name, re.name) AS event_name,
+          COALESCE(h.name, ro.horse_name) AS horse, r.name AS rider,
+          rp.name AS reel_product, ro.status AS reel_status
+        FROM purchases p LEFT JOIN media m ON m.id = p.media_id
+        LEFT JOIN events e ON e.id = m.event_id
+        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        LEFT JOIN reel_orders ro ON ro.id = p.reel_order_id
+        LEFT JOIN reel_products rp ON rp.id = ro.product_id
+        LEFT JOIN events re ON re.id = ro.event_id
+        WHERE p.id = ANY($1::UUID[]) AND p.buyer_user_id = $2`,
+      [ids, req.authUser.id]
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ data: rows });
+  }));
+
   // Buyer library ("my photos") — session-owned. Package purchases expand
   // to one row per contained photo so buyers can find what they paid for.
   app.get('/api/my/wallet', asyncH(async (req, res) => {
@@ -1953,7 +2160,9 @@ module.exports = function mountMediaRoutes(app) {
         (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id) AS class_count,
         (SELECT COUNT(*)::INT FROM media m WHERE m.event_id = e.id AND m.status = 'published') AS photo_count,
         COALESCE((SELECT SUM(pu.amount_cents) FROM purchases pu WHERE pu.status = 'paid' AND (
-          pu.event_id = e.id OR pu.media_id IN (SELECT id FROM media WHERE event_id = e.id)
+          pu.media_id IN (SELECT id FROM media WHERE event_id = e.id)
+          OR pu.package_id IN (SELECT id FROM packages WHERE event_id = e.id)
+          OR pu.reel_order_id IN (SELECT id FROM reel_orders WHERE event_id = e.id)
         )), 0)::INT AS gross_cents
        FROM events e ${org ? 'WHERE e.organizer_id = $1' : ''}
        ORDER BY e.date_start DESC LIMIT 200`,
@@ -2026,6 +2235,81 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows[0] });
   }));
 
+  // Organizer-owned event or 403/404 (same rule as the organizer event PATCH).
+  async function orgEventOr403(poolQ, req, res, eventId) {
+    const org = await myOrganizer(poolQ, req.authUser.id);
+    if (!org && req.authUser.role !== 'ADMIN') {
+      res.status(403).json({ error: 'no organizer profile' }); return null;
+    }
+    if (!UUID_RE.test(String(eventId || ''))) {
+      res.status(400).json({ error: 'bad event_id' }); return null;
+    }
+    const cur = await poolQ.query('SELECT * FROM events WHERE id = $1', [String(eventId)]);
+    if (!cur.rows.length) { res.status(404).json({ error: 'event not found' }); return null; }
+    if (org && cur.rows[0].organizer_id !== org.id) {
+      res.status(403).json({ error: 'not your event' }); return null;
+    }
+    return { org, event: cur.rows[0] };
+  }
+
+  // Event volunteer roster: who counts as crew for commission sharing.
+  app.get('/api/organizer/events/:id/volunteers', needRole('ORGANIZER'), asyncH(async (req, res) => {
+    const found = await orgEventOr403(pool, req, res, req.params.id);
+    if (!found) return;
+    const { rows } = await pool.query(
+      `SELECT ev.user_id, ev.note, ev.created_at, u.name, u.email,
+        COALESCE((SELECT SUM(w.amount_cents) FROM wallet_transactions w
+          WHERE w.kind = 'grant_received' AND w.user_id = ev.user_id
+            AND w.counterparty_user_id = $2 AND w.event_id = $1), 0)::INT AS granted_cents
+        FROM event_volunteers ev JOIN users u ON u.id = ev.user_id
+        WHERE ev.event_id = $1 ORDER BY ev.created_at`,
+      [found.event.id, req.authUser.id]);
+    res.json({ data: rows });
+  }));
+
+  app.post('/api/organizer/events/:id/volunteers', needRole('ORGANIZER'), asyncH(async (req, res) => {
+    const found = await orgEventOr403(pool, req, res, req.params.id);
+    if (!found) return;
+    const em = String(req.body?.email || '').trim().toLowerCase();
+    if (!EMAIL_RE.test(em)) return res.status(400).json({ error: 'need a valid {email}' });
+    const u = await pool.query('SELECT id, name, email FROM users WHERE lower(email) = $1', [em]);
+    if (!u.rows.length) return res.status(404).json({ error: 'no user with that email — they need a Boss Media account first' });
+    if (u.rows[0].id === req.authUser.id) return res.status(400).json({ error: 'cannot add yourself' });
+    try {
+      const { rows } = await pool.query(
+        `INSERT INTO event_volunteers (event_id, user_id, note, added_by)
+          VALUES ($1, $2, $3, $4) RETURNING *`,
+        [found.event.id, u.rows[0].id, String(req.body?.note || '').trim().slice(0, 200) || null, req.authUser.id]);
+      audit(req, 'event.volunteer.add', 'event', found.event.id, { user_id: u.rows[0].id });
+      res.status(201).json({ data: { ...rows[0], name: u.rows[0].name, email: u.rows[0].email } });
+    } catch (e) {
+      if (e.code === '23505') return res.status(409).json({ error: 'already on the roster' });
+      throw e;
+    }
+  }));
+
+  app.delete('/api/organizer/events/:id/volunteers/:user_id', needRole('ORGANIZER'), asyncH(async (req, res) => {
+    const found = await orgEventOr403(pool, req, res, req.params.id);
+    if (!found) return;
+    await pool.query('DELETE FROM event_volunteers WHERE event_id = $1 AND user_id = $2',
+      [found.event.id, String(req.params.user_id)]);
+    audit(req, 'event.volunteer.remove', 'event', found.event.id, { user_id: String(req.params.user_id) });
+    res.json({ ok: true });
+  }));
+
+  // Organizer's outgoing grants (commission shared), newest first.
+  app.get('/api/organizer/grants', needRole('ORGANIZER'), asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT w.amount_cents, w.reason, w.event_id, w.created_at, u.name, u.email, e.name AS event_name
+        FROM wallet_transactions w
+        JOIN users u ON u.id = w.counterparty_user_id
+        LEFT JOIN events e ON e.id = w.event_id
+        WHERE w.user_id = $1 AND w.kind = 'grant'
+        ORDER BY w.created_at DESC LIMIT 100`,
+      [req.authUser.id]);
+    res.json({ data: rows });
+  }));
+
   // Look up a volunteer by email before granting (avoids typo'd money).
   app.get('/api/organizer/lookup', needRole('ORGANIZER'), asyncH(async (req, res) => {
     const email = String(req.query.email || '').trim().toLowerCase();
@@ -2061,6 +2345,21 @@ module.exports = function mountMediaRoutes(app) {
       return res.status(400).json({ error: 'need {to_user_id} or {to_email}' });
     }
     if (toId === req.authUser.id) return res.status(400).json({ error: 'cannot grant to yourself' });
+    // Event-scoped volunteer grant: event must be yours and the recipient
+    // must be on its roster. The receiver side is marked spend-only
+    // (cashable = FALSE) — volunteer money can never be cashed out later.
+    let grantEventId = null;
+    if (b.event_id !== undefined && b.event_id !== null && b.event_id !== '') {
+      const found = await orgEventOr403(pool, req, res, b.event_id);
+      if (!found) return;
+      grantEventId = found.event.id;
+      const onRoster = await pool.query(
+        'SELECT 1 FROM event_volunteers WHERE event_id = $1 AND user_id = $2',
+        [grantEventId, toId]);
+      if (!onRoster.rows.length) {
+        return res.status(403).json({ error: 'volunteer is not on this event roster' });
+      }
+    }
     const reason = String(b.reason || '').trim().slice(0, 200) || null;
     const client = await pool.connect();
     try {
@@ -2075,15 +2374,15 @@ module.exports = function mountMediaRoutes(app) {
       await client.query('UPDATE users SET balance_cents = $2 WHERE id = $1', [req.authUser.id, fromAfter]);
       await client.query('UPDATE users SET balance_cents = $2 WHERE id = $1', [toId, toAfter]);
       await client.query(
-        `INSERT INTO wallet_transactions (user_id, kind, amount_cents, balance_after_cents, counterparty_user_id, reason, created_by)
-         VALUES ($1, 'grant', $2, $3, $4, $5, $1)`,
-        [req.authUser.id, -amount, fromAfter, toId, reason]);
+        `INSERT INTO wallet_transactions (user_id, kind, amount_cents, balance_after_cents, counterparty_user_id, reason, created_by, event_id, cashable)
+         VALUES ($1, 'grant', $2, $3, $4, $5, $1, $6, TRUE)`,
+        [req.authUser.id, -amount, fromAfter, toId, reason, grantEventId]);
       await client.query(
-        `INSERT INTO wallet_transactions (user_id, kind, amount_cents, balance_after_cents, counterparty_user_id, reason, created_by)
-         VALUES ($1, 'grant_received', $2, $3, $4, $5, $6)`,
-        [toId, amount, toAfter, req.authUser.id, reason, req.authUser.id]);
+        `INSERT INTO wallet_transactions (user_id, kind, amount_cents, balance_after_cents, counterparty_user_id, reason, created_by, event_id, cashable)
+         VALUES ($1, 'grant_received', $2, $3, $4, $5, $6, $7, $8)`,
+        [toId, amount, toAfter, req.authUser.id, reason, req.authUser.id, grantEventId, grantEventId === null]);
       await client.query('COMMIT');
-      audit(req, 'wallet.grant', 'user', toId, { amount_cents: amount });
+      audit(req, 'wallet.grant', 'user', toId, { amount_cents: amount, event_id: grantEventId, spend_only: grantEventId !== null });
       res.status(201).json({ data: { granted_cents: amount, balance_cents: fromAfter } });
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});
@@ -2426,7 +2725,7 @@ module.exports = function mountMediaRoutes(app) {
       const r = await pool.query('SELECT name FROM riders WHERE id = $1', [rid]);
       who = { col: 'rider_id', id: rid, name: r.rows[0]?.name || 'rider' };
     }
-    const photographer = await activePhotographer(pool, req.body?.photographer_id);
+    const photographer = await ownPhotographer(pool, req.authUser, req.body?.photographer_id);
     const items = who
       ? await pool.query(
         `SELECT m.id, COALESCE(t.price_cents, 0) AS price_cents FROM media m
@@ -2684,6 +2983,8 @@ module.exports = function mountMediaRoutes(app) {
   app.delete('/admin/media/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const cur = await pool.query('SELECT * FROM media WHERE id = $1', [req.params.id]);
     if (!cur.rows.length) return res.status(404).json({ error: 'media not found' });
+    const ownDel = await ownPhotographerId(pool, req.authUser);
+    if (ownDel && cur.rows[0].photographer_id !== ownDel) return res.status(404).json({ error: 'media not found' });
     const paid = await pool.query(
       `SELECT COUNT(*)::INT AS n FROM purchases
         WHERE status = 'paid' AND (media_id = $1 OR package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))`,
@@ -2792,21 +3093,22 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // Buyer creates a reel order + pays up front (Sportfot: add to cart -> pay -> produce).
-  // One horse per order (Sportfot rule). Login required, like photo checkout.
+  // One horse per order (Sportfot rule). Guests check out with just an email.
   app.post('/api/reel-orders', asyncH(async (req, res) => {
-    if (!req.authUser) return res.status(401).json({ error: 'login required' });
-    if (throttled(req.ip, 'reel-order')) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (await throttled(pool, req.ip, 'reel-order')) return res.status(429).json({ error: 'too many requests, try again later' });
     const b = req.body || {};
     if (b.idempotency_key !== undefined && b.idempotency_key !== null &&
       !/^[A-Za-z0-9_-]{8,128}$/.test(String(b.idempotency_key))) {
       return res.status(400).json({ error: 'bad idempotency_key' });
     }
-    const buyerEmail = normEmail(b.email || req.authUser.email);
+    const buyer = await checkoutBuyer(req, b.email);
+    const buyerAuth = req.authUser || { id: buyer.id, email: buyer.email, role: 'PUBLIC' };
+    const buyerEmail = normEmail(b.email || buyer.email);
     if (!EMAIL_RE.test(buyerEmail)) return res.status(400).json({ error: 'need a valid {email}' });
 
     let prep;
     try {
-      prep = await prepareReelOrder(pool, req.authUser, buyerEmail, b);
+      prep = await prepareReelOrder(pool, buyerAuth, buyerEmail, b);
     } catch (e) {
       return res.status(e.status || 500).json({ error: e.message || 'invalid reel order' });
     }
@@ -2815,14 +3117,14 @@ module.exports = function mountMediaRoutes(app) {
         `SELECT ro.id AS order_id, p.id AS purchase_id FROM reel_orders ro
           JOIN purchases p ON p.id = ro.purchase_id
           WHERE p.idempotency_key = $1 AND p.buyer_user_id = $2`,
-        [String(b.idempotency_key), req.authUser.id]
+        [String(b.idempotency_key), buyer.id]
       ).catch(() => ({ rows: [] }));
       if (prior.rows.length) {
         return res.status(200).json({ data: { ...prior.rows[0], reused: true } });
       }
     }
     const { orderId, purchaseId } = await insertReelOrder(
-      pool, req.authUser, buyerEmail, prep, b.idempotency_key || null);
+      pool, buyerAuth, buyerEmail, prep, b.idempotency_key || null);
     const label = prep.title;
     const session = await stripe().checkout.sessions.create({
       mode: 'payment',
@@ -2905,7 +3207,7 @@ module.exports = function mountMediaRoutes(app) {
       if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
       eventId = String(b.event_id);
     }
-    const photographer = await activePhotographer(pool, b.photographer_id);
+    const photographer = await ownPhotographer(pool, req.authUser, b.photographer_id);
     const { rows } = await pool.query(
       `INSERT INTO reel_products
         (photographer_id, event_id, name, scope, coverage, includes_raw, description, price_cents, sort_order, status)
@@ -2980,6 +3282,8 @@ module.exports = function mountMediaRoutes(app) {
   // ---- Admin: reel order fulfillment queue ----
   app.get('/admin/reel-orders', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const conds = [], params = [];
+    const ownRo = await ownPhotographerId(pool, req.authUser);
+    if (ownRo) { params.push(ownRo); conds.push(`rp.photographer_id = $${params.length}`); }
     if (req.query.status && REEL_ORDER_FLOW[req.query.status]) {
       params.push(String(req.query.status));
       conds.push(`ro.status = $${params.length}`);
@@ -3002,8 +3306,12 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   app.patch('/admin/reel-orders/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
-    const cur = await pool.query('SELECT * FROM reel_orders WHERE id = $1', [req.params.id]);
+    const cur = await pool.query(
+      `SELECT ro.*, rp.photographer_id FROM reel_orders ro JOIN reel_products rp ON rp.id = ro.product_id WHERE ro.id = $1`,
+      [req.params.id]);
     if (!cur.rows.length) return res.status(404).json({ error: 'reel order not found' });
+    const ownRoPat = await ownPhotographerId(pool, req.authUser);
+    if (ownRoPat && cur.rows[0].photographer_id !== ownRoPat) return res.status(404).json({ error: 'reel order not found' });
     const b = req.body || {};
     const from = cur.rows[0].status;
     if (b.status !== undefined) {
@@ -3078,9 +3386,9 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // Buyer purchases a credit bundle (pay up front, same pattern as reel orders).
+  // Guests check out with just an email, like photo checkout.
   app.post('/api/credit-orders', asyncH(async (req, res) => {
-    if (!req.authUser) return res.status(401).json({ error: 'login required' });
-    if (throttled(req.ip, 'credit-order')) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (await throttled(pool, req.ip, 'credit-order')) return res.status(429).json({ error: 'too many requests, try again later' });
     const b = req.body || {};
     if (!b.pack_id || !UUID_RE.test(String(b.pack_id))) return res.status(400).json({ error: 'need {pack_id}' });
     if (!b.event_id || !UUID_RE.test(String(b.event_id))) return res.status(400).json({ error: 'need {event_id}' });
@@ -3091,7 +3399,8 @@ module.exports = function mountMediaRoutes(app) {
       !/^[A-Za-z0-9_-]{8,128}$/.test(String(b.idempotency_key))) {
       return res.status(400).json({ error: 'bad idempotency_key' });
     }
-    const buyerEmail = normEmail(b.email || req.authUser.email);
+    const buyer = await checkoutBuyer(req, b.email);
+    const buyerEmail = normEmail(b.email || buyer.email);
     if (!EMAIL_RE.test(buyerEmail)) return res.status(400).json({ error: 'need a valid {email}' });
     const pack = await pool.query('SELECT * FROM credit_packs WHERE id = $1', [String(b.pack_id)]);
     if (!pack.rows.length || pack.rows[0].status !== 'published') {
@@ -3124,7 +3433,7 @@ module.exports = function mountMediaRoutes(app) {
         `SELECT cb.id AS bundle_id, pu.id AS purchase_id FROM credit_bundles cb
           JOIN purchases pu ON pu.id = cb.purchase_id
           WHERE pu.idempotency_key = $1 AND pu.buyer_user_id = $2`,
-        [String(b.idempotency_key), req.authUser.id]
+        [String(b.idempotency_key), buyer.id]
       ).catch(() => ({ rows: [] }));
       if (prior.rows.length) return res.status(200).json({ data: { ...prior.rows[0], reused: true } });
     }
@@ -3133,7 +3442,7 @@ module.exports = function mountMediaRoutes(app) {
       `INSERT INTO credit_bundles
         (pack_id, event_id, ${subjectCol}, buyer_user_id, buyer_email, slots_total, status)
         VALUES ($1, $2, $3, $4, $5, $6, 'awaiting_payment') RETURNING id`,
-      [p.id, String(b.event_id), subjectId, req.authUser.id, buyerEmail, p.slots]
+      [p.id, String(b.event_id), subjectId, buyer.id, buyerEmail, p.slots]
     );
     const bundleId = brows[0].id;
     let purchaseId;
@@ -3141,7 +3450,7 @@ module.exports = function mountMediaRoutes(app) {
       const { rows } = await pool.query(
         `INSERT INTO purchases (credit_bundle_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key)
           VALUES ($1, $2, $3, NULL, $4, 'NZD', 'pending', $5) RETURNING id`,
-        [bundleId, buyerEmail, req.authUser.id, amount, b.idempotency_key || null]
+        [bundleId, buyerEmail, buyer.id, amount, b.idempotency_key || null]
       );
       purchaseId = rows[0].id;
     } catch (e) {
@@ -3178,7 +3487,7 @@ module.exports = function mountMediaRoutes(app) {
   // double-unlock of the SAME photo impossible.
   app.post('/api/credits/unlock', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
-    if (throttled(req.ip, 'credit-unlock')) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (await throttled(pool, req.ip, 'credit-unlock')) return res.status(429).json({ error: 'too many requests, try again later' });
     const { media_id } = req.body || {};
     if (!media_id || !UUID_RE.test(String(media_id))) return res.status(400).json({ error: 'need {media_id}' });
     const m = await pool.query(
@@ -3306,7 +3615,7 @@ module.exports = function mountMediaRoutes(app) {
       if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
       eventId = String(b.event_id);
     }
-    const photographer = await activePhotographer(pool, b.photographer_id);
+    const photographer = await ownPhotographer(pool, req.authUser, b.photographer_id);
     const { rows } = await pool.query(
       `INSERT INTO credit_packs (photographer_id, event_id, scope_type, slots, price_cents, sort_order, status)
         VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'published')) RETURNING *`,
@@ -3417,7 +3726,7 @@ module.exports = function mountMediaRoutes(app) {
   // resolves the report. Withdrawing consent always works — see privacy page.
   app.post('/api/media/:id/takedown', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
-    if (throttled(req.ip, 'media-takedown')) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (await throttled(pool, req.ip, 'media-takedown')) return res.status(429).json({ error: 'too many requests, try again later' });
     if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
     const m = await pool.query(
       `SELECT m.id, m.status, e.name AS event_name, h.name AS horse, r.name AS rider
@@ -3522,7 +3831,7 @@ module.exports = function mountMediaRoutes(app) {
 
   app.post('/api/media/:id/claim', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
-    if (throttled(req.ip, 'media-claim')) return res.status(429).json({ error: 'too many requests, try again later' });
+    if (await throttled(pool, req.ip, 'media-claim')) return res.status(429).json({ error: 'too many requests, try again later' });
     if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
     const b = req.body || {};
     if (!!b.horse_id === !!b.rider_id) {

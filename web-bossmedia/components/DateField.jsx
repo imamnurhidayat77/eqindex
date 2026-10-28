@@ -69,14 +69,22 @@ export default function DateField({ name, defaultValue = '', placeholder = 'Sele
           <div className="cal-grid" aria-hidden="true">
             {WEEK.map((d) => <span key={d} className="cal-dow">{d}</span>)}
           </div>
-          <div className="cal-grid">
-            {cells.map((day, i) => day === null ? <span key={i} /> : (
-              <button type="button" key={i}
-                className={`cal-day${toISO(cursor.y, cursor.m, day) === value ? ' sel' : ''}${toISO(cursor.y, cursor.m, day) === todayISO ? ' today' : ''}`}
-                onClick={() => { setValue(toISO(cursor.y, cursor.m, day)); setOpen(false); }}>
-                {day}
-              </button>
-            ))}
+          <div className="cal-grid" role="grid" aria-label={`${MONTHS[cursor.m]} ${cursor.y}`}>
+            {cells.map((day, i) => {
+              if (day === null) return <span key={i} />;
+              const iso = toISO(cursor.y, cursor.m, day);
+              const sel = iso === value;
+              const today = iso === todayISO;
+              return (
+                <button type="button" key={i} role="gridcell"
+                  className={`cal-day${sel ? ' sel' : ''}${today ? ' today' : ''}`}
+                  aria-label={`${day} ${MONTHS[cursor.m]} ${cursor.y}`}
+                  aria-pressed={sel} aria-current={today && !sel ? 'date' : undefined}
+                  onClick={() => { setValue(iso); setOpen(false); }}>
+                  {day}
+                </button>
+              );
+            })}
           </div>
           <div className="cal-foot">
             <button type="button" onClick={() => {

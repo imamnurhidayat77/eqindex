@@ -1,36 +1,25 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { API } from '../../lib/api';
+import { API, cachedJson } from '../../lib/api';
+import { safeError } from '../../lib/errors';
+import { fmtDay } from '../../lib/format';
+import { newIdempotencyKey } from '../../lib/figma-data';
+import { stripeCheckoutUrl } from '../../lib/figma-data';
 import { Icon, SiteFooter, SiteHeader } from '../../components/figma';
 import GalleryPager from '../../components/GalleryPager';
 import SearchSelect from '../../components/SearchSelect';
-
-function useAuthed() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => setUser(j?.data || null))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-  return { user, loading };
-}
+import { searchSubjects } from '../../lib/search-subjects';
+import { useAuthed } from '../../lib/use-authed';
+import { useDocumentTitle } from '../../lib/use-document-title';
 
 const TABS = [['photos', 'Photos'], ['reels', 'Reels'], ['credits', 'Credits']];
 const PAGE_SIZE = 12;
 const REEL_STATUS = { awaiting_payment: 'Waiting for payment', pending: 'Queued for production', in_production: 'Being filmed and edited', ready: 'Ready', delivered: 'Delivered', cancelled: 'Cancelled' };
 const dl = (id) => `${API}/api/media/${id}/download`;
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const fmtDay = (iso) => {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-};
 
 export default function MediaHub() {
+  useDocumentTitle('My media');
   const { user, loading } = useAuthed();
   const [tab, setTab] = useState('photos');
   const [page, setPage] = useState(1);
@@ -41,10 +30,10 @@ export default function MediaHub() {
 
   useEffect(() => {
     if (loading || !user) return;
-    fetch(`${API}/api/my/photos`, { credentials: 'include' }).then((r) => r.json()).then((j) => setPhotos(j.data || [])).catch(() => setPhotos([]));
-    fetch(`${API}/api/my/reels`, { credentials: 'include' }).then((r) => r.json()).then((j) => setReels(j.data || [])).catch(() => setReels([]));
-    fetch(`${API}/api/my/credits`, { credentials: 'include' }).then((r) => r.json()).then((j) => {
-      const rows = j.data || [];
+    cachedJson('/api/my/photos').then((j) => setPhotos(j?.data || [])).catch(() => setPhotos([]));
+    cachedJson('/api/my/reels').then((j) => setReels(j?.data || [])).catch(() => setReels([]));
+    cachedJson('/api/my/credits').then((j) => {
+      const rows = j?.data || [];
       setCredits(rows);
       setLeft(rows.reduce((s, b) => s + Number(b.slots_left || 0), 0));
     }).catch(() => setCredits([]));
@@ -74,10 +63,10 @@ export default function MediaHub() {
           ) : !user ? (
             <div className="empty-state">
               <p className="eyebrow">Members only</p>
-              <h3>Log in to open your library.</h3>
+              <h3>Sign in to open My media.</h3>
               <p>Bought photos, custom reels and credit packs — with lifetime re-downloads.</p>
               <p style={{ marginTop: 26 }}>
-                <Link href="/login?next=/media" className="primary-link">Log in <Icon name="arrow" size={16} /></Link>
+                <Link href="/login?next=/media" className="primary-link">Sign in <Icon name="arrow" size={16} /></Link>
               </p>
             </div>
           ) : (
@@ -88,9 +77,9 @@ export default function MediaHub() {
                 <div><span>Credits left</span><strong>{credits ? left : '—'}</strong></div>
               </div>
 
-              <div className="media-tabs-dark" role="tablist" aria-label="My media">
+              <div className="media-tabs-dark" role="group" aria-label="My media">
                 {TABS.map(([k, label]) => (
-                  <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'active' : ''} onClick={() => { setTab(k); setPage(1); }}>
+                  <button key={k} aria-pressed={tab === k} className={tab === k ? 'active' : ''} onClick={() => { setTab(k); setPage(1); }}>
                     {label}
                     <span>{k === 'photos' && Array.isArray(photos) ? photos.length : k === 'reels' && Array.isArray(reels) ? reels.length : k === 'credits' && Array.isArray(credits) ? credits.length : ''}</span>
                   </button>
@@ -231,12 +220,8 @@ function BuyCredits({ user }) {
   const scopedEvent = pack?.event_id ? events.find((e) => e.id === pack.event_id) : null;
   const effectiveEvent = scopedEvent?.id || eventId;
   const searchSubject = async (v) => {
-    if (!pack || v.trim().length < 2) return [];
-    try {
-      const res = await fetch(`${API}/api/${pack.scope_type === 'horse' ? 'horses' : 'riders'}/search?q=${encodeURIComponent(v)}&limit=8`);
-      const j = await res.json().catch(() => ({}));
-      return (j.data || []).map((o) => ({ id: o.id, label: o.name }));
-    } catch { return []; }
+    if (!pack) return [];
+    return searchSubjects(pack.scope_type, v);
   };
   const buy = async () => {
     setErr('');
@@ -246,12 +231,12 @@ function BuyCredits({ user }) {
     try {
       const body = { pack_id: pack.id, event_id: effectiveEvent, email: email.trim(), return_base: window.location.origin,
         ...(pack.scope_type === 'horse' ? { horse_id: subjectId } : { rider_id: subjectId }),
-        idempotency_key: [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('') };
+        idempotency_key: newIdempotencyKey() };
       const res = await fetch(`${API}/api/credit-orders`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'Checkout failed — try again.');
       if (!j.data?.checkout_url) throw new Error('Checkout already started — check your email for the payment link.');
-      window.location.assign(j.data.checkout_url);
+      window.location.assign(stripeCheckoutUrl(j.data));
     } catch (e) { setErr(e.message); setBusy(false); }
   };
   if (packs === null) return null;
@@ -279,7 +264,7 @@ function BuyCredits({ user }) {
           {busy ? 'Opening checkout…' : 'Buy credits'}
         </button>
       </div>
-      {err && <p className="auth-error" role="alert" style={{ marginTop: 12 }}>{err}</p>}
+      {err && <p className="auth-error" role="alert" style={{ marginTop: 12 }}>{safeError(err)}{' '}<Link href="/contact" style={{ color: '#fff', borderBottom: '1px solid #555' }}>Need help? Contact support</Link></p>}
       {pack && <p className="empty-note" style={{ marginTop: 12 }}>Unlock any {pack.slots} photos{scopedEvent ? ` at ${scopedEvent.name}` : ' at the chosen event'} — $ buys the whole bundle in one checkout.</p>}
     </div>
   );

@@ -93,8 +93,8 @@ test('series shape', async () => {
 });
 
 test('review queue reads', async () => {
-  const q = await get('/review?status=pending');
-  assert.ok(Array.isArray(q.data));
+  // Curation queue is ADMIN-only (public write/read was an IDOR-grade hole).
+  await get('/review?status=pending', 401);
 });
 
 test('auth: register/login/me/logout cycle', async () => {

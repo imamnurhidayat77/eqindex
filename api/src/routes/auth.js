@@ -4,18 +4,21 @@ const crypto = require('crypto');
 const { SESSION_COOKIE, APP_URL } = require('../config');
 const { getCookie, clearSessionCookie } = require('../lib/cookies');
 const { asyncH } = require('../lib/async');
-const { newSession, throttled, EMAIL_RE } = require('../lib/auth');
+const { newSession, EMAIL_RE } = require('../lib/auth');
+const { throttled } = require('../lib/ratelimit');
 const { audit } = require('../lib/audit');
 const { sendMail } = require('../lib/mailer');
+const totp = require('../lib/totp');
 
 // Reset tokens live 1 hour (enforced in SQL), single-use, sha256 at rest.
 const sha256 = (v) => crypto.createHash('sha256').update(v).digest('hex');
+const escHtml = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 module.exports = function mountAuthRoutes(app) {
   // ---- Auth: register / login / logout / me ----
   app.post('/auth/register', asyncH(async (req, res) => {
     if (req.authUser) return res.status(409).json({ error: 'already logged in — log out first' });
-    if (throttled(req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
+    if (await throttled(pool, req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
     const { name, email, password, role } = req.body || {};
     const cleanEmail = String(email || '').trim().toLowerCase();
     if (!name || !String(name).trim() || !EMAIL_RE.test(cleanEmail)) {
@@ -37,15 +40,111 @@ module.exports = function mountAuthRoutes(app) {
 
   app.post('/auth/login', asyncH(async (req, res) => {
     if (req.authUser) return res.status(409).json({ error: 'already logged in — log out first' });
-    if (throttled(req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
+    if (await throttled(pool, req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
     const { email, password } = req.body || {};
     const cleanEmail = String(email || '').trim().toLowerCase();
     const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [cleanEmail]);
     const u = rows[0];
     const ok = u && u.password_hash && await bcrypt.compare(String(password || ''), u.password_hash);
     if (!ok) return res.status(401).json({ error: 'invalid email or password' });
+    if (u.totp_secret && u.totp_verified_at) {
+      // Password OK, code pending: hand out a 5-minute single-use challenge,
+      // never a session — the session is minted only after the TOTP verifies.
+      const raw = crypto.randomBytes(32).toString('hex');
+      await pool.query(
+        `INSERT INTO mfa_challenges (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '5 minutes')`,
+        [u.id, sha256(raw)]
+      );
+      return res.json({ data: { mfa_required: true, challenge: raw } });
+    }
     await newSession(res, req, u.id);
     res.json({ data: { id: u.id, name: u.name, email: u.email, role: u.role } });
+  }));
+
+  // ---- TOTP MFA for money/power roles (ADMIN, PHOTOGRAPHER, ORGANIZER) ----
+  const MFA_ROLES = ['ADMIN', 'PHOTOGRAPHER', 'ORGANIZER'];
+  const mfaAllowed = (req, res) => {
+    if (!req.authUser) { res.status(401).json({ error: 'login required' }); return false; }
+    if (!MFA_ROLES.includes(req.authUser.role)) {
+      res.status(403).json({ error: 'MFA is available for admin, photographer and organizer accounts' }); return false;
+    }
+    return true;
+  };
+
+  // Step 1: mint a secret (user scans it into their authenticator app,
+  // then proves possession via /auth/mfa/verify).
+  app.post('/auth/mfa/setup', asyncH(async (req, res) => {
+    if (!mfaAllowed(req, res)) return;
+    const secret = totp.generateSecret();
+    await pool.query(
+      'UPDATE users SET totp_secret = $1, totp_verified_at = NULL WHERE id = $2',
+      [secret, req.authUser.id]
+    );
+    audit(req, 'auth.mfa.setup', 'user', req.authUser.id, {});
+    res.json({ data: {
+      secret,
+      otpauth_url: totp.otpauthUrl({ issuer: 'Boss Media', account: req.authUser.email, secret }),
+    } });
+  }));
+
+  app.get('/auth/mfa/status', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    const { rows } = await pool.query(
+      'SELECT totp_verified_at IS NOT NULL AS enabled FROM users WHERE id = $1', [req.authUser.id]);
+    res.json({ data: { enabled: !!rows[0]?.enabled, eligible: MFA_ROLES.includes(req.authUser.role) } });
+  }));
+
+  // Step 2: prove possession — enforcement starts on next login.
+  app.post('/auth/mfa/verify', asyncH(async (req, res) => {
+    if (!mfaAllowed(req, res)) return;
+    if (await throttled(pool, req.ip || 'x', 'mfa')) return res.status(429).json({ error: 'too many attempts, try later' });
+    const { token } = req.body || {};
+    const { rows } = await pool.query('SELECT totp_secret FROM users WHERE id = $1', [req.authUser.id]);
+    if (!rows[0]?.totp_secret || !totp.verify(token, rows[0].totp_secret)) {
+      return res.status(400).json({ error: 'wrong code — check your authenticator app time' });
+    }
+    await pool.query('UPDATE users SET totp_verified_at = NOW() WHERE id = $1', [req.authUser.id]);
+    audit(req, 'auth.mfa.verify', 'user', req.authUser.id, {});
+    res.json({ ok: true });
+  }));
+
+  // Disable requires the current password (so a hijacked session alone
+  // cannot strip MFA).
+  app.post('/auth/mfa/disable', asyncH(async (req, res) => {
+    if (!mfaAllowed(req, res)) return;
+    const { password } = req.body || {};
+    const { rows } = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.authUser.id]);
+    if (!rows[0]?.password_hash || !(await bcrypt.compare(String(password || ''), rows[0].password_hash))) {
+      return res.status(401).json({ error: 'password incorrect' });
+    }
+    await pool.query('UPDATE users SET totp_secret = NULL, totp_verified_at = NULL WHERE id = $1', [req.authUser.id]);
+    audit(req, 'auth.mfa.disable', 'user', req.authUser.id, {});
+    res.json({ ok: true });
+  }));
+
+  // Step 3 (login flow): trade a live challenge + TOTP code for a session.
+  app.post('/auth/mfa/challenge', asyncH(async (req, res) => {
+    if (req.authUser) return res.status(409).json({ error: 'already logged in — log out first' });
+    if (await throttled(pool, req.ip || 'x', 'mfa')) return res.status(429).json({ error: 'too many attempts, try later' });
+    const { challenge, token } = req.body || {};
+    if (!challenge || typeof challenge !== 'string') return res.status(400).json({ error: 'need a valid challenge' });
+    const { rows } = await pool.query(
+      `SELECT c.id, c.user_id, c.attempts, u.totp_secret, u.totp_verified_at, u.name, u.email, u.role
+         FROM mfa_challenges c JOIN users u ON u.id = c.user_id
+        WHERE c.token_hash = $1 AND c.used_at IS NULL AND c.expires_at > NOW()`,
+      [sha256(challenge)]
+    );
+    const row = rows[0];
+    if (!row) return res.status(400).json({ error: 'challenge expired — sign in again' });
+    if (row.attempts >= 5 || !row.totp_secret || !row.totp_verified_at || !totp.verify(token, row.totp_secret)) {
+      await pool.query('UPDATE mfa_challenges SET attempts = attempts + 1 WHERE id = $1', [row.id]);
+      return res.status(400).json({ error: 'wrong code — check your authenticator app time' });
+    }
+    await pool.query('UPDATE mfa_challenges SET used_at = NOW() WHERE id = $1', [row.id]);
+    await pool.query('DELETE FROM mfa_challenges WHERE user_id = $1 AND id <> $2', [row.user_id, row.id]);
+    await newSession(res, req, row.user_id);
+    audit(req, 'auth.mfa.challenge', 'user', row.user_id, {});
+    res.json({ data: { id: row.user_id, name: row.name, email: row.email, role: row.role } });
   }));
 
   app.post('/auth/logout', asyncH(async (req, res) => {
@@ -85,7 +184,7 @@ module.exports = function mountAuthRoutes(app) {
   // ---- Password reset via email (Resend). Responses are identical whether
   // the address exists or not, so accounts can't be enumerated.
   app.post('/auth/forgot', asyncH(async (req, res) => {
-    if (throttled(req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
+    if (await throttled(pool, req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
     const cleanEmail = String(req.body?.email || '').trim().toLowerCase();
     if (!EMAIL_RE.test(cleanEmail)) return res.status(400).json({ error: 'need a valid email' });
     if (!APP_URL) {
@@ -109,7 +208,7 @@ module.exports = function mountAuthRoutes(app) {
           to: cleanEmail,
           subject: 'Reset your Boss Media password',
           text: `Hi ${u.name || 'there'},\n\nReset your password here (expires in 1 hour):\n${link}\n\nDidn't ask for this? Ignore this email — your password stays as is.`,
-          html: `<p>Hi ${u.name || 'there'},</p><p><a href="${link}">Reset your password</a> (expires in 1 hour).</p><p>Didn't ask for this? Ignore this email — your password stays as is.</p>`,
+          html: `<p>Hi ${escHtml(u.name) || 'there'},</p><p><a href="${link}">Reset your password</a> (expires in 1 hour).</p><p>Didn't ask for this? Ignore this email — your password stays as is.</p>`,
         });
       } catch (e) {
         // Don't leave a live token the user can never receive.
@@ -122,7 +221,7 @@ module.exports = function mountAuthRoutes(app) {
   }));
 
   app.post('/auth/reset', asyncH(async (req, res) => {
-    if (throttled(req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
+    if (await throttled(pool, req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
     const { token, password } = req.body || {};
     if (!token || typeof token !== 'string' || token.length > 256) {
       return res.status(400).json({ error: 'need a valid reset token' });

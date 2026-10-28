@@ -1,7 +1,8 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import ReelPlayer from './ReelPlayer';
 import { Icon } from './figma';
+import { useFocusTrap } from '../lib/focus-trap';
 
 const PHOTO_MS = 5000;
 
@@ -25,13 +26,16 @@ export default function StoryViewer({ reels, index, onIndex, onClose }) {
 
   useEffect(() => { setProg(0); }, [index]);
 
-  // Photo timer with smooth progress.
+  // Photo timer with smooth progress. Hidden tabs don't advance it.
   useEffect(() => {
     if (!reel || reel.video) return undefined;
     let raf = 0;
-    const t0 = performance.now();
+    let last = performance.now();
+    let acc = 0;
     const tick = (t) => {
-      const p = Math.min(1, (t - t0) / PHOTO_MS);
+      if (!document.hidden) acc += t - last;
+      last = t;
+      const p = Math.min(1, acc / PHOTO_MS);
       setProg(p);
       if (p >= 1) next();
       else raf = requestAnimationFrame(tick);
@@ -39,6 +43,8 @@ export default function StoryViewer({ reels, index, onIndex, onClose }) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [index, reel, next]);
+  const storyRef = useRef(null);
+  useFocusTrap(storyRef, { onClose });
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -66,7 +72,7 @@ export default function StoryViewer({ reels, index, onIndex, onClose }) {
   );
 
   return (
-    <div className="story" role="dialog" aria-modal="true" aria-label={`Reel ${index + 1} of ${reels.length} featuring ${reel.rider}`} onClick={onClose}>
+    <div className="story" ref={storyRef} role="dialog" aria-modal="true" aria-label={`Reel ${index + 1} of ${reels.length} featuring ${reel.rider}`} onClick={onClose}>
       <div className="story-segs" aria-hidden="true">
         {reels.map((r, i) => (
           <span key={r.id || i}><i style={{ width: `${i < index ? 100 : i === index ? Math.round(prog * 100) : 0}%` }} /></span>
@@ -87,7 +93,7 @@ export default function StoryViewer({ reels, index, onIndex, onClose }) {
         <div className="story-stage" key={reel.id}>
           {reel.video ? (
             <ReelPlayer src={reel.video} poster={reel.image} label={`Reel featuring ${reel.rider}`}
-              onProgress={setProg} onEnded={next} />
+              autoPlay onProgress={setProg} onEnded={next} />
           ) : reel.image ? (
             <img src={reel.image} alt={`${reel.rider} at ${reel.event}`} />
           ) : (

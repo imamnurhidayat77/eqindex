@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import StudioShell, { Bars, Chip, Stat } from '../../components/studio';
 import { nzdc, studio } from '../../lib/studio';
+import { useDocumentTitle } from '../../lib/use-document-title';
 
 const fmtDay = (iso) => {
   const d = iso ? new Date(iso) : null;
@@ -13,6 +14,7 @@ const fmtDay = (iso) => {
 const QUEUE = ['pending', 'in_production', 'ready'];
 
 export default function StudioOverview() {
+  useDocumentTitle('My studio');
   const [stats, setStats] = useState(null);
   const [summary, setSummary] = useState(null);
   const [queue, setQueue] = useState([]);

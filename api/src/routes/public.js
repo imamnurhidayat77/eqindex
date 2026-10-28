@@ -3,7 +3,8 @@ const privacy = require('../privacy');
 const { asyncH } = require('../lib/async');
 const { paging, numOrNull } = require('../lib/http');
 const { roundFiltersVis, visSql } = require('../lib/filters');
-const { EMAIL_RE, throttled, ownOrAdmin } = require('../lib/auth');
+const { EMAIL_RE, needRole, ownOrAdmin } = require('../lib/auth');
+const { throttled } = require('../lib/ratelimit');
 const { audit } = require('../lib/audit');
 const { resolveId } = require('../lib/resolve');
 const { canonCategoryKey, masterCategoryKeys } = require('../lib/categories');
@@ -672,10 +673,21 @@ module.exports = function mountPublicRoutes(app) {
     res.json({ data: rows });
   }));
 
+  // Horse records are written by the people who manage horses — any
+  // logged-in account could otherwise vandalize any horse (BOLA).
+  const HORSE_WRITER_ROLES = ['ADMIN', 'COACH', 'OWNER'];
+  const horseWriter = (req, res) => {
+    if (!req.authUser) { res.status(401).json({ error: 'login required' }); return false; }
+    if (!HORSE_WRITER_ROLES.includes(req.authUser.role)) {
+      res.status(403).json({ error: 'coach, owner or admin role required' }); return false;
+    }
+    return true;
+  };
+
   app.post('/horses/:id/training', asyncH(async (req, res) => {
     req.params.id = await resolveId('horses', req.params.id, res);
     if (!req.params.id) return;
-    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (!horseWriter(req, res)) return;
     const { rider_id, date, type, intensity, notes } = req.body || {};
     if (!date || !type) return res.status(400).json({ error: 'need {date, type}' });
     if (intensity && !['Low', 'Medium', 'High'].includes(intensity)) {
@@ -712,7 +724,7 @@ module.exports = function mountPublicRoutes(app) {
   app.post('/horses/:id/health', asyncH(async (req, res) => {
     req.params.id = await resolveId('horses', req.params.id, res);
     if (!req.params.id) return;
-    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (!horseWriter(req, res)) return;
     const { date, category, description, provider } = req.body || {};
     if (!date || !category || !description) {
       return res.status(400).json({ error: 'need {date, category, description}' });
@@ -768,7 +780,7 @@ module.exports = function mountPublicRoutes(app) {
   }));
 
   // ---- Review queue (naming curation) ----
-  app.get('/review', asyncH(async (req, res) => {
+  app.get('/review', needRole('ADMIN'), asyncH(async (req, res) => {
     const status = req.query.status || 'pending';
     if (!['pending', 'approved', 'merged', 'rejected'].includes(status)) {
       return res.status(400).json({ error: 'bad status' });
@@ -778,7 +790,8 @@ module.exports = function mountPublicRoutes(app) {
     res.json({ data: rows });
   }));
 
-  app.post('/review/:id', asyncH(async (req, res) => {
+  // Data-curation queue — resolving creates real horses/riders, ADMIN only.
+  app.post('/review/:id', needRole('ADMIN'), asyncH(async (req, res) => {
     const { action, match_id } = req.body || {};
     const q = await pool.query('SELECT * FROM review_queue WHERE id = $1', [req.params.id]);
     if (!q.rows.length) return res.status(404).json({ error: 'not found' });
@@ -1386,7 +1399,7 @@ module.exports = function mountPublicRoutes(app) {
 
   // ---- Corrections inbox (public form + admin curation) ----
   app.post('/corrections', asyncH(async (req, res) => {
-    if (throttled(req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
+    if (await throttled(pool, req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
     const { name, email, subject, entity_type, entity_id, message } = req.body || {};
     const errs = [];
     if (!name || !String(name).trim()) errs.push('name required');

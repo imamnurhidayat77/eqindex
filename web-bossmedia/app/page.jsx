@@ -14,7 +14,8 @@ export default async function Home() {
     getJSON('/photos?kind=reel&limit=6').catch(() => ({ data: [] })),
   ]);
   // Same hero image as the Figma design.
-  const heroImage = 'https://images.unsplash.com/photo-1594768816441-1dd241ffaa67?auto=format&fit=crop&w=2000&q=90';
+  // Hero is the LCP image — keep it lean (w=1200 is plenty for a collage slot).
+  const heroImage = 'https://images.unsplash.com/photo-1594768816441-1dd241ffaa67?auto=format&fit=crop&w=1200&q=75';
   const reels = (reelPhotos || []).map((r) => ({
     id: r.id,
     // Never show "Unknown rider" on a card — fall back to horse, then event.

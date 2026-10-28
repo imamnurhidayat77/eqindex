@@ -1,23 +1,20 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { API } from '../../lib/api';
+import { API, cachedJson } from '../../lib/api';
+import { fmtDay } from '../../lib/format';
 import { nzd } from '../../lib/figma-data';
+import { safeError } from '../../lib/errors';
 import { Icon, SiteFooter, SiteHeader } from '../../components/figma';
 import { Pager } from '../../components/studio';
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const fmtDay = (iso) => {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-};
+import { useAuthed } from '../../lib/use-authed';
+import { useDocumentTitle } from '../../lib/use-document-title';
 
 const TABS = [['overview', 'Overview'], ['wallet', 'Wallet'], ['credits', 'Credits'], ['history', 'History'], ['profile', 'Profile']];
 
 export default function AccountPage() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  useDocumentTitle('My account');
+  const { user, loading } = useAuthed();
   const [tab, setTab] = useState('overview');
   // undefined = loading, null/[] = loaded.
   const [wallet, setWallet] = useState(undefined);
@@ -30,21 +27,10 @@ export default function AccountPage() {
   const clamp = (off, n) => Math.min(off, Math.max(0, (Math.ceil(n / PAGE) - 1) * PAGE));
 
   useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => setUser(j?.data || null))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
     if (!user) return;
-    fetch(`${API}/api/my/wallet`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null)).then((j) => setWallet(j?.data || null)).catch(() => setWallet(null));
-    fetch(`${API}/api/my/credits`, { credentials: 'include' })
-      .then((r) => r.json()).then((j) => setCredits(j.data || [])).catch(() => setCredits([]));
-    fetch(`${API}/api/my/photos`, { credentials: 'include' })
-      .then((r) => r.json()).then((j) => setPhotos(j.data || [])).catch(() => setPhotos([]));
+    cachedJson('/api/my/wallet').then((j) => setWallet(j?.data || null)).catch(() => setWallet(null));
+    cachedJson('/api/my/credits').then((j) => setCredits(j?.data || [])).catch(() => setCredits([]));
+    cachedJson('/api/my/photos').then((j) => setPhotos(j?.data || [])).catch(() => setPhotos([]));
   }, [user]);
 
   const creditsLeft = (credits || []).reduce((s, b) => s + Number(b.slots_left ?? 0), 0);
@@ -74,17 +60,17 @@ export default function AccountPage() {
           ) : !user ? (
             <div className="empty-state">
               <p className="eyebrow">Members only</p>
-              <h3>Log in to open your account.</h3>
+              <h3>Sign in to open your account.</h3>
               <p>Wallet balance, photo credits, purchase history and profile live here.</p>
               <p style={{ marginTop: 26 }}>
-                <Link href="/login?next=/account" className="primary-link">Log in <Icon name="arrow" size={16} /></Link>
+                <Link href="/login?next=/account" className="primary-link">Sign in <Icon name="arrow" size={16} /></Link>
               </p>
             </div>
           ) : (
             <>
-              <div className="media-tabs-dark" role="tablist" aria-label="My account">
+              <div className="media-tabs-dark" role="group" aria-label="My account">
                 {TABS.map(([k, label]) => (
-                  <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
+                  <button key={k} aria-pressed={tab === k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
                     {label}
                     {tabCount(k) !== null && <span>{tabCount(k)}</span>}
                   </button>
@@ -114,8 +100,8 @@ export default function AccountPage() {
                   </p>
                   {wallet !== undefined && !!wallet?.transactions?.length && (
                     <>
-                      <table className="st-table">
-                        <thead><tr><th>Date</th><th>What</th><th style={{ textAlign: 'right' }}>Amount</th><th style={{ textAlign: 'right' }}>Balance</th></tr></thead>
+                      <div className="table-scroll"><table className="st-table">
+                        <thead><tr><th scope="col">Date</th><th scope="col">What</th><th scope="col" style={{ textAlign: 'right' }}>Amount</th><th scope="col" style={{ textAlign: 'right' }}>Balance</th></tr></thead>
                         <tbody>
                           {wallet.transactions.slice(clamp(wOff, wallet.transactions.length), clamp(wOff, wallet.transactions.length) + PAGE).map((t, i) => (
                             <tr key={`${t.created_at}-${i}`}>
@@ -128,7 +114,7 @@ export default function AccountPage() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </table></div>
                       <Pager total={wallet.transactions.length} limit={PAGE} offset={clamp(wOff, wallet.transactions.length)} onPage={setWOff} />
                     </>
                   )}
@@ -145,8 +131,8 @@ export default function AccountPage() {
                     <p className="empty-note">No credit packs yet. <Link href="/media" className="text-link">Get credits in your library</Link></p>
                   ) : (
                     <>
-                      <table className="st-table">
-                        <thead><tr><th>Pack</th><th>Event</th><th style={{ textAlign: 'right' }}>Left</th></tr></thead>
+                      <div className="table-scroll"><table className="st-table">
+                        <thead><tr><th scope="col">Pack</th><th scope="col">Event</th><th scope="col" style={{ textAlign: 'right' }}>Left</th></tr></thead>
                         <tbody>
                           {credits.slice(clamp(cOff, credits.length), clamp(cOff, credits.length) + PAGE).map((b) => (
                             <tr key={b.id}>
@@ -156,7 +142,7 @@ export default function AccountPage() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </table></div>
                       <Pager total={credits.length} limit={PAGE} offset={clamp(cOff, credits.length)} onPage={setCOff} />
                     </>
                   )}
@@ -173,8 +159,8 @@ export default function AccountPage() {
                     <p className="empty-note">Nothing bought yet. <Link href="/events" className="text-link">Browse the gallery</Link></p>
                   ) : (
                     <>
-                      <table className="st-table">
-                        <thead><tr><th>Date</th><th>Photo</th><th>License</th><th style={{ textAlign: 'right' }}>Paid</th><th style={{ textAlign: 'right' }}>Receipt</th></tr></thead>
+                      <div className="table-scroll"><table className="st-table">
+                        <thead><tr><th scope="col">Date</th><th scope="col">Photo</th><th scope="col">License</th><th scope="col" style={{ textAlign: 'right' }}>Paid</th><th scope="col" style={{ textAlign: 'right' }}>Receipt</th></tr></thead>
                         <tbody>
                           {photos.slice(clamp(hOff, photos.length), clamp(hOff, photos.length) + PAGE).map((p) => (
                             <tr key={`${p.purchase_id}-${p.media_id}`}>
@@ -186,7 +172,7 @@ export default function AccountPage() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
+                      </table></div>
                       <Pager total={photos.length} limit={PAGE} offset={clamp(hOff, photos.length)} onPage={setHOff} />
                     </>
                   )}
@@ -215,6 +201,7 @@ export default function AccountPage() {
                     <h3>Security</h3>
                     <p className="st-csub">Password and sessions on this account.</p>
                     <PasswordForm />
+                    <MfaPanel role={user.role} />
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 24, paddingTop: 20, borderTop: '1px solid #242424' }}>
                       <Link href="/media" className="st-btn-ghost" style={{ textDecoration: 'none' }}>Open media library</Link>
                       <SignOutButton />
@@ -243,7 +230,7 @@ function ActivityPreview({ wallet, photos, onGo }) {
     );
   }
   return (
-    <table className="st-table">
+    <div className="table-scroll"><table className="st-table">
       <tbody>
         {tx.map((t, i) => (
           <tr key={`tx-${t.created_at}-${i}`}>
@@ -266,7 +253,7 @@ function ActivityPreview({ wallet, photos, onGo }) {
           </tr>
         ))}
       </tbody>
-    </table>
+    </table></div>
   );
 }
 
@@ -301,7 +288,7 @@ function PasswordForm() {
   return (
     <div style={{ marginTop: 22, maxWidth: 420 }}>
       <p style={{ color: '#999', fontSize: 13, fontWeight: 700, margin: '0 0 10px' }}>Change password</p>
-      {err && <p className="auth-error" role="alert">{err}</p>}
+      {err && <p className="auth-error" role="alert">{safeError(err)}</p>}
       {msg && <p style={{ color: '#8fd694', fontSize: 13 }}>{msg}</p>}
       <label style={{ display: 'grid', gap: 6, marginBottom: 10 }}>
         <span style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' }}>Current password</span>
@@ -318,6 +305,88 @@ function PasswordForm() {
       <button className="st-btn" disabled={busy} onClick={submit} style={{ minHeight: 44 }}>
         {busy ? 'Saving…' : 'Save new password'}
       </button>
+    </div>
+  );
+}
+
+const MFA_ROLES = ['ADMIN', 'PHOTOGRAPHER', 'ORGANIZER'];
+
+function MfaPanel({ role }) {
+  const [st, setSt] = useState(null); // null=loading {enabled, eligible}
+  const [secret, setSecret] = useState('');
+  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = () => {
+    fetch(`${API}/auth/mfa/status`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null)).then((j) => setSt(j?.data || { enabled: false, eligible: false }))
+      .catch(() => setSt({ enabled: false, eligible: false }));
+  };
+  useEffect(() => { load(); }, []);
+  if (!MFA_ROLES.includes(role)) return null;
+  const call = async (path, body) => {
+    const r = await fetch(`${API}${path}`, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'That didn’t work — try again.');
+    return j.data;
+  };
+  const start = async () => {
+    setErr(''); setMsg(''); setBusy(true);
+    try { const d = await call('/auth/mfa/setup'); setSecret(d.secret); }
+    catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+  const verify = async () => {
+    setErr(''); setMsg('');
+    if (!/^\d{6}$/.test(code.trim())) { setErr('Enter the 6-digit code from your authenticator app.'); return; }
+    setBusy(true);
+    try { await call('/auth/mfa/verify', { token: code.trim() }); setSecret(''); setCode(''); setMsg('Two-factor is on — it applies from your next sign-in.'); load(); }
+    catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+  const disable = async () => {
+    setErr(''); setMsg('');
+    if (!password) { setErr('Enter your password to turn it off.'); return; }
+    setBusy(true);
+    try { await call('/auth/mfa/disable', { password }); setPassword(''); setMsg('Two-factor is off.'); load(); }
+    catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+  return (
+    <div style={{ marginTop: 22, paddingTop: 20, borderTop: '1px solid #242424', maxWidth: 420 }}>
+      <p style={{ color: '#999', fontSize: 13, fontWeight: 700, margin: '0 0 10px' }}>Two-factor authentication</p>
+      {st === null ? <p style={{ color: '#777', fontSize: 13 }}>Loading…</p>
+      : !st.enabled && !secret ? (
+        <>
+          <p style={{ color: '#777', fontSize: 13, margin: '0 0 12px', lineHeight: 1.6 }}>Authenticator-app codes at sign-in. Recommended for money handlers.</p>
+          <button className="st-btn-ghost" disabled={busy} onClick={start}>Set up authenticator app</button>
+        </>
+      ) : !st.enabled ? (
+        <>
+          <p style={{ color: '#777', fontSize: 13, margin: '0 0 10px', lineHeight: 1.6 }}>Add this key to your authenticator app, then enter a code to finish:</p>
+          <p style={{ color: '#fff', fontSize: 15, fontWeight: 700, letterSpacing: '.06em', wordBreak: 'break-all', margin: '0 0 12px' }}>{secret}</p>
+          <label style={{ display: 'grid', gap: 6, marginBottom: 10 }}>
+            <span style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' }}>6-digit code</span>
+            <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" inputMode="numeric" maxLength={6} style={field} />
+          </label>
+          <button className="st-btn" disabled={busy} onClick={verify} style={{ minHeight: 44 }}>{busy ? 'Checking…' : 'Verify and turn on'}</button>
+        </>
+      ) : (
+        <>
+          <p style={{ color: '#8fd694', fontSize: 13, margin: '0 0 12px' }}>On — codes required at sign-in.</p>
+          <label style={{ display: 'grid', gap: 6, marginBottom: 10 }}>
+            <span style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' }}>Current password (to turn off)</span>
+            <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} style={field} />
+          </label>
+          <button className="st-btn-ghost st-btn-danger" disabled={busy} onClick={disable}>Turn off two-factor</button>
+        </>
+      )}
+      {err && <p className="auth-error" role="alert">{err}</p>}
+      {msg && <p style={{ color: '#8fd694', fontSize: 13 }}>{msg}</p>}
     </div>
   );
 }

@@ -101,12 +101,29 @@ function CalendarView({ events }) {
     if (!first) return;
     const d = new Date(first.dateStart);
     if (!Number.isNaN(d.getTime())) setCursor({ month: d.getMonth(), year: d.getFullYear() });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events]);
+  }, [events, first?.dateStart]);
 
   const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
   const firstDayOffset = (new Date(cursor.year, cursor.month, 1).getDay() + 6) % 7;
   const cellCount = Math.ceil((firstDayOffset + daysInMonth) / 7) * 7;
+  // Day → events map so render doesn't re-scan every event per cell.
+  const byDay = useMemo(() => {
+    const m = new Map();
+    for (const e of withDates) {
+      const s = (e.dateStart || '').slice(0, 10);
+      const en = (e.dateEnd || e.dateStart || '').slice(0, 10);
+      if (!s) continue;
+      const d0 = new Date(`${s}T00:00`);
+      const d1 = new Date(`${en || s}T00:00`);
+      if (Number.isNaN(d0.getTime())) continue;
+      for (let t = new Date(d0); t <= d1; t.setDate(t.getDate() + 1)) {
+        const k = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+        if (!m.has(k)) m.set(k, []);
+        m.get(k).push(e);
+      }
+    }
+    return m;
+  }, [withDates]);
 
   const moveMonth = (dir) => {
     const n = new Date(cursor.year, cursor.month + dir, 1);
@@ -127,18 +144,15 @@ function CalendarView({ events }) {
           <button aria-label="Next month" onClick={() => moveMonth(1)}>→</button>
         </div>
       </div>
-      <div className="calendar-grid-scroll">
+      <div className="calendar-grid-scroll" tabIndex={0} role="region" aria-label="Event calendar — scroll sideways to see the whole month">
+        <p className="calendar-scroll-hint" aria-hidden="true">← Scroll sideways for the whole month →</p>
         <div className="calendar-grid">
           {WEEK_DAYS.map((d) => <div className="calendar-weekday" key={d}>{d}</div>)}
           {Array.from({ length: cellCount }, (_, i) => {
             const day = i - firstDayOffset + 1;
             const inMonth = day > 0 && day <= daysInMonth;
             const key = inMonth ? dayKey(cursor.year, cursor.month, day) : null;
-            const dayEvents = inMonth ? withDates.filter((e) => {
-              const s = (e.dateStart || '').slice(0, 10);
-              const en = (e.dateEnd || e.dateStart || '').slice(0, 10);
-              return key && s <= key && key <= en;
-            }) : [];
+            const dayEvents = inMonth ? (byDay.get(key) || []) : [];
             return (
               <div className={`calendar-cell ${inMonth ? '' : 'outside'}`} key={`${cursor.year}-${cursor.month}-${i}`}>
                 {inMonth && <span className="calendar-day">{day}</span>}

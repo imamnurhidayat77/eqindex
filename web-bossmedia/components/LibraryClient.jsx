@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import StudioShell, { Chip, Pager } from './studio';
 import { useNotify } from './Toaster';
 import ConfirmModal from './ConfirmModal';
@@ -27,15 +27,15 @@ export default function LibraryClient({ events, initial }) {
   const editing = (items || []).find((m) => m.id === editingId) || null;
   const [busy, setBusy] = useState(false);
 
-  const load = () => {
+  const load = useCallback(() => {
     const p = new URLSearchParams({ limit: '200' });
     if (status) p.set('status', status);
     if (eventId) p.set('event_id', eventId);
     if (kind) p.set('kind', kind);
     if (untagged) p.set('untagged', '1');
     studio.get(`/admin/media?${p}`).then((r) => { setItems(r || []); setSelected(new Set()); }).catch((e) => notify(e.message, true));
-  };
-  useEffect(load, [status, eventId, kind, untagged]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [status, eventId, kind, untagged, notify]);
+  useEffect(() => { load(); }, [load]);
   useEffect(() => { setOffset(0); }, [q, status, eventId, kind, untagged]);
   useEffect(() => { studio.get('/admin/license-tiers').then((r) => setTiers(r || [])).catch(() => {}); }, []);
 

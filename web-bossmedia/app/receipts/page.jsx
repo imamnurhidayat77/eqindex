@@ -1,17 +1,15 @@
 'use client';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useMemo } from 'react';
 import { API } from '../../lib/api';
+import { fmtDay } from '../../lib/format';
 import { nzd } from '../../lib/figma-data';
+import { useAuthed } from '../../lib/use-authed';
+import { usePurchasePoll } from '../../lib/use-purchase-poll';
 import { SiteFooter, SiteHeader } from '../../components/figma';
+import { useDocumentTitle } from '../../lib/use-document-title';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const fmtDay = (iso) => {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-};
 const lineOf = (p) => {
   if (p.reel_product) return `${p.reel_product}${p.horse ? ` — ${p.horse}` : ''} · Pre-book coverage`;
   const who = [p.horse, p.rider].filter(Boolean).join(' × ');
@@ -19,43 +17,13 @@ const lineOf = (p) => {
 };
 
 function Inner() {
+  useDocumentTitle('Receipt');
   const sp = useSearchParams();
   const ids = useMemo(() => ((sp.get('purchases') || '').split(',').map((s) => s.trim())
     .filter((s) => /^[0-9a-f-]{36}$/i.test(s)).slice(0, 20)), [sp]);
-  const [state, setState] = useState('checking'); // checking|paid|pending|unknown
-  const [rows, setRows] = useState([]);
-  const [me, setMe] = useState('');
-
-  useEffect(() => {
-    fetch(`${API}/auth/me`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null)).then((j) => setMe(j?.data?.email || ''))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!ids.length) { setState('unknown'); return; }
-    let live = true;
-    const check = async () => {
-      const got = await Promise.all(ids.map(async (id) => {
-        try {
-          const r = await fetch(`${API}/api/purchases/${id}`, { credentials: 'include' });
-          const j = await r.json().catch(() => ({}));
-          return r.ok ? j.data : null;
-        } catch { return null; }
-      }));
-      if (!live) return true;
-      const paid = got.filter((g) => g && g.status === 'paid');
-      if (paid.length === ids.length) { setRows(paid); setState('paid'); return true; }
-      if (paid.length || got.some(Boolean)) setState('pending');
-      return false;
-    };
-    check().then((done) => {
-      if (done || !live) return;
-      const t = setInterval(async () => { if (await check()) clearInterval(t); }, 4000);
-      setTimeout(() => clearInterval(t), 60000);
-    });
-    return () => { live = false; };
-  }, [ids]);
+  const { state, rows, retry } = usePurchasePoll(ids);
+  const { user } = useAuthed();
+  const me = user?.email || '';
 
   const subtotal = rows.reduce((s, r) => s + Number(r.amount_cents || 0), 0);
   const gst = Math.round((subtotal / 1.15) * 0.15);
@@ -92,8 +60,10 @@ function Inner() {
           </>
         ) : state === 'pending' ? (
           <><h1>Payment pending.</h1><p className="empty-note">Stripe is still confirming — this page turns into your receipt automatically.</p></>
+        ) : state === 'login' ? (
+          <><h1>One more step.</h1><p className="empty-note">Checked out as a guest? We emailed you an access link — or sign in to see this receipt.</p><p style={{ marginTop: 18 }}><Link href={`/login?next=/receipts?${sp.toString()}`} style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Sign in</Link></p></>
         ) : state === 'unknown' ? (
-          <><h1>Can’t find that order.</h1><p className="empty-note">The link may have expired — check your library.</p><p style={{ marginTop: 18 }}><Link href="/media" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Open my library</Link></p></>
+          <><h1>Can’t find that order.</h1><p className="empty-note">The link may have expired — check your library.</p><p style={{ marginTop: 18, display: 'flex', gap: 16, flexWrap: 'wrap' }}><button onClick={retry} style={{ paddingBottom: 5, border: 0, borderBottom: '1px solid #666', background: 'none', fontSize: 13, color: '#fff', cursor: 'pointer' }}>Try again</button><Link href="/media" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Open my library</Link></p></>
         ) : (
           <><h1>Confirming payment…</h1><p className="empty-note">Talking to Stripe — this usually takes a few seconds.</p></>
         )}

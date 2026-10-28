@@ -12,3 +12,27 @@ export async function getJSON(path) {
   if (!res.ok) throw new Error(`API ${path}: ${res.status}`);
   return res.json();
 }
+
+// Tiny client-side cache for session reads (My media / account triple
+// fetch). 30s TTL, credentials included. Mutations (buy/unlock) navigate
+// away, so mild staleness here is harmless.
+const memCache = new Map();
+export async function cachedJson(path, ttl = 30000) {
+  const now = Date.now();
+  const hit = memCache.get(path);
+  if (hit && now - hit.at < ttl) return hit.data;
+  if (hit?.pending) return hit.pending;
+  const pending = fetch(`${API}${path}`, { credentials: 'include' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => {
+      memCache.set(path, { at: Date.now(), data: j });
+      return j;
+    })
+    .catch(() => null)
+    .finally(() => {
+      const cur = memCache.get(path);
+      if (cur?.pending) memCache.set(path, { at: cur.at || 0, data: cur.data });
+    });
+  memCache.set(path, { at: 0, data: null, pending });
+  return pending;
+}

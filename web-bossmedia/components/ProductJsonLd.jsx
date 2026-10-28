@@ -24,7 +24,10 @@ export default function ProductJsonLd({ media, priceCents, path, description }) 
       },
     } : {}),
   };
+  // Escape `<` so a hostile horse/rider/event name can't break out of the
+  // script block (React does not escape dangerouslySetInnerHTML).
+  const safe = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
   return (
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safe }} />
   );
 }
