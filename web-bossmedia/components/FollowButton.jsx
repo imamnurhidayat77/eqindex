@@ -5,7 +5,10 @@ import { API } from '../lib/api';
 
 // Follow a horse or rider: get notified when their new photos publish
 // (the publish hook already notifies watchlist_items). Members only.
-export default function FollowButton({ kind, id, name }) {
+import { Icon } from './figma';
+import { toast } from './Toaster';
+
+export default function FollowButton({ kind, id, name, icon = false }) {
   const router = useRouter();
   const pathname = usePathname();
   const [watchId, setWatchId] = useState(null);
@@ -34,6 +37,7 @@ export default function FollowButton({ kind, id, name }) {
     if (watchId) {
       await fetch(`${API}/watchlist/${watchId}`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
       setWatchId(null);
+      toast(`Unfollowed ${name}`, { type: 'info' });
       return;
     }
     try {
@@ -42,11 +46,24 @@ export default function FollowButton({ kind, id, name }) {
         body: JSON.stringify({ entity_type: kind, entity_id: id }),
       });
       const j = await r.json().catch(() => ({}));
-      if (r.ok && j.data) setWatchId(j.data.id);
+      if (r.ok && j.data) {
+        setWatchId(j.data.id);
+        toast(`Following ${name} — new photos land in your Watchlist`, { action: { label: 'View', href: '/watchlist' } });
+      }
     } catch { /* stays unfollowed */ }
   };
 
   if (!id) return null;
+  if (icon) {
+    return (
+      <button type="button" onClick={toggle} disabled={checking} aria-pressed={!!watchId}
+        className={`mini-icon-btn${watchId ? ' on' : ''}`}
+        title={watchId ? `Unfollow ${name}` : `Follow ${name} — new photos land in your Watchlist`}
+        aria-label={watchId ? `Unfollow ${name}` : `Follow ${name}`}>
+        {checking ? '…' : <Icon name={watchId ? 'bell-fill' : 'bell'} size={17} />}
+      </button>
+    );
+  }
   const short = (name || '').split(' ')[0] || (kind === 'horse' ? 'horse' : 'rider');
   return (
     <button type="button" onClick={toggle} disabled={checking} aria-pressed={!!watchId}

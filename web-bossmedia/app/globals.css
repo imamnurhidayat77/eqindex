@@ -303,6 +303,10 @@ button.text-link { min-height: 44px; }
 .purchase-preview-notes > div { display: flex; align-items: center; gap: 20px; }
 .purchase-preview-notes a { color: #aaa; font-size: 12px; white-space: nowrap; }
 .purchase-preview-notes a:hover { color: white; }
+.mini-icon-btn { width: 36px; height: 36px; display: grid; place-items: center; flex: none; background: none; border: 1px solid #444; border-radius: 50%; color: #888; cursor: pointer; transition: color .2s, border-color .2s; }
+.mini-icon-btn:hover { color: #fff; border-color: #888; }
+.mini-icon-btn:disabled { opacity: .5; cursor: default; }
+.mini-icon-btn.on { background: #fff; border-color: #fff; color: #0c0c0c; }
 .purchase-panel { padding: 17px; border: 1px solid #303030; background: #121212; position: sticky; top: 18px; }
 .purchase-label { margin: 0 0 15px; color: #777; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .11em; }
 .license-panel { margin-top: 15px; padding: 16px; border: 1px solid #333; background: #181818; }

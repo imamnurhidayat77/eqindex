@@ -46,6 +46,11 @@ test('CSRF guard: foreign Origin with cookie is refused', async () => {
   assert.equal(status, 403);
 });
 
+test('CSRF guard: preview wildcard origin passes', async () => {
+  const { status } = await post('/auth/logout', {}, { origin: 'https://eqindex-abc123.vercel.app' });
+  assert.equal(status, 200);
+});
+
 test('CSRF guard: headerless JSON (scripts/tests) still works', async () => {
   const { status } = await post('/auth/logout', {}, { origin: null });
   assert.equal(status, 200);

@@ -4,7 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { addToCart } from '../lib/cart';
-import { addFavourite } from '../lib/favourites';
+import { toggleFavourite, useIsFavourite } from '../lib/favourites';
 import { checkoutBase, newIdempotencyKey, nzd, stripeCheckoutUrl } from '../lib/figma-data';
 import { useAuthed } from '../lib/use-authed';
 import FollowButton from './FollowButton';
@@ -233,6 +233,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
     toast('Added to cart', { action: { label: 'View cart', href: '/cart' } });
   }
 
+  const saved = useIsFavourite(media.id);
   async function saveFavourite() {
     // Members only — guests log in first, then land back here.
     try {
@@ -242,13 +243,11 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
       router.push(`/login?next=${encodeURIComponent(pathname || `/p/${media.id}`)}`);
       return;
     }
-    if (addFavourite(media.id)) {
+    if (toggleFavourite(media.id)) {
       toast('Saved to favourites', { action: { label: 'View', href: '/favourites' } });
     } else {
-      toast('Already in favourites', { type: 'info', action: { label: 'View', href: '/favourites' } });
-      return;
+      toast('Removed from favourites', { type: 'info' });
     }
-    router.push('/favourites');
   }
 
   return (
@@ -287,11 +286,13 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
             </figcaption>
           </figure>
           <div className="purchase-preview-notes">
-            <p>This preview has a watermark. What you pay for unlocks watermark-free right after purchase.</p>
+            <p>Watermarked preview — yours comes clean.</p>
             <div>
-              <button type="button" onClick={saveFavourite} className="text-link">Save to favourites</button>
-              {media.rider_id && <FollowButton kind="rider" id={media.rider_id} name={media.rider} />}
-              {media.horse_id && <FollowButton kind="horse" id={media.horse_id} name={media.horse} />}
+              <button type="button" onClick={saveFavourite} className={`mini-icon-btn${saved ? ' on' : ''}`}
+                title={saved ? 'Saved — click to remove' : 'Save to favourites'} aria-label={saved ? 'Remove from favourites' : 'Save to favourites'} aria-pressed={saved}>
+                <Icon name={saved ? 'heart-fill' : 'heart'} size={17} />
+              </button>
+              {media.rider_id && <FollowButton kind="rider" id={media.rider_id} name={media.rider} icon />}
               <Link href="/contact">Need help? Contact us</Link>
             </div>
           </div>
@@ -354,23 +355,19 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
               {added ? 'Added to cart' : `Add to cart · ${price}`}
               <Icon name="cart" size={17} />
             </button>
-            <p style={{ margin: '8px 0 12px', color: '#888', fontSize: 11 }}>No email needed — you can pay later in the cart.</p>
-            <label htmlFor="license-email" style={{ display: 'grid', gap: 8, margin: '0 0 12px' }}>
-              <span style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' }}>Email for receipt{meEmail ? '' : ' \u2014 no account needed'}</span>
-              <input id="license-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.nz"
-                style={{ minHeight: 46, padding: '0 12px', color: 'white', background: '#0b0b0b', border: '1px solid #333', outline: 0, fontSize: 13 }} />
-            </label>
-            <p style={{ margin: '0 0 12px', color: '#888', fontSize: 11, lineHeight: 1.6 }}>
-              {meEmail
-                ? <>Receipt to <strong style={{ color: '#ddd' }}>{meEmail}</strong> \u2014 downloads live in <Link href="/media" style={{ color: '#fff', borderBottom: '1px solid #555' }}>My media</Link>.</>
-                : <>Receipt and download access go to this email \u2014 no account needed.</>}
-            </p>
+            {!meEmail && (
+              <label htmlFor="license-email" style={{ display: 'grid', gap: 8, margin: '0 0 12px' }}>
+                <span style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' }}>Email for receipt</span>
+                <input id="license-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.nz"
+                  style={{ minHeight: 46, padding: '0 12px', color: 'white', background: '#0b0b0b', border: '1px solid #333', outline: 0, fontSize: 13 }} />
+              </label>
+            )}
             <button disabled={busy || !tier} onClick={() => buyNow()}
               style={{ marginTop: 10, background: 'transparent', border: '1px solid #555', color: 'white' }}>
               {busy ? 'Opening checkout…' : 'Buy now — pay immediately'}
               <Icon name="arrow" size={17} />
             </button>
-            <small>Stripe secure checkout · Download unlocked after payment · Re-download anytime.</small>
+            <small>Secure Stripe checkout · instant unlock.</small>
               </>
             )}
           </section>
