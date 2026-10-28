@@ -945,7 +945,9 @@ module.exports = function mountMediaRoutes(app) {
     const fromEnv = String(process.env.WEB_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
     const out = [];
     for (const u of [APP_URL, ...fromEnv]) {
-      try { out.push(new URL(u).origin); } catch { /* ignore junk */ }
+      const t = String(u).trim();
+      if (/^\*\.[A-Za-z0-9.-]+$/.test(t)) { out.push(t.toLowerCase()); continue; }
+      try { out.push(new URL(t).origin); } catch { /* ignore junk */ }
     }
     return [...new Set(out)];
   };
@@ -955,7 +957,15 @@ module.exports = function mountMediaRoutes(app) {
     let origin;
     try { origin = new URL(raw).origin; }
     catch { const e = new Error('bad return_base'); e.status = 400; throw e; }
-    if (!ALLOWED_BASES().includes(origin)) {
+    const allowed = ALLOWED_BASES();
+    const ok = allowed.includes(origin) || allowed.some((a) => {
+      if (!a.startsWith('*.')) return false;
+      try {
+        const h = new URL(origin).hostname.toLowerCase();
+        return h === a.slice(2) || h.endsWith(a.slice(1));
+      } catch { return false; }
+    });
+    if (!ok) {
       const e = new Error('return_base not allowed for this shop');
       e.status = 400; throw e;
     }
