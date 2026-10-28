@@ -12,11 +12,20 @@ updates:
     schedule: { interval: weekly, day: monday }
     open-pull-requests-limit: 5
     labels: [dependencies, web]
+    # Next 14 pins React 18 — majors need a deliberate framework upgrade first.
+    ignore:
+      - { dependency-name: react, update-types: ['version-update:semver-major'] }
+      - { dependency-name: react-dom, update-types: ['version-update:semver-major'] }
+      - { dependency-name: next, update-types: ['version-update:semver-major'] }
   - package-ecosystem: npm
     directory: /web
     schedule: { interval: weekly, day: monday }
     open-pull-requests-limit: 5
     labels: [dependencies, web]
+    ignore:
+      - { dependency-name: react, update-types: ['version-update:semver-major'] }
+      - { dependency-name: react-dom, update-types: ['version-update:semver-major'] }
+      - { dependency-name: next, update-types: ['version-update:semver-major'] }
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: monthly }
