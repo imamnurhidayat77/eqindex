@@ -580,13 +580,17 @@ button.text-link { min-height: 44px; }
   height: 22px;
   border: 1px solid #444;
   border-radius: 50%;
-  display: inline-grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 10px;
+  line-height: 1;
   flex: none;
 }
+.auth-step-n svg { display: block; }
 .auth-steps span.active .auth-step-n { background: white; border-color: white; color: black; }
-.auth-steps span.done .auth-step-n { border-color: #777; color: #aaa; }
+.auth-steps span.done .auth-step-n { background: white; border-color: white; color: black; }
+.auth-steps span.done { color: #999; }
 /* inline states */
 .auth-note { margin: 12px 0 0; color: #777; font-size: 12px; }
 .auth-card {
