@@ -183,7 +183,7 @@ function OrganizerInner({ visual }) {
           ) : (
             <form onSubmit={submitApplication}>
               <div className="auth-steps" aria-label="Application progress">
-                <span className="done"><span className="auth-step-n">✓</span>1 · Account</span>
+                <span className="done"><span className="auth-step-n">✓</span>Account</span>
                 <span className="active"><span className="auth-step-n">2</span>Application</span>
               </div>
               <label><span>Organization / show name</span>
@@ -235,8 +235,7 @@ function OrganizerInner({ visual }) {
             {sent ? (
               <>Questions? <Link href="/contact">Contact us</Link></>
             ) : (
-              <>Just want to buy photos? <Link href="/register">Create a buyer account</Link>
-              {' · '}Have an account? <Link href="/login">Sign in</Link></>
+              <>Buying photos instead? <Link href="/register">Create a buyer account</Link> or <Link href="/login">sign in</Link>.</>
             )}
           </p>
         </div>
