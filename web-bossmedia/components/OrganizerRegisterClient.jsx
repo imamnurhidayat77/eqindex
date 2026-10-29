@@ -15,7 +15,7 @@ const REGIONS = [
 function OrganizerInner({ visual }) {
   const src =
     visual ||
-    'https://images.unsplash.com/photo-1553284965-83fd3e82fa5a?auto=format&fit=crop&w=1600&q=88';
+    'https://images.unsplash.com/photo-1695133994806-20833ee9d4c2?auto=format&fit=crop&w=1600&q=88';
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [account, setAccount] = useState({ name: '', email: '', password: '', password2: '' });
