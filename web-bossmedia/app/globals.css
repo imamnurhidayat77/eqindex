@@ -1048,7 +1048,7 @@ button.license-option { width: 100%; padding: 13px; background: transparent; cur
 .prose-page .body p { margin: 0 0 14px; }
 .prose-page .body ul { margin: 0 0 14px; padding-left: 20px; }
 .prose-page .body li { margin-bottom: 8px; }
-.prose-page .body a, .prose-page a.inline { color: #fff; }
+.prose-page .body a:not(.primary-link):not(.btn-light):not(.st-btn):not(.st-btn-ghost), .prose-page a.inline { color: #fff; }
 .prose-page .card-dark { border: 1px solid #303030; background: #121212; padding: 28px; max-width: 720px; color: #ccc; font-size: 14px; line-height: 1.7; }
 .prose-page .card-dark p { margin: 0 0 14px; }
 .prose-page details.card-dark { padding: 0; margin-bottom: 10px; transition: border-color .2s, background .2s; }
