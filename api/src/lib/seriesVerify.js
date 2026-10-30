@@ -203,7 +203,25 @@ function boardFromTable(table) {
   return rows.length ? { events, rows } : null;
 }
 
+function egressAllowed(raw) {
+  // Even ADMIN-supplied URLs must not reach cloud metadata or the intranet.
+  let u;
+  try { u = new URL(String(raw)); } catch { return false; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  const h = u.hostname.toLowerCase();
+  if (['localhost', 'metadata.google.internal'].includes(h)) return false;
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(h)) {
+    const p = h.split('.').map(Number);
+    if (p[0] === 10 || p[0] === 127 || (p[0] === 172 && p[1] >= 16 && p[1] <= 31)
+      || (p[0] === 192 && p[1] === 168) || (p[0] === 169 && p[1] === 254)) return false;
+  }
+  return true;
+}
+
 async function fetchOfficialBoard(url) {
+  if (!egressAllowed(url)) {
+    throw Object.assign(new Error('official_url must be a public http(s) page'), { status: 400 });
+  }
   // EvoEvents blocks bare server fetches (403) — a browser UA gets a 302
   // to the canonical class URL and a 200 (fetch follows redirects).
   const res = await fetch(String(url), {

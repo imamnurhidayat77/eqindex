@@ -48,6 +48,8 @@ export default function CartClient() {
   // One button pays the whole cart: photos and pre-books go through a
   // single Stripe session (/api/checkout/combined).
   const subtotal = items.reduce((t, it) => t + Number(it.priceCents || 0), 0);
+  // Wallet balance only ever covers the photos portion (reels go on card).
+  const photoTotal = photoItems.reduce((t, it) => t + Number(it.priceCents || 0), 0);
   const gst = Math.round((subtotal / 1.15) * 0.15);
 
   const genKey = newIdempotencyKey;

@@ -28,8 +28,37 @@ module.exports = function mountAuthRoutes(app) {
       return res.status(400).json({ error: 'password must be 8-72 chars' });
     }
     const wantRole = ['PUBLIC', 'RIDER', 'COACH'].includes(role) ? role : 'PUBLIC';
-    const exists = await pool.query('SELECT 1 FROM users WHERE email = $1', [cleanEmail]);
-    if (exists.rows.length) return res.status(409).json({ error: 'email already registered' });
+    const exists = await pool.query('SELECT id, name, password_hash FROM users WHERE email = $1', [cleanEmail]);
+    if (exists.rows.length) {
+      const d = exists.rows[0];
+      if (d.password_hash) return res.status(409).json({ error: 'email already registered' });
+      // Password-less row (guest checkout): don't 409 — convert to a claim.
+      // Same single-use 1-hour token as forgot-password; inbox owner wins.
+      if (!APP_URL) {
+        return res.status(503).json({ error: 'email not configured yet — contact support' });
+      }
+      await pool.query(`DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL`, [d.id]);
+      const raw = crypto.randomBytes(32).toString('hex');
+      await pool.query(
+        `INSERT INTO password_resets (user_id, token_hash, expires_at)
+          VALUES ($1, $2, NOW() + INTERVAL '1 hour')`,
+        [d.id, sha256(raw)]
+      );
+      const link = `${APP_URL}/reset?token=${raw}`;
+      try {
+        await sendMail({
+          to: cleanEmail,
+          subject: 'Claim your Boss Media account',
+          text: `Hi ${d.name || 'there'},\n\nThis email was used for a guest purchase. Set a password to claim the account and reach your downloads anytime:\n${link}\n\nThis link expires in 1 hour. Didn't buy anything? Ignore this email.`,
+          html: `<p>Hi ${escHtml(d.name) || 'there'},</p><p>This email was used for a guest purchase. <a href="${link}">Set a password to claim your account</a> and reach your downloads anytime.</p><p>This link expires in 1 hour. Didn't buy anything? Ignore this email.</p>`,
+        });
+      } catch (e) {
+        await pool.query(`DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL`, [d.id]);
+        throw e;
+      }
+      audit(req, 'auth.register.claim', 'user', d.id, {});
+      return res.json({ data: { claim_sent: true } });
+    }
     const hash = await bcrypt.hash(String(password), 12);
     const { rows } = await pool.query(
       'INSERT INTO users (name, email, role, password_hash) VALUES ($1,$2,$3,$4) RETURNING id, name, email, role',

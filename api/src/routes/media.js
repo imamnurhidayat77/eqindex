@@ -150,7 +150,8 @@ module.exports = function mountMediaRoutes(app) {
       const id = rows[0].id;
       try {
         const origKey = mediaStore.keyFor('originals', eventId, id, ext, photographer.name);
-        await mediaStore.putBuffer(origKey, f.buffer, f.mimetype);
+        // Store under the sniffed MIME, never the client-claimed one.
+        await mediaStore.putBuffer(origKey, f.buffer, detected.mime);
         const patch = { storage_key: origKey };
         if (isPhoto) {
           const meta = await sharp(f.buffer).metadata();
@@ -210,7 +211,10 @@ module.exports = function mountMediaRoutes(app) {
       if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
       eventId = String(b.event_id);
     }
-    const ext = (String(b.filename || 'video.mp4').split('.').pop() || 'mp4').toLowerCase().slice(0, 8);
+    // Extension allowlist (same as the multipart path): filenames can
+    // carry ../%2f — never let them shape the storage key.
+    const ext = ((String(b.filename || 'video.mp4').split('.').pop() || 'mp4')
+      .toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 8)) || 'mp4';
     const { rows } = await pool.query(
       `INSERT INTO media (photographer_id, event_id, kind, status) VALUES ($1, $2, 'reel', 'draft') RETURNING id`,
       [photographer.id, eventId]
@@ -3122,19 +3126,28 @@ module.exports = function mountMediaRoutes(app) {
     } catch (e) {
       return res.status(e.status || 500).json({ error: e.message || 'invalid reel order' });
     }
+    // Idempotent resume: paid → report paid; still-pending → fall through
+    // and mint (Stripe-idempotent `reel-` key recovers the open session).
+    let orderId, purchaseId;
     if (b.idempotency_key) {
       const prior = await pool.query(
-        `SELECT ro.id AS order_id, p.id AS purchase_id FROM reel_orders ro
+        `SELECT ro.id AS order_id, p.id AS purchase_id, p.status FROM reel_orders ro
           JOIN purchases p ON p.id = ro.purchase_id
           WHERE p.idempotency_key = $1 AND p.buyer_user_id = $2`,
         [String(b.idempotency_key), buyer.id]
       ).catch(() => ({ rows: [] }));
       if (prior.rows.length) {
-        return res.status(200).json({ data: { ...prior.rows[0], reused: true } });
+        if (prior.rows[0].status === 'paid') {
+          return res.status(200).json({ data: { order_id: prior.rows[0].order_id, purchase_id: prior.rows[0].purchase_id, paid: true, reused: true } });
+        }
+        orderId = prior.rows[0].order_id;
+        purchaseId = prior.rows[0].purchase_id;
       }
     }
-    const { orderId, purchaseId } = await insertReelOrder(
-      pool, buyerAuth, buyerEmail, prep, b.idempotency_key || null);
+    if (!purchaseId) {
+      ({ orderId, purchaseId } = await insertReelOrder(
+        pool, buyerAuth, buyerEmail, prep, b.idempotency_key || null));
+    }
     const label = prep.title;
     const session = await stripe().checkout.sessions.create({
       mode: 'payment',
@@ -3438,36 +3451,45 @@ module.exports = function mountMediaRoutes(app) {
     if (!Number.isInteger(amount) || amount <= 0) {
       return res.status(409).json({ error: 'no price set for this pack' });
     }
+    // Idempotent resume: paid → report paid; still-pending → reuse the
+    // bundle and mint (Stripe-idempotent `cr-` key recovers the session).
+    let bundleId, purchaseId;
     if (b.idempotency_key) {
       const prior = await pool.query(
-        `SELECT cb.id AS bundle_id, pu.id AS purchase_id FROM credit_bundles cb
+        `SELECT cb.id AS bundle_id, pu.id AS purchase_id, pu.status FROM credit_bundles cb
           JOIN purchases pu ON pu.id = cb.purchase_id
           WHERE pu.idempotency_key = $1 AND pu.buyer_user_id = $2`,
         [String(b.idempotency_key), buyer.id]
       ).catch(() => ({ rows: [] }));
-      if (prior.rows.length) return res.status(200).json({ data: { ...prior.rows[0], reused: true } });
+      if (prior.rows.length) {
+        if (prior.rows[0].status === 'paid') {
+          return res.status(200).json({ data: { bundle_id: prior.rows[0].bundle_id, purchase_id: prior.rows[0].purchase_id, paid: true, reused: true } });
+        }
+        bundleId = prior.rows[0].bundle_id;
+        purchaseId = prior.rows[0].purchase_id;
+      }
     }
-    // subjectCol is pack scope validated against the CHECK constraint ('horse'|'rider').
-    const { rows: brows } = await pool.query(
-      `INSERT INTO credit_bundles
-        (pack_id, event_id, ${subjectCol}, buyer_user_id, buyer_email, slots_total, status)
-        VALUES ($1, $2, $3, $4, $5, $6, 'awaiting_payment') RETURNING id`,
-      [p.id, String(b.event_id), subjectId, buyer.id, buyerEmail, p.slots]
-    );
-    const bundleId = brows[0].id;
-    let purchaseId;
-    try {
-      const { rows } = await pool.query(
-        `INSERT INTO purchases (credit_bundle_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key)
-          VALUES ($1, $2, $3, NULL, $4, 'NZD', 'pending', $5) RETURNING id`,
-        [bundleId, buyerEmail, buyer.id, amount, b.idempotency_key || null]
+    if (!purchaseId) {
+      const { rows: brows } = await pool.query(
+        `INSERT INTO credit_bundles
+          (pack_id, event_id, ${subjectCol}, buyer_user_id, buyer_email, slots_total, status)
+          VALUES ($1, $2, $3, $4, $5, $6, 'awaiting_payment') RETURNING id`,
+        [p.id, String(b.event_id), subjectId, buyer.id, buyerEmail, p.slots]
       );
-      purchaseId = rows[0].id;
-    } catch (e) {
-      await pool.query(`UPDATE credit_bundles SET status = 'cancelled' WHERE id = $1`, [bundleId]);
-      throw e;
+      bundleId = brows[0].id;
+      try {
+        const { rows } = await pool.query(
+          `INSERT INTO purchases (credit_bundle_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key)
+            VALUES ($1, $2, $3, NULL, $4, 'NZD', 'pending', $5) RETURNING id`,
+          [bundleId, buyerEmail, buyer.id, amount, b.idempotency_key || null]
+        );
+        purchaseId = rows[0].id;
+      } catch (e) {
+        await pool.query(`UPDATE credit_bundles SET status = 'cancelled' WHERE id = $1`, [bundleId]);
+        throw e;
+      }
+      await pool.query(`UPDATE credit_bundles SET purchase_id = $2 WHERE id = $1`, [bundleId, purchaseId]);
     }
-    await pool.query(`UPDATE credit_bundles SET purchase_id = $2 WHERE id = $1`, [bundleId, purchaseId]);
     const label = `${p.slots}-photo credits`.slice(0, 120);
     const session = await stripe().checkout.sessions.create({
       mode: 'payment',

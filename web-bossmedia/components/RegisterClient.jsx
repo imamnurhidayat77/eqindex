@@ -32,6 +32,7 @@ function RegisterInner({ visual }) {
   const [checking, setChecking] = useState(true);
   const [alreadyIn, setAlreadyIn] = useState(false);
   const [done, setDone] = useState(false);
+  const [claimed, setClaimed] = useState(false);
   const [err, setErr] = useState('');
 
   // If already logged in, don't strand them on a dead-end card.
@@ -65,6 +66,7 @@ function RegisterInner({ visual }) {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'Couldn’t create your account — try again.');
+      if (j.data?.claim_sent) { setClaimed(true); setBusy(false); return; }
       setDone(true);
       router.push(next);
     } catch (e2) { setErr(e2.message); setBusy(false); }
@@ -82,6 +84,24 @@ function RegisterInner({ visual }) {
             <h1>Welcome aboard.</h1>
             <p className="login-intro">Taking you to your media library…</p>
             <p className="auth-note"><span className="bm-spinner" aria-hidden="true" /></p>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (claimed) {
+    return (
+      <main className="login-page">
+        <section className="login-visual" aria-hidden="true">
+          <img src={src} alt="" loading="eager" />
+        </section>
+        <section className="login-panel">
+          <div className="login-form-wrap auth-centered">
+            <p className="eyebrow">Almost there</p>
+            <h1>Check your inbox.</h1>
+            <p className="login-intro">This email already has purchases under a guest account — we sent a link to set a password and claim everything in one go. It expires in 1 hour.</p>
+            <p className="login-register"><Link href="/login">Back to sign in</Link></p>
           </div>
         </section>
       </main>

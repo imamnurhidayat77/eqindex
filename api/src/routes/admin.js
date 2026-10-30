@@ -1595,8 +1595,13 @@ module.exports = function mountAdminRoutes(app) {
         'import_logs', 'entity_audit', 'admin_settings', 'weather_cache']) {
       try { data[t] = await dump(t); } catch { data[t] = { error: 'unavailable' }; }
     }
-    // never export password hashes
-    if (Array.isArray(data.users)) data.users = data.users.map((u) => ({ ...u, password_hash: undefined }));
+    // Never export live secrets: password hashes, TOTP seeds, session tokens.
+    if (Array.isArray(data.users)) {
+      data.users = data.users.map((u) => ({ ...u, password_hash: undefined, totp_secret: undefined }));
+    }
+    if (Array.isArray(data.sessions)) {
+      data.sessions = data.sessions.map((s) => ({ ...s, token_hash: undefined }));
+    }
     audit(req, 'admin.export', 'system', null, {});
     res.setHeader('Content-Disposition', `attachment; filename="eqindex-backup-${new Date().toISOString().slice(0, 10)}.json"`);
     res.json({ exported_at: new Date().toISOString(), data });
