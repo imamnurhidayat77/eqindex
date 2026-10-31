@@ -7,8 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "node scripts/lint-bossmedia.mjs",
-    "test": "node --test \"lib/__tests__/*.mjs\""
+    "test": "node --test tests/ lib/__tests__/",
+    "lint": "node scripts/lint-bossmedia.mjs"
   },
   "dependencies": {
     "next": "^14.2.18",
