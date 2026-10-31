@@ -7,6 +7,7 @@ import TagModal from './TagModal';
 import SearchSelect from './SearchSelect';
 import { searchSubjects } from '../lib/search-subjects';
 import { Icon } from './figma';
+import SmartImage from './SmartImage';
 import { API } from '../lib/api';
 import { studio } from '../lib/studio';
 
@@ -287,7 +288,7 @@ export default function UploadClient({ events }) {
                 {files.map((f, i) => (
                   <li key={`${f.file.name}-${i}`} className={`st-file st-file-${f.status}`}>
                     {f.preview
-                      ? <img src={f.preview} alt="" className="st-thumb" />
+                      ? <SmartImage src={f.preview} alt={`Upload preview ${f.file.name}`} width={128} height={96} className="st-thumb" />
                       : <span className="st-thumb st-thumb-reel">{f.kind === 'reel' ? '▶' : '×'}</span>}
                     <div className="st-file-meta">
                       <strong>{f.file.name}</strong>
@@ -347,7 +348,7 @@ export default function UploadClient({ events }) {
                         style={{ accentColor: '#fff', width: 18, height: 18, flex: 'none', cursor: 'pointer' }} />
                     )}
                     {m.thumb_url || m.preview_url
-                      ? <span className="st-tagthumb">{m.kind === 'reel' && <i aria-hidden="true">▶</i>}<img src={m.thumb_url || m.preview_url} alt="" /></span>
+                      ? <span className="st-tagthumb">{m.kind === 'reel' && <i aria-hidden="true">▶</i>}<SmartImage src={m.thumb_url || m.preview_url} alt={[m.horse, m.rider].filter(Boolean).join(' · ') || `File ${m.id.slice(0, 8)}`} fill sizes="64px" /></span>
                       : <span className="st-tagthumb-fallback">{m.kind === 'reel' ? '▶' : '…'}</span>}
                     <div className="st-tagmeta">
                       <strong>{[m.horse, m.rider].filter(Boolean).join(' · ') || `File ${m.id.slice(0, 8)}`}</strong>

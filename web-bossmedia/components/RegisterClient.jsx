@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { Icon } from './figma';
+import SmartImage from './SmartImage';
 
 function safeNext(v) {
   return v && v.startsWith('/') && !v.startsWith('//') && v !== '/login' && v !== '/register'
@@ -51,6 +52,7 @@ function RegisterInner({ visual }) {
     setErr('');
     if (!form.name.trim()) { setErr('Tell us your name — it goes on your galleries and receipts.'); return; }
     if (!form.email.trim()) { setErr('Enter your email address.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) { setErr('Enter a valid email address.'); return; }
     if (form.password.length < 8) { setErr('Password needs at least 8 characters.'); return; }
     if (form.password !== form.password2) { setErr('Passwords do not match — check and try again.'); return; }
     if (!accept) { setErr('Please accept the Terms and Privacy Policy to create your account.'); return; }
@@ -76,7 +78,7 @@ function RegisterInner({ visual }) {
     return (
       <main className="login-page">
         <section className="login-visual" aria-hidden="true">
-          <img src={src} alt="" loading="eager" />
+          <SmartImage src={src} alt="Equestrian rider jumping at event" fill sizes="(max-width: 900px) 100vw, 50vw" />
         </section>
         <section className="login-panel">
           <div className="login-form-wrap auth-centered">
@@ -94,7 +96,7 @@ function RegisterInner({ visual }) {
     return (
       <main className="login-page">
         <section className="login-visual" aria-hidden="true">
-          <img src={src} alt="" loading="eager" />
+          <SmartImage src={src} alt="Equestrian rider jumping at event" fill sizes="(max-width: 900px) 100vw, 50vw" />
         </section>
         <section className="login-panel">
           <div className="login-form-wrap auth-centered">
@@ -111,7 +113,7 @@ function RegisterInner({ visual }) {
   return (
     <main className="login-page">
       <section className="login-visual">
-        <img src={src} alt="Horse and rider captured by Boss Media" loading="eager" fetchPriority="high" />
+        <SmartImage src={src} alt="Horse and rider captured by Boss Media" fill sizes="(max-width: 900px) 100vw, 50vw" priority fetchPriority="high" />
         <div className="login-visual-top">
           <Link href="/" className="wordmark inverted">BOSS<span>MEDIA</span></Link>
           <Link href="/">Back to home</Link>
@@ -152,7 +154,7 @@ function RegisterInner({ visual }) {
                   <input required type={show ? 'text' : 'password'} value={form.password}
                     onChange={(e) => setForm({ ...form, password: e.target.value })}
                     placeholder="At least 8 characters" autoComplete="new-password" minLength={8} maxLength={72} />
-                  <button type="button" className="auth-show" onClick={() => setShow((v) => !v)}>
+                  <button type="button" className="auth-show" aria-pressed={show} aria-label={show ? 'Hide password' : 'Show password'} onClick={() => setShow((v) => !v)}>
                     {show ? 'Hide' : 'Show'}
                   </button>
                 </span>

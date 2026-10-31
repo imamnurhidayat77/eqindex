@@ -4,6 +4,7 @@ import { Chip } from './studio';
 import { API } from '../lib/api';
 import { studio } from '../lib/studio';
 import ConfirmModal from './ConfirmModal';
+import SmartImage from './SmartImage';
 import SearchSelect from './SearchSelect';
 import { searchSubjects } from '../lib/search-subjects';
 
@@ -93,7 +94,7 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
         <header className="st-modal-head">
           <div className="st-modal-title">
             {m.thumb_url || m.preview_url
-              ? <img src={m.thumb_url || m.preview_url} alt="" />
+              ? <SmartImage src={m.thumb_url || m.preview_url} alt={[m.horse, m.rider].filter(Boolean).join(' · ') || m.other_people || 'Untagged asset preview'} width={168} height={128} />
               : <span className="st-modal-thumb-fallback">No preview</span>}
             <div>
               <p className="eyebrow">Tag &amp; publish</p>

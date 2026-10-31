@@ -1,4 +1,5 @@
 'use client';
+import SmartImage from '../../components/SmartImage';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../../lib/api';
@@ -101,7 +102,7 @@ export default function WatchlistPage() {
                       <Link className="event-media-card" key={x.id} href={`/p/${x.id}`}
                         aria-label={`${x.horse || ''} ${x.rider || ''}`.trim() || 'Photo'}>
                         {x.thumb_url || x.preview_url
-                          ? <img src={x.thumb_url || x.preview_url} alt="" loading="lazy" />
+                          ? <SmartImage src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' · ') || x.event_name || 'Watchlist photo'} width={800} height={600} sizes="(max-width: 768px) 100vw, 50vw" />
                           : <span className="cover-fallback">Boss Media</span>}
                         <span className="media-card-footer">
                           <small title={x.event_name || ''}>{x.event_name || '—'}</small>

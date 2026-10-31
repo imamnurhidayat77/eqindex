@@ -1,4 +1,5 @@
 'use client';
+import SmartImage from '../../../components/SmartImage';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import StudioShell, { Chip, Pager } from '../../../components/studio';
@@ -179,7 +180,7 @@ function OrderRow({ o, busy, onAdvance, onMediaLinked }) {
                       aria-pressed={picked === m.id}>
                       {picked === m.id && <span className="reel-pick-check" aria-hidden="true">✓</span>}
                       {m.thumb_url || m.preview_url
-                        ? <img src={m.thumb_url || m.preview_url} alt="" loading="lazy" />
+                        ? <SmartImage src={m.thumb_url || m.preview_url} alt={[m.horse, m.rider].filter(Boolean).join(' · ') || m.other_people || 'Reel preview'} width={400} height={300} />
                         : <span className="cover-fallback">No preview</span>}
                       <footer>
                         <strong>{[m.horse, m.rider].filter(Boolean).join(' · ') || m.other_people || 'Untagged'}</strong>

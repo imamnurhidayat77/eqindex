@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReelPlayer from './ReelPlayer';
+import SmartImage from './SmartImage';
 import { Icon } from './figma';
 import { useFocusTrap } from '../lib/focus-trap';
 
@@ -64,7 +65,7 @@ export default function StoryViewer({ reels, index, onIndex, onClose }) {
   const peek = (r, label) => (
     r ? (
       <button type="button" className={`story-peek ${label}`} onClick={label === 'prev' ? prev : next} aria-label={`${label === 'prev' ? 'Previous' : 'Next'} reel: ${r.rider}`}>
-        {r.image ? <img src={r.image} alt="" aria-hidden="true" /> : <span className="cover-fallback">Boss Media</span>}
+        {r.image ? <SmartImage src={r.image} alt={r.rider ? `${r.rider} reel preview` : 'Reel preview'} aria-hidden="true" fill sizes="210px" /> : <span className="cover-fallback">Boss Media</span>}
         <span className="story-peek-label">{r.rider}</span>
         <span className="story-peek-arrow" aria-hidden="true">{label === 'prev' ? '‹' : '›'}</span>
       </button>
@@ -95,7 +96,7 @@ export default function StoryViewer({ reels, index, onIndex, onClose }) {
             <ReelPlayer src={reel.video} poster={reel.image} label={`Reel featuring ${reel.rider}`}
               autoPlay onProgress={setProg} onEnded={next} />
           ) : reel.image ? (
-            <img src={reel.image} alt={`${reel.rider} at ${reel.event}`} />
+            <SmartImage src={reel.image} alt={`${reel.rider} at ${reel.event}`} fill sizes="(max-width: 760px) 94vw, 420px" />
           ) : (
             <span className="cover-fallback">Boss Media</span>
           )}

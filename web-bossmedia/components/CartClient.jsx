@@ -7,6 +7,7 @@ import { removeFromCart, useCart } from '../lib/cart';
 import { checkoutBase, newIdempotencyKey, nzd, stripeCheckoutUrl } from '../lib/figma-data';
 import { safeError } from '../lib/errors';
 import { Icon, SiteFooter, SiteHeader } from './figma';
+import SmartImage from './SmartImage';
 import { useToast } from './Toaster';
 import { useAuthed } from '../lib/use-authed';
 
@@ -95,7 +96,7 @@ export default function CartClient() {
   async function payAll() {
     const em = checkoutEmail();
     if (!em) return;
-    if (!photoItems.length || busyKey) return;
+    if (!items.length || busyKey) return;
     setBusyKey('__all'); setErr('');
     try {
       const use_balance_cents = meEmail ? Math.min(balance, subtotal) : 0;
@@ -139,7 +140,7 @@ export default function CartClient() {
               {items.map((item, i) => (
                 <article className="cart-item" key={item.key}>
                   <span className="cart-item-number">0{i + 1}</span>
-                  {item.image ? <img src={item.image} alt="" /> : <span className="cover-fallback" aria-hidden="true">Boss Media</span>}
+                  {item.image ? <SmartImage src={item.image} alt={item.name || item.detail || `${item.type || 'Cart'} photo`} width={340} height={290} /> : <span className="cover-fallback" aria-hidden="true">Boss Media</span>}
                   <div>
                     <p>{item.type}</p>
                     <h2>{item.name}</h2>
