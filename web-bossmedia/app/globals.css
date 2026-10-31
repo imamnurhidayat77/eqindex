@@ -1279,7 +1279,7 @@ button.license-option { width: 100%; padding: 13px; background: transparent; cur
 .st-thumb { width: 64px; height: 48px; object-fit: cover; background: #1b1b1b; display: block; }
 .st-media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; margin-top: 18px; }
 .st-media-card { border: 1px solid #303030; background: #141414; padding: 8px; position: relative; text-align: left; color: #fff; }
-.st-media-card > img { width: 100%; aspect-ratio: 4/3; object-fit: cover; background: #1b1b1b; }
+.st-media-card > img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: #1b1b1b; }
 .st-media-card .sel { position: absolute; top: 14px; left: 14px; width: 22px; height: 22px; accent-color: #fff; cursor: pointer; }
 .st-media-card footer { padding: 10px 4px 4px; font-size: 12px; color: #aaa; display: grid; gap: 3px; }
 .st-media-card footer strong { color: #fff; font-size: 13px; }
