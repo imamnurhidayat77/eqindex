@@ -1,4 +1,9 @@
-/* Manrope is self-hosted via next/font in layout.jsx (no render-blocking links). */
+/* FROZEN — JANGAN TAMBAH RULE BARU DI FILE INI (1576 baris, 12 !important).
+   Alasan: global raksasa = spesifisitas tak terduga + !important menumpuk.
+   Kebijakan: hanya bugfix kritis boleh sentuh file ini (tandai barisnya).
+   Gaya baru HARUS jadi CSS Module per komponen.
+   Peta migrasi: docs/css-migration-map.md
+   Manrope is self-hosted via next/font in layout.jsx (no render-blocking links). */
 
 :root {
   font-family: var(--font-manrope, 'Manrope'), Arial, sans-serif;
@@ -7,7 +12,7 @@
   font-synthesis: none;
   --ink: #101010;
   --paper: #f7f7f5;
-  --grey: #727272;
+  --grey: #5e5e5e;
   --line: #d6d6d1;
 }
 
@@ -15,8 +20,25 @@ html { scroll-behavior: smooth; }
 /* Inputs were overflowing their grid cells (width:100% + padding, content-box),
    so side-by-side fields visually merged. Border-box everywhere fixes it. */
 *, *::before, *::after { box-sizing: border-box; }
-/* Keyboard-only focus ring (inputs deliberately use outline:0 + border tint). */
-input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* Keyboard-only focus ring: dual-ring (dark outline + light halo) so it reads
+   on both light and dark surfaces. Border-chrome inputs use outline:0 and
+   get their own :focus-visible border tint below. */
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid #101010; outline-offset: 2px; box-shadow: 0 0 0 4px #fff; }
+/* Dark-surface contexts: flip to a white ring with a dark halo. */
+.header :focus-visible, .mobile-menu :focus-visible, .story :focus-visible, .acct-menu :focus-visible, .gallery-page :focus-visible, .footer :focus-visible { outline-color: #fff; box-shadow: 0 0 0 4px #0b0b0b; }
+/* outline:0 inputs keep a clear keyboard tint (bordered ones) or a halo (borderless ones). */
+.booking-field input:focus-visible, .booking-field select:focus-visible, .booking-field textarea:focus-visible,
+.cart-promo input:focus-visible, .st-filters input:focus-visible, .st-filters select:focus-visible,
+.st-form input:focus-visible, .st-form select:focus-visible, .st-form textarea:focus-visible,
+.st-modal-grid input:focus-visible, .st-modal-grid select:focus-visible,
+.st-modal-card input:focus-visible, .login-form-wrap :is(input, textarea, select):focus-visible,
+.ss-btn:focus-visible { border-color: #aaa; }
+.st-combo-pop input:focus-visible { border-bottom-color: #aaa; }
+.ss-search:focus-within { border-bottom-color: #aaa; }
+.detail-media-search:focus-within, .reels-page-tools > label:first-child:focus-within { color: #fff; }
+.search-box:focus-within { border-bottom-color: #101010; }
+.detail-media-search input:focus-visible, .reels-page-tools input:focus-visible,
+.search-box input:focus-visible, .ss-search input:focus-visible { outline: 2px solid #101010; outline-offset: -2px; box-shadow: 0 0 0 2px #fff; }
 body { margin: 0; background: var(--paper); }
 button, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -37,10 +59,10 @@ button { color: inherit; }
 .desktop-nav a[aria-current='page'] { color: white; }
 .desktop-nav a[aria-current='page']::after { right: 0; }
 .header-actions { display: flex; align-items: center; gap: 28px; font-size: 14px; font-weight: 600; }
-.icon-button { border: 0; padding: 0; background: none; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+.icon-button { border: 0; padding: 0; background: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; position: relative; min-width: 44px; min-height: 44px; }
 .cart { display: flex; gap: 4px; }
 .cart span, .icon-button span { font-size: 10px; width: 18px; height: 18px; border-radius: 50%; color: var(--ink); background: white; display: grid; place-items: center; }
-.menu-button { display: none; }
+.menu-button { display: none; min-width: 44px; min-height: 44px; place-items: center; background: none; border: 0; color: inherit; cursor: pointer; }
 .acct { position: relative; }
 .acct, .acct-menu, .acct-menu a, .acct-menu button { box-sizing: border-box; }
 .acct-btn { display: flex; align-items: center; gap: 8px; background: none; border: 0; color: white; cursor: pointer; font-size: 14px; font-weight: 600; padding: 2px 0; }
@@ -657,25 +679,27 @@ button.text-link { min-height: 44px; }
 .illustrative, .reel-hint { color: var(--grey); font-size: 11px; text-transform: uppercase; letter-spacing: .09em; }
 .event-tools { border-top: 1px solid var(--ink); display: grid; grid-template-columns: 1fr 1fr; }
 .tabs { display: flex; align-items: flex-end; gap: 28px; border-bottom: 1px solid var(--line); }
-.tabs button { padding: 22px 0 16px; background: none; border: 0; color: #8a8a8a; font-size: 13px; cursor: pointer; position: relative; }
+.tabs button { padding: 22px 0 16px; background: none; border: 0; color: #5e5e5e; font-size: 13px; cursor: pointer; position: relative; }
 .tabs button.active { color: var(--ink); font-weight: 600; }
 .tabs button.active::after { content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--ink); }
 .search-box { border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 0 0 26px; gap: 12px; }
 .search-box input { width: 100%; height: 100%; border: 0; background: transparent; outline: 0; font-size: 14px; }
-.search-box input::placeholder { color: #888; }
+.search-box input::placeholder { color: #6b6b6b; }
 .filters { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line); }
 .filter { position: relative; padding: 15px 22px 16px 0; display: grid; grid-template-columns: 1fr auto; border-right: 1px solid var(--line); }
 .filter:nth-child(2), .filter:nth-child(3) { padding-left: 24px; }
 .filter:last-child { border-right: 0; }
-.filter > span { grid-column: 1 / -1; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #888; margin-bottom: 7px; }
+.filter > span { grid-column: 1 / -1; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #5e5e5e; margin-bottom: 7px; }
 /* Custom combo inside filter labels: blend into the label chrome. */
 .filter .ss, .detail-media-filter .ss { grid-column: 1 / -1; }
-.filter .ss-btn, .detail-media-filter .ss-btn { min-height: 0; padding: 0; border: 0; background: transparent; font-size: 13px; color: #ddd; }
-.reels-page-tools > label:last-child .ss-btn { border: 0; background: transparent; min-height: 0; padding: 0; font-size: 13px; color: #ddd; }
+.filter .ss-btn, .detail-media-filter .ss-btn { min-height: 0; padding: 0; border: 0; background: transparent; font-size: 13px; color: #ddd; position: relative; }
+/* Blended combo rows keep their slim visual but get a 44px-tall click area. */
+.filter .ss-btn::after, .detail-media-filter .ss-btn::after, .reels-page-tools > label:last-child .ss-btn::after { content: ''; position: absolute; inset: -14px 0; }
+.reels-page-tools > label:last-child .ss-btn { border: 0; background: transparent; min-height: 0; padding: 0; font-size: 13px; color: #ddd; position: relative; }
 .results-meta { display: flex; justify-content: space-between; align-items: center; margin: 25px 0 32px; }
 .results-meta p { font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
 .view-toggle { display: flex; gap: 4px; }
-.view-toggle button { width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: #aaa; cursor: pointer; }
+.view-toggle button { width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: #5e5e5e; cursor: pointer; }
 .view-toggle button.active { color: var(--ink); background: #eee; }
 .event-results.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 14px; row-gap: 30px; }
 @media (min-width: 1280px) { .event-results.grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
@@ -683,7 +707,7 @@ button.text-link { min-height: 44px; }
 .event-image { display: block; height: clamp(150px, 15vw, 200px); overflow: hidden; position: relative; background: #ddd; }
 .event-image img { height: 100%; object-fit: cover; transition: transform .6s; }
 .event-card:hover .event-image img { transform: scale(1.025); }
-.event-status { margin: 16px 0 12px; display: flex; align-items: center; gap: 7px; color: #999; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; }
+.event-status { margin: 16px 0 12px; display: flex; align-items: center; gap: 7px; color: #5e5e5e; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; }
 .event-status span { width: 5px; height: 5px; background: #aaa; border-radius: 50%; }
 .event-status span.live { background: var(--ink); box-shadow: 0 0 0 3px #ddd; }
 .event-copy h3 { font-size: 20px; line-height: 1.2; letter-spacing: -.035em; margin: 0 0 18px; font-weight: 600; }
@@ -691,7 +715,7 @@ button.text-link { min-height: 44px; }
 .event-data p { margin: 0; color: #5e5e5e; font-size: 12px; }
 .event-data p:last-child { text-align: right; grid-column: 2; grid-row: 1; }
 .event-action { margin-top: 19px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.event-action p { margin: 0; font-size: 11px; color: #888; }
+.event-action p { margin: 0; font-size: 11px; color: #5e5e5e; }
 .event-action a { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .event-action a svg { transition: transform .2s; }
 .event-action a:hover svg { transform: translate(2px, -2px); }
@@ -706,7 +730,7 @@ button.text-link { min-height: 44px; }
 .list-arrow { width: 48px; height: 48px; border: 1px solid var(--line); display: grid; place-items: center; }
 .load-more { margin: 72px auto 0; min-width: 165px; padding: 15px 24px; display: block; border: 1px solid var(--ink); background: transparent; font-size: 13px; font-weight: 700; cursor: pointer; transition: .2s; }
 .load-more:hover { background: var(--ink); color: white; }
-.load-more span { color: #888; margin-left: 4px; }
+.load-more span { color: #5e5e5e; margin-left: 4px; }
 .empty-state { text-align: center; padding: 90px 20px 40px; }
 .empty-state h3 { font-size: 36px; letter-spacing: -.05em; margin: 20px 0 10px; }
 .empty-state > p:not(.eyebrow) { color: var(--grey); font-size: 12px; }
@@ -1378,6 +1402,8 @@ button.license-option { width: 100%; padding: 13px; background: transparent; cur
 .ss-ph { flex: 1; color: #9a9a9a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ss-btn > svg:last-child { flex: none; color: #777; }
 .ss-clear { position: absolute; right: 34px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; min-width: 28px; min-height: 28px; padding: 0; color: #888; background: none; border: 0; cursor: pointer; }
+/* Keep the 28px visual but expand the hit area to 44px via ::after. */
+.ss-clear::after { content: ''; position: absolute; inset: -8px; }
 .ss-clear:hover { color: #fff; }
 .ss-panel { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 40; background: #141414; border: 1px solid #444; box-shadow: 0 18px 50px rgba(0,0,0,.55); animation: rise .18s both; }
 .ss-search { display: flex; align-items: center; gap: 10px; padding: 0 14px; color: #777; border-bottom: 1px solid #2c2c2c; }
@@ -1536,7 +1562,9 @@ button.license-option { width: 100%; padding: 13px; background: transparent; cur
 }
 .bm-toast p { margin: 0; color: #eee; font-size: 13px; line-height: 1.5; }
 .bm-toast a { color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; border-bottom: 1px solid #666; padding-bottom: 2px; }
-.bm-toast > button { width: 26px; height: 26px; display: grid; place-items: center; background: none; border: 0; color: #777; font-size: 17px; line-height: 1; cursor: pointer; padding: 0; }
+.bm-toast > button { width: 26px; height: 26px; display: grid; place-items: center; background: none; border: 0; color: #777; font-size: 17px; line-height: 1; cursor: pointer; padding: 0; position: relative; }
+/* Keep the 26px visual but expand the hit area to 44px via ::after. */
+.bm-toast > button::after { content: ''; position: absolute; inset: -9px; }
 .bm-toast > button:hover { color: #fff; }
 .bm-toast-icon { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex: none; }
 .bm-toast-icon.ok { background: #fff; color: #101010; }

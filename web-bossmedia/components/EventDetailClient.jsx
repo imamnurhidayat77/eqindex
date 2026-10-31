@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Icon, SiteFooter, SiteHeader } from './figma';
+import SmartImage from './SmartImage';
 import GalleryPager from './GalleryPager';
 import SaveButton from './SaveButton';
 import SearchSelect from './SearchSelect';
@@ -94,7 +95,7 @@ export default function EventDetailClient({ event, media }) {
                   <article className={`event-media-card ${isReel ? 'reel' : 'photo'}`} key={m.id}>
                   <Link style={{ display: 'block' }}
                     href={`/events/${event.slug}/media/${m.id}`} aria-label={`Preview ${m.horse || ''} ${m.rider || ''}`}>
-                    <img src={m.thumb_url || m.preview_url} alt={[m.horse, m.rider].filter(Boolean).join(' and ') || `${m.event_name || 'Show-jumping'} photo`} loading="lazy" />
+                    <SmartImage src={m.thumb_url || m.preview_url} alt={[m.horse, m.rider].filter(Boolean).join(' and ') || `${m.event_name || 'Show-jumping'} photo`} width={800} height={600} sizes="(max-width: 768px) 100vw, 50vw" />
                     <span className="media-kind">{isReel && <Icon name="play" size={13} />}{isReel ? 'Reel' : 'Photo'}</span>
                     <span className="media-card-footer">
                       <small title={m.class_name || m.event_name || ''}>{m.class_name || m.event_name || '—'}</small>

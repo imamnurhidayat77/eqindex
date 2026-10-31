@@ -8,7 +8,16 @@ module.exports = {
     // first-party, so login + checkout work on the Boss Media domain.
     return [{ source: '/api/:path*', destination: `${API_URL}/:path*` }];
   },
-  images: { unoptimized: true },
+  images: {
+    // Optimizer AKTIF: semua <img> mentah sudah lewat SmartImage
+    // (components/SmartImage.jsx). Remote dixinkan via pola global
+    // karena cover berasal dari backend/thumb CDN + Unsplash.
+    unoptimized: false,
+    remotePatterns: [
+      { protocol: 'https', hostname: '**', pathname: '**' },
+      { protocol: 'http', hostname: '**', pathname: '**' },
+    ],
+  },
   // Prod-only hardening headers. CSP stays OFF in dev (Next HMR needs
   // unsafe-eval) and HSTS stays off localhost.
   async headers() {

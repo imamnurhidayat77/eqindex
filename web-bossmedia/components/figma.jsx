@@ -1,10 +1,12 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useFocusTrap } from '../lib/focus-trap';
 import { cartCount, onCartChange } from '../lib/cart';
 import { favCount, onFavChange } from '../lib/favourites';
 import SearchSelect from './SearchSelect';
+import SmartImage from './SmartImage';
 
 export function Icon({ name, size = 18 }) {
   const paths = {
@@ -20,7 +22,6 @@ export function Icon({ name, size = 18 }) {
     muted: (<><path d="M4 10v4h4l5 4V6l-5 4H4Z" /><path d="m16 10 5 5M21 10l-5 5" /></>),
     expand: (<><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" /></>),
     close: <path d="M5 5l14 14M19 5 5 19" />,
-    heart: <path d="M12 20.5C7 16.5 3.5 13.3 3.5 9.6 3.5 7 5.5 5 8 5c1.6 0 3.1.8 4 2.1C12.9 5.8 14.4 5 16 5c2.5 0 4.5 2 4.5 4.6 0 3.7-3.5 6.9-8.5 10.9Z" />,
     bell: (<><path d="M6 9.5a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" /><path d="M10 19.5a2.2 2.2 0 0 0 4 0" /></>),
     'bell-fill': (<><path d="M6 9.5a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" fill="currentColor" stroke="none" /><path d="M10 19.5a2.2 2.2 0 0 0 4 0" fill="currentColor" stroke="none" /></>),
     heart: <path d="M12 20.5C7 16.5 3 13.3 3 9.3 3 6.4 5.2 4.5 7.7 4.5c1.7 0 3.3.9 4.3 2.4 1-1.5 2.6-2.4 4.3-2.4 2.5 0 4.7 1.9 4.7 4.8 0 4-4 7.2-9 11.2Z" />,
@@ -39,12 +40,14 @@ export function Icon({ name, size = 18 }) {
 }
 
 export function Filter({ label, value, options, onChange }) {
+  const labelId = useId();
   return (
-    <label className="filter">
-      <span>{label}</span>
+    <div className="filter">
+      <span id={labelId}>{label}</span>
       <SearchSelect options={options.map((o) => ({ id: o, label: o }))} value={value}
-        onChange={(id) => onChange(id)} placeholder={label} clearable={false} />
-    </label>
+        onChange={(id) => onChange(id)} placeholder={label} clearable={false}
+        label={label} labelId={labelId} />
+    </div>
   );
 }
 
@@ -87,15 +90,36 @@ export function SiteHeader({ transparent = false }) {
     window.location.href = '/';
   }
   const initial = (me?.name || me?.email || '?').trim().charAt(0).toUpperCase() || '?';
+  const menuRef = useRef(null);
+  const acctMenuRef = useRef(null);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const closeAcct = useCallback(() => setAcctOpen(false), []);
+  // Dialog semantik: Tab trap + Escape tutup + fokus kembali ke pemicu.
+  useFocusTrap(menuRef, { onClose: closeMenu, active: menuOpen });
+  // Menu akun: trap ringan + autofocus item pertama + fokus balik saat tutup.
+  useFocusTrap(acctMenuRef, { onClose: closeAcct, active: acctOpen });
   useEffect(() => {
     document.body.style.overflow = menuOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [menuOpen]);
+  // Navigasi panah atas/bawah ( + Home/End ) antar menuitem akun.
   useEffect(() => {
     if (!acctOpen) return;
-    const close = (e) => { if (e.key === 'Escape') setAcctOpen(false); };
-    document.addEventListener('keydown', close);
-    return () => document.removeEventListener('keydown', close);
+    const onKey = (e) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
+      const root = acctMenuRef.current;
+      if (!root || !root.contains(document.activeElement)) return;
+      const items = [...root.querySelectorAll('[role="menuitem"]')].filter((el) => !el.disabled);
+      if (!items.length) return;
+      e.preventDefault();
+      const i = items.indexOf(document.activeElement);
+      if (e.key === 'Home') { items[0].focus(); return; }
+      if (e.key === 'End') { items[items.length - 1].focus(); return; }
+      const d = e.key === 'ArrowDown' ? 1 : -1;
+      items[(i + d + items.length) % items.length].focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
   }, [acctOpen]);
 
   return (
@@ -118,7 +142,7 @@ export function SiteHeader({ transparent = false }) {
           </Link>
           {me ? (
             <div className="acct">
-              <button type="button" className="acct-btn" aria-label={`Account — ${me.name || me.email}`} aria-expanded={acctOpen} aria-haspopup="menu" onClick={() => setAcctOpen((v) => !v)}>
+              <button type="button" className="acct-btn" aria-label={`Account — ${me.name || me.email}`} aria-expanded={acctOpen} aria-haspopup="menu" aria-controls="acct-menu" onClick={() => setAcctOpen((v) => !v)}>
                 <span className="acct-avatar" aria-hidden="true">{initial}</span>
                 <span className="acct-name">{(me.name || me.email || '').split(' ')[0]}</span>
                 <Icon name="chevron" size={13} />
@@ -126,7 +150,7 @@ export function SiteHeader({ transparent = false }) {
               {acctOpen && (
                 <>
                   <button type="button" className="acct-scrim" aria-label="Close account menu" onClick={() => setAcctOpen(false)} tabIndex={-1} />
-                  <div className="acct-menu" role="menu">
+                  <div className="acct-menu" ref={acctMenuRef} id="acct-menu" role="menu" aria-label="Account menu">
                     <p className="acct-who">{me.name || me.email}<small>{me.role?.toLowerCase()}</small></p>
                     {studio && <Link href="/studio" role="menuitem" onClick={() => setAcctOpen(false)}>My Studio</Link>}
                     {organizer && <Link href="/organizer" role="menuitem" onClick={() => setAcctOpen(false)}>My events</Link>}
@@ -147,7 +171,7 @@ export function SiteHeader({ transparent = false }) {
         </div>
       </header>
       {menuOpen && (
-        <div className="mobile-menu">
+        <div className="mobile-menu" ref={menuRef} role="dialog" aria-modal="true" aria-label="Site menu">
           <div className="mobile-menu-top">
             <Link href="/" className="wordmark inverted" onClick={() => setMenuOpen(false)}>BOSS<span>MEDIA</span></Link>
             <button className="icon-button inverted" aria-label="Close menu" onClick={() => setMenuOpen(false)}>
@@ -216,18 +240,48 @@ export function SiteFooter() {
   );
 }
 
+// Cache + single-flight untuk cover fallback: satu daftar bisa merender
+// puluhan EventCover sekaligus (satu fetch per kartu = N+1).
+// Hasil di-cache per sesi; preloadEventCovers() menghangatkan kartu
+// tanpa cover sebelum/saat daftar tampil. Server sudah mengirim cover
+// untuk semua galeri (galleryEvents()), jadi jalur ini hanya fallback.
+const coverCache = new Map(); // eventId -> string|null (null = kosong, jangan fetch ulang)
+const coverInflight = new Map(); // eventId -> Promise<string|null>
+
+async function fetchCover(eventId) {
+  try {
+    const r = await fetch(`/api/photos?event_id=${eventId}&limit=1`);
+    const j = await r.json().catch(() => ({}));
+    const first = (j.data || [])[0];
+    return first?.thumb_url || first?.preview_url || null;
+  } catch { return null; }
+}
+
+function loadCover(eventId) {
+  if (coverCache.has(eventId)) return Promise.resolve(coverCache.get(eventId));
+  if (!coverInflight.has(eventId)) {
+    coverInflight.set(eventId, fetchCover(eventId).then((src) => {
+      coverCache.set(eventId, src);
+      coverInflight.delete(eventId);
+      return src;
+    }));
+  }
+  return coverInflight.get(eventId);
+}
+
+export function preloadEventCovers(ids) {
+  for (const id of [...new Set(ids || [])].filter(Boolean).slice(0, 24)) loadCover(id);
+}
+
 export function EventCover({ eventId, alt }) {
-  const [src, setSrc] = useState(null);
+  const [src, setSrc] = useState(() => (coverCache.has(eventId) ? coverCache.get(eventId) : undefined));
   useEffect(() => {
     let live = true;
-    fetch(`/api/photos?event_id=${eventId}&limit=1`)
-      .then((r) => r.json())
-      .then((j) => { if (live) setSrc((j.data || [])[0]?.thumb_url || (j.data || [])[0]?.preview_url || null); })
-      .catch(() => {});
+    loadCover(eventId).then((s) => { if (live) setSrc(s); });
     return () => { live = false; };
   }, [eventId]);
   if (!src) return <span className="cover-fallback" aria-hidden="true">Boss Media</span>;
-  return <img src={src} alt={alt} loading="lazy" />;
+  return <SmartImage src={src} alt={alt} fill sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />;
 }
 
 export function EventCard({ item, view }) {
@@ -235,7 +289,7 @@ export function EventCard({ item, view }) {
   return (
     <article className="event-card">
       <Link href={href} className="event-image">
-        {item.cover ? <img src={item.cover} alt={`${item.name} equestrian event`} loading="lazy" /> : <EventCover eventId={item.id} alt={`${item.name} equestrian event`} />}
+        {item.cover ? <SmartImage src={item.cover} alt={`${item.name} equestrian event`} fill sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" /> : <EventCover eventId={item.id} alt={`${item.name} equestrian event`} />}
       </Link>
       <div className="event-copy">
         <div className="event-status">

@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { API } from '../lib/api';
 import { Icon } from './figma';
+import SmartImage from './SmartImage';
 
 function ResetInner({ visual }) {
   const src = visual
@@ -38,7 +39,7 @@ function ResetInner({ visual }) {
   return (
     <main className="login-page">
       <section className="login-visual">
-        <img src={src} alt="Equestrian rider captured by Boss Media" loading="eager" fetchPriority="high" />
+        <SmartImage src={src} alt="Equestrian rider captured by Boss Media" fill sizes="(max-width: 900px) 100vw, 50vw" priority fetchPriority="high" />
         <div className="login-visual-top">
           <Link href="/" className="wordmark inverted">BOSS<span>MEDIA</span></Link>
           <Link href="/">Back to home</Link>

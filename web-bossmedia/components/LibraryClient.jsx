@@ -6,6 +6,7 @@ import { useNotify } from './Toaster';
 import ConfirmModal from './ConfirmModal';
 import SearchSelect from './SearchSelect';
 import TagModal from './TagModal';
+import SmartImage from './SmartImage';
 import { studio } from '../lib/studio';
 
 const STATUSES = ['', 'draft', 'published', 'archived'];
@@ -147,7 +148,7 @@ function ItemCard({ m, checked, onCheck, onOpen }) {
   return (
     <article className="st-media-card">
       <input type="checkbox" className="sel" checked={checked} onChange={(e) => onCheck(e.target.checked)} aria-label="Select asset" />
-      {m.thumb_url || m.preview_url ? <img src={m.thumb_url || m.preview_url} alt={`${[m.horse, m.rider].filter(Boolean).join(' ridden by ') || 'Library photo'}${m.event_name ? ` at ${m.event_name}` : ''}`} loading="lazy" /> : <span className="cover-fallback">No preview</span>}
+      {m.thumb_url || m.preview_url ? <SmartImage src={m.thumb_url || m.preview_url} alt={`${[m.horse, m.rider].filter(Boolean).join(' ridden by ') || 'Library photo'}${m.event_name ? ` at ${m.event_name}` : ''}`} width={800} height={600} sizes="(max-width: 768px) 50vw, 25vw" /> : <span className="cover-fallback">No preview</span>}
       <footer>
         <span><Chip status={m.status} /> {m.kind === 'reel' && <Chip status="reel" />}</span>
           <strong>{[m.horse, m.rider].filter(Boolean).join(' · ') || m.other_people || 'Untagged'}</strong>

@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { API } from '../lib/api';
 import { Icon } from './figma';
+import SmartImage from './SmartImage';
 
 function safeNext(v) {
   return v && v.startsWith('/') && !v.startsWith('//') && v !== '/login' && v !== '/register'
@@ -31,6 +32,7 @@ function LoginInner({ visual }) {
     if (busy) return;
     setErr('');
     if (!form.email.trim() || !form.password) { setErr('Enter your email and password.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) { setErr('Enter a valid email address.'); return; }
     setBusy(true);
     try {
       const res = await fetch(`${API}/auth/login`, {
@@ -69,7 +71,7 @@ function LoginInner({ visual }) {
   return (
     <main className="login-page">
       <section className="login-visual">
-        <img src={src} alt="Equestrian rider captured by Boss Media" loading="eager" fetchPriority="high" />
+        <SmartImage src={src} alt="Equestrian rider captured by Boss Media" fill sizes="(max-width: 900px) 100vw, 50vw" priority fetchPriority="high" />
         <div className="login-visual-top">
           <Link href="/" className="wordmark inverted">BOSS<span>MEDIA</span></Link>
           <Link href="/">Back to home</Link>
@@ -106,7 +108,7 @@ function LoginInner({ visual }) {
                 <input required type={show ? 'text' : 'password'} value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   placeholder="••••••••" autoComplete="current-password" />
-                <button type="button" className="auth-show" onClick={() => setShow((v) => !v)}>
+                <button type="button" className="auth-show" aria-pressed={show} aria-label={show ? 'Hide password' : 'Show password'} onClick={() => setShow((v) => !v)}>
                   {show ? 'Hide' : 'Show'}
                 </button>
               </span>

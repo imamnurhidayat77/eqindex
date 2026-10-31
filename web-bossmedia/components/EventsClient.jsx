@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { EventCard, Filter, Icon, SiteFooter, SiteHeader } from './figma';
+import { EventCard, Filter, Icon, SiteFooter, SiteHeader, preloadEventCovers } from './figma';
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -22,6 +22,11 @@ export default function EventsClient({ items, regions, years }) {
   }), [items, search, region, year]);
 
   useEffect(() => setLimit(9), [search, region, year]);
+
+  useEffect(() => {
+    // Hangatkan cover fallback (N+1) untuk kartu tanpa cover bawaan server.
+    preloadEventCovers(items.map((it) => (it.cover ? null : it.id)));
+  }, [items]);
 
   const clearFilters = () => {
     setSearch(''); setRegion('All regions'); setYear('All years');
@@ -51,11 +56,11 @@ export default function EventsClient({ items, regions, years }) {
             </div>
           </div>
           <div className="results-meta">
-            <p>{filtered.length} {filtered.length === 1 ? 'event' : 'events'}</p>
-            <div className="view-toggle" aria-label="View options">
-              <button className={view === 'grid' ? 'active' : ''} aria-label="Grid view" onClick={() => setView('grid')}><Icon name="grid" /></button>
-              <button className={view === 'list' ? 'active' : ''} aria-label="List view" onClick={() => setView('list')}><Icon name="list" /></button>
-              <button className={view === 'calendar' ? 'active' : ''} aria-label="Calendar view" onClick={() => setView('calendar')}><Icon name="calendar" /></button>
+            <p role="status" aria-live="polite">{filtered.length} {filtered.length === 1 ? 'event' : 'events'}</p>
+            <div className="view-toggle" role="group" aria-label="View options">
+              <button className={view === 'grid' ? 'active' : ''} aria-label="Grid view" aria-pressed={view === 'grid'} onClick={() => setView('grid')}><Icon name="grid" /></button>
+              <button className={view === 'list' ? 'active' : ''} aria-label="List view" aria-pressed={view === 'list'} onClick={() => setView('list')}><Icon name="list" /></button>
+              <button className={view === 'calendar' ? 'active' : ''} aria-label="Calendar view" aria-pressed={view === 'calendar'} onClick={() => setView('calendar')}><Icon name="calendar" /></button>
             </div>
           </div>
           {filtered.length ? (
