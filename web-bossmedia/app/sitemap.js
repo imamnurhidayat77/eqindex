@@ -11,7 +11,7 @@ export default async function sitemap() {
   const base = SITE_URL;
   const staticRoutes = [
     '', '/events', '/photos', '/reels', '/pre-book', '/sell',
-    '/about', '/licensing', '/pricing', '/faq', '/contact',
+    '/about', '/licensing', '/faq', '/contact',
   ].map((p) => ({ url: `${base}${p || '/'}`, lastModified: new Date() }));
 
   let events = [];

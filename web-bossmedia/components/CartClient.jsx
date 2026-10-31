@@ -98,7 +98,7 @@ export default function CartClient() {
     if (!photoItems.length || busyKey) return;
     setBusyKey('__all'); setErr('');
     try {
-      const use_balance_cents = meEmail ? Math.min(balance, photoTotal) : 0;
+      const use_balance_cents = meEmail ? Math.min(balance, subtotal) : 0;
       const res = await fetch(`${API}/api/checkout/combined`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -186,7 +186,7 @@ export default function CartClient() {
               <button type="button" className="pay-all" disabled={busyKey}
                 onClick={payAll}>
                 {busyKey === '__all' ? 'Opening secure checkout…' : (() => {
-                  const used = meEmail ? Math.min(balance, photoTotal) : 0;
+                  const used = meEmail ? Math.min(balance, subtotal) : 0;
                   const rest = subtotal - used;
                   if (rest <= 0) return `Pay ${nzd(subtotal)} with balance`;
                   if (used <= 0) return `Pay ${nzd(subtotal)}`;

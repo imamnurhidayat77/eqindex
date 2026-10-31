@@ -36,7 +36,7 @@ export default function SalesPage({ events, initialStatus }) {
 
   const resetPage = (fn) => (v) => { setOffset(0); fn(v); };
   const k = summary?.kpis;
-  const csvHref = `${API}/api/admin/sales.csv${status || kind || eventId ? `?${new URLSearchParams({ ...(status ? { status } : {}), ...(kind ? { kind } : {}), ...(eventId ? { event_id: eventId } : {}) })}` : ''}`;
+  const csvHref = `${API}/admin/sales.csv${status || kind || eventId ? `?${new URLSearchParams({ ...(status ? { status } : {}), ...(kind ? { kind } : {}), ...(eventId ? { event_id: eventId } : {}) })}` : ''}`;
 
   return (
     <StudioShell active="sales">

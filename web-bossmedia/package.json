@@ -2,9 +2,6 @@
   "name": "bossmedia-web",
   "version": "0.1.0",
   "private": true,
-  "engines": {
-    "node": "24.x"
-  },
   "description": "Boss Media storefront — same backend as EQIndex, own brand/domain",
   "scripts": {
     "dev": "next dev",
