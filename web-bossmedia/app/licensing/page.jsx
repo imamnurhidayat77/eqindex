@@ -12,7 +12,7 @@ const TIERS = [
 export default function LicensingPage() {
   return (
     <PageShell eyebrow="Legal" title="Licensing guide."
-      intro="Four simple tiers. Every purchase is watermark-free and yours to keep.">
+      intro="Four simple tiers. Every purchase is watermark-free and yours to keep. All prices in NZ$ GST included.">
       {TIERS.map(([t, d]) => (
         <div key={t} className="card-dark" style={{ padding: '16px 20px', marginBottom: 10 }}>
           <div style={{ fontWeight: 800, color: '#fff' }}>{t}</div>

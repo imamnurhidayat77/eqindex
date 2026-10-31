@@ -63,7 +63,8 @@ export async function coverFor(eventId) {
   } catch { return null; }
 }
 
-export const nzd = (cents) => `NZ$${(Number(cents || 0) / 100).toFixed(2).replace(/\.00$/, '')}`;
+export const nzd = (cents) =>
+  `NZ$${(Number(cents || 0) / 100).toLocaleString('en-NZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
 // Stripe return override so buyers land back on THIS storefront after
 // paying (backend defaults to the EQIndex APP_URL). Backend validates the

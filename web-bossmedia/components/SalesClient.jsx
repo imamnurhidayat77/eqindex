@@ -4,7 +4,7 @@ import StudioShell, { Bars, Chip, Pager, Stat } from './studio';
 import { useNotify } from './Toaster';
 import SearchSelect from './SearchSelect';
 import { API } from '../lib/api';
-import { dayOf, nzdc, studio } from '../lib/studio';
+import { dayOf, nzdc, studio, studioFetch } from '../lib/studio';
 
 const LIMIT = 25;
 
@@ -27,8 +27,8 @@ export default function SalesPage({ events, initialStatus }) {
   }, [status, kind, eventId, offset]);
 
   useEffect(() => {
-    studio.get(`/admin/sales?${query}`)
-      .then((j) => { setRows(j.data || []); setTotal(j.totals ? j.pagination.total : (j.data || []).length); })
+    studioFetch(`/admin/sales?${query}`)
+      .then((j) => { setRows(j.data || []); setTotal(j.pagination ? j.pagination.total : (j.data || []).length); })
       .catch((e) => notify(e.message, true));
   }, [query, notify]);
 

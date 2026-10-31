@@ -128,9 +128,9 @@ function TierTable({ kind, tiers, reload }) {
   const [edits, setEdits] = useState({});
   const [offset, setOffset] = useState(0);
   const PAGE = 10;
-  if (tiers === null) return <p className="empty-note">Loading prices…</p>;
+  if (tiers === null) return <p className="empty-note" role="status">Loading prices…</p>;
   const list = tiers.filter((t) => (t.applies_to || 'both') === kind || (t.applies_to || 'both') === 'both');
-  if (!list.length) return <p className="empty-note">No {kind} price options yet — add your first one below.</p>;
+  if (!list.length) return <p className="empty-note" role="status">No {kind} price options yet — add your first one below.</p>;
   const pages = Math.max(1, Math.ceil(list.length / PAGE));
   const safe = Math.min(offset, Math.max(0, (pages - 1) * PAGE));
   const set = (id, k, v) => setEdits((e) => ({ ...e, [id]: { ...(e[id] || {}), [k]: v } }));
@@ -261,8 +261,8 @@ function PackageTable({ packages, reload }) {
   const PAGE = 10;
   const safe = Math.min(offset, Math.max(0, (Math.ceil(((packages || []).length) / PAGE) - 1) * PAGE));
   const reprice = useReprice((p, price_cents) => save(p, { price_cents }), dialog);
-  if (packages === null) return <p className="empty-note">Loading bundles…</p>;
-  if (!packages.length) return <p className="empty-note">No bundles yet — make one below and it will appear in the shop.</p>;
+  if (packages === null) return <p className="empty-note" role="status">Loading bundles…</p>;
+  if (!packages.length) return <p className="empty-note" role="status">No bundles yet — make one below and it will appear in the shop.</p>;
   const save = async (p, body) => {
     try { await studio.patch(`/admin/packages/${p.id}`, body); notify('Bundle saved'); reload(); }
     catch (e) { notify(e.message, true); }
@@ -351,8 +351,8 @@ function ProductTable({ products, reload }) {
   const PAGE = 10;
   const safe = Math.min(offset, Math.max(0, (Math.ceil(((products || []).length) / PAGE) - 1) * PAGE));
   const reprice = useReprice((p, price_cents) => save(p, { price_cents }), dialog);
-  if (products === null) return <p className="empty-note">Loading reel options…</p>;
-  if (!products.length) return <p className="empty-note">No reel options yet — add one below.</p>;
+  if (products === null) return <p className="empty-note" role="status">Loading reel options…</p>;
+  if (!products.length) return <p className="empty-note" role="status">No reel options yet — add one below.</p>;
   const save = async (p, body) => {
     try { await studio.patch(`/admin/reel-products/${p.id}`, body); notify('Saved'); reload(); }
     catch (e) { notify(e.message, true); }
@@ -421,8 +421,8 @@ function PackTable({ packs, reload }) {
   const notify = useNotify();
   const [confirmUI, dialog] = useConfirm();
   const reprice = useReprice((p, price_cents) => save(p, { price_cents }), dialog);
-  if (packs === null) return <p className="empty-note">Loading credit packs…</p>;
-  if (!packs.length) return <p className="empty-note">No credit packs yet — add one below.</p>;
+  if (packs === null) return <p className="empty-note" role="status">Loading credit packs…</p>;
+  if (!packs.length) return <p className="empty-note" role="status">No credit packs yet — add one below.</p>;
   const save = async (p, body) => {
     try { await studio.patch(`/admin/credit-packs/${p.id}`, body); notify('Saved'); reload(); }
     catch (e) { notify(e.message, true); }
@@ -490,9 +490,11 @@ function SettingsForm({ settings, onDone }) {
   const notify = useNotify();
   const [val, setVal] = useState(null);
   useEffect(() => {
-    if (settings) setVal(settings.event_package_price_cents ?? '');
+    if (!settings) return;
+    const raw = settings.event_package_price_cents;
+    setVal(raw === null || raw === undefined || raw === '' ? '' : dollars(raw));
   }, [settings]);
-  if (!settings) return <p className="empty-note">Loading…</p>;
+  if (!settings) return <p className="empty-note" role="status">Loading…</p>;
   const save = async () => {
     try {
       await studio.patch('/admin/settings', { key: 'event_package_price_cents', value: val === '' ? '' : String(cents(val)) });

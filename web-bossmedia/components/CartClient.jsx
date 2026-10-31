@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { removeFromCart, useCart } from '../lib/cart';
+import { buildCombinedBody, splitCartItems } from '../lib/checkout.mjs';
 import { checkoutBase, newIdempotencyKey, nzd, stripeCheckoutUrl } from '../lib/figma-data';
 import { safeError } from '../lib/errors';
 import { Icon, SiteFooter, SiteHeader } from './figma';
@@ -99,7 +100,7 @@ export default function CartClient() {
     if (!items.length || busyKey) return;
     setBusyKey('__all'); setErr('');
     try {
-      const use_balance_cents = meEmail ? Math.min(balance, subtotal) : 0;
+      const use_balance_cents = meEmail ? Math.min(balance, photoTotal) : 0;
       const res = await fetch(`${API}/api/checkout/combined`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -177,17 +178,17 @@ export default function CartClient() {
               </p>
               {err && <p className="auth-error" role="alert" style={{ marginTop: 12 }}>{safeError(err)}{' '}<Link href="/contact" style={{ color: '#fff', borderBottom: '1px solid #555' }}>Need help? Contact support</Link></p>}
               <div className="cart-total"><span>Total</span><strong>{nzd(subtotal)}</strong></div>
-              {meEmail && balance > 0 && subtotal > 0 && (
+              {meEmail && balance > 0 && photoTotal > 0 && (
                 <p style={{ margin: '16px 0 0', color: '#ccc', fontSize: 13, lineHeight: 1.5 }}>
-                  {nzd(Math.min(balance, subtotal))} balance applied
-                  {Math.min(balance, subtotal) < subtotal ? ` · ${nzd(subtotal - Math.min(balance, subtotal))} left by card` : ' · covers it fully'}
+                  {nzd(Math.min(balance, photoTotal))} balance applied
+                  {Math.min(balance, photoTotal) < subtotal ? ` · ${nzd(subtotal - Math.min(balance, photoTotal))} left by card` : ' · covers it fully'}
                   <span style={{ display: 'block', marginTop: 4, color: '#777', fontSize: 11 }}>Balance payments are final — no refunds to balance.</span>
                 </p>
               )}
               <button type="button" className="pay-all" disabled={busyKey}
                 onClick={payAll}>
                 {busyKey === '__all' ? 'Opening secure checkout…' : (() => {
-                  const used = meEmail ? Math.min(balance, subtotal) : 0;
+                  const used = meEmail ? Math.min(balance, photoTotal) : 0;
                   const rest = subtotal - used;
                   if (rest <= 0) return `Pay ${nzd(subtotal)} with balance`;
                   if (used <= 0) return `Pay ${nzd(subtotal)}`;
