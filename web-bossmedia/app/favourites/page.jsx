@@ -1,4 +1,5 @@
 'use client';
+import SmartImage from '../../components/SmartImage';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../../lib/api';
@@ -60,12 +61,13 @@ export default function FavouritesPage() {
           <Link href="/events" style={{ paddingBottom: 6, borderBottom: '1px solid #555', fontSize: 13, color: '#bbb' }}>Browse galleries</Link>
         </div>
       ) : (
+        <>
         <div className="event-media-grid">
           {(items || []).slice((safePage - 1) * LIMIT, safePage * LIMIT).map((x) => (
             <article className="event-media-card" key={x.id} style={{ position: 'relative' }}>
               <Link href={`/p/${x.id}`} style={{ display: 'block' }} aria-label={`${x.horse || ''} ${x.rider || ''}`.trim() || 'Photo'}>
                 {x.thumb_url || x.preview_url
-                  ? <img src={x.thumb_url || x.preview_url} alt={`${[x.horse, x.rider].filter(Boolean).join(' ridden by ') || 'Favourite equestrian photo'}${x.event_name ? ` at ${x.event_name}` : ''}`} loading="lazy" />
+                  ? <SmartImage src={x.thumb_url || x.preview_url} alt={`${[x.horse, x.rider].filter(Boolean).join(' ridden by ') || 'Favourite equestrian photo'}${x.event_name ? ` at ${x.event_name}` : ''}`} width={800} height={600} sizes="(max-width: 768px) 100vw, 50vw" />
                   : <span className="cover-fallback">Boss Media</span>}
                 <span className="media-card-footer">
                   <small title={x.event_name || ''}>{x.event_name || '—'}</small>
@@ -81,8 +83,9 @@ export default function FavouritesPage() {
               </button>
             </article>
           ))}
-          <GalleryPager page={safePage} pages={pages} onPage={setPage} />
         </div>
+        <GalleryPager page={safePage} pages={pages} onPage={setPage} />
+        </>
       )}
     </PageShell>
   );

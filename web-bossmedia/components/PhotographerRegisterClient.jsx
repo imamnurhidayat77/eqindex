@@ -5,6 +5,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { Icon } from './figma';
 import SearchSelect from './SearchSelect';
+import SmartImage from './SmartImage';
 
 const REGIONS = [
   'Northland', 'Auckland', 'Waikato', 'Bay of Plenty', 'Gisborne', 'Hawke’s Bay',
@@ -126,7 +127,7 @@ function PhotographerInner({ visual }) {
   return (
     <main className="login-page">
       <section className="login-visual">
-        <img src={src} alt="Photographer covering an equestrian event" loading="eager" fetchPriority="high" />
+        <SmartImage src={src} alt="Photographer covering an equestrian event" fill sizes="(max-width: 900px) 100vw, 50vw" priority fetchPriority="high" />
         <div className="login-visual-top">
           <Link href="/" className="wordmark inverted">BOSS<span>MEDIA</span></Link>
           <Link href="/">Back to home</Link>

@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Icon, SiteFooter, SiteHeader } from './figma';
+import SmartImage from './SmartImage';
 import GalleryPager from './GalleryPager';
 import SaveButton from './SaveButton';
 import SearchSelect from './SearchSelect';
@@ -56,7 +57,7 @@ export default function ReelsClient({ items, eventOptions }) {
               return (
                 <div key={r.id} style={{ position: 'relative' }}>
                 <Link href={href} aria-label={`Play ${r.rider} at ${r.event}`}>
-                  {r.image ? <img src={r.image} alt={`${r.rider || 'Rider'}${r.horse ? ` on ${r.horse}` : ''} at ${r.event || 'a New Zealand show'}`} loading="lazy" /> : <span className="cover-fallback">Boss Media</span>}
+                  {r.image ? <SmartImage src={r.image} alt={`${r.rider || 'Rider'}${r.horse ? ` on ${r.horse}` : ''} at ${r.event || 'a New Zealand show'}`} fill sizes="(max-width: 1100px) 33vw, 16vw" /> : <span className="cover-fallback">Boss Media</span>}
                   <span className="archive-reel-play"><Icon name="play" size={22} /></span>
                   <span className="archive-reel-info"><strong>{r.rider}</strong><small>{r.event}</small></span>
                 </Link>

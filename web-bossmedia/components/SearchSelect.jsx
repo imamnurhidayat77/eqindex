@@ -11,7 +11,7 @@ const PANEL_H = 320;
 // placeholder, onRequestCustom(query), disabled.
 // loadOptions(query): remote search — when given, the list comes from the
 // loader (debounced) instead of local filtering.
-export default function SearchSelect({ options, value, onChange, placeholder = 'Select…', onRequestCustom, disabled = false, loadOptions = null, selectedOption = null, clearable = true, emptyHint = null }) {
+export default function SearchSelect({ options, value, onChange, placeholder = 'Select…', onRequestCustom, disabled = false, loadOptions = null, selectedOption = null, clearable = true, emptyHint = null, label = null, labelId = null }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const [q, setQ] = useState('');
@@ -106,7 +106,9 @@ export default function SearchSelect({ options, value, onChange, placeholder = '
   return (
     <div className="ss" ref={rootRef}>
       <button type="button" className="ss-btn" disabled={disabled}
-        aria-haspopup="listbox" aria-expanded={open}
+        aria-haspopup="listbox" aria-expanded={open} aria-controls={listId}
+        aria-label={label || placeholder}
+        aria-labelledby={labelId || undefined}
         onClick={() => {
           if (disabled) return;
           const willOpen = !open;

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import SmartImage from '../../components/SmartImage';
 import { getJSON } from '../../lib/api';
 import { Icon } from '../../components/figma';
 import SaveButton from '../../components/SaveButton';
@@ -58,7 +59,7 @@ export default async function PhotosPage({ searchParams }) {
             <Link style={{ display: 'block' }} href={`/p/${x.id}`}
               aria-label={`${x.horse || ''} ${x.rider || ''}`.trim() || 'Photo'}>
               {x.thumb_url || x.preview_url
-                ? <img src={x.thumb_url || x.preview_url} alt={`${[x.horse, x.rider].filter(Boolean).join(' ridden by ') || 'Equestrian photo'} at ${x.event_name || 'a New Zealand show'}`} loading="lazy" />
+                ? <SmartImage src={x.thumb_url || x.preview_url} alt={`${[x.horse, x.rider].filter(Boolean).join(' ridden by ') || 'Equestrian photo'} at ${x.event_name || 'a New Zealand show'}`} width={800} height={600} sizes="(max-width: 768px) 100vw, 50vw" />
                 : <span className="cover-fallback">Boss Media</span>}
               <span className="media-kind">{x.kind === 'reel' && <Icon name="play" size={13} />}{x.kind === 'reel' ? 'Reel' : 'Photo'}</span>
               <span className="media-card-footer">

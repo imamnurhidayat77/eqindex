@@ -1,4 +1,5 @@
 'use client';
+import SmartImage from '../../components/SmartImage';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API, cachedJson } from '../../lib/api';
@@ -99,12 +100,13 @@ export default function MediaHub() {
                     <p style={{ marginTop: 22 }}><Link href="/events" className="text-link">Browse the gallery</Link></p>
                   </div>
                 ) : (
+                  <>
                   <div className="event-media-grid">
                     {slice(photos).map((x) => (
                       <article key={`${x.purchase_id}-${x.media_id}`} className="my-card">
                         <span className="my-image">
                           {x.thumb_url || x.preview_url
-                            ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' and ') || x.event_name || 'Purchased photo'} loading="lazy" />
+                            ? <SmartImage src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' and ') || x.event_name || 'Purchased photo'} fill sizes="(max-width: 768px) 50vw, 25vw" />
                             : <span className="cover-fallback">Boss Media</span>}
                         </span>
                         <div className="my-status"><i className="live" aria-hidden="true" /><span>{x.license_tier || 'Photo'}</span></div>
@@ -113,8 +115,9 @@ export default function MediaHub() {
                         <div className="my-action"><p>Lifetime download</p><a href={dl(x.media_id)}>Download <Icon name="arrow" size={14} /></a></div>
                       </article>
                     ))}
-                  <GalleryPager page={safePage} pages={pages} onPage={setPage} />
                   </div>
+                  <GalleryPager page={safePage} pages={pages} onPage={setPage} />
+                  </>
                 )
               )}
 
@@ -127,6 +130,7 @@ export default function MediaHub() {
                     <p style={{ marginTop: 22 }}><Link href="/pre-book" className="text-link">Pre-book coverage</Link></p>
                   </div>
                 ) : (
+                  <>
                   <div className="event-media-grid">
                     {slice(reels).map((o) => {
                       const done = ['ready', 'delivered'].includes(o.status);
@@ -136,7 +140,7 @@ export default function MediaHub() {
                             {o.preview_url && done ? (
                               <video src={o.preview_url} controls preload="metadata" poster={o.thumb_url || undefined} style={{ background: '#000' }} />
                             ) : o.thumb_url ? (
-                              <img src={o.thumb_url} alt={`${o.horse_name || 'Reel'} preview`} loading="lazy" />
+                              <SmartImage src={o.thumb_url} alt={`${o.horse_name || 'Reel'} preview`} fill sizes="(max-width: 768px) 50vw, 25vw" />
                             ) : (
                               <span className="my-reel-status">
                                 <span className={`my-pill ${done ? 'my-pill-live' : o.status === 'cancelled' ? '' : 'my-pill-warn'}`}>{REEL_STATUS[o.status] || o.status}</span>
@@ -154,8 +158,9 @@ export default function MediaHub() {
                         </article>
                       );
                     })}
-                  <GalleryPager page={safePage} pages={pages} onPage={setPage} />
                   </div>
+                  <GalleryPager page={safePage} pages={pages} onPage={setPage} />
+                  </>
                 )
               )}
 
@@ -170,6 +175,7 @@ export default function MediaHub() {
                         <p>Grab a pack above and spend it across the gallery.</p>
                       </div>
                     ) : (
+                      <>
                       <div className="event-media-grid">
                         {slice(credits).map((b) => {
                       const t = Number(b.slots_total) || 0;
@@ -186,8 +192,9 @@ export default function MediaHub() {
                         </article>
                       );
                     })}
-                  <GalleryPager page={safePage} pages={pages} onPage={setPage} />
                   </div>
+                  <GalleryPager page={safePage} pages={pages} onPage={setPage} />
+                  </>
                 )}
               </>
             )

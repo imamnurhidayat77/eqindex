@@ -1,7 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { EventCard, Filter, Icon, SiteFooter, SiteHeader } from './figma';
+import { EventCard, Filter, Icon, SiteFooter, SiteHeader, preloadEventCovers } from './figma';
+import SmartImage from './SmartImage';
 import StoryViewer from './StoryViewer';
 
 export default function HomeClient({ items, heroImage, reels, regions, years, tiers }) {
@@ -35,6 +36,11 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
   useEffect(() => setLimit(6), [tab, search, region, year, tier]);
 
   useEffect(() => {
+    // Hangatkan cover fallback (N+1) untuk kartu tanpa cover bawaan server.
+    preloadEventCovers(items.map((it) => (it.cover ? null : it.id)));
+  }, [items]);
+
+  useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60);
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -59,7 +65,7 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
           </div>
           <div className="hero-collage" role="img" aria-label="Featured equestrian photography">
             <figure className="hero-image hero-image-main">
-              {heroImage ? <img src={heroImage} alt="Horse and rider moving through an equestrian event" loading="eager" fetchPriority="high" />
+              {heroImage ? <SmartImage src={heroImage} alt="Horse and rider moving through an equestrian event" fill sizes="(max-width: 900px) 100vw, 55vw" priority fetchPriority="high" />
                 : <span className="cover-fallback" aria-hidden="true">Boss Media</span>}
               <figcaption><span>01</span> Flight, captured</figcaption>
             </figure>
@@ -96,10 +102,10 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
             </div>
           </div>
           <div className="results-meta">
-            <p>{filtered.length} {filtered.length === 1 ? 'event' : 'events'}</p>
-            <div className="view-toggle" aria-label="View options">
-              <button className={view === 'grid' ? 'active' : ''} aria-label="Grid view" onClick={() => setView('grid')}><Icon name="grid" /></button>
-              <button className={view === 'list' ? 'active' : ''} aria-label="List view" onClick={() => setView('list')}><Icon name="list" /></button>
+            <p role="status" aria-live="polite">{filtered.length} {filtered.length === 1 ? 'event' : 'events'}</p>
+            <div className="view-toggle" role="group" aria-label="View options">
+              <button className={view === 'grid' ? 'active' : ''} aria-label="Grid view" aria-pressed={view === 'grid'} onClick={() => setView('grid')}><Icon name="grid" /></button>
+              <button className={view === 'list' ? 'active' : ''} aria-label="List view" aria-pressed={view === 'list'} onClick={() => setView('list')}><Icon name="list" /></button>
             </div>
           </div>
           {filtered.length > 0 ? (
@@ -152,7 +158,7 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
           <div className="reels-grid">
             {reels.map((reel, i) => (
               <button className="reel-card" key={reel.id} onClick={() => setActiveReel(i)} aria-label={`Play reel featuring ${reel.rider}`}>
-                {reel.image ? <img src={reel.image} alt={`${reel.rider || 'Rider'}${reel.horse ? ` on ${reel.horse}` : ''}${reel.event ? ` at ${reel.event}` : ''}`} loading="lazy" /> : <span className="cover-fallback">Boss Media</span>}
+                {reel.image ? <SmartImage src={reel.image} alt={`${reel.rider || 'Rider'}${reel.horse ? ` on ${reel.horse}` : ''}${reel.event ? ` at ${reel.event}` : ''}`} fill sizes="(max-width: 1100px) 33vw, 16vw" /> : <span className="cover-fallback">Boss Media</span>}
                 <span className="play"><Icon name="play" size={22} /></span>
                 <span className="reel-info"><strong>{reel.rider}</strong><small>{reel.event}</small></span>
               </button>

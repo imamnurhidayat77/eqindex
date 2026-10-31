@@ -7,6 +7,7 @@ import { addToCart } from '../lib/cart';
 import { toggleFavourite, useIsFavourite } from '../lib/favourites';
 import { checkoutBase, newIdempotencyKey, nzd, stripeCheckoutUrl } from '../lib/figma-data';
 import { useAuthed } from '../lib/use-authed';
+import SmartImage from './SmartImage';
 import FollowButton from './FollowButton';
 import { safeError } from '../lib/errors';
 import { Icon } from './figma';
@@ -278,7 +279,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
               <span className="rp-wrap"><ReelPlayer src={media.preview_url} poster={media.thumb_url || undefined}
                 label={`${subject} reel`} autoPlay /></span>
             ) : (
-              <img src={media.preview_url || media.thumb_url} alt={subject} loading="eager" />
+              <SmartImage src={media.preview_url || media.thumb_url} alt={subject} width={1200} height={800} priority />
             )}
             <figcaption>
               <span>Boss Media preview</span>
