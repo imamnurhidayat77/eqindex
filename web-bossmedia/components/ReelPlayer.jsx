@@ -26,7 +26,8 @@ export default function ReelPlayer({ src, poster = null, autoPlay = false, label
     if (!v || !src) return;
     setPlaying(false); setTime(0); setDur(0); setFailed(false); setWaiting(true); setIdle(false);
     v.load();
-    if (autoPlay) v.play().catch(() => {});
+    // Autoplay with sound is blocked by browsers — start muted (user can unmute).
+    if (autoPlay) { v.muted = true; setMuted(true); v.play().catch(() => {}); }
   }, [src, autoPlay]);
 
   useEffect(() => () => clearTimeout(idleTimer.current), []);
@@ -107,7 +108,7 @@ export default function ReelPlayer({ src, poster = null, autoPlay = false, label
       {waiting && !failed && (
         <span className="rp-spinner" aria-label="Loading video"><i /></span>
       )}
-      {failed ? (
+      {failed || !src ? (
         <div className="rp-error">
           <p>Video won’t play here.</p>
           {/^https:\/\//i.test(src || '')
