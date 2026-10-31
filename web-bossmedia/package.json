@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test tests lib/__tests__",
+    "test": "node --test \"tests/*.test.mjs\" \"lib/__tests__/*.test.mjs\"",
     "lint": "node scripts/lint-bossmedia.mjs"
   },
   "dependencies": {
