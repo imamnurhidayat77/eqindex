@@ -10,6 +10,7 @@ import { useAuthed } from '../lib/use-authed';
 import SmartImage from './SmartImage';
 import FollowButton from './FollowButton';
 import { safeError } from '../lib/errors';
+import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
 import { Icon } from './figma';
 import { useToast } from './Toaster';
 import ReelPlayer from './ReelPlayer';
@@ -68,10 +69,9 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   useEffect(() => {
     if (meEmail && !email) setEmail(meEmail);
   }, [meEmail, email]);
-  const validEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
   const checkoutEmail = () => {
-    const em = (email || meEmail || '').trim();
-    if (!validEmail(em)) {
+    const em = normalizeEmail(email || meEmail || '');
+    if (!isValidEmail(em)) {
       setErr(meEmail ? 'Enter your email to receive the receipt.' : 'Enter your email — no account needed. Receipt and download access go there.');
       return null;
     }

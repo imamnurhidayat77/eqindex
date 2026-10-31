@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { API } from '../lib/api';
 import { Icon } from './figma';
+import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
 import SmartImage from './SmartImage';
 
 function safeNext(v) {
@@ -32,12 +33,12 @@ function LoginInner({ visual }) {
     if (busy) return;
     setErr('');
     if (!form.email.trim() || !form.password) { setErr('Enter your email and password.'); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) { setErr('Enter a valid email address.'); return; }
+    if (!isValidEmail(form.email)) { setErr('Enter a valid email address.'); return; }
     setBusy(true);
     try {
       const res = await fetch(`${API}/auth/login`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email.trim(), password: form.password }),
+        body: JSON.stringify({ email: normalizeEmail(form.email), password: form.password }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'That didn’t work — check your details and try again.');

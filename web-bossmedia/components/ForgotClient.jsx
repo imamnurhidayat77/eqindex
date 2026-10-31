@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { API } from '../lib/api';
 import { Icon } from './figma';
+import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
 import SmartImage from './SmartImage';
 
 export default function ForgotClient({ visual }) {
@@ -18,11 +19,12 @@ export default function ForgotClient({ visual }) {
     if (busy) return;
     setErr('');
     if (!email.trim()) { setErr('Enter your email address.'); return; }
+    if (!isValidEmail(email)) { setErr('Enter a valid email address.'); return; }
     setBusy(true);
     try {
       const res = await fetch(`${API}/auth/forgot`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email: normalizeEmail(email) }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'That didn’t work — try again.');

@@ -91,7 +91,7 @@ describe('cart reel-only', () => {
     assert.match(s, /reels: reelItems\.map\(\(it\) => it\.reelPayload\)/);
     assert.match(s, /items: photoItems\.map\(/);
     assert.match(s, /if \(!items\.length \|\| busyKey\) return/);
-    assert.match(s, /use_balance_cents.*meEmail \? Math\.min\(balance, (subtotal|photoTotal)\) : 0/);
+    assert.match(s, /use_balance_cents.*meEmail \? Math\.min\(balance, photoTotal\) : 0/);
   });
 
   it('buyReel only drops the item after res.ok (no silent cart loss)', () => {

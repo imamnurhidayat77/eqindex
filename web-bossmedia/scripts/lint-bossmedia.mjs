@@ -18,7 +18,7 @@ function walk(dir, out = []) {
     const p = join(dir, name);
     const st = statSync(p);
     if (st.isDirectory()) walk(p, out);
-    else if (/\.(jsx?|tsx?)$/.test(name)) out.push(p);
+    else if (/\.(jsx?|tsx?|mjs|cjs|css)$/.test(name)) out.push(p);
   }
   return out;
 }
@@ -44,6 +44,39 @@ const engines = pkg.engines?.node ?? '';
 const min = Math.min(...[...engines.matchAll(/(\d+)/g)].map((m) => Number(m[1])));
 if (!engines || Number.isNaN(min) || min < 18) {
   fail(`package.json engines.node "${engines}" harus >=18`);
+}
+
+// 4. Raw <video> hanya di ReelPlayer.jsx (custom chrome + poster konsisten;
+//    media hub + purchase page pakai ReelPlayer, bukan <video controls>).
+for (const file of walk(join(ROOT, 'app')).concat(walk(join(ROOT, 'components')))) {
+  if (file.endsWith('components/ReelPlayer.jsx')) continue;
+  if (!/\.(jsx?|mjs)$/.test(file)) continue;
+  const lines = readFileSync(file, 'utf8').split('\n');
+  lines.forEach((line, i) => {
+    if (/<video[\s>]/.test(line)) fail(`${file}:${i + 1}: raw <video> — pakai components/ReelPlayer.jsx`);
+  });
+}
+
+// 5. Validasi email terpusat di lib/validation.mjs, bukan regex inline
+//    (login, register, guest checkout, credit top-up pakai isValidEmail).
+for (const file of walk(join(ROOT, 'app')).concat(walk(join(ROOT, 'components')), walk(join(ROOT, 'lib')))) {
+  if (file.endsWith('lib/validation.mjs')) continue;
+  if (!/\.(jsx?|mjs)$/.test(file)) continue;
+  const lines = readFileSync(file, 'utf8').split('\n');
+  lines.forEach((line, i) => {
+    if (/\^?\[\\s@\]/.test(line)) fail(`${file}:${i + 1}: regex email inline — pakai isValidEmail dari lib/validation.mjs`);
+  });
+}
+
+// 6. Pager bukan anak grid — GalleryPager render sebagai sibling grid
+//    (favourites, media hub, galeri); rule `> .my-pager` menyembunyikan
+//    salah sarang, bukan memperbaikinya.
+for (const file of walk(ROOT)) {
+  if (!file.endsWith('.css')) continue;
+  const lines = readFileSync(file, 'utf8').split('\n');
+  lines.forEach((line, i) => {
+    if (/>\s*\.my-pager/.test(line)) fail(`${file}:${i + 1}: pager di dalam grid — keluarkan GalleryPager dari grid`);
+  });
 }
 
 if (failures.length > 0) {

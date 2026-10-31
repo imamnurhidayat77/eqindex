@@ -119,7 +119,6 @@ button { color: inherit; }
 .my-pager button.on { background: white; color: var(--ink); border-color: white; }
 .my-pager button:disabled { opacity: .35; cursor: default; }
 .my-pager-gap { color: #999; padding: 0 2px; }
-.event-media-grid > .my-pager, .reels-archive-grid > .my-pager, .st-media-grid > .my-pager { grid-column: 1 / -1; }
 @media (max-width: 800px) {
   .my-stats { grid-template-columns: 1fr; }
   .my-stats > div + div { border-left: 0; border-top: 1px solid #393939; }

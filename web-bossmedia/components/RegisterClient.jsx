@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { Icon } from './figma';
+import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
 import SmartImage from './SmartImage';
 
 function safeNext(v) {
@@ -52,7 +53,7 @@ function RegisterInner({ visual }) {
     setErr('');
     if (!form.name.trim()) { setErr('Tell us your name — it goes on your galleries and receipts.'); return; }
     if (!form.email.trim()) { setErr('Enter your email address.'); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) { setErr('Enter a valid email address.'); return; }
+    if (!isValidEmail(form.email)) { setErr('Enter a valid email address.'); return; }
     if (form.password.length < 8) { setErr('Password needs at least 8 characters.'); return; }
     if (form.password !== form.password2) { setErr('Passwords do not match — check and try again.'); return; }
     if (!accept) { setErr('Please accept the Terms and Privacy Policy to create your account.'); return; }
@@ -62,7 +63,7 @@ function RegisterInner({ visual }) {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: form.name.trim().slice(0, 100),
-          email: form.email.trim(),
+          email: normalizeEmail(form.email),
           password: form.password,
         }),
       });

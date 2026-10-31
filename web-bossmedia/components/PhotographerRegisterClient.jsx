@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { Icon } from './figma';
+import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
 import SearchSelect from './SearchSelect';
 import SmartImage from './SmartImage';
 
@@ -60,6 +61,7 @@ function PhotographerInner({ visual }) {
     setErr('');
     if (!account.name.trim()) { setErr('Tell us your name — it appears on your photographer profile.'); return; }
     if (!account.email.trim()) { setErr('Enter your email address.'); return; }
+    if (!isValidEmail(account.email)) { setErr('Enter a valid email address.'); return; }
     if (account.password.length < 8) { setErr('Password needs at least 8 characters.'); return; }
     if (account.password !== account.password2) { setErr('Passwords do not match — check and try again.'); return; }
     setBusy(true);
@@ -68,7 +70,7 @@ function PhotographerInner({ visual }) {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: account.name.trim().slice(0, 100),
-          email: account.email.trim(),
+          email: normalizeEmail(account.email),
           password: account.password,
           // NOTE: no photographer role here on purpose — /auth/register only
           // accepts PUBLIC/RIDER/COACH. Contributor access is granted by an
@@ -111,7 +113,7 @@ function PhotographerInner({ visual }) {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: account.name.trim().slice(0, 100) || 'Photographer applicant',
-          email: account.email.trim(),
+          email: normalizeEmail(account.email),
           subject: `Photographer application — ${(account.name.trim() || 'applicant').slice(0, 60)}`,
           entity_type: 'other',
           message: message.slice(0, 5000),

@@ -4,9 +4,9 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { removeFromCart, useCart } from '../lib/cart';
-import { buildCombinedBody, splitCartItems } from '../lib/checkout.mjs';
 import { checkoutBase, newIdempotencyKey, nzd, stripeCheckoutUrl } from '../lib/figma-data';
 import { safeError } from '../lib/errors';
+import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
 import { Icon, SiteFooter, SiteHeader } from './figma';
 import SmartImage from './SmartImage';
 import { useToast } from './Toaster';
@@ -34,19 +34,21 @@ export default function CartClient() {
       .catch(() => {});
   }, []);
 
-  const validEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
   // Guests pay with just an email; the backend validates it strictly.
   const checkoutEmail = () => {
-    const em = (email || meEmail || '').trim();
-    if (!validEmail(em)) {
+    const em = normalizeEmail(email || meEmail || '');
+    if (!isValidEmail(em)) {
       setErr(meEmail ? 'Enter your email to receive the receipt.' : 'Enter your email — no account needed. Receipt and download access go there.');
       return null;
     }
     return em;
   };
 
-  const photoItems = items.filter((it) => it.kind !== 'reel' && it.mediaId);
-  const reelItems = items.filter((it) => it.kind === 'reel');
+  // Lanes for the combined session: photos need both ids the backend
+  // requires, reels travel as opaque pre-book payloads. Half-formed rows
+  // are skipped instead of failing the whole checkout.
+  const photoItems = items.filter((it) => it.kind !== 'reel' && it.mediaId && it.tierId);
+  const reelItems = items.filter((it) => it.kind === 'reel' && it.reelPayload);
   // One button pays the whole cart: photos and pre-books go through a
   // single Stripe session (/api/checkout/combined).
   const subtotal = items.reduce((t, it) => t + Number(it.priceCents || 0), 0);
@@ -56,8 +58,8 @@ export default function CartClient() {
 
   const genKey = newIdempotencyKey;
 
-  // Buying requires an account — receipt goes to the account email,
-  // downloads live in My media. Backend enforces this too (401 otherwise).
+  // Single items go through their own endpoints; the combined session
+  // below pays for the whole cart at once.
   async function buyMedia(item) {
     const em = checkoutEmail();
     if (!em) return;
@@ -98,6 +100,10 @@ export default function CartClient() {
     const em = checkoutEmail();
     if (!em) return;
     if (!items.length || busyKey) return;
+    if (!photoItems.length && !reelItems.length) {
+      setErr('Nothing here can be checked out — remove the incomplete items and try again.');
+      return;
+    }
     setBusyKey('__all'); setErr('');
     try {
       const use_balance_cents = meEmail ? Math.min(balance, photoTotal) : 0;

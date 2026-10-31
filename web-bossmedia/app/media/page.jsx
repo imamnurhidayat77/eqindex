@@ -9,7 +9,9 @@ import { newIdempotencyKey } from '../../lib/figma-data';
 import { stripeCheckoutUrl } from '../../lib/figma-data';
 import { Icon, SiteFooter, SiteHeader } from '../../components/figma';
 import GalleryPager from '../../components/GalleryPager';
+import ReelPlayer from '../../components/ReelPlayer';
 import SearchSelect from '../../components/SearchSelect';
+import { isValidEmail, normalizeEmail } from '../../lib/validation.mjs';
 import { searchSubjects } from '../../lib/search-subjects';
 import { useAuthed } from '../../lib/use-authed';
 import { useDocumentTitle } from '../../lib/use-document-title';
@@ -138,7 +140,7 @@ export default function MediaHub() {
                         <article key={o.id} className="my-card">
                           <span className="my-image">
                             {o.preview_url && done ? (
-                              <video src={o.preview_url} controls preload="metadata" poster={o.thumb_url || undefined} style={{ background: '#000' }} />
+                              <ReelPlayer src={o.preview_url} poster={o.thumb_url || undefined} label={`${[o.product_name, o.horse_name].filter(Boolean).join(' — ') || 'Reel'} preview`} />
                             ) : o.thumb_url ? (
                               <SmartImage src={o.thumb_url} alt={`${o.horse_name || 'Reel'} preview`} fill sizes="(max-width: 768px) 50vw, 25vw" />
                             ) : (
@@ -233,10 +235,10 @@ function BuyCredits({ user }) {
   const buy = async () => {
     setErr('');
     if (!pack || !effectiveEvent || !subjectId) { setErr('Pick a pack, event and rider or horse first.'); return; }
-    if (!email.trim()) { setErr('Enter your email for delivery.'); return; }
+    if (!isValidEmail(email)) { setErr('Enter a valid email for delivery.'); return; }
     setBusy(true);
     try {
-      const body = { pack_id: pack.id, event_id: effectiveEvent, email: email.trim(), return_base: window.location.origin,
+      const body = { pack_id: pack.id, event_id: effectiveEvent, email: normalizeEmail(email), return_base: window.location.origin,
         ...(pack.scope_type === 'horse' ? { horse_id: subjectId } : { rider_id: subjectId }),
         idempotency_key: newIdempotencyKey() };
       const res = await fetch(`${API}/api/credit-orders`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
