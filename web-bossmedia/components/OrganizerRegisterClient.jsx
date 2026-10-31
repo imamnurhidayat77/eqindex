@@ -166,7 +166,7 @@ function OrganizerInner({ visual }) {
                   <input required type={show ? 'text' : 'password'} value={account.password}
                     onChange={(e) => setAccount({ ...account, password: e.target.value })}
                     placeholder="At least 8 characters" autoComplete="new-password" minLength={8} maxLength={72} />
-                  <button type="button" className="auth-show" onClick={() => setShow((v) => !v)}>
+                  <button type="button" className="auth-show" aria-pressed={show} aria-label={show ? 'Hide password' : 'Show password'} onClick={() => setShow((v) => !v)}>
                     {show ? 'Hide' : 'Show'}
                   </button>
                 </span>

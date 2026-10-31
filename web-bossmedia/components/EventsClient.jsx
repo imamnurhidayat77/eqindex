@@ -57,10 +57,10 @@ export default function EventsClient({ items, regions, years }) {
           </div>
           <div className="results-meta">
             <p role="status" aria-live="polite">{filtered.length} {filtered.length === 1 ? 'event' : 'events'}</p>
-            <div className="view-toggle" role="group" aria-label="View options">
-              <button className={view === 'grid' ? 'active' : ''} aria-label="Grid view" aria-pressed={view === 'grid'} onClick={() => setView('grid')}><Icon name="grid" /></button>
-              <button className={view === 'list' ? 'active' : ''} aria-label="List view" aria-pressed={view === 'list'} onClick={() => setView('list')}><Icon name="list" /></button>
-              <button className={view === 'calendar' ? 'active' : ''} aria-label="Calendar view" aria-pressed={view === 'calendar'} onClick={() => setView('calendar')}><Icon name="calendar" /></button>
+            <div className="view-toggle" role="group" aria-label="Change results layout">
+              <button type="button" title="Grid view" className={view === 'grid' ? 'active' : ''} aria-label="Grid view" aria-pressed={view === 'grid'} onClick={() => setView('grid')}><Icon name="grid" /></button>
+              <button type="button" title="List view" className={view === 'list' ? 'active' : ''} aria-label="List view" aria-pressed={view === 'list'} onClick={() => setView('list')}><Icon name="list" /></button>
+              <button type="button" title="Calendar view" className={view === 'calendar' ? 'active' : ''} aria-label="Calendar view" aria-pressed={view === 'calendar'} onClick={() => setView('calendar')}><Icon name="calendar" /></button>
             </div>
           </div>
           {filtered.length ? (

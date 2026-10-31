@@ -128,13 +128,13 @@ export function Pager({ total, limit, offset, onPage }) {
     else if (nums[nums.length - 1] !== '…') nums.push('…');
   }
   return (
-    <div className="st-pager">
-      <span>Page {cur + 1} of {pages} · {total} rows</span>
-      <button disabled={cur <= 0} onClick={() => onPage(Math.max(0, offset - limit))} aria-label="Previous page">‹</button>
+    <nav className="st-pager" aria-label={`Pagination, page ${cur + 1} of ${pages}`}>
+      <span role="status">Page {cur + 1} of {pages} · {total} rows</span>
+      <button type="button" disabled={cur <= 0} onClick={() => onPage(Math.max(0, offset - limit))} aria-label={`Previous page, page ${cur + 1} of ${pages}`}>‹</button>
       {nums.map((n, i) => n === '…'
         ? <span key={`e${i}`} aria-hidden="true">…</span>
-        : <button key={n} className={n === cur ? 'on' : ''} aria-current={n === cur ? 'page' : undefined} onClick={() => onPage(n * limit)}>{n + 1}</button>)}
-      <button disabled={cur >= pages - 1} onClick={() => onPage(offset + limit)} aria-label="Next page">›</button>
-    </div>
+        : <button key={n} type="button" className={n === cur ? 'on' : ''} aria-label={`Page ${n + 1}`} aria-current={n === cur ? 'page' : undefined} onClick={() => onPage(n * limit)}>{n + 1}</button>)}
+      <button type="button" disabled={cur >= pages - 1} onClick={() => onPage(offset + limit)} aria-label={`Next page, page ${cur + 1} of ${pages}`}>›</button>
+    </nav>
   );
 }

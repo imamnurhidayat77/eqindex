@@ -20,12 +20,12 @@ export default function GalleryPager({ page, pages, onPage }) {
     else if (nums[nums.length - 1] !== '…') nums.push('…');
   }
   return (
-    <nav className="my-pager" aria-label="Pagination">
-      <button type="button" disabled={page <= 1} onClick={go(page - 1)} aria-label="Previous page">← Prev</button>
+    <nav className="my-pager" aria-label={`Pagination, page ${page} of ${pages}`}>
+      <button type="button" disabled={page <= 1} onClick={go(page - 1)} aria-label={`Previous page, page ${page} of ${pages}`}>← Prev</button>
       {nums.map((n, i) => n === '…'
         ? <span key={`e${i}`} className="my-pager-gap" aria-hidden="true">…</span>
-        : <button key={n} type="button" aria-current={n === page ? 'page' : undefined} className={n === page ? 'on' : ''} onClick={go(n)}>{n}</button>)}
-      <button type="button" disabled={page >= pages} onClick={go(page + 1)} aria-label="Next page">Next →</button>
+        : <button key={n} type="button" aria-label={`Page ${n}`} aria-current={n === page ? 'page' : undefined} className={n === page ? 'on' : ''} onClick={go(n)}>{n}</button>)}
+      <button type="button" disabled={page >= pages} onClick={go(page + 1)} aria-label={`Next page, page ${page} of ${pages}`}>Next →</button>
     </nav>
   );
 }

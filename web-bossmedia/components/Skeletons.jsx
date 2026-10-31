@@ -241,14 +241,18 @@ export function MediaDetailSk() {
           </div>
           <aside className="purchase-panel">
             <Sk style={{ width: 80, height: 11, marginBottom: 15 }} />
-            {[0, 1, 2, 3, 4].map((i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '90px 1fr', gap: 15, padding: '12px 0', borderBottom: '1px solid #2a2a2a' }}>
-                <Sk style={{ width: 60, height: 12 }} />
-                <Sk style={{ height: 12, justifySelf: 'end', width: '60%' }} />
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="license-option" aria-hidden="true" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 9 }}>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <Sk style={{ width: 90, height: 13 }} />
+                  <Sk style={{ width: 150, height: 11 }} />
+                </div>
+                <Sk style={{ width: 48, height: 14 }} />
               </div>
             ))}
-            <Sk style={{ height: 58, display: 'block', marginTop: 15 }} />
-            <Sk style={{ height: 58, display: 'block', marginTop: 9 }} />
+            <div style={{ display: 'grid', gap: 9, margin: '18px 0', padding: 0 }}>
+              {[0, 1, 2].map((i) => <Sk key={i} style={{ width: `${82 - i * 9}%`, height: 12 }} />)}
+            </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', margin: '12px 0' }}>
               <Sk style={{ width: 50, height: 11 }} />
               <Sk style={{ width: 60, height: 14 }} />
@@ -320,10 +324,10 @@ export function CartSk() {
           <Sk style={{ width: 70, height: 12 }} />
         </div>
         <div className="cart-layout" style={{ marginTop: 38 }}>
-          <div className="cart-items" style={{ display: 'grid', gap: 10 }}>
+          <div className="cart-items">
             {[0, 1].map((i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '170px 1fr 90px', gap: 20, padding: 10, border: '1px solid #303030', background: '#141414' }}>
-                <Sk style={{ width: 170, height: 145, flex: 'none' }} />
+              <div key={i} className="cart-item" aria-hidden="true">
+                <Sk style={{ width: '100%', height: '100%', minHeight: 112, flex: 'none' }} />
                 <div>
                   <Sk style={{ width: 90, height: 11, marginBottom: 8 }} />
                   <Sk style={{ width: '70%', height: 20, marginBottom: 8 }} />

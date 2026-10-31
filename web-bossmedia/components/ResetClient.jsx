@@ -67,7 +67,7 @@ function ResetInner({ visual }) {
                     <input required type={show ? 'text' : 'password'} value={form.password}
                       onChange={(e) => setForm({ ...form, password: e.target.value })}
                       placeholder="••••••••" autoComplete="new-password" />
-                    <button type="button" className="auth-show" onClick={() => setShow((v) => !v)}>
+                    <button type="button" className="auth-show" aria-pressed={show} aria-label={show ? 'Hide password' : 'Show password'} onClick={() => setShow((v) => !v)}>
                       {show ? 'Hide' : 'Show'}
                     </button>
                   </span>

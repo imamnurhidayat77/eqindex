@@ -880,10 +880,10 @@ button.text-link { min-height: 44px; }
   .mobile-menu nav a { display: grid; grid-template-columns: 35px 1fr auto; align-items: center; border-top: 1px solid #3b3b3b; padding: 21px 0; font-size: 23px; letter-spacing: -.035em; }
   .mobile-menu nav a span { color: #777; font-size: 10px; }
   .mobile-menu nav a[aria-current='page'] { color: white; background: #181818; }
-  .hero { height: 100vh; height: 100svh; min-height: 720px; align-items: flex-end; padding-top: 46px; padding-bottom: 38px; }
+  .hero { height: auto; height: 92svh; min-height: 560px; max-height: 860px; align-items: flex-end; padding-top: 46px; padding-bottom: 38px; }
   .hero::before { background: linear-gradient(0deg, rgba(0,0,0,.9) 0%, rgba(0,0,0,.55) 51%, rgba(0,0,0,.32) 100%), linear-gradient(180deg, rgba(0,0,0,.55) 0%, transparent 25%); }
   .hero-copy { width: 100%; padding: 0 0 12px; transform: none; }
-  .hero h1 { font-size: 50px; line-height: 1; margin: 0 0 20px; white-space: normal; }
+  .hero h1 { font-size: clamp(40px, 11.5vw, 50px); line-height: 1; margin: 0 0 20px; white-space: normal; }
   .hero h1 .hero-lead { font-size: .68em; line-height: 1.08; }
   .hero h1 .hero-emphasis { margin-top: .25em; }
   .hero-intro { font-size: 15px; }
@@ -961,7 +961,7 @@ button.text-link { min-height: 44px; }
   .cart-item > img { width: 100px; height: 112px; }
   .cart-item > strong { grid-column: 2; padding: 0; justify-self: start; }
   .cart-item h2 { font-size: 17px; }
-  .cart-item > div > span { display: none; }
+  .cart-item > div > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: #999; font-size: 11px; line-height: 1.5; margin-top: 2px; }
   .cart-item-actions { margin-top: 12px; }
   .cart-empty > div { flex-direction: column; }
   .login-page { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
@@ -1057,7 +1057,15 @@ button.license-option { width: 100%; padding: 13px; background: transparent; cur
 .event-image .cover-fallback { display: grid; place-items: center; width: 100%; height: 100%; background: linear-gradient(135deg, #2a2a2a, #101010); color: #999; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .gallery-page .event-results.grid .cover-fallback { aspect-ratio: 4 / 3; }
 .login-visual img { filter: grayscale(100%) brightness(.7); }
-.empty-note { color: #888; font-size: 13px; }
+.empty-note { color: #888; font-size: 13px; margin: 0; padding: 18px 20px; border: 1px dashed #2c2c2c; background: #101010; line-height: 1.6; }
+.empty-note + .empty-note { margin-top: 0; }
+.st-card > .empty-note { margin-top: 14px; }
+/* Screen-reader controls: visible focus for pager, layout toggle, show-password. */
+.my-pager button:focus-visible, .st-pager button:focus-visible,
+.view-toggle button:focus-visible, .auth-show:focus-visible {
+  outline: 2px solid #fff; outline-offset: 2px;
+}
+.view-toggle button { border-radius: 2px; }
 
 /* Login: kunci pas viewport, tanpa scroll body */
 @media (max-height: 800px) {

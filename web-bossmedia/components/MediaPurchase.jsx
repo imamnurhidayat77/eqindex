@@ -320,20 +320,22 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                 )}
                 {tiers.length <= 1 ? (
                   tier && (
-                    <div className="license-option selected" aria-current="true">
+                    <div className="license-option selected">
                       <div><strong>{tier.label}</strong><span>{tier.description || licenseSubline(tier)}</span></div>
                       <b>{nzd(tier.price_cents)}</b>
                     </div>
                   )
                 ) : (
-                  tiers.map((t) => (
-                    <button type="button" key={t.id} onClick={() => { setTierId(t.id); setAdded(false); }}
+                  <div role="radiogroup" aria-label="Choose your license">
+                  {tiers.map((t) => (
+                    <button type="button" key={t.id} role="radio" onClick={() => { setTierId(t.id); setAdded(false); }}
                       className={`license-option${String(t.id) === String(tierId) ? ' selected' : ''}`}
-                      aria-pressed={String(t.id) === String(tierId)}>
+                      aria-checked={String(t.id) === String(tierId)}>
                       <div><strong>{t.label}</strong><span>{t.description || licenseSubline(t)}</span></div>
                       <b>{nzd(t.price_cents)}</b>
                     </button>
-                  ))
+                  ))}
+                  </div>
                 )}
             <ul>
               <li>{tier && (tier.printable || String(tier.max_resolution || '').toLowerCase().includes('original')) ? 'Watermark-free file — print-ready' : 'Watermark-free file for screen & sharing'}</li>
