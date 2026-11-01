@@ -12,7 +12,7 @@ jobs:
     defaults: { run: { working-directory: api } }
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22, cache: npm, cache-dependency-path: api/package-lock.json }
       - run: npm ci
       - run: node --test src/lib/wallet.test.mjs src/lib/seriesKeys.test.mjs src/lib/evoevents.test.mjs src/scoring/calc.test.mjs src/lib/totp.test.mjs
@@ -22,7 +22,7 @@ jobs:
       matrix: { dir: [web-bossmedia, web] }
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22, cache: npm, cache-dependency-path: '${{ matrix.dir }}/package-lock.json' }
       - run: npm ci
         working-directory: ${{ matrix.dir }}
@@ -31,7 +31,7 @@ jobs:
     defaults: { run: { working-directory: web-bossmedia } }
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22, cache: npm, cache-dependency-path: web-bossmedia/package-lock.json }
       - run: npm ci
       - run: npm run lint
