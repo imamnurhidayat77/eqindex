@@ -55,6 +55,7 @@ const NAV = [
   ['/events', 'Event galleries', 'events'],
   ['/pre-book', 'Pre-book', 'pre-book'],
   ['/reels', 'Reels', 'reels'],
+  ['/watchlist', 'Watchlist', 'watchlist'],
 ];
 
 export function SiteHeader({ transparent = false }) {
@@ -69,7 +70,8 @@ export function SiteHeader({ transparent = false }) {
   const organizer = !!me && (me.role === 'ORGANIZER' || me.role === 'ADMIN');
   const active = pathname.startsWith('/events') ? 'events'
     : pathname === '/pre-book' ? 'pre-book'
-    : pathname === '/reels' ? 'reels' : null;
+    : pathname === '/reels' ? 'reels'
+    : pathname === '/watchlist' ? 'watchlist' : null;
 
   useEffect(() => { setCount(cartCount()); return onCartChange(() => setCount(cartCount())); }, [pathname]);
   const [favs, setFavs] = useState(0);
@@ -156,7 +158,6 @@ export function SiteHeader({ transparent = false }) {
                     {organizer && <Link href="/organizer" role="menuitem" onClick={() => setAcctOpen(false)}>My events</Link>}
                     <Link href="/account" role="menuitem" onClick={() => setAcctOpen(false)}>My account</Link>
                     <Link href="/media" role="menuitem" onClick={() => setAcctOpen(false)}>My media</Link>
-                    <Link href="/watchlist" role="menuitem" onClick={() => setAcctOpen(false)}>Watchlist</Link>
                     <button type="button" role="menuitem" className="acct-signout" onClick={signOut}>Sign out</button>
                   </div>
                 </>
@@ -182,7 +183,7 @@ export function SiteHeader({ transparent = false }) {
             {[...NAV.map(([href, label]) => ({ href, label })),
               ...(studio ? [{ href: '/studio', label: `My Studio · ${(me?.name || '').split(' ')[0] || 'photo'}` }] : []),
               ...(organizer ? [{ href: '/organizer', label: 'My events' }] : []),
-              ...(me ? [{ href: '/account', label: 'My account' }, { href: '/media', label: 'My media' }, { href: '/watchlist', label: 'Watchlist' }] : [{ href: '/login', label: 'Sign in' }]),
+              ...(me ? [{ href: '/account', label: 'My account' }, { href: '/media', label: 'My media' }] : [{ href: '/login', label: 'Sign in' }]),
               { href: '/cart', label: 'Cart' },
             ].map((l, i) => (
               <Link key={l.href} href={l.href} onClick={() => setMenuOpen(false)}>
