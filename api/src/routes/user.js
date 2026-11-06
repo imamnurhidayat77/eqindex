@@ -320,7 +320,7 @@ module.exports = function mountUserRoutes(app) {
     if (!s.rows.length) return res.status(404).json({ error: 'no active sponsor profile — awaiting admin approval' });
     const sponsor = s.rows[0];
     const budgets = await pool.query(
-      `SELECT b.id, b.agreed_cents, b.spent_cents, b.status, b.created_at,
+      `SELECT b.id, b.agreed_cents, b.spent_cents, b.discount_cents, b.status, b.created_at,
         e.name AS event_name
        FROM sponsor_budgets b LEFT JOIN events e ON e.id = b.event_id
        WHERE b.sponsor_id = $1 ORDER BY b.created_at DESC LIMIT 50`, [sponsor.id]);
