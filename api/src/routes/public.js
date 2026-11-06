@@ -65,13 +65,27 @@ module.exports = function mountPublicRoutes(app) {
     res.json({ ok: true });
   }));
 
-  // ---- Sponsor logos for the buy box (Option 1): active logos only,
-  // no spend/budget internals. Public so guests can preview the option.
+  // ---- Sponsor logos for the buy box: only logos whose sponsor funds a
+  // real discount (same rule the checkout applies). A sponsor that never
+  // set a discount stays invisible to buyers — no free exposure, no
+  // surprise discount from a half-configured budget. Public so guests can
+  // preview the option. ?event_id scopes to that event (any-event budgets
+  // always qualify); without it, any qualifying budget counts.
   app.get('/api/sponsor-logos', asyncH(async (req, res) => {
+    const raw = String(req.query.event_id || '');
+    const eid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw : null;
     const { rows } = await pool.query(
       `SELECT l.id, l.label, s.name AS sponsor_name
        FROM sponsor_logos l JOIN sponsors s ON s.id = l.sponsor_id
-       WHERE l.is_active AND s.is_active ORDER BY s.name, l.label LIMIT 100`);
+       WHERE l.is_active AND s.is_active
+         AND EXISTS (
+           SELECT 1 FROM sponsor_budgets b
+           WHERE b.sponsor_id = s.id AND b.status = 'active' AND b.discount_cents > 0
+             AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
+             AND ($1::UUID IS NULL OR b.event_id IS NULL OR b.event_id = $1)
+         )
+       ORDER BY s.name, l.label LIMIT 100`,
+      [eid]);
     res.json({ data: rows });
   }));
 

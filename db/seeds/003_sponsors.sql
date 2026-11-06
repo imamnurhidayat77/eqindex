@@ -14,10 +14,11 @@ ON CONFLICT (id) DO NOTHING;
 -- NOTE: no logo row here on purpose — logos need real bytes in R2.
 -- Upload api/test-fixtures/sponsor-logo.png via POST /sponsor/logos.
 -- Budget against the seed event from 001_dummy.sql when present
--- (50000 cents = NZ$500, NZ$20 off per redemption for Option 2 dev
--- testing), else an any-event budget — never fail a fresh database.
+-- (50000 cents = NZ$500), else an any-event budget — never fail a fresh
+-- database. discount starts at 0 on purpose: the sponsor sets it via the
+-- dashboard, and buyers only see logos of sponsors funding a discount.
 INSERT INTO sponsor_budgets (id, sponsor_id, event_id, agreed_cents, spent_cents, status, discount_cents)
 SELECT 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '99999999-9999-9999-9999-999999999999',
   (SELECT id FROM events WHERE id = '44444444-4444-4444-4444-444444444444'),
-  50000, 0, 'active', 2000
+  50000, 0, 'active', 0
 ON CONFLICT (id) DO NOTHING;

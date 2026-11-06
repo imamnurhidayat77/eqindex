@@ -209,13 +209,15 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
         .then((j) => { if ((j.data || []).length) setCreditPack(j.data[0]); })
         .catch(() => {});
     }
-    // Sponsor logos for Option 1 (single photos only — baked at download).
+    // Sponsor logos (single photos only — baked at download). Scoped to the
+    // photo's event like the discounts below, so a shown logo always funds
+    // this photo's discount; the server hides the rest.
     if (!isReel) {
-      fetch(`${API}/api/sponsor-logos`)
+      const dq = media.event_id ? `?event_id=${media.event_id}` : '';
+      fetch(`${API}/api/sponsor-logos${dq}`)
         .then((r) => r.json())
         .then((j) => setLogos(j?.data || []))
         .catch(() => {});
-      const dq = media.event_id ? `?event_id=${media.event_id}` : '';
       fetch(`${API}/api/sponsor-discounts${dq}`)
         .then((r) => r.json())
         .then((j) => setDiscounts(j?.data || []))
