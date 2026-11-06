@@ -2397,6 +2397,53 @@ module.exports = function mountMediaRoutes(app) {
       );
     }
     if (!logoBuy.rows.length) {
+      // Credit unlock carrying sponsor logos: same baked variant as a paid
+      // logo purchase (free — no discount involved). Cached per unlock so
+      // re-downloads don't re-bake; re-picking the design clears the key.
+      const cr = await pool.query(
+        `SELECT cr.bundle_id, cr.sponsor_logo_ids, cr.logo_template, cr.logo_theme, cr.logo_variant,
+                cr.logo_positions, cr.logo_variant_key
+           FROM credit_redemptions cr JOIN credit_bundles cb ON cb.id = cr.bundle_id
+           JOIN purchases pu ON pu.id = cb.purchase_id
+          WHERE pu.status = 'paid' AND pu.buyer_user_id = $2 AND cr.media_id = $1
+            AND cr.sponsor_logo_ids IS NOT NULL AND cardinality(cr.sponsor_logo_ids) > 0
+          ORDER BY cr.created_at DESC LIMIT 1`,
+        [req.params.id, req.authUser.id]
+      ).catch(() => ({ rows: [] }));
+      if (cr.rows.length) {
+        const c = cr.rows[0];
+        let key = c.logo_variant_key;
+        if (!key) {
+          const act = await pool.query(
+            `SELECT s.id, s.r2_key FROM sponsor_logos s WHERE s.id = ANY($1::UUID[]) AND s.is_active`,
+            [c.sponsor_logo_ids]
+          ).catch(() => ({ rows: [] }));
+          const pos = c.logo_positions || {};
+          const links = (c.sponsor_logo_ids || []).map((id) => {
+            const f = act.rows.find((r) => String(r.id) === String(id));
+            return f ? { r2_key: f.r2_key, position: pos[String(id)] || 'bottom-left' } : null;
+          }).filter(Boolean);
+          if (links.length) {
+            const variantKey = `logos/credit-${c.bundle_id}-${req.params.id}.jpg`;
+            const baked = await bakeDesignedVariant({
+              mediaId: req.params.id, storageKey: m.rows[0].storage_key,
+              logoVariant: c.logo_variant, logoTemplate: c.logo_template, logoTheme: c.logo_theme,
+              links, variantKey,
+            });
+            key = baked.key;
+            if (baked.fresh) {
+              await pool.query(
+                `UPDATE credit_redemptions SET logo_variant_key = $3 WHERE bundle_id = $1 AND media_id = $2`,
+                [c.bundle_id, req.params.id, key]).catch(() => {});
+              audit(req, 'media.logo_bake', 'media', req.params.id, { credit_bundle_id: c.bundle_id, logos: baked.logos, template: baked.template, theme: baked.theme });
+            }
+          }
+        }
+        if (key) {
+          res.redirect(303, await mediaStore.signedDownloadUrl(key, 900, dlName));
+          return;
+        }
+      }
       res.redirect(303, await mediaStore.signedDownloadUrl(m.rows[0].storage_key, 900, dlName));
       return;
     }
@@ -2594,19 +2641,12 @@ module.exports = function mountMediaRoutes(app) {
     }
   }
 
-  // Bake (once, cached as purchases.logo_variant_key) the buyer-chosen
-  // sponsor layout for a logo purchase. Returns the R2 key to serve:
-  // the baked variant, or the original when there is nothing to bake
-  // (no logo files readable). Shared by download + My media.
-  async function ensureDesignedVariant({ purchaseId, mediaId, storageKey, logoVariant, logoTemplate, logoTheme, logoVariantKey }) {
-    if (!storageKey) return null;
-    if (logoVariantKey) return { key: logoVariantKey, fresh: false };
-    const links = await pool.query(
-      `SELECT s.r2_key, l.position FROM purchase_sponsor_logos l
-       JOIN sponsor_logos s ON s.id = l.sponsor_logo_id
-       WHERE l.purchase_id = $1 AND s.is_active ORDER BY l.position`,
-      [purchaseId]
-    );
+  // Core logo bake shared by paid purchases and credit unlocks.
+  // links: [{ r2_key, position }] in bake order. Renders, stores at
+  // variantKey, returns the key — persistence is the caller's job.
+  // Returns the original storage key when there is nothing to bake
+  // (no logo files readable).
+  async function bakeDesignedVariant({ mediaId, storageKey, logoVariant, logoTemplate, logoTheme, links, variantKey }) {
     const readKey = async (key) => {
       const { stream } = await mediaStore.getStream(key);
       const chunks = [];
@@ -2614,7 +2654,7 @@ module.exports = function mountMediaRoutes(app) {
       return Buffer.concat(chunks);
     };
     const logoBufs = [];
-    for (const l of links.rows) {
+    for (const l of links) {
       try {
         logoBufs.push(await readKey(l.r2_key));
       } catch {
@@ -2632,16 +2672,30 @@ module.exports = function mountMediaRoutes(app) {
     const baked = exactVariant
       ? await require('../lib/logoBake').bakeVariant({
           photoBuf: await readKey(storageKey), logoBufs, variant: exactVariant,
-          positions: links.rows.map((l) => l.position), ctx: bakeCtx, theme,
+          positions: links.map((l) => l.position), ctx: bakeCtx, theme,
         })
       : await bakeLogoTemplate(
           await readKey(storageKey), logoBufs, template,
-          links.rows.map((l) => l.position), bakeCtx, theme
+          links.map((l) => l.position), bakeCtx, theme
         );
-    const variantKey = `logos/${purchaseId}.jpg`;
     await mediaStore.putBuffer(variantKey, baked, 'image/jpeg');
-    await pool.query('UPDATE purchases SET logo_variant_key = $2 WHERE id = $1', [purchaseId, variantKey]);
     return { key: variantKey, fresh: true, logos: logoBufs.length, template, theme };
+  }
+  async function ensureDesignedVariant({ purchaseId, mediaId, storageKey, logoVariant, logoTemplate, logoTheme, logoVariantKey }) {
+    if (!storageKey) return null;
+    if (logoVariantKey) return { key: logoVariantKey, fresh: false };
+    const links = await pool.query(
+      `SELECT s.r2_key, l.position FROM purchase_sponsor_logos l
+       JOIN sponsor_logos s ON s.id = l.sponsor_logo_id
+       WHERE l.purchase_id = $1 AND s.is_active ORDER BY l.position`,
+      [purchaseId]
+    );
+    const out = await bakeDesignedVariant({
+      mediaId, storageKey, logoVariant, logoTemplate, logoTheme,
+      links: links.rows, variantKey: `logos/${purchaseId}.jpg`,
+    });
+    if (out.fresh) await pool.query('UPDATE purchases SET logo_variant_key = $2 WHERE id = $1', [purchaseId, out.key]);
+    return out;
   }
 
   // Option 3 decision: only the photo's own photographer (or ADMIN) may
@@ -4140,7 +4194,7 @@ module.exports = function mountMediaRoutes(app) {
   app.post('/api/credits/unlock', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
     if (await throttled(pool, req.ip, 'credit-unlock')) return res.status(429).json({ error: 'too many requests, try again later' });
-    const { media_id } = req.body || {};
+    const { media_id, sponsor_logo_ids } = req.body || {};
     if (!media_id || !UUID_RE.test(String(media_id))) return res.status(400).json({ error: 'need {media_id}' });
     const m = await pool.query(
       `SELECT id, kind, status, event_id, horse_id, rider_id FROM media WHERE id = $1`, [String(media_id)]);
@@ -4151,13 +4205,51 @@ module.exports = function mountMediaRoutes(app) {
     if (!media.event_id || (!media.horse_id && !media.rider_id)) {
       return res.status(409).json({ error: 'photo has no event/subject scope for credits' });
     }
+    // Sponsor logos, same picker as paid checkout — but free: no per-photo
+    // money moves on a credit unlock, so no sponsor discount or billing.
+    let logoIds = [], logoTemplate = 'corner', logoTheme = 'light', logoVariant = null, logoPositions = {};
+    const wantLogos = sponsor_logo_ids !== undefined && sponsor_logo_ids !== null &&
+      (Array.isArray(sponsor_logo_ids) ? sponsor_logo_ids.length > 0 : String(sponsor_logo_ids).trim() !== '');
+    if (wantLogos) {
+      try {
+        logoIds = await resolveLogoIds(sponsor_logo_ids);
+      } catch (e) { return res.status(e.status || 400).json({ error: e.message }); }
+      const LOGO_TEMPLATES = ['corner', 'banner', 'top', 'minimal', 'winner', 'bottombar'];
+      if (req.body?.sponsor_logo_template !== undefined && req.body?.sponsor_logo_template !== null) {
+        logoTemplate = String(req.body.sponsor_logo_template).toLowerCase();
+        if (!LOGO_TEMPLATES.includes(logoTemplate)) return res.status(400).json({ error: 'sponsor_logo_template must be corner|banner|top|minimal|winner|bottombar' });
+      }
+      if (req.body?.sponsor_logo_theme !== undefined && req.body?.sponsor_logo_theme !== null) {
+        logoTheme = String(req.body.sponsor_logo_theme).toLowerCase();
+        if (!['light', 'dark'].includes(logoTheme)) return res.status(400).json({ error: 'sponsor_logo_theme must be light|dark' });
+      }
+      const { isVariant: isLogoVariant, templateOf: variantTemplateOf } = require('../lib/logoBake');
+      if (req.body?.sponsor_logo_variant !== undefined && req.body?.sponsor_logo_variant !== null) {
+        logoVariant = String(req.body.sponsor_logo_variant).toLowerCase();
+        if (!isLogoVariant(logoVariant)) return res.status(400).json({ error: 'unknown sponsor_logo_variant' });
+        if (variantTemplateOf(logoVariant) !== logoTemplate) return res.status(400).json({ error: 'sponsor_logo_variant does not match sponsor_logo_template' });
+      }
+      logoPositions = resolveLogoPositions(req.body?.sponsor_logo_positions, logoIds);
+    }
     const dupe = await pool.query(
-      `SELECT 1 FROM credit_redemptions cr JOIN credit_bundles cb ON cb.id = cr.bundle_id
+      `SELECT cr.bundle_id FROM credit_redemptions cr JOIN credit_bundles cb ON cb.id = cr.bundle_id
         JOIN purchases pu ON pu.id = cb.purchase_id
         WHERE pu.status = 'paid' AND pu.buyer_user_id = $2 AND cr.media_id = $1 LIMIT 1`,
       [media.id, req.authUser.id]
     );
-    if (dupe.rows.length) return res.status(200).json({ data: { unlocked: true, reused: true } });
+    if (dupe.rows.length) {
+      // Re-picking the design on an owned unlock is free (no extra slot);
+      // clearing logo_variant_key makes the next download re-bake.
+      if (logoIds.length) {
+        await pool.query(
+          `UPDATE credit_redemptions SET sponsor_logo_ids = $3::UUID[], logo_template = $4, logo_theme = $5,
+             logo_variant = $6, logo_positions = $7::jsonb, logo_variant_key = NULL
+           WHERE bundle_id = $1 AND media_id = $2`,
+          [dupe.rows[0].bundle_id, media.id, logoIds, logoTemplate, logoTheme, logoVariant, JSON.stringify(logoPositions)]);
+        return res.status(200).json({ data: { unlocked: true, reused: true, redesigned: true, logo_ids: logoIds } });
+      }
+      return res.status(200).json({ data: { unlocked: true, reused: true } });
+    }
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -4189,7 +4281,12 @@ module.exports = function mountMediaRoutes(app) {
       }
       try {
         await client.query(
-          'INSERT INTO credit_redemptions (bundle_id, media_id) VALUES ($1, $2)', [bundle.id, media.id]);
+          `INSERT INTO credit_redemptions (bundle_id, media_id, sponsor_logo_ids, logo_template, logo_theme, logo_variant, logo_positions)
+           VALUES ($1, $2, $3::UUID[], $4, $5, $6, $7::jsonb)`,
+          [bundle.id, media.id,
+           logoIds.length ? logoIds : null, logoIds.length ? logoTemplate : null,
+           logoIds.length ? logoTheme : null, logoIds.length ? logoVariant : null,
+           logoIds.length ? JSON.stringify(logoPositions) : null]);
       } catch (e) {
         await client.query('ROLLBACK');
         if (e.code === '23505') return res.status(200).json({ data: { unlocked: true, reused: true } });
@@ -4201,7 +4298,7 @@ module.exports = function mountMediaRoutes(app) {
         [bundle.id]
       )).rows[0].n;
       res.status(201).json({
-        data: { unlocked: true, bundle_id: bundle.id, slots_left: Number(bundle.slots_total) - Number(usedAfter) },
+        data: { unlocked: true, bundle_id: bundle.id, slots_left: Number(bundle.slots_total) - Number(usedAfter), logo_ids: logoIds },
       });
     } catch (e) {
       try { await client.query('ROLLBACK'); } catch { /* already closed */ }

@@ -306,9 +306,11 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
     if (unlocking) return;
     setUnlocking(true); setErr('');
     try {
+      // Same logo params as paid checkout (sponsor_logo_*): a credit unlock
+      // bakes the picked design but pays no money, so no sponsor discount.
       const res = await fetch(`${API}/api/credits/unlock`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ media_id: media.id }),
+        body: JSON.stringify({ media_id: media.id, ...(logoIds.length && !isReel ? { sponsor_logo_ids: logoIds, sponsor_logo_positions: Object.fromEntries(logoIds.map((id, i) => [id, posOf(id, i)])), sponsor_logo_template: templateOf(logoTemplate), sponsor_logo_variant: logoTemplate, sponsor_logo_theme: logoTheme } : {}) }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'Unlock failed — try again.');
