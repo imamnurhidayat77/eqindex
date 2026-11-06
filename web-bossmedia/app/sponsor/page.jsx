@@ -87,17 +87,32 @@ export default function SponsorHub() {
   const [logoFile, setLogoFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [note, setNote] = useState('');
+  const [noteTone, setNoteTone] = useState('info'); // info | err
   const [discounts, setDiscounts] = useState({});
   const [saving, setSaving] = useState(null);
+  const [savedFlash, setSavedFlash] = useState(null);
   const [freshLogo, setFreshLogo] = useState(null);
   const [confirmUI, dialog] = useConfirm();
+  function flash(text, tone = 'info') {
+    setNote(text);
+    setNoteTone(tone);
+  }
 
+  // Server cents → exact dollar string (1000 → "10", 1050 → "10.5").
+  const currentDollars = (b) => String(Number(((Number(b.discount_cents) || 0) / 100).toFixed(2)));
   const reload = () => {
     cachedJson('/sponsor/overview').then((j) => {
       setData(j?.data || null);
-      const d = {};
-      for (const b of j?.data?.budgets || []) d[b.id] = (Number(b.discount_cents) / 100).toFixed(0);
-      setDiscounts(d);
+      // Prefill rows without an unsaved draft, so the input always shows
+      // the live value — never a misleading blank — and drafts survive
+      // refetches instead of being clobbered.
+      setDiscounts((prev) => {
+        const d = { ...prev };
+        for (const b of j?.data?.budgets || []) {
+          if (d[b.id] === undefined) d[b.id] = String(Number(((Number(b.discount_cents) || 0) / 100).toFixed(2)));
+        }
+        return d;
+      });
     }).catch((e) => setErr(safeError(e)));
     cachedJson('/sponsor/redemptions').then((j) => setCoverage(j?.data || [])).catch(() => setCoverage([]));
   };
@@ -109,8 +124,8 @@ export default function SponsorHub() {
 
   async function uploadLogo() {
     setNote('');
-    if (!logoLabel.trim()) { setNote('Give the logo a name first.'); return; }
-    if (!logoFile) { setNote('Choose a PNG or JPEG file (max 2MB).'); return; }
+    if (!logoLabel.trim()) { flash('Give the logo a name first.', 'err'); return; }
+    if (!logoFile) { flash('Choose a PNG or JPEG file (max 2MB).', 'err'); return; }
     setUploading(true);
     try {
       const fd = new FormData();
@@ -123,9 +138,9 @@ export default function SponsorHub() {
       setFreshLogo(j.data?.id || null);
       setLogoLabel('');
       setLogoFile(null);
-      setNote('Logo uploaded — it now appears in buyer checkouts.');
+      flash('Logo uploaded — it now appears in buyer checkouts.');
       reload();
-    } catch (e2) { setNote(safeError(e2)); } finally { setUploading(false); }
+    } catch (e2) { flash(safeError(e2), 'err'); } finally { setUploading(false); }
   }
 
   async function removeLogo(l) {
@@ -141,14 +156,14 @@ export default function SponsorHub() {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'Couldn’t remove — try again.');
       bustCache('/sponsor/overview');
-      setNote('Logo removed from checkouts.');
+      flash('Logo removed from checkouts.');
       reload();
-    } catch (e2) { setNote(safeError(e2)); }
+    } catch (e2) { flash(safeError(e2), 'err'); }
   }
 
   async function saveDiscount(id) {
     const cents = dollarsToCents(discounts[id]);
-    if (!Number.isFinite(cents) || cents < 0) { setNote('Discount must be NZ$0 or more.'); return; }
+    if (!Number.isFinite(cents) || cents < 0) { flash('Discount must be NZ$0 or more.', 'err'); return; }
     setSaving(id);
     try {
       const res = await fetch(`${API}/sponsor/budgets/${id}`, {
@@ -158,9 +173,17 @@ export default function SponsorHub() {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'Couldn’t save — try again.');
       bustCache('/sponsor/overview');
-      setNote(`Discount set to ${nzd(cents)} per photo.`);
+      // Drop the draft so the input falls back to the fresh server value,
+      // and confirm inline where the edit happened.
+      setDiscounts((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      setSavedFlash(id);
+      setTimeout(() => setSavedFlash((cur) => (cur === id ? null : cur)), 3000);
       reload();
-    } catch (e2) { setNote(safeError(e2)); } finally { setSaving(null); }
+    } catch (e2) { flash(safeError(e2), 'err'); } finally { setSaving(null); }
   }
 
   const agreed = (data?.budgets || []).reduce((s, b) => s + Number(b.agreed_cents), 0);
@@ -195,8 +218,12 @@ export default function SponsorHub() {
             </div>
           ) : (
             <>
-              <p className="empty-note">Kia ora, {data.sponsor.name} — budgets, logos and coverage live here.</p>
-              {note && <p className="empty-note" role="status">{note}</p>}
+              <p style={{ color: '#888', fontSize: 13, margin: '18px 0 4px' }}>Kia ora, {data.sponsor.name} — budgets, logos and coverage live here.</p>
+              {note && <p role="status" style={{
+                margin: '12px 0 0', padding: '10px 14px', fontSize: 13, lineHeight: 1.5,
+                color: noteTone === 'err' ? '#f0a3a3' : '#ccc', background: '#141414',
+                borderLeft: `2px solid ${noteTone === 'err' ? '#e05c5c' : '#555'}`,
+              }}>{note}</p>}
               <div className="media-tabs-dark" role="group" aria-label="Sponsor sections">
                 {TABS.map(([k, label]) => (
                   <button key={k} type="button" aria-pressed={tab === k}
@@ -227,15 +254,24 @@ export default function SponsorHub() {
 
               {tab === 'budgets' && (
                 <>
+                  <div className="my-stats" aria-label="Budget summary">
+                    <div><span>Agreed</span><strong>{nzd(agreed)}</strong></div>
+                    <div><span>Spent</span><strong>{nzd(spent)}</strong></div>
+                    <div><span>Left</span><strong>{nzd(agreed - spent)}</strong></div>
+                  </div>
                   <h2>Event budgets &amp; discounts</h2>
-                  <p className="empty-note">Set how much each rider saves per photo — the photographer is still paid in full.</p>
+                  <p style={{ color: '#888', fontSize: 13, margin: '8px 0 16px' }}>Set how much each rider saves per photo — the photographer is still paid in full.</p>
                   {!data.budgets.length ? (
                     <p className="empty-note">No budgets yet — contact us to fund your first event.</p>
                   ) : (
                     <div className="table-scroll"><table className="st-table">
                       <thead><tr><th>Event</th><th>Agreed</th><th>Spent</th><th>Left</th><th>Discount / photo</th><th>Status</th></tr></thead>
                       <tbody>
-                        {data.budgets.map((b) => (
+                        {data.budgets.map((b) => {
+                          const live = currentDollars(b);
+                          const draft = discounts[b.id] ?? live;
+                          const dirty = draft !== live;
+                          return (
                           <tr key={b.id}>
                             <td>{b.event_name || 'Any event'}</td>
                             <td>{nzd(b.agreed_cents)}</td>
@@ -243,18 +279,22 @@ export default function SponsorHub() {
                             <td>{nzd(b.agreed_cents - b.spent_cents)}</td>
                             <td>
                               <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-                                NZ$
-                                <input type="number" min="0" step="1" value={discounts[b.id] ?? ''}
-                                  onChange={(e) => setDiscounts({ ...discounts, [b.id]: e.target.value })}
-                                  style={{ width: 72 }} aria-label={`Discount per photo for ${b.event_name || 'any event'}`} />
-                            <button type="button" className="st-btn-ghost" disabled={saving === b.id} onClick={() => saveDiscount(b.id)}>
-                              {saving === b.id ? 'Saving…' : 'Save'}
+                                <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', color: '#999', fontSize: 12 }}>
+                                  NZ$
+                                  <input type="text" inputMode="decimal" autoComplete="off" value={draft}
+                                    onChange={(e) => setDiscounts({ ...discounts, [b.id]: e.target.value })}
+                                    style={{ width: 88, background: '#0b0b0b', border: '1px solid #333', color: '#fff', padding: '8px 10px', fontSize: 13, borderRadius: 4 }}
+                                    aria-label={`Discount per photo for ${b.event_name || 'any event'}`} />
+                                </label>
+                            <button type="button" className="st-btn-ghost" disabled={saving === b.id || !dirty} onClick={() => saveDiscount(b.id)}>
+                              {savedFlash === b.id ? 'Saved ✓' : saving === b.id ? 'Saving…' : 'Save'}
                             </button>
                               </span>
                             </td>
-                            <td>{b.status}</td>
+                            <td><span className={`my-pill${b.status === 'active' ? ' my-pill-live' : ''}`}>{b.status}</span></td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table></div>
                   )}

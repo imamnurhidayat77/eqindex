@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { API } from '../lib/api';
 import { removeFromCart, useCart } from '../lib/cart';
 import { checkoutBase, newIdempotencyKey, nzd, stripeCheckoutUrl } from '../lib/figma-data';
@@ -25,6 +25,8 @@ export default function CartClient() {
   // Guests check out with just an email (no account needed) — it doubles as
   // the receipt address and the key to claim downloads later.
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState(false);
+  const emailRef = useRef(null);
   useEffect(() => {
     if (meEmail && !email) setEmail(meEmail);
   }, [meEmail, email]);
@@ -68,12 +70,17 @@ export default function CartClient() {
   const lineTotal = (item) => Math.max(0, (Number(item.priceCents) || 0) - (discForItem(item)?.cents || 0));
 
   // Guests pay with just an email; the backend validates it strictly.
+  // On failure the email field is flagged, focused, and announced —
+  // a grey note below the fold is not enough at the money moment.
   const checkoutEmail = () => {
     const em = normalizeEmail(email || meEmail || '');
     if (!isValidEmail(em)) {
-      setErr(meEmail ? 'Enter your email to receive the receipt.' : 'Enter your email — no account needed. Receipt and download access go there.');
+      setErr(meEmail ? 'Enter your email to receive the receipt.' : 'Enter your email to continue — receipts and downloads go there, no account needed.');
+      setEmailError(true);
+      emailRef.current?.focus();
       return null;
     }
+    setEmailError(false);
     return em;
   };
 
@@ -233,15 +240,16 @@ export default function CartClient() {
               {hasDiscount && <p style={{ margin: '10px 0 0', color: '#777', fontSize: 11, lineHeight: 1.5 }}>Discount estimated from sponsor budgets — final total confirmed at checkout.</p>}
               <label htmlFor="cart-email" style={{ display: 'grid', gap: 8, marginTop: 24 }}>
                 <span style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' }}>Email for receipt{meEmail ? '' : ' — no account needed'}</span>
-                <input id="cart-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.nz"
-                  style={{ minHeight: 46, padding: '0 12px', color: 'white', background: '#0b0b0b', border: '1px solid #333', outline: 0, fontSize: 13 }} />
+                <input id="cart-email" ref={emailRef} type="email" autoComplete="email" value={email} onChange={(e) => { setEmail(e.target.value); setEmailError(false); }} placeholder="you@example.nz"
+                  aria-invalid={emailError} aria-describedby="cart-email-error"
+                  style={{ minHeight: 46, padding: '0 12px', color: 'white', background: '#0b0b0b', border: '1px solid #333', borderColor: emailError ? '#ff9d9d' : undefined, outline: 0, fontSize: 13 }} />
               </label>
               <p style={{ margin: '10px 0 0', color: '#888', fontSize: 12, lineHeight: 1.6 }}>
                 {meEmail
                   ? <>Receipt to <strong style={{ color: '#ddd' }}>{meEmail}</strong> — downloads live in <Link href="/media" style={{ color: '#fff', borderBottom: '1px solid #555' }}>My media</Link>.</>
                   : <>Receipt and download access go to this email — no account needed.</>}
               </p>
-              {err && <p className="auth-error" role="alert" style={{ marginTop: 12 }}>{safeError(err)}{' '}<Link href="/contact" style={{ color: '#fff', borderBottom: '1px solid #555' }}>Need help? Contact support</Link></p>}
+              {err && <p id="cart-email-error" className="auth-error" role="alert" style={{ marginTop: 12 }}>{safeError(err)}{' '}<Link href="/contact" style={{ color: '#fff', borderBottom: '1px solid #555' }}>Need help? Contact support</Link></p>}
               <div className="cart-total"><span>Total</span><strong>{nzd(subtotal)}</strong></div>
               {meEmail && balance > 0 && photoTotal > 0 && (
                 <p style={{ margin: '16px 0 0', color: '#ccc', fontSize: 13, lineHeight: 1.5 }}>
