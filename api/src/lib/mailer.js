@@ -26,4 +26,4 @@ async function sendMail({ to, subject, html, text }) {
   }
 }
 
-module.exports = { sendMail, mailFrom: () => FROM };
+module.exports = { sendMail, mailFrom: () => FROM, emailConfigured: () => !!RESEND_API_KEY };

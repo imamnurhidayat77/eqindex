@@ -1,18 +1,29 @@
 const pool = require('../db');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { SESSION_COOKIE, APP_URL } = require('../config');
+const { SESSION_COOKIE, APP_URL, DEV_MAIL_SKIP } = require('../config');
 const { getCookie, clearSessionCookie } = require('../lib/cookies');
 const { asyncH } = require('../lib/async');
 const { newSession, EMAIL_RE } = require('../lib/auth');
 const { throttled } = require('../lib/ratelimit');
 const { audit } = require('../lib/audit');
-const { sendMail } = require('../lib/mailer');
+const { sendMail, emailConfigured } = require('../lib/mailer');
 const totp = require('../lib/totp');
 
 // Reset tokens live 1 hour (enforced in SQL), single-use, sha256 at rest.
 const sha256 = (v) => crypto.createHash('sha256').update(v).digest('hex');
 const escHtml = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// Email unavailable: in dev with DEV_MAIL_SKIP=1, print the link and let
+// the flow succeed (the token stays live so it can be used from console).
+// Everywhere else the caller must fail closed — the emailed link IS the
+// ownership proof, and internal config details never reach the client.
+function devMailSkip(link) {
+  if (emailConfigured() || !DEV_MAIL_SKIP) return false;
+  console.log('[dev-mail-skip] auth link (email not configured):', link);
+  return true;
+}
+const mailUnavailable = (res) => res.status(503).json({ error: 'we could not send that email — try again later or contact support' });
 
 module.exports = function mountAuthRoutes(app) {
   // ---- Auth: register / login / logout / me ----
@@ -45,6 +56,10 @@ module.exports = function mountAuthRoutes(app) {
         [d.id, sha256(raw)]
       );
       const link = `${APP_URL}/reset?token=${raw}`;
+      if (devMailSkip(link)) {
+        audit(req, 'auth.register.claim', 'user', d.id, { dev_mail_skip: true });
+        return res.json({ data: { claim_sent: true } });
+      }
       try {
         await sendMail({
           to: cleanEmail,
@@ -53,8 +68,9 @@ module.exports = function mountAuthRoutes(app) {
           html: `<p>Hi ${escHtml(d.name) || 'there'},</p><p>This email was used for a guest purchase. <a href="${link}">Set a password to claim your account</a> and reach your downloads anytime.</p><p>This link expires in 1 hour. Didn't buy anything? Ignore this email.</p>`,
         });
       } catch (e) {
+        console.error('[register.claim] sendMail failed:', e.message);
         await pool.query(`DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL`, [d.id]);
-        throw e;
+        return mailUnavailable(res);
       }
       audit(req, 'auth.register.claim', 'user', d.id, {});
       return res.json({ data: { claim_sent: true } });
@@ -232,6 +248,10 @@ module.exports = function mountAuthRoutes(app) {
         [u.id, sha256(raw)]
       );
       const link = `${APP_URL}/reset?token=${raw}`;
+      if (devMailSkip(link)) {
+        audit(req, 'auth.forgot', 'user', u.id, { dev_mail_skip: true });
+        return res.json({ ok: true });
+      }
       try {
         await sendMail({
           to: cleanEmail,
@@ -241,8 +261,9 @@ module.exports = function mountAuthRoutes(app) {
         });
       } catch (e) {
         // Don't leave a live token the user can never receive.
+        console.error('[forgot] sendMail failed:', e.message);
         await pool.query(`DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL`, [u.id]);
-        throw e;
+        return mailUnavailable(res);
       }
       audit(req, 'auth.forgot', 'user', u.id, {});
     }

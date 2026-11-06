@@ -11,4 +11,8 @@ module.exports = {
   RESEND_API_KEY: process.env.RESEND_API_KEY || '',
   MAIL_FROM: process.env.MAIL_FROM || 'Boss Media <hello@bossmedia.nz>',
   APP_URL: (process.env.APP_URL || '').replace(/\/$/, ''),
+  // Dev-only escape hatch: when email has no API key, log auth links to the
+  // server console and let the flow succeed instead of 503ing. NEVER set in
+  // production — the emailed link IS the ownership proof for guest claims.
+  DEV_MAIL_SKIP: process.env.DEV_MAIL_SKIP === '1',
 };
