@@ -4104,7 +4104,6 @@ module.exports = function mountMediaRoutes(app) {
           [bundleId, buyerEmail, buyer.id, amount, b.idempotency_key || null]
         );
         purchaseId = rows[0].id;
-        if (logoIds.length) await linkPurchaseLogos(purchaseId, logoIds);
     } catch (e) {
         await pool.query(`UPDATE credit_bundles SET status = 'cancelled' WHERE id = $1`, [bundleId]);
         throw e;
