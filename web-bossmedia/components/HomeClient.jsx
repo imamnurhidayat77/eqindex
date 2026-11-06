@@ -174,6 +174,7 @@ export default function HomeClient({ items, heroImage, reels, regions, years, ti
               <div className="hero-links">
                 <Link href="/register/photographer" className="primary-link">Apply as photographer <Icon name="arrow" size={17} /></Link>
                 <Link href="/sell" className="text-link">How it works</Link>
+                <Link href="/register/sponsor" className="text-link">Become a sponsor</Link>
               </div>
             </div>
           </div>

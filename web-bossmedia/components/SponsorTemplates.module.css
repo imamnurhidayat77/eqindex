@@ -1,0 +1,159 @@
+/* Sponsor photo templates — CSS Module (globals.css frozen).
+   Navy #0e2233 · gold #d4a017 · panel #fff. Overlay murni absolute.
+   Semua ukuran overlay memakai cqw (container query units): 1cqw = 1% dari
+   lebar bingkai, jadi template membesar/mengecil proporsional ikut foto —
+   thumbnail 118px maupun preview 700px selalu proporsional. */
+.st-frame { position: relative; overflow: hidden; border-radius: min(10px, 8%); background: #20242a; isolation: isolate; width: 100%; container-type: inline-size; }
+.st-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.st-photo-ph { display: grid; place-items: center; background: linear-gradient(135deg, #7a6a4a 0%, #3d4a2a 45%, #1d2a3a 100%); }
+.st-photo-ph span { color: rgba(255,255,255,.5); letter-spacing: .35em; font-size: 2.2cqw; font-weight: 700; }
+
+/* — shared lockups — */
+.st-supported { display: inline-flex; flex-direction: column; gap: 0.5cqw; font-size: 1.8cqw; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: #0e2233; white-space: nowrap; }
+.st-supported i { display: block; width: 6cqw; height: 0.35cqw; min-height: 1px; background: #d4a017; }
+.st-supported.light { color: #fff; }
+.st-divider { width: 2px; align-self: stretch; background: #d4a017; margin: 0 1.8cqw; min-height: 4.6cqw; }
+.st-divider-v { position: absolute; right: -2.5cqw; top: 0.7cqw; bottom: 0.7cqw; width: 2px; background: #d4a017; }
+.st-logos { display: inline-flex; align-items: center; gap: 1.4cqw; }
+.st-logo-img { height: 5.4cqw; width: auto; max-width: 27cqw; object-fit: contain; }
+.st-logo-default { display: inline-flex; align-items: center; gap: 1.4cqw; color: #0e2233; }
+.st-logo-default > svg { width: 6cqw; height: auto; }
+.st-logo-words { display: inline-flex; flex-direction: column; line-height: 1; }
+.st-logo-words strong { font-size: 3cqw; font-weight: 900; letter-spacing: -.01em; }
+.st-logo-words small { font-size: 1.4cqw; letter-spacing: .42em; color: #0e2233; margin-top: 0.35cqw; }
+.st-logo-cell { position: relative; display: inline-flex; margin-right: 4.6cqw; }
+.st-logo-cell:last-child { margin-right: 0; }
+
+/* — event / class / winner — */
+.st-event { display: inline-flex; align-items: center; gap: 1.4cqw; font-size: 1.8cqw; font-weight: 800; letter-spacing: .12em; color: #0e2233; }
+.st-event svg { width: 5.4cqw; height: auto; }
+.st-event strong { max-width: 27cqw; line-height: 1.5; }
+.st-event.light { color: #fff; }
+.st-class { display: inline-flex; align-items: center; gap: 1.4cqw; font-size: 2.3cqw; font-weight: 700; color: #0e2233; }
+.st-class-tag { background: linear-gradient(180deg, #f2cd6b, #cf9a2b); color: #0e2233; font-size: 1.6cqw; font-weight: 900; letter-spacing: .1em; padding: 0.5cqw 1.4cqw; border-radius: 0.7cqw; white-space: nowrap; }
+.st-winner { display: inline-flex; align-items: center; gap: 1cqw; color: #b98f1f; }
+.st-winner svg { width: 4.6cqw; height: auto; }
+.st-winner-mid strong { font-size: 4.6cqw; font-weight: 900; letter-spacing: .04em; color: #0e2233; white-space: nowrap; }
+.st-winner.gold .st-winner-mid strong { background: linear-gradient(180deg, #f7dd8b, #c9962e); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.st-subject { font-style: italic; font-size: 2.5cqw; color: #0e2233; }
+.st-subject.light { color: #fff; }
+.st-eventline { font-size: 1.4cqw; letter-spacing: .18em; color: #5a5240; font-weight: 800; }
+
+/* — waves & strips: tinggi dalam % TINGGI frame agar proporsinya sama
+   di orientasi apa pun. Strip ramping seperti board referensi (∼12%),
+   bukan balok putih besar. — */
+.st-wave { position: absolute; left: 0; right: 0; bottom: 11.5%; height: 6%; width: 100%; z-index: 1; }
+.st-strip { position: absolute; z-index: 2; display: flex; align-items: center; background: #fff; }
+.st-strip-bottom { left: 0; right: 0; bottom: 0; min-height: 12%; padding: 1cqw 3.2cqw; justify-content: space-between; gap: 2.2cqw; }
+.st-strip-square { left: 0; right: 0; bottom: 0; min-height: 12%; padding: 1.4cqw 3.2cqw; justify-content: center; }
+.st-strip-top { left: 0; right: 0; top: 0; min-height: 12%; padding: 1cqw 3.2cqw; justify-content: center; border-bottom: 3px solid #d4a017; }
+.st-strip-dual { left: 0; right: 0; bottom: 0; min-height: 12%; padding: 1.4cqw 3.2cqw; justify-content: space-between; }
+.st-strip-winner { gap: 2.5cqw; }
+.st-strip-ghost { position: static; background: transparent; padding: 1.4cqw 2.8cqw; justify-content: space-between; width: 100%; }
+.st-strip-wbar { left: 1.4cqw; right: 1.4cqw; bottom: 1.4cqw; border-radius: 1.8cqw; overflow: hidden; padding: 0; align-items: stretch; }
+.st-wbar-win { display: flex; align-items: center; gap: 2cqw; background: linear-gradient(135deg, #0c1c2c, #14304a); padding: 1.6cqw 2.5cqw; flex: 1 1 55%; }
+.st-wbar-win .st-class { color: #fff; font-size: 2cqw; }
+.st-wbar-sp { display: flex; align-items: center; justify-content: space-between; gap: 2cqw; background: #fff; padding: 1.4cqw 2.5cqw; flex: 1 1 45%; }
+.st-strip-minimal { left: 1.4cqw; right: auto; top: 50%; transform: translateY(-50%); background: rgba(10,16,24,.72); border: 1px solid rgba(212,160,23,.5); border-radius: 1.8cqw; padding: 2.2cqw 2.8cqw; flex-direction: column; align-items: flex-start; gap: 1cqw; max-width: 46%; }
+.st-minclass { font-size: 1.8cqw; font-weight: 800; color: #f2cd6b; letter-spacing: .06em; }
+
+/* — dark theme: strip navy legacy seperti hasil bake (18%/10%). — */
+.st-strip.st-dark { background: linear-gradient(180deg, #13293d, #0e2233); }
+.st-strip-bottom.st-dark, .st-strip-top.st-dark { min-height: 18%; }
+.st-strip-square.st-dark { min-height: 10%; }
+.st-minsponsor { display: flex; align-items: center; gap: 2cqw; border-top: 1px solid rgba(212,160,23,.5); padding-top: 1.6cqw; margin-top: 0.6cqw; }
+.st-minchip { display: inline-flex; background: #fff; border-radius: 1cqw; padding: 0.8cqw 1.8cqw; }
+.st-minchip .st-logo-img { height: 4.2cqw; }
+
+/* — class spotlight (band navy bawah: tag CLASS + nama kelas + sponsor) — */
+.st-classband { left: 0; right: 0; bottom: 0; min-height: 16%; padding: 1.6cqw 3.2cqw; justify-content: space-between; gap: 2.5cqw; background: linear-gradient(180deg, #14304a, #0e2233); border-top: 3px solid #d4a017; }
+.st-classband-left { display: flex; align-items: center; gap: 2cqw; min-width: 0; }
+.st-classband-name { color: #fff; font-size: 3.4cqw; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 46cqw; }
+
+/* — portrait swoosh — */
+.st-swoosh { position: absolute; right: 0; bottom: 0; width: 88%; height: 52%; z-index: 1; }
+.st-swoosh-lockup { position: absolute; z-index: 2; right: 2.5cqw; bottom: 2.2cqw; display: flex; flex-direction: column; align-items: flex-end; gap: 0.7cqw; }
+.st-swoosh-lockup small { font-size: 1.6cqw; font-weight: 800; letter-spacing: .16em; color: #0e2233; }
+
+/* — portrait drape (tirai putih dari atas) — */
+.st-drape { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 34%; z-index: 1; }
+.st-drape-lockup { position: absolute; z-index: 2; right: 2.5cqw; top: 2.2cqw; display: flex; flex-direction: column; align-items: flex-end; gap: 0.7cqw; }
+.st-drape-lockup small { font-size: 1.6cqw; font-weight: 800; letter-spacing: .16em; color: #0e2233; }
+
+/* — round floating badge — */
+.st-round { position: absolute; z-index: 2; width: 24cqw; aspect-ratio: 1; border-radius: 50%; background: #fff; border: 2px solid #d4a017; box-shadow: 0 1cqw 3cqw rgba(0,0,0,.25); display: grid; place-items: center; padding: 3cqw; }
+.st-round.pos-tr { top: 3cqw; right: 3cqw; }
+.st-round.pos-br { bottom: 3cqw; right: 3cqw; }
+.st-round.pos-bl { bottom: 3cqw; left: 3cqw; }
+.st-round .st-logo-img { width: 100%; max-width: 100%; height: auto; max-height: 100%; }
+
+/* — gold frame + bottom pill — */
+.st-gframe { position: absolute; inset: 3cqw; z-index: 2; border: 2px solid #d4a017; border-radius: 1cqw; pointer-events: none; }
+.st-gpill { position: absolute; z-index: 2; left: 50%; bottom: 5cqw; transform: translateX(-50%); background: rgba(255,255,255,.96); border-radius: 5cqw; padding: 1.2cqw 3.5cqw; display: flex; align-items: center; gap: 2.5cqw; box-shadow: 0 1cqw 3cqw rgba(0,0,0,.3); white-space: nowrap; }
+
+/* — side panels — */
+.st-side { position: absolute; z-index: 2; left: 0; top: 0; bottom: 0; width: 30%; background: #fff; border-right: 4px solid #d4a017; padding: 2.5cqw 2.2cqw; display: flex; flex-direction: column; gap: 1.4cqw; }
+.st-side small { font-size: 1.6cqw; font-weight: 800; letter-spacing: .16em; color: #0e2233; }
+.st-side-event { font-size: 2.2cqw; line-height: 1.4; color: #0e2233; }
+.st-side-class { font-size: 2cqw; color: #444; }
+.st-wpanel { position: absolute; z-index: 2; left: 0; top: 0; bottom: 12%; width: 34%; background: linear-gradient(160deg, #0b1b2b, #14304a); border-right: 4px solid #d4a017; border-radius: 1.8cqw 0 0 0; padding: 2.8cqw 2.5cqw; display: flex; flex-direction: column; justify-content: space-between; gap: 1.8cqw; }
+.st-wpanel-top { display: flex; flex-direction: column; gap: 1.8cqw; }
+.st-wpanel .st-class { color: #fff; font-size: 2.2cqw; }
+.st-wpanel-arch { border-right: 0; }
+.st-arch-seam { position: absolute; z-index: 2; left: 34%; top: 0; bottom: 12%; width: 9cqw; margin-left: -4.5cqw; }
+.st-arch-crown { color: #d4a017; display: inline-flex; }
+.st-crown { width: 6.5cqw; height: auto; }
+.st-wpanel .st-class, .st-wside .st-class, .st-wbar-win .st-class { flex-direction: column; align-items: flex-start; gap: 0.8cqw; }
+.st-wside { position: absolute; z-index: 2; left: 0; top: 0; bottom: 0; width: 34%; background: #fff; border-right: 4px solid #d4a017; border-radius: 1.8cqw 0 0 1.8cqw; padding: 2.5cqw 2.2cqw; display: flex; flex-direction: column; gap: 1.4cqw; }
+.st-wside-top { display: flex; flex-direction: column; gap: 1.4cqw; }
+.st-wside-mid { margin: auto 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1.5cqw; }
+.st-wside-sponsor { display: flex; flex-direction: column; gap: 1cqw; border-top: 1px solid #eee; padding-top: 1.4cqw; }
+
+/* — badges — */
+.st-badge { position: absolute; z-index: 2; top: 0; right: 0; width: 44%; background: #0e2233; color: #fff; border-radius: 0 1.8cqw 0 4.2cqw; border-bottom: 3px solid #d4a017; border-left: 3px solid #d4a017; padding: 1.8cqw 2.5cqw; display: flex; flex-direction: column; gap: 0.7cqw; }
+.st-badge small { font-size: 1.4cqw; letter-spacing: .18em; opacity: .8; }
+.st-badge-logo { display: flex; align-items: center; gap: 1.4cqw; }
+.st-badge-logo span { display: inline-flex; flex-direction: column; line-height: 1; }
+.st-badge-logo strong { font-size: 2.3cqw; }
+.st-badge-logo small { font-size: 1.3cqw; letter-spacing: .3em; }
+.st-minimal { position: absolute; z-index: 2; top: 1.8cqw; right: 2.2cqw; background: rgba(255,255,255,.92); border-radius: 1cqw; padding: 0.7cqw 1.8cqw; }
+.st-corner { position: absolute; width: 6cqw; height: 6cqw; z-index: 2; border: 2px solid rgba(255,255,255,.9); }
+.st-corner.tl { top: 1.8cqw; left: 1.8cqw; border-right: 0; border-bottom: 0; }
+.st-corner.br { bottom: 1.8cqw; left: 1.8cqw; border-right: 0; border-top: 0; }
+.st-diag { position: absolute; z-index: 2; top: 0; right: 0; background: linear-gradient(105deg, transparent 18%, #fff 18%); padding: 1.8cqw 2.5cqw 1.8cqw 9.2cqw; display: flex; flex-direction: column; gap: 0.35cqw; border-bottom: 3px solid #d4a017; }
+
+/* — winner portrait / top — */
+.st-vhead { position: absolute; z-index: 2; top: 0; left: 0; right: 0; padding: 1.8cqw 2.5cqw; background: linear-gradient(180deg, rgba(255,255,255,.95), rgba(255,255,255,0)); }
+.st-vfoot { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; background: linear-gradient(180deg, transparent, rgba(8,18,30,.88) 45%); padding: 4.6cqw 2.5cqw 0; display: flex; flex-direction: column; align-items: center; gap: 1cqw; text-align: center; }
+.st-vfoot .st-class { color: #fff; }
+
+/* — natural ratio (preview: bingkai gelap selagi dimensi diukur) — */
+.st-natural { min-height: 320px; }
+
+/* — compact (thumbnail kecil): hanya teks mikro yang disembunyikan.
+   Ukuran lain sudah proporsional via cqw, jadi tidak perlu override px. */
+.st-compact .st-event, .st-compact .st-class, .st-compact .st-subject,
+.st-compact .st-side-event, .st-compact .st-side-class, .st-compact .st-eventline,
+.st-compact .st-minclass, .st-compact .st-swoosh-lockup small, .st-compact .st-drape-lockup small,
+.st-compact .st-logo-words small { display: none; }
+.st-compact .st-side, .st-compact .st-wside { width: 36%; }
+.st-compact .st-wpanel { width: 40%; }
+.st-compact .st-badge { width: 54%; }
+
+/* — teks panjang (nama event/kelas/subject) dibatasi 2 baris + ellipsis
+   agar panel tak jebol oleh data asli yang panjang. — */
+.st-event strong, .st-side-event, .st-side-class, .st-subject, .st-wpanel .st-class > span:last-child,
+.st-wside .st-class > span:last-child, .st-wbar-win .st-class > span:last-child {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* — posisi overlay (pilihan buyer: bottom-left / bottom-right / top-right) — */
+.st-badge.pos-tr { top: 0; right: 0; }
+.st-minimal.pos-tr { top: 1.8cqw; right: 2.2cqw; }
+.st-badge.pos-bl { top: auto; right: auto; left: 0; bottom: 0; border-radius: 0 4.2cqw 0 1.8cqw; border-left: 0; border-bottom: 0; border-top: 3px solid #d4a017; border-right: 3px solid #d4a017; }
+.st-badge.pos-br { top: auto; left: auto; right: 0; bottom: 0; border-radius: 4.2cqw 0 0 1.8cqw; border-right: 0; border-bottom: 0; border-top: 3px solid #d4a017; border-left: 3px solid #d4a017; }
+.st-minimal.pos-bl { top: auto; right: auto; left: 2.2cqw; bottom: 2.2cqw; }
+.st-minimal.pos-br { top: auto; right: 2.2cqw; bottom: 2.2cqw; }
+.st-logo-default.light { color: #fff; }
+.st-logo-default.light .st-logo-words small { color: #fff; }

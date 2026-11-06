@@ -11,5 +11,25 @@
       "*rm*rf*.next*": "ask",
       "*rimraf*.next*": "ask"
     }
+  },
+  "mcp": {
+    "playwright": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@playwright/mcp@latest",
+        "--caps=devtools,storage"
+      ],
+      "enabled": true
+    },
+    "openscreen": {
+      "type": "local",
+      "command": [
+        "/Applications/Openscreen.app/Contents/MacOS/Openscreen",
+        "mcp"
+      ],
+      "enabled": true
+    }
   }
 }

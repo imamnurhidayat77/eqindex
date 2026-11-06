@@ -36,3 +36,10 @@ export async function cachedJson(path, ttl = 30000) {
   memCache.set(path, { at: 0, data: null, pending });
   return pending;
 }
+
+// Drop cached reads after a mutation so the next reload sees fresh data.
+// Call with no args to clear everything (e.g. after role/profile changes).
+export function bustCache(path) {
+  if (path) memCache.delete(path);
+  else memCache.clear();
+}

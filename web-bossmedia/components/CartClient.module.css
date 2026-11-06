@@ -1,0 +1,22 @@
+/* Cart item thumbnail link — mirrors the .cart-item > img sizes in
+   globals.css (frozen) so wrapping the image in a link changes nothing.
+   Breakpoint keps the same 800px the page uses. */
+.thumb {
+  display: block;
+  width: 170px;
+  height: 145px;
+  flex: none;
+}
+
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (max-width: 800px) {
+  .thumb {
+    width: 100px;
+    height: 112px;
+  }
+}

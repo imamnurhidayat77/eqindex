@@ -68,6 +68,7 @@ export function SiteHeader({ transparent = false }) {
   const [acctOpen, setAcctOpen] = useState(false);
   const studio = !!me && (me.role === 'PHOTOGRAPHER' || me.role === 'ADMIN');
   const organizer = !!me && (me.role === 'ORGANIZER' || me.role === 'ADMIN');
+  const sponsor = !!me && (me.role === 'SPONSOR' || me.role === 'ADMIN');
   const active = pathname.startsWith('/events') ? 'events'
     : pathname === '/pre-book' ? 'pre-book'
     : pathname === '/reels' ? 'reels'
@@ -156,6 +157,7 @@ export function SiteHeader({ transparent = false }) {
                     <p className="acct-who">{me.name || me.email}<small>{me.role?.toLowerCase()}</small></p>
                     {studio && <Link href="/studio" role="menuitem" onClick={() => setAcctOpen(false)}>My Studio</Link>}
                     {organizer && <Link href="/organizer" role="menuitem" onClick={() => setAcctOpen(false)}>My events</Link>}
+                    {sponsor && <Link href="/sponsor" role="menuitem" onClick={() => setAcctOpen(false)}>Sponsor dashboard</Link>}
                     <Link href="/account" role="menuitem" onClick={() => setAcctOpen(false)}>My account</Link>
                     <Link href="/media" role="menuitem" onClick={() => setAcctOpen(false)}>My media</Link>
                     <button type="button" role="menuitem" className="acct-signout" onClick={signOut}>Sign out</button>
@@ -183,6 +185,7 @@ export function SiteHeader({ transparent = false }) {
             {[...NAV.map(([href, label]) => ({ href, label })),
               ...(studio ? [{ href: '/studio', label: `My Studio · ${(me?.name || '').split(' ')[0] || 'photo'}` }] : []),
               ...(organizer ? [{ href: '/organizer', label: 'My events' }] : []),
+              ...(sponsor ? [{ href: '/sponsor', label: 'Sponsor dashboard' }] : []),
               ...(me ? [{ href: '/account', label: 'My account' }, { href: '/media', label: 'My media' }] : [{ href: '/login', label: 'Sign in' }]),
               { href: '/cart', label: 'Cart' },
             ].map((l, i) => (

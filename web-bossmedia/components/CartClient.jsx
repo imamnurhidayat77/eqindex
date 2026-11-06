@@ -9,6 +9,8 @@ import { safeError } from '../lib/errors';
 import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
 import { Icon, SiteFooter, SiteHeader } from './figma';
 import SmartImage from './SmartImage';
+import s from './CartClient.module.css';
+import { templateOf } from './SponsorTemplates';
 import { useToast } from './Toaster';
 import { useAuthed } from '../lib/use-authed';
 
@@ -33,6 +35,37 @@ export default function CartClient() {
       .then((w) => setBalance(Number(w?.data?.balance_cents) || 0))
       .catch(() => {});
   }, []);
+  // Sponsor discount estimate per item — mirrors the product page rule
+  // (best funded budget among the chosen logos' sponsors, capped). The
+  // server recomputes the real discount at checkout; cart never charges.
+  const [logos, setLogos] = useState([]);
+  const [discounts, setDiscounts] = useState([]);
+  useEffect(() => {
+    fetch(`${API}/api/sponsor-logos`)
+      .then((r) => r.json())
+      .then((j) => setLogos(j?.data || []))
+      .catch(() => {});
+    fetch(`${API}/api/sponsor-discounts`)
+      .then((r) => r.json())
+      .then((j) => setDiscounts(j?.data || []))
+      .catch(() => {});
+  }, []);
+  const discForItem = (item) => {
+    if (item.kind === 'reel' || !Array.isArray(item.logoIds) || !item.logoIds.length) return null;
+    const picked = item.logoIds
+      .map((id) => logos.find((l) => String(l.id) === String(id)))
+      .filter(Boolean);
+    const names = picked.map((l) => l.sponsor_name).filter(Boolean);
+    const cands = discounts.filter((d) => names.includes(d.sponsor_name));
+    if (!cands.length) return null;
+    const best = cands.reduce((a, b) => (Number(b.discount_cents) > Number(a.discount_cents) ? b : a));
+    const gross = Number(item.priceCents) || 0;
+    const cents = Math.min(Number(best.discount_cents) || 0, Math.max(0, gross - 1));
+    if (!cents) return null;
+    // Label pemakai logo yang dipilih pembeli, bukan nama record sponsor.
+    return { cents, label: picked[0]?.label || null };
+  };
+  const lineTotal = (item) => Math.max(0, (Number(item.priceCents) || 0) - (discForItem(item)?.cents || 0));
 
   // Guests pay with just an email; the backend validates it strictly.
   const checkoutEmail = () => {
@@ -51,12 +84,18 @@ export default function CartClient() {
   const reelItems = items.filter((it) => it.kind === 'reel' && it.reelPayload);
   // One button pays the whole cart: photos and pre-books go through a
   // single Stripe session (/api/checkout/combined).
-  const subtotal = items.reduce((t, it) => t + Number(it.priceCents || 0), 0);
+  const subtotal = items.reduce((t, it) => t + lineTotal(it), 0);
   // Wallet balance only ever covers the photos portion (reels go on card).
-  const photoTotal = photoItems.reduce((t, it) => t + Number(it.priceCents || 0), 0);
+  const photoTotal = photoItems.reduce((t, it) => t + lineTotal(it), 0);
+  const hasDiscount = items.some((it) => discForItem(it));
   const gst = Math.round((subtotal / 1.15) * 0.15);
 
   const genKey = newIdempotencyKey;
+
+  // Back to the product page. Items added before href existed fall back
+  // to the short media URL. The image link is a mouse-only duplicate of
+  // the name link (aria-hidden), so it never double-announces.
+  const itemHref = (item) => item.href || (item.mediaId ? `/p/${item.mediaId}` : null);
 
   // Single items go through their own endpoints; the combined session
   // below pays for the whole cart at once.
@@ -71,6 +110,7 @@ export default function CartClient() {
           ...checkoutBase(), media_id: item.mediaId, license_tier: item.tierId,
           cancel_path: `/p/${item.mediaId}`,
           email: em, idempotency_key: newIdempotencyKey(),
+          ...(Array.isArray(item.logoIds) && item.logoIds.length ? { sponsor_logo_ids: item.logoIds, ...(item.logoPos ? { sponsor_logo_positions: item.logoPos } : {}), ...(item.logoTemplate ? { sponsor_logo_template: templateOf(item.logoTemplate), sponsor_logo_variant: item.logoTemplate } : {}), ...(item.logoTheme === 'dark' ? { sponsor_logo_theme: 'dark' } : {}) } : {}),
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -111,7 +151,15 @@ export default function CartClient() {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...checkoutBase(),
-          items: photoItems.map((it) => ({ media_id: it.mediaId, license_tier: it.tierId })),
+          items: photoItems.map((it) => ({
+            media_id: it.mediaId, license_tier: it.tierId,
+            ...(Array.isArray(it.logoIds) && it.logoIds.length ? {
+              sponsor_logo_ids: it.logoIds,
+              ...(it.logoPos ? { sponsor_logo_positions: it.logoPos } : {}),
+              ...(it.logoTemplate ? { sponsor_logo_template: templateOf(it.logoTemplate), sponsor_logo_variant: it.logoTemplate } : {}),
+              ...(it.logoTheme ? { sponsor_logo_theme: it.logoTheme } : {}),
+            } : {}),
+          })),
           reels: reelItems.map((it) => it.reelPayload),
           cancel_path: '/cart', email: em, idempotency_key: genKey(),
           ...(use_balance_cents ? { use_balance_cents } : {}),
@@ -147,11 +195,20 @@ export default function CartClient() {
               {items.map((item, i) => (
                 <article className="cart-item" key={item.key}>
                   <span className="cart-item-number">0{i + 1}</span>
-                  {item.image ? <SmartImage src={item.image} alt={item.name || item.detail || `${item.type || 'Cart'} photo`} width={340} height={290} /> : <span className="cover-fallback" aria-hidden="true">Boss Media</span>}
+                  {item.image ? (
+                    itemHref(item) ? (
+                      <Link href={itemHref(item)} className={s.thumb} aria-hidden="true" tabIndex={-1}>
+                        <SmartImage src={item.image} alt={item.name || item.detail || `${item.type || 'Cart'} photo`} width={340} height={290} />
+                      </Link>
+                    ) : (
+                      <SmartImage src={item.image} alt={item.name || item.detail || `${item.type || 'Cart'} photo`} width={340} height={290} />
+                    )
+                  ) : <span className="cover-fallback" aria-hidden="true">Boss Media</span>}
                   <div>
                     <p>{item.type}</p>
-                    <h2>{item.name}</h2>
+                    <h2>{itemHref(item) ? <Link href={itemHref(item)}>{item.name}</Link> : item.name}</h2>
                     <span>{item.detail}</span>
+                    {(() => { const d = discForItem(item); return d ? <span style={{ display: 'block', marginTop: 4, color: '#8fd694' }}>−{nzd(d.cents)}{d.label ? ` ${d.label}` : ''} sponsor discount</span> : null; })()}
                     <div className="cart-item-actions">
                       <button onClick={() => { removeFromCart(item.key); toast(`Removed — ${item.name}`, { type: 'info' }); }}>Remove</button>
                       <button disabled={busyKey === item.key}
@@ -160,7 +217,7 @@ export default function CartClient() {
                       </button>
                     </div>
                   </div>
-                  <strong>{nzd(item.priceCents)}</strong>
+                  <strong>{nzd(lineTotal(item))}</strong>
                 </article>
               ))}
               <Link href="/events" className="continue-shopping">← Continue browsing galleries</Link>
@@ -169,9 +226,11 @@ export default function CartClient() {
               <p className="eyebrow">Order summary</p>
               <dl>
                 <div><dt>Subtotal</dt><dd>{nzd(subtotal)}</dd></div>
+                {hasDiscount && <div><dt style={{ color: '#8fd694' }}>Sponsor discount</dt><dd style={{ color: '#8fd694' }}>applied ✓</dd></div>}
                 <div><dt>Delivery</dt><dd>Digital</dd></div>
                 <div><dt>GST included</dt><dd>{nzd(gst)}</dd></div>
               </dl>
+              {hasDiscount && <p style={{ margin: '10px 0 0', color: '#777', fontSize: 11, lineHeight: 1.5 }}>Discount estimated from sponsor budgets — final total confirmed at checkout.</p>}
               <label htmlFor="cart-email" style={{ display: 'grid', gap: 8, marginTop: 24 }}>
                 <span style={{ color: '#888', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' }}>Email for receipt{meEmail ? '' : ' — no account needed'}</span>
                 <input id="cart-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.nz"

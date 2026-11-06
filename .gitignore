@@ -11,3 +11,17 @@ node_modules/
 horses_missing*
 
 .taste-skill/
+
+# Non-code artifacts — never push (local tooling, logs, recordings).
+# Installed agent skills (incl. engine binaries, ~20MB).
+.agents/skills/
+.opencode/
+# Impeccable run state (screenshots, sessions, caches). PRODUCT.md and
+# .impeccable/critique/ are docs; un-ignore them if the team wants them shared.
+PRODUCT.md
+.impeccable/
+# Playwright verification outputs (screenshots, snapshots, console logs).
+.playwright-mcp/
+# Demo recordings and scratch plans.
+demo/
+openscreen-demo-plan.md

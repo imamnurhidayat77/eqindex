@@ -111,7 +111,7 @@ describe('cart reel-only', () => {
 
   it('reel-only cart renders the cover fallback, never a broken image', () => {
     const s = cartSrc();
-    assert.match(s, /item\.image \? <SmartImage[\s\S]*? : <span className="cover-fallback"/);
+    assert.match(s, /item\.image \?[\s\S]*? : <span className="cover-fallback"/);
     // PreBook reel items intentionally carry image:null.
     assert.match(src('components/PreBookClient.jsx'), /image: null/);
   });

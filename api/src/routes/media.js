@@ -853,8 +853,12 @@ module.exports = function mountMediaRoutes(app) {
     // Ownership flag for the logged-in buyer (anonymous → owned:false).
     // Mirrors the download entitlement: direct purchase OR via a package
     // OR unlocked with photo credits.
+    // owned_versions lists each paid version of THIS photo (plain + every
+    // sponsor design) so the buy page can show per-version state and keep
+    // selling versions not owned yet. Logo files use the public URLs.
     const data = rows[0];
     data.owned = false;
+    data.owned_versions = [];
     if (req.authUser) {
       try {
         const ent = await pool.query(
@@ -889,6 +893,29 @@ module.exports = function mountMediaRoutes(app) {
             }
           }
         }
+        const vers = await pool.query(
+          `SELECT p.id, p.license_tier, p.created_at, p.logo_variant, p.logo_theme,
+              COALESCE(p.logo_template, 'corner') AS logo_template
+            FROM purchases p
+            WHERE p.status = 'paid' AND p.buyer_user_id = $2 AND p.media_id = $1
+            ORDER BY p.created_at`,
+          [req.params.id, req.authUser.id]
+        );
+        for (const v of vers.rows) {
+          const lg = await pool.query(
+            `SELECT l.sponsor_logo_id AS id, s.label, l.position FROM purchase_sponsor_logos l
+             JOIN sponsor_logos s ON s.id = l.sponsor_logo_id
+             WHERE l.purchase_id = $1 ORDER BY l.position`, [v.id]);
+          data.owned_versions.push({
+            purchase_id: v.id, license_tier: v.license_tier, created_at: v.created_at,
+            logo_variant: v.logo_variant, logo_theme: v.logo_theme, logo_template: v.logo_template,
+            logos: lg.rows.map((g) => ({ id: g.id, label: g.label, position: g.position })),
+          });
+        }
+        const pkg = ent.rows.length ? await pool.query(
+          `SELECT 1 FROM purchases WHERE id = $1 AND package_id IS NOT NULL`, [ent.rows[0].id]
+        ).then((r) => r.rows.length > 0).catch(() => false) : false;
+        data.owned_via_package = pkg;
         if (!data.owned) {
           // Hint for the BuyBox: credits available in this photo's scope?
           const bal = await pool.query(
@@ -1066,14 +1093,61 @@ module.exports = function mountMediaRoutes(app) {
     }
   }
 
-  // POST /api/checkout {media_id|package_id|whole_event+event_id[+horse_id|rider_id], license_tier?, email?, idempotency_key?}
+  // POST /api/checkout {media_id|package_id|whole_event+event_id[+horse_id|rider_id], license_tier?, email?, idempotency_key?, sponsor_logo_ids?[]}
   // Purchases bind to the buyer account (buyer_user_id); guests check out
   // with just an email and get a password-less account (see checkoutBuyer).
   // whole_event: buys the managed package for a whole event or one
   // event x subject, materializing its row on demand (no manual creation).
+  // sponsor_logo_ids: up to 3 active sponsor logos baked into the download
+  // (Option 1). Single photos only — packages keep the plain files.
+  const LOGO_POSITIONS = ['bottom-left', 'bottom-right', 'top-right'];
+  async function resolveLogoIds(raw) {
+    if (raw === undefined || raw === null) return [];
+    const ids = (Array.isArray(raw) ? raw : [raw]).map(String).filter((s) => UUID_RE.test(s)).slice(0, 3);
+    if (!ids.length) {
+      const err = new Error('sponsor_logo_ids must be 1–3 logo UUIDs');
+      err.status = 400; throw err;
+    }
+    const found = await pool.query(
+      `SELECT l.id FROM sponsor_logos l JOIN sponsors s ON s.id = l.sponsor_id
+       WHERE l.id = ANY($1::UUID[]) AND l.is_active AND s.is_active`, [ids]);
+    if (found.rows.length !== ids.length) {
+      const err = new Error('unknown or inactive sponsor logo');
+      err.status = 400; throw err;
+    }
+    return ids;
+  }
+  // Optional per-logo corners from the buyer ({logoId: position});
+  // falls back to fixed order. Positions outside the allowlist are ignored.
+  function resolveLogoPositions(raw, logoIds) {
+    const out = {};
+    const map = raw && typeof raw === 'object' ? raw : {};
+    for (let i = 0; i < logoIds.length; i++) {
+      const want = String(map[logoIds[i]] || '').toLowerCase().replace(/[^a-z-]/g, '');
+      out[logoIds[i]] = LOGO_POSITIONS.includes(want) ? want : LOGO_POSITIONS[i % LOGO_POSITIONS.length];
+    }
+    return out;
+  }
+  async function linkPurchaseLogos(purchaseId, logoIds, positions) {
+    for (let i = 0; i < logoIds.length; i++) {
+      await pool.query(
+        `INSERT INTO purchase_sponsor_logos (purchase_id, sponsor_logo_id, position)
+         VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+        [purchaseId, logoIds[i], (positions && positions[logoIds[i]]) || LOGO_POSITIONS[i % LOGO_POSITIONS.length]]
+      );
+    }
+  }
+  // Version fingerprint for the per-version uniqueness (migration 094):
+  // '' = plain, else template|theme|variant|sorted-logo-ids. Computes the
+  // same value the backfill wrote, so the index and the guards agree.
+  function logoSig(logoTemplate, logoTheme, logoVariant, logoIds) {
+    if (!logoIds?.length) return '';
+    return [logoTemplate || 'corner', logoTheme || 'light', logoVariant || '',
+      ...logoIds.map(String).sort()].join('|');
+  }
   app.post('/api/checkout', asyncH(async (req, res) => {
     if (await throttled(pool, req.ip, 'checkout')) return res.status(429).json({ error: 'too many requests, try again later' });
-    const { media_id, package_id, event_id, whole_event, license_tier, email, idempotency_key } = req.body || {};
+    const { media_id, package_id, event_id, whole_event, license_tier, email, idempotency_key, sponsor_logo_ids } = req.body || {};
     if (!!media_id === !!package_id && !whole_event) {
       return res.status(400).json({ error: 'need exactly one of {media_id, package_id} or {whole_event + event_id}' });
     }
@@ -1096,7 +1170,7 @@ module.exports = function mountMediaRoutes(app) {
     if (!EMAIL_RE.test(buyerEmail)) {
       return res.status(400).json({ error: 'need a valid {email}' });
     }
-    let title, amount, tierId = license_tier || null, mediaId = null, packageId = null;
+    let title, amount, tierId = license_tier || null, mediaId = null, packageId = null, mediaEventId = null;
     if (media_id) {
       const m = await pool.query(
         `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label,
@@ -1145,6 +1219,7 @@ module.exports = function mountMediaRoutes(app) {
       if (!Number.isInteger(amount) || amount <= 0) return res.status(409).json({ error: 'no price set for this photo' });
       title = `${row.horse_id || row.rider_id ? '' : 'Event '}photo${row.moment ? ` (${row.moment})` : ''} · ${tierId}`;
       mediaId = row.id;
+      mediaEventId = row.event_id || null;
     } else if (package_id) {
       const pk = await pool.query(`SELECT * FROM packages WHERE id = $1 AND status = 'published'`, [package_id]);
       if (!pk.rows.length) return res.status(404).json({ error: 'package not found or not for sale' });
@@ -1213,10 +1288,104 @@ module.exports = function mountMediaRoutes(app) {
       title = pkRow.title;
       packageId = pkRow.id;
     }
+  // Sponsor logos (Option 1): single photos only. A logo version is a
+  // distinct artefact, so an owner of the plain photo may still buy it —
+  // the owned-guard below exempts identical-logo-set misses.
+  // logo_template: buyer-chosen layout (corner|banner|winner, default corner).
+  const LOGO_TEMPLATES = ['corner', 'banner', 'top', 'minimal', 'winner', 'bottombar'];
+  let logoTemplate = 'corner';
+  if (req.body?.sponsor_logo_template !== undefined && req.body?.sponsor_logo_template !== null) {
+    logoTemplate = String(req.body.sponsor_logo_template).toLowerCase();
+    if (!LOGO_TEMPLATES.includes(logoTemplate)) {
+      return res.status(400).json({ error: 'sponsor_logo_template must be corner|banner|top|minimal|winner|bottombar' });
+    }
+  }
+  // logo_theme: strip style for banner|top|bottombar (light|dark, default light).
+  // Light renders the white wave strip from the preview (WYSIWYG);
+  // dark keeps the legacy dark strip. Other templates ignore it.
+  let logoTheme = 'light';
+  if (req.body?.sponsor_logo_theme !== undefined && req.body?.sponsor_logo_theme !== null) {
+    logoTheme = String(req.body.sponsor_logo_theme).toLowerCase();
+    if (!['light', 'dark'].includes(logoTheme)) {
+      return res.status(400).json({ error: 'sponsor_logo_theme must be light|dark' });
+    }
+  }
+  // logo_variant: exact SponsorTemplates.jsx variant id (banner-wave,
+  // winner-side, …) for the WYSIWYG bake. logo_template stays the mapped
+  // backend id so discount matching keeps working; the two must agree.
+  const { isVariant: isLogoVariant, templateOf: variantTemplateOf } = require('../lib/logoBake');
+  let logoVariant = null;
+  if (req.body?.sponsor_logo_variant !== undefined && req.body?.sponsor_logo_variant !== null) {
+    logoVariant = String(req.body.sponsor_logo_variant).toLowerCase();
+    if (!isLogoVariant(logoVariant)) {
+      return res.status(400).json({ error: 'unknown sponsor_logo_variant' });
+    }
+    if (variantTemplateOf(logoVariant) !== logoTemplate) {
+      return res.status(400).json({ error: 'sponsor_logo_variant does not match sponsor_logo_template' });
+    }
+  }
+  let logoIds = [];
+    if (sponsor_logo_ids !== undefined && sponsor_logo_ids !== null) {
+      if (!mediaId) return res.status(400).json({ error: 'sponsor logos are for single photos only' });
+      try {
+        logoIds = await resolveLogoIds(sponsor_logo_ids);
+      } catch (e) {
+        return res.status(e.status || 400).json({ error: e.message });
+      }
+    }
+    // True when the buyer already paid for this photo in EXACTLY the
+    // requested version (same logo set + template + theme + variant) —
+    // then re-selling would double-charge. Every other version stays
+    // buyable: each winner variant is its own design, and legacy rows
+    // (logo_variant NULL, generic bake) never collide with an exact one.
+    async function sameVersionOwned() {
+      const { rows } = await pool.query(
+        `SELECT p.id, COALESCE(p.logo_variant, '') AS logo_variant FROM purchases p
+         WHERE p.status = 'paid' AND p.buyer_user_id = $2 AND p.media_id = $1
+           AND COALESCE(p.logo_template, 'corner') = $3
+           AND COALESCE(p.logo_theme, 'light') = $4`, [mediaId, buyer.id, logoTemplate, logoTheme]);
+      const want = logoIds.map(String).sort();
+      const wantVariant = logoVariant || '';
+      for (const p of rows) {
+        if ((p.logo_variant || '') !== wantVariant) continue;
+        const cur = await pool.query(
+          'SELECT sponsor_logo_id FROM purchase_sponsor_logos WHERE purchase_id = $1 ORDER BY sponsor_logo_id',
+          [p.id]);
+        const have = cur.rows.map((r) => r.sponsor_logo_id).sort();
+        if (have.length === want.length && have.every((v, i) => v === want[i])) return true;
+      }
+      return false;
+    }
+    // ---- Sponsor discount (Option 2): automatic, never a separate pick.
+    // Picking a logo IS the opt-in: the best funded budget among the
+    // chosen logos' sponsors applies its discount (single photos only).
+    // The buyer is charged price - discount; the photographer still earns
+    // the full price (see recordPurchaseSplit).
+    let budgetId = null, discountCents = 0, originalCents = null;
+    if (logoIds.length) {
+      const best = await pool.query(
+        `SELECT b.id, b.discount_cents FROM sponsor_budgets b
+         WHERE b.status = 'active' AND b.discount_cents > 0
+           AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
+           AND (b.event_id IS NULL OR b.event_id = $2)
+           AND b.sponsor_id IN (SELECT sponsor_id FROM sponsor_logos WHERE id = ANY($1::UUID[]))
+         ORDER BY b.discount_cents DESC LIMIT 1`,
+        [logoIds, mediaEventId]);
+      if (best.rows.length) {
+        const bud = best.rows[0];
+        discountCents = Number(bud.discount_cents) || 0;
+        if (discountCents > 0 && discountCents < amount) {
+          budgetId = bud.id;
+          originalCents = amount;
+          amount = amount - discountCents;
+        }
+      }
+    }
     // ---- Already-owned guard: a paid entitlement grants lifetime re-downloads,
     // so selling the same photo/package twice just double-charges the buyer.
     // Single photo: owned directly OR via any paid package containing it.
     // Package: owned directly (same package_id, paid).
+    // Logo versions are exempt unless the identical logo set is owned.
     if (mediaId) {
       const owned = await pool.query(
         `SELECT id, license_tier FROM purchases
@@ -1225,7 +1394,7 @@ module.exports = function mountMediaRoutes(app) {
           LIMIT 1`,
         [mediaId, buyer.id]
       );
-      if (owned.rows.length) {
+      if (owned.rows.length && await sameVersionOwned()) {
         return res.status(409).json({
           error: 'you already own this photo — download it from My photos',
           owned: true, license_tier: owned.rows[0].license_tier, purchase_id: owned.rows[0].id,
@@ -1295,16 +1464,26 @@ module.exports = function mountMediaRoutes(app) {
           return res.status(404).json({ error: 'account not found' });
         }
         const ins = await client.query(
-          `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents)
-            VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9) RETURNING id`,
-          [mediaId, packageId, buyerEmail, buyer.id, tierId, amount, idempotency_key || null, useBalance, amount - useBalance]
+          `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig)
+            VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+          [mediaId, packageId, buyerEmail, buyer.id, tierId, amount, idempotency_key || null, useBalance, amount - useBalance, originalCents, budgetId, logoTemplate, logoTheme, logoVariant, logoSig(logoTemplate, logoTheme, logoVariant, logoIds)]
         );
         purchaseId = ins.rows[0].id;
+        if (logoIds.length) {
+          const positions = resolveLogoPositions(req.body?.sponsor_logo_positions, logoIds);
+          for (let i = 0; i < logoIds.length; i++) {
+            await client.query(
+              `INSERT INTO purchase_sponsor_logos (purchase_id, sponsor_logo_id, position)
+               VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+              [purchaseId, logoIds[i], positions[logoIds[i]]]
+            );
+          }
+        }
         await reserveBalance(client, buyer.id, useBalance, purchaseId);
         await client.query('COMMIT');
       } catch (e) {
         await client.query('ROLLBACK').catch(() => {});
-        if (e.code === '23505' && e.constraint === 'purchases_paid_media_owner') {
+        if (e.code === '23505' && e.constraint === 'purchases_paid_media_version') {
           return res.status(409).json({ error: 'you already own this photo — download it from My photos' });
         }
         if (e.status) return res.status(e.status).json({ error: e.message });
@@ -1316,15 +1495,18 @@ module.exports = function mountMediaRoutes(app) {
     } else {
     try {
       const { rows } = await pool.query(
-        `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, stripe_amount_cents)
-          VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8) RETURNING id`,
-        [mediaId, packageId, buyerEmail, buyer.id, tierId, amount, idempotency_key || null, amount]
+        `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig)
+          VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, 0, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+        [mediaId, packageId, buyerEmail, buyer.id, tierId, amount, idempotency_key || null, amount, originalCents, budgetId, logoTemplate, logoTheme, logoVariant, logoSig(logoTemplate, logoTheme, logoVariant, logoIds)]
       );
       purchaseId = rows[0].id;
+      if (logoIds.length) {
+        await linkPurchaseLogos(purchaseId, logoIds, resolveLogoPositions(req.body?.sponsor_logo_positions, logoIds));
+      }
     } catch (e) {
       // SECURITY: concurrent duplicate checkouts both pass the owned-guard;
       // the partial unique index (075) fails the second commit instead.
-      if (e.code === '23505' && e.constraint === 'purchases_paid_media_owner') {
+      if (e.code === '23505' && e.constraint === 'purchases_paid_media_version') {
         return res.status(409).json({ error: 'you already own this photo — download it from My photos' });
       }
       if (e.code === '23505' && idempotency_key) {
@@ -1379,6 +1561,9 @@ module.exports = function mountMediaRoutes(app) {
     if (package_id && !UUID_RE.test(String(package_id))) fail(idx, 400, 'bad package_id');
     if (license_tier !== undefined && license_tier !== null && !TIER_RE.test(String(license_tier))) fail(idx, 400, 'bad license_tier');
     let tierId = license_tier || null, amount, title, mediaId = null, packageId = null;
+    // Sponsor optionals ride every priced item; only single photos set them.
+    let logoIds = [], logoPositions = {}, logoTemplate = 'corner', logoTheme = 'light', logoVariant = null;
+    let originalCents = null, budgetId = null;
     if (media_id) {
       const m = await q.query(
         `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label,
@@ -1417,6 +1602,58 @@ module.exports = function mountMediaRoutes(app) {
         amount = row.tier_price;
       }
       if (!Number.isInteger(amount) || amount <= 0) fail(idx, 409, 'no price set for this photo');
+      // ---- Sponsor logos per item (mirrors single checkout). Packages
+      // never carry logos; the discount is an estimate here — the final
+      // budget application happens in recordPurchaseSplit at paid time.
+      const sLogos = it.sponsor_logo_ids;
+      if (sLogos !== undefined && sLogos !== null) {
+        if (!media_id) fail(idx, 400, 'sponsor logos are for single photos only');
+        try {
+          logoIds = await resolveLogoIds(sLogos);
+        } catch (e) { fail(idx, e.status || 400, e.message); }
+        const tpl = it.sponsor_logo_template;
+        if (tpl !== undefined && tpl !== null) {
+          const t = String(tpl).toLowerCase();
+          if (!['corner', 'banner', 'top', 'minimal', 'winner', 'bottombar'].includes(t)) {
+            fail(idx, 400, 'sponsor_logo_template must be corner|banner|top|minimal|winner|bottombar');
+          }
+          logoTemplate = t;
+        }
+        const th = it.sponsor_logo_theme;
+        if (th !== undefined && th !== null) {
+          const tt = String(th).toLowerCase();
+          if (!['light', 'dark'].includes(tt)) fail(idx, 400, 'sponsor_logo_theme must be light|dark');
+          logoTheme = tt;
+        }
+        const { isVariant: isLogoVariant, templateOf: variantTemplateOf } = require('../lib/logoBake');
+        const vv = it.sponsor_logo_variant;
+        if (vv !== undefined && vv !== null) {
+          const v = String(vv).toLowerCase();
+          if (!isLogoVariant(v)) fail(idx, 400, 'unknown sponsor_logo_variant');
+          if (variantTemplateOf(v) !== logoTemplate) fail(idx, 400, 'sponsor_logo_variant does not match sponsor_logo_template');
+          logoVariant = v;
+        }
+        logoPositions = resolveLogoPositions(it.sponsor_logo_positions, logoIds);
+        if (logoIds.length) {
+          const best = await q.query(
+            `SELECT b.id, b.discount_cents FROM sponsor_budgets b
+              WHERE b.status = 'active' AND b.discount_cents > 0
+                AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
+                AND (b.event_id IS NULL OR b.event_id = $2)
+                AND b.sponsor_id IN (SELECT sponsor_id FROM sponsor_logos WHERE id = ANY($1::UUID[]))
+              ORDER BY b.discount_cents DESC LIMIT 1`,
+            [logoIds, row.event_id || null]
+          );
+          if (best.rows.length) {
+            const dc = Number(best.rows[0].discount_cents) || 0;
+            if (dc > 0 && dc < amount) {
+              budgetId = best.rows[0].id;
+              originalCents = amount;
+              amount = amount - dc;
+            }
+          }
+        }
+      }
       const owned = await q.query(
         `SELECT id, license_tier FROM purchases
           WHERE status = 'paid' AND buyer_user_id = $2
@@ -1424,7 +1661,31 @@ module.exports = function mountMediaRoutes(app) {
           LIMIT 1`,
         [media_id, authUser.id]
       );
-      if (owned.rows.length) fail(idx, 409, 'you already own this photo — download it from My photos');
+      if (owned.rows.length) {
+        // Logo versions are their own product (mirrors single checkout):
+        // same photo + identical version owned → 409, otherwise buyable.
+        // A plain buy only collides with a plain version already owned.
+        let sameSet = false;
+        {
+          const prior = await q.query(
+            `SELECT p.id, COALESCE(p.logo_variant, '') AS logo_variant FROM purchases p
+              WHERE p.status = 'paid' AND p.buyer_user_id = $2 AND p.media_id = $1
+                AND COALESCE(p.logo_template, 'corner') = $3
+                AND COALESCE(p.logo_theme, 'light') = $4`,
+            [media_id, authUser.id, logoTemplate, logoTheme]);
+          const want = logoIds.slice().sort();
+          const wantVariant = logoVariant || '';
+          for (const pr of prior.rows) {
+            if ((pr.logo_variant || '') !== wantVariant) continue;
+            const cur = await q.query(
+              'SELECT sponsor_logo_id FROM purchase_sponsor_logos WHERE purchase_id = $1 ORDER BY sponsor_logo_id',
+              [pr.id]);
+            const have = cur.rows.map((r) => r.sponsor_logo_id).sort();
+            if (have.length === want.length && have.every((v, i) => v === want[i])) { sameSet = true; break; }
+          }
+        }
+        if (sameSet) fail(idx, 409, 'you already own this photo — download it from My photos');
+      }
       const credOwned = await q.query(
         `SELECT 1 WHERE ${creditOwnedSql('$2', '$1')} LIMIT 1`,
         [media_id, authUser.id]
@@ -1445,7 +1706,7 @@ module.exports = function mountMediaRoutes(app) {
       title = pk.rows[0].title;
       packageId = pk.rows[0].id;
     }
-    return { mediaId, packageId, tierId, amount, title };
+    return { mediaId, packageId, tierId, amount, title, originalCents, budgetId, logoIds, logoPositions, logoTemplate, logoTheme, logoVariant };
   }
 
   // Validates a reel-order payload (read-only). Throws with .status.
@@ -1575,7 +1836,9 @@ module.exports = function mountMediaRoutes(app) {
     const seen = new Set();
     for (let idx = 0; idx < items.length; idx++) {
       const it = items[idx] || {};
-      const sig = it.media_id ? `m:${it.media_id}:${it.license_tier || ''}`
+      const sigLogos = it.sponsor_logo_ids === undefined || it.sponsor_logo_ids === null ? ''
+        : (Array.isArray(it.sponsor_logo_ids) ? it.sponsor_logo_ids : [it.sponsor_logo_ids]).map(String).sort().join(',');
+      const sig = it.media_id ? `m:${it.media_id}:${it.license_tier || ''}:${sigLogos}`
         : it.package_id ? `p:${it.package_id}` : `x:${idx}`;
       if (seen.has(sig)) fail(idx, 400, 'duplicate item in batch — remove it and retry');
       seen.add(sig);
@@ -1622,11 +1885,20 @@ module.exports = function mountMediaRoutes(app) {
         let running = Number(locked.rows[0].balance_cents);
         for (const p of splits) {
           const { rows } = await client.query(
-            `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents)
-              VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9) RETURNING id`,
-            [p.mediaId, p.packageId, buyerEmail, buyer.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.used, p.stripe]
+            `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig)
+              VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+            [p.mediaId, p.packageId, buyerEmail, buyer.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.used, p.stripe, p.originalCents, p.budgetId, p.logoTemplate, p.logoTheme, p.logoVariant || null, logoSig(p.logoTemplate, p.logoTheme, p.logoVariant, p.logoIds)]
           );
           ids.push(rows[0].id);
+          if (Array.isArray(p.logoIds) && p.logoIds.length) {
+            for (let i = 0; i < p.logoIds.length; i++) {
+              await client.query(
+                `INSERT INTO purchase_sponsor_logos (purchase_id, sponsor_logo_id, position)
+                 VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+                [rows[0].id, p.logoIds[i], (p.logoPositions && p.logoPositions[p.logoIds[i]]) || LOGO_POSITIONS[i % LOGO_POSITIONS.length]]
+              );
+            }
+          }
           if (p.used > 0) {
             running -= p.used;
             await client.query('UPDATE users SET balance_cents = $2 WHERE id = $1', [buyer.id, running]);
@@ -1640,7 +1912,7 @@ module.exports = function mountMediaRoutes(app) {
         await client.query('COMMIT');
       } catch (e) {
         await client.query('ROLLBACK').catch(() => {});
-        if (e.code === '23505' && e.constraint === 'purchases_paid_media_owner') {
+        if (e.code === '23505' && e.constraint === 'purchases_paid_media_version') {
           const bad = new Error('you already own this photo — download it from My photos');
           bad.status = 409; throw bad;
         }
@@ -1652,13 +1924,22 @@ module.exports = function mountMediaRoutes(app) {
     for (const p of priced) {
       try {
         const { rows } = await pool.query(
-          `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents)
-            VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, 0, $8) RETURNING id`,
-          [p.mediaId, p.packageId, buyerEmail, buyer.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.amount]
+          `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig)
+            VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, 0, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
+          [p.mediaId, p.packageId, buyerEmail, buyer.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.amount, p.originalCents, p.budgetId, p.logoTemplate, p.logoTheme, p.logoVariant || null, logoSig(p.logoTemplate, p.logoTheme, p.logoVariant, p.logoIds)]
         );
         ids.push(rows[0].id);
+        if (Array.isArray(p.logoIds) && p.logoIds.length) {
+          for (let i = 0; i < p.logoIds.length; i++) {
+            await pool.query(
+              `INSERT INTO purchase_sponsor_logos (purchase_id, sponsor_logo_id, position)
+               VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+              [rows[0].id, p.logoIds[i], (p.logoPositions && p.logoPositions[p.logoIds[i]]) || LOGO_POSITIONS[i % LOGO_POSITIONS.length]]
+            );
+          }
+        }
       } catch (e) {
-        if (e.code === '23505' && e.constraint === 'purchases_paid_media_owner') {
+        if (e.code === '23505' && e.constraint === 'purchases_paid_media_version') {
           const bad = new Error('you already own this photo — download it from My photos');
           bad.status = 409; throw bad;
         }
@@ -1750,7 +2031,9 @@ module.exports = function mountMediaRoutes(app) {
     const seen = new Set();
     for (let idx = 0; idx < items.length; idx++) {
       const it = items[idx] || {};
-      const sig = it.media_id ? `m:${it.media_id}:${it.license_tier || ''}`
+      const sigLogos = it.sponsor_logo_ids === undefined || it.sponsor_logo_ids === null ? ''
+        : (Array.isArray(it.sponsor_logo_ids) ? it.sponsor_logo_ids : [it.sponsor_logo_ids]).map(String).sort().join(',');
+      const sig = it.media_id ? `m:${it.media_id}:${it.license_tier || ''}:${sigLogos}`
         : it.package_id ? `p:${it.package_id}` : `x:${idx}`;
       if (seen.has(sig)) fail(idx, 400, 'duplicate item in cart — remove it and retry');
       seen.add(sig);
@@ -1819,11 +2102,20 @@ module.exports = function mountMediaRoutes(app) {
           ids.push(purchaseId);
         } else {
           const { rows } = await client.query(
-            `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents)
-              VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9) RETURNING id`,
-            [p.mediaId, p.packageId, buyerEmail, buyerAuth.id, p.tierId, p.amount, idem, p.used, p.stripe]
+            `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig)
+              VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+            [p.mediaId, p.packageId, buyerEmail, buyerAuth.id, p.tierId, p.amount, idem, p.used, p.stripe, p.originalCents, p.budgetId, p.logoTemplate, p.logoTheme, p.logoVariant || null, logoSig(p.logoTemplate, p.logoTheme, p.logoVariant, p.logoIds)]
           );
           ids.push(rows[0].id);
+          if (Array.isArray(p.logoIds) && p.logoIds.length) {
+            for (let i = 0; i < p.logoIds.length; i++) {
+              await client.query(
+                `INSERT INTO purchase_sponsor_logos (purchase_id, sponsor_logo_id, position)
+                 VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+                [rows[0].id, p.logoIds[i], (p.logoPositions && p.logoPositions[p.logoIds[i]]) || LOGO_POSITIONS[i % LOGO_POSITIONS.length]]
+              );
+            }
+          }
         }
         if (p.used > 0) {
           running -= p.used;
@@ -1838,7 +2130,7 @@ module.exports = function mountMediaRoutes(app) {
       await client.query('COMMIT');
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});
-      if (e.code === '23505' && e.constraint === 'purchases_paid_media_owner') {
+      if (e.code === '23505' && e.constraint === 'purchases_paid_media_version') {
         const bad = new Error('you already own this photo — download it from My photos');
         bad.status = 409; throw bad;
       }
@@ -2067,7 +2359,314 @@ module.exports = function mountMediaRoutes(app) {
       return res.status(402).json({ error: 'purchase required' });
     }
     res.setHeader('Cache-Control', 'private, no-store');
-    res.redirect(303, await mediaStore.signedDownloadUrl(m.rows[0].storage_key));
+    // Attachment filename so the browser downloads instead of navigating
+    // to (and stranding the user on) the signed file URL.
+    const ext = (String(m.rows[0].storage_key).split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+    const dlName = `boss-media-${String(req.params.id).slice(0, 8)}.${ext}`;
+    // Option 1: a paid purchase carrying sponsor logos downloads the baked
+    // variant (rendered once, cached as logo_variant_key) so both versions
+    // are kept. Plain owners keep the original.
+    // ?purchase=<uuid> pins the download to that owned version (library
+    // per-version downloads); otherwise the latest logo version wins.
+    let logoBuy;
+    const wantPurchase = req.query?.purchase;
+    if (wantPurchase !== undefined && wantPurchase !== null && wantPurchase !== '') {
+      if (!UUID_RE.test(String(wantPurchase))) return res.status(400).json({ error: 'bad purchase id' });
+      logoBuy = await pool.query(
+        `SELECT p.id, p.logo_variant_key, p.logo_variant, COALESCE(p.logo_template, 'corner') AS logo_template,
+           COALESCE(p.logo_theme, 'light') AS logo_theme FROM purchases p
+         WHERE p.status = 'paid' AND p.buyer_user_id = $2 AND p.id = $3
+           AND (p.media_id = $1 OR p.package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))`,
+        [req.params.id, req.authUser.id, String(wantPurchase)]
+      );
+      if (!logoBuy.rows.length) return res.status(404).json({ error: 'purchase not found' });
+      if (!await pool.query(
+        `SELECT 1 FROM purchase_sponsor_logos WHERE purchase_id = $1 LIMIT 1`,
+        [logoBuy.rows[0].id]).then((r) => r.rows.length)) {
+        res.redirect(303, await mediaStore.signedDownloadUrl(m.rows[0].storage_key, 900, dlName));
+        return;
+      }
+    } else {
+      logoBuy = await pool.query(
+        `SELECT p.id, p.logo_variant_key, p.logo_variant, COALESCE(p.logo_template, 'corner') AS logo_template,
+           COALESCE(p.logo_theme, 'light') AS logo_theme FROM purchases p
+         WHERE p.status = 'paid' AND p.buyer_user_id = $2 AND p.media_id = $1
+           AND EXISTS (SELECT 1 FROM purchase_sponsor_logos l WHERE l.purchase_id = p.id)
+         ORDER BY p.created_at DESC LIMIT 1`,
+        [req.params.id, req.authUser.id]
+      );
+    }
+    if (!logoBuy.rows.length) {
+      res.redirect(303, await mediaStore.signedDownloadUrl(m.rows[0].storage_key, 900, dlName));
+      return;
+    }
+    const purchase = logoBuy.rows[0];
+    const designed = await ensureDesignedVariant({
+      purchaseId: purchase.id, mediaId: req.params.id, storageKey: m.rows[0].storage_key,
+      logoVariant: purchase.logo_variant, logoTemplate: purchase.logo_template,
+      logoTheme: purchase.logo_theme, logoVariantKey: purchase.logo_variant_key,
+    });
+    if (designed?.fresh) {
+      audit(req, 'media.logo_bake', 'media', req.params.id, { purchase_id: purchase.id, logos: designed.logos, template: designed.template, theme: designed.theme });
+    }
+    res.redirect(303, await mediaStore.signedDownloadUrl(designed?.key || m.rows[0].storage_key, 900, dlName));
+  }));
+
+  // Render the buyer-chosen layout (migration 089). All sizing is relative
+  // so portrait and landscape photos keep their own shape: corner overlays
+  // on the photo itself; banner/winner extend the canvas with strips.
+  // theme light|dark (migration 092): light renders the white wave strip
+  // buyers see in the preview (WYSIWYG); dark keeps the legacy dark strip.
+  async function bakeLogoTemplate(photoBuf, logoBufs, template, positions, ctx, theme = 'light') {
+    const meta = await sharp(photoBuf).metadata();
+    const W = meta.width || 1600, H = meta.height || 1000;
+    const sized = async (buf, w) => sharp(buf).resize({ width: Math.max(40, Math.round(w)), withoutEnlargement: true }).toBuffer();
+    if (template === 'corner') {
+      const composites = [];
+      for (let i = 0; i < logoBufs.length; i++) {
+        const resized = await sized(logoBufs[i], W * 0.15);
+        const gravity = positions[i] === 'bottom-right' ? 'southeast' : positions[i] === 'top-right' ? 'northeast' : 'southwest';
+        const off = Math.round(W * 0.03);
+        composites.push({ input: resized, gravity, top: off, left: off });
+      }
+      return sharp(photoBuf).composite(composites).jpeg({ quality: 90 }).toBuffer();
+    }
+    // "Supported by | logos" lockup shared by the strip templates.
+    const stripLabel = async (stripW, stripH, y) => {
+      const fs = Math.max(16, Math.round(stripH * 0.22));
+      const label = Buffer.from(
+        `<svg width="${stripW}" height="${stripH}" xmlns="http://www.w3.org/2000/svg">` +
+        `<text x="${Math.round(stripW * 0.06)}" y="${Math.round(stripH * 0.56)}" font-family="sans-serif" font-size="${fs}" fill="#bbbbbb">Supported by</text>` +
+        `<line x1="${Math.round(stripW * 0.06)}" y1="${Math.round(stripH * 0.68)}" x2="${Math.round(stripW * 0.20)}" y2="${Math.round(stripH * 0.68)}" stroke="#c5a44e" stroke-width="3"/></svg>`
+      );
+      return { input: label, top: y, left: 0 };
+    };
+    const stripLogos = async (y, stripH, padLeft) => {
+      const items = [];
+      for (const buf of logoBufs) items.push(await sized(buf, W * 0.16));
+      const metas = await Promise.all(items.map((b) => sharp(b).metadata()));
+      const gap = Math.round(W * 0.03);
+      const totalW = metas.reduce((s, mm, i) => s + (mm.width || 0) + (i ? gap : 0), 0);
+      let x = Math.max(padLeft, Math.round((W - totalW) / 2));
+      const out = [];
+      for (let i = 0; i < items.length; i++) {
+        const lh = metas[i].height || 0;
+        out.push({ input: items[i], top: Math.round(y + (stripH - lh) / 2), left: x });
+        x += (metas[i].width || 0) + gap;
+      }
+      return out;
+    };
+    if (template === 'banner' || template === 'top' || template === 'bottombar') {
+      // Slim white wave strip (light, 12% of photo height) exactly like the
+      // buyer preview, or the legacy dark strip (dark).
+      const stripH = Math.round(H * 0.12);
+      const stripY = template === 'top' ? 0 : H;
+      const photoY = template === 'top' ? stripH : 0;
+      if (theme !== 'dark') {
+        const waveH = Math.round(H * 0.06);
+        const pad = Math.round(W * 0.032);
+        const fs = Math.max(18, Math.round(W * 0.018));
+        const bar = Math.max(2, Math.round(W * 0.002));
+        const parts = [{ input: photoBuf, top: photoY, left: 0 }];
+        if (template !== 'top') {
+          parts.push({
+            input: Buffer.from(
+              `<svg width="${W}" height="${waveH}" viewBox="0 0 800 120" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">` +
+              `<path d="M0 78 C160 60 260 96 420 74 C580 52 660 88 800 40 L800 120 L0 120 Z" fill="#ffffff"/>` +
+              `<path d="M0 78 C160 60 260 96 420 74 C580 52 660 88 800 40" fill="none" stroke="#0e2233" stroke-width="7"/>` +
+              `<path d="M0 84 C160 66 260 102 420 80 C580 58 660 94 800 46" fill="none" stroke="#d4a017" stroke-width="3"/></svg>`
+            ), top: H - waveH, left: 0,
+          });
+        }
+        parts.push({
+          input: Buffer.from(
+            `<svg width="${W}" height="${stripH}" xmlns="http://www.w3.org/2000/svg">` +
+            (template === 'top' ? `<rect x="0" y="${stripH - bar * 2}" width="${W}" height="${bar * 2}" fill="#d4a017"/>` : '') +
+            `<text x="${pad}" y="${Math.round(stripH * 0.46)}" font-family="sans-serif" font-size="${fs}" font-weight="bold" letter-spacing="${Math.max(1, Math.round(fs * 0.14))}" fill="#0e2233">SUPPORTED BY</text>` +
+            `<rect x="${pad}" y="${Math.round(stripH * 0.58)}" width="${Math.round(W * 0.06)}" height="${bar}" fill="#d4a017"/></svg>`
+          ), top: stripY, left: 0,
+        });
+        const items = [];
+        for (const buf of logoBufs) items.push(await sized(buf, W * 0.16));
+        const metas = await Promise.all(items.map((b) => sharp(b).metadata()));
+        const gap = Math.round(W * 0.03);
+        const totalW = metas.reduce((s, mm, i) => s + (mm.width || 0) + (i ? gap : 0), 0);
+        let x = Math.max(pad, W - pad - totalW);
+        for (let i = 0; i < items.length; i++) {
+          const lh = metas[i].height || 0;
+          parts.push({ input: items[i], top: Math.round(stripY + (stripH - lh) / 2), left: x });
+          x += (metas[i].width || 0) + gap;
+        }
+        return sharp({ create: { width: W, height: H + stripH, channels: 3, background: '#ffffff' } })
+          .composite(parts)
+          .jpeg({ quality: 90 }).toBuffer();
+      }
+      // dark: legacy dark strip with "Supported by" on the left.
+      const darkH = Math.round(H * (template === 'bottombar' ? 0.1 : 0.18));
+      const darkY = template === 'top' ? 0 : H;
+      const darkPhotoY = template === 'top' ? darkH : 0;
+      const label = await stripLabel(W, darkH, darkY);
+      const arts = await stripLogos(darkY, darkH, Math.round(W * 0.26));
+      return sharp({ create: { width: W, height: H + darkH, channels: 3, background: '#141414' } })
+        .composite([{ input: photoBuf, top: darkPhotoY, left: 0 }, label, ...arts])
+        .jpeg({ quality: 90 }).toBuffer();
+    }
+    if (template === 'minimal') {
+      // Photo untouched: translucent gradient foot with a small logo lockup.
+      const gradH = Math.round(H * 0.22);
+      const items = [];
+      for (const buf of logoBufs.slice(0, 2)) items.push(await sized(buf, W * 0.13));
+      const metas = await Promise.all(items.map((b) => sharp(b).metadata()));
+      const gap = Math.round(W * 0.025);
+      const totalW = metas.reduce((s, mm, i) => s + (mm.width || 0) + (i ? gap : 0), 0);
+      const gx = Math.max(0, Math.round((W - totalW) / 2));
+      const grad = Buffer.from(
+        `<svg width="${W}" height="${gradH}" xmlns="http://www.w3.org/2000/svg">` +
+        `<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">` +
+        `<stop offset="0" stop-color="black" stop-opacity="0"/>` +
+        `<stop offset="1" stop-color="black" stop-opacity="0.55"/></linearGradient></defs>` +
+        `<rect width="${W}" height="${gradH}" fill="url(#g)"/>` +
+        `<text x="${gx}" y="${Math.round(gradH * 0.32)}" font-family="sans-serif" font-size="${Math.max(14, Math.round(gradH * 0.14))}" fill="#eeeeee">Supported by</text></svg>`
+      );
+      let x = gx;
+      const arts = [];
+      for (let i = 0; i < items.length; i++) {
+        const lh = metas[i].height || 0;
+        arts.push({ input: items[i], top: Math.round(H - gradH + gradH * 0.42 + (gradH * 0.5 - lh) / 2), left: x });
+        x += (metas[i].width || 0) + gap;
+      }
+      return sharp(photoBuf)
+        .composite([{ input: grad, gravity: 'south' }, ...arts])
+        .jpeg({ quality: 90 }).toBuffer();
+    }
+    // winner: cream side panel (event/class/WINNER/rider) + sponsor strip,
+    // like the show poster. Photo keeps its aspect via cover crop.
+    const panelW = Math.round(W * 0.32);
+    const stripH = Math.round(H * 0.16);
+    const fs = Math.max(18, Math.round(panelW / 11));
+    const lines = [
+      { t: ctx.event || '', s: Math.round(fs * 0.72), c: '#5a5240', w: 'normal' },
+      { t: ctx.className || '', s: Math.round(fs * 0.72), c: '#5a5240', w: 'normal' },
+      { t: 'WINNER', s: Math.round(fs * 1.1), c: '#222222', w: 'bold' },
+      { t: ctx.subject || '', s: Math.round(fs * 0.85), c: '#222222', w: 'bold' },
+    ].filter((l) => l.t);
+    let ty = Math.round(H * 0.12);
+    const texts = lines.map((l) => {
+      const y = ty; ty += Math.round(l.s * 1.7);
+      return `<text x="${Math.round(panelW * 0.12)}" y="${y}" font-family="sans-serif" font-size="${l.s}" font-weight="${l.w}" fill="${l.c}">${escXml(l.t.slice(0, 60))}</text>`;
+    }).join('');
+    const panel = Buffer.from(
+      `<svg width="${panelW}" height="${H}" xmlns="http://www.w3.org/2000/svg">` +
+      `<rect width="${panelW}" height="${H}" fill="#f3ecd9"/>${texts}</svg>`
+    );
+    const photoPart = await sharp(photoBuf).resize({ width: W - panelW, height: H, fit: 'cover' }).toBuffer();
+    const items = [];
+    for (const buf of logoBufs) items.push(await sized(buf, W * 0.14));
+    const metas = await Promise.all(items.map((b) => sharp(b).metadata()));
+    const gap = Math.round(W * 0.03);
+    const totalW = metas.reduce((s, mm, i) => s + (mm.width || 0) + (i ? gap : 0), 0);
+    let x = Math.max(0, Math.round((W - totalW) / 2));
+    const strip = [];
+    for (let i = 0; i < items.length; i++) {
+      const lh = metas[i].height || 0;
+      strip.push({ input: items[i], top: Math.round(H + (stripH - lh) / 2), left: x });
+      x += (metas[i].width || 0) + gap;
+    }
+    return sharp({ create: { width: W, height: H + stripH, channels: 3, background: '#141414' } })
+      .composite([{ input: panel, top: 0, left: 0 }, { input: photoPart, top: 0, left: panelW }, ...strip])
+      .jpeg({ quality: 90 }).toBuffer();
+  }
+  async function bakeContext(mediaId) {
+    try {
+      const { rows } = await pool.query(
+        `SELECT e.name AS event, c.name AS class_name,
+           NULLIF(CONCAT_WS(' × ', h.name, r.name), '') AS subject
+         FROM media m LEFT JOIN events e ON e.id = m.event_id
+         LEFT JOIN classes c ON c.id = m.class_id
+         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+         WHERE m.id = $1`, [mediaId]);
+      return {
+        event: rows[0]?.event || '', className: rows[0]?.class_name || '',
+        subject: rows[0]?.subject || '',
+      };
+    } catch {
+      return { event: '', className: '', subject: '' };
+    }
+  }
+
+  // Bake (once, cached as purchases.logo_variant_key) the buyer-chosen
+  // sponsor layout for a logo purchase. Returns the R2 key to serve:
+  // the baked variant, or the original when there is nothing to bake
+  // (no logo files readable). Shared by download + My media.
+  async function ensureDesignedVariant({ purchaseId, mediaId, storageKey, logoVariant, logoTemplate, logoTheme, logoVariantKey }) {
+    if (!storageKey) return null;
+    if (logoVariantKey) return { key: logoVariantKey, fresh: false };
+    const links = await pool.query(
+      `SELECT s.r2_key, l.position FROM purchase_sponsor_logos l
+       JOIN sponsor_logos s ON s.id = l.sponsor_logo_id
+       WHERE l.purchase_id = $1 AND s.is_active ORDER BY l.position`,
+      [purchaseId]
+    );
+    const readKey = async (key) => {
+      const { stream } = await mediaStore.getStream(key);
+      const chunks = [];
+      for await (const c of stream) chunks.push(c);
+      return Buffer.concat(chunks);
+    };
+    const logoBufs = [];
+    for (const l of links.rows) {
+      try {
+        logoBufs.push(await readKey(l.r2_key));
+      } catch {
+        continue;
+      }
+    }
+    if (!logoBufs.length) return { key: storageKey, fresh: false };
+    const template = ['corner', 'banner', 'top', 'minimal', 'winner', 'bottombar'].includes(logoTemplate) ? logoTemplate : 'corner';
+    const theme = logoTheme === 'dark' ? 'dark' : 'light';
+    // Exact-variant bake (WYSIWYG with the buyer preview). Legacy rows
+    // (logo_variant NULL) keep the mapped-template bake as before.
+    const { isVariant: isLogoVariant } = require('../lib/logoBake');
+    const exactVariant = isLogoVariant(logoVariant) ? logoVariant : null;
+    const bakeCtx = await bakeContext(mediaId);
+    const baked = exactVariant
+      ? await require('../lib/logoBake').bakeVariant({
+          photoBuf: await readKey(storageKey), logoBufs, variant: exactVariant,
+          positions: links.rows.map((l) => l.position), ctx: bakeCtx, theme,
+        })
+      : await bakeLogoTemplate(
+          await readKey(storageKey), logoBufs, template,
+          links.rows.map((l) => l.position), bakeCtx, theme
+        );
+    const variantKey = `logos/${purchaseId}.jpg`;
+    await mediaStore.putBuffer(variantKey, baked, 'image/jpeg');
+    await pool.query('UPDATE purchases SET logo_variant_key = $2 WHERE id = $1', [purchaseId, variantKey]);
+    return { key: variantKey, fresh: true, logos: logoBufs.length, template, theme };
+  }
+
+  // Option 3 decision: only the photo's own photographer (or ADMIN) may
+  // approve/reject a sponsor logo request. Approval is permission only —
+  // the sponsor then buys through the normal Option 1 flow.
+  app.post('/api/studio/approvals/:id/decision', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+    const { decision } = req.body || {};
+    if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
+    if (!['approved', 'rejected'].includes(decision)) return res.status(400).json({ error: 'decision must be approved|rejected' });
+    const a = await pool.query(
+      `SELECT a.*, m.photographer_id FROM logo_approvals a JOIN media m ON m.id = a.media_id WHERE a.id = $1`,
+      [String(req.params.id)]);
+    if (!a.rows.length) return res.status(404).json({ error: 'request not found' });
+    if (a.rows[0].status !== 'pending') return res.status(409).json({ error: 'request already decided' });
+    if (req.authUser.role !== 'ADMIN') {
+      const ownId = await ownPhotographerId(pool, req.authUser);
+      const mine = await pool.query('SELECT 1 FROM media WHERE id = $1 AND photographer_id = $2',
+        [a.rows[0].media_id, ownId]);
+      if (!mine.rows.length) return res.status(403).json({ error: 'not your photo' });
+    }
+    const done = (await pool.query(
+      `UPDATE logo_approvals SET status = $2, decided_at = NOW() WHERE id = $1 RETURNING id, status, decided_at`,
+      [String(req.params.id), decision])).rows[0];
+    audit(req, 'logo.approval.decision', 'media', a.rows[0].media_id, { approval_id: done.id, decision });
+    res.json({ data: done });
   }));
 
   // Single purchase status (owner-only; powers the success page).
@@ -2409,7 +3008,9 @@ module.exports = function mountMediaRoutes(app) {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
     const { rows } = await pool.query(
       `SELECT pu.id AS purchase_id, pu.license_tier, pu.amount_cents, pu.status, pu.created_at,
-          m.id AS media_id, m.kind, m.thumb_key, m.preview_key, m.event_id,
+          pu.logo_variant, pu.logo_template, pu.logo_theme, pu.logo_variant_key,
+          EXISTS (SELECT 1 FROM purchase_sponsor_logos l WHERE l.purchase_id = pu.id) AS has_logos,
+          m.id AS media_id, m.kind, m.thumb_key, m.preview_key, m.storage_key, m.event_id,
           e.name AS event_name, h.name AS horse, r.name AS rider
         FROM purchases pu
         JOIN LATERAL (
@@ -2423,7 +3024,8 @@ module.exports = function mountMediaRoutes(app) {
         WHERE pu.buyer_user_id = $1 AND pu.status = 'paid'
         UNION ALL
         SELECT pu.id AS purchase_id, 'credit' AS license_tier, pu.amount_cents, pu.status, cr.created_at,
-          m.id AS media_id, m.kind, m.thumb_key, m.preview_key, m.event_id,
+          NULL AS logo_variant, NULL AS logo_template, NULL AS logo_theme, NULL AS logo_variant_key, FALSE AS has_logos,
+          m.id AS media_id, m.kind, m.thumb_key, m.preview_key, m.storage_key, m.event_id,
           e.name AS event_name, h.name AS horse, r.name AS rider
         FROM credit_redemptions cr
         JOIN credit_bundles cb ON cb.id = cr.bundle_id
@@ -2436,6 +3038,24 @@ module.exports = function mountMediaRoutes(app) {
       [req.authUser.id]
     );
     withUrls(rows);
+    // Logo purchases show the bought design (the same file download serves).
+    // Bakes lazily on first sight; one failure never breaks the library.
+    for (const row of rows) {
+      const storageKey = row.storage_key;
+      delete row.storage_key;
+      if (!row.has_logos) continue;
+      try {
+        const designed = await ensureDesignedVariant({
+          purchaseId: row.purchase_id, mediaId: row.media_id, storageKey,
+          logoVariant: row.logo_variant, logoTemplate: row.logo_template,
+          logoTheme: row.logo_theme, logoVariantKey: row.logo_variant_key,
+        });
+        if (designed?.key) {
+          row.designed_url = await mediaStore.signedDownloadUrl(designed.key);
+          row.logo_variant_key = designed.key;
+        }
+      } catch { /* keep the plain thumbnail */ }
+    }
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ data: rows });
   }));
@@ -3484,7 +4104,8 @@ module.exports = function mountMediaRoutes(app) {
           [bundleId, buyerEmail, buyer.id, amount, b.idempotency_key || null]
         );
         purchaseId = rows[0].id;
-      } catch (e) {
+        if (logoIds.length) await linkPurchaseLogos(purchaseId, logoIds);
+    } catch (e) {
         await pool.query(`UPDATE credit_bundles SET status = 'cancelled' WHERE id = $1`, [bundleId]);
         throw e;
       }

@@ -65,6 +65,47 @@ module.exports = function mountPublicRoutes(app) {
     res.json({ ok: true });
   }));
 
+  // ---- Sponsor logos for the buy box (Option 1): active logos only,
+  // no spend/budget internals. Public so guests can preview the option.
+  app.get('/api/sponsor-logos', asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT l.id, l.label, s.name AS sponsor_name
+       FROM sponsor_logos l JOIN sponsors s ON s.id = l.sponsor_id
+       WHERE l.is_active AND s.is_active ORDER BY s.name, l.label LIMIT 100`);
+    res.json({ data: rows });
+  }));
+
+  // ---- Sponsor logo file (public): active logos of active sponsors only.
+  // No budget internals. Signed URL, short-lived.
+  app.get('/api/sponsor-logos/:id/file', asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT l.r2_key FROM sponsor_logos l JOIN sponsors s ON s.id = l.sponsor_id
+       WHERE l.id = $1 AND l.is_active AND s.is_active`, [String(req.params.id)]);
+    if (!rows.length || !rows[0].r2_key) return res.status(404).json({ error: 'logo not found' });
+    const mediaStore = require('../lib/mediaStore');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.redirect(303, await mediaStore.signedDownloadUrl(rows[0].r2_key, 300));
+  }));
+
+  // ---- Sponsor discounts for the buy box (Option 2): active budgets with
+  // a real discount and remaining funds, scoped to the event (?event_id)
+  // or any-event budgets. No spent internals beyond what remains.
+  app.get('/api/sponsor-discounts', asyncH(async (req, res) => {
+    const raw = String(req.query.event_id || '');
+    const eid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw : null;
+    const { rows } = await pool.query(
+      `SELECT b.id, b.discount_cents, (b.agreed_cents - b.spent_cents) AS remaining_cents,
+        s.name AS sponsor_name, e.name AS event_name
+       FROM sponsor_budgets b JOIN sponsors s ON s.id = b.sponsor_id
+       LEFT JOIN events e ON e.id = b.event_id
+       WHERE b.status = 'active' AND s.is_active AND b.discount_cents > 0
+         AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
+         AND ($1::UUID IS NULL OR b.event_id IS NULL OR b.event_id = $1)
+       ORDER BY b.discount_cents DESC LIMIT 20`,
+      [eid]);
+    res.json({ data: rows });
+  }));
+
   // ---- Rankings (PRD §7.5) ----
   app.get('/rankings/horses', asyncH(async (req, res) => {
     const { limit, minStarts } = paging(req);
@@ -1405,7 +1446,7 @@ module.exports = function mountPublicRoutes(app) {
     if (!name || !String(name).trim()) errs.push('name required');
     if (!EMAIL_RE.test(String(email || '').trim().toLowerCase())) errs.push('valid email required');
     if (!message || !String(message).trim()) errs.push('message required');
-    if (entity_type && !['horse', 'rider', 'event', 'class', 'result', 'organizer', 'other'].includes(entity_type)) {
+    if (entity_type && !['horse', 'rider', 'event', 'class', 'result', 'organizer', 'sponsor', 'other'].includes(entity_type)) {
       errs.push('bad entity_type');
     }
     if (errs.length) return res.status(400).json({ error: errs.join('; ') });

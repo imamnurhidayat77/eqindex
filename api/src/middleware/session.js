@@ -7,7 +7,7 @@ const { getCookie } = require('../lib/cookies');
 // Absolute cap stays 30 days (expires_at). last_seen slides at most every
 // 5 minutes so normal traffic costs ~1 write, not 1 per request.
 // ---- Session auth (best practice: opaque token, sha256 at rest, httpOnly cookie) ----
-const IDLE_MS = { ADMIN: 12 * 3600e3, PHOTOGRAPHER: 12 * 3600e3, ORGANIZER: 12 * 3600e3 };
+const IDLE_MS = { ADMIN: 12 * 3600e3, PHOTOGRAPHER: 12 * 3600e3, ORGANIZER: 12 * 3600e3, SPONSOR: 12 * 3600e3 };
 const DEFAULT_IDLE_MS = 7 * 24 * 3600e3;
 async function sessionUser(req) {
   const token = getCookie(req, SESSION_COOKIE);

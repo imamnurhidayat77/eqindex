@@ -19,7 +19,9 @@ import { useDocumentTitle } from '../../lib/use-document-title';
 const TABS = [['photos', 'Photos'], ['reels', 'Reels'], ['credits', 'Credits']];
 const PAGE_SIZE = 12;
 const REEL_STATUS = { awaiting_payment: 'Waiting for payment', pending: 'Queued for production', in_production: 'Being filmed and edited', ready: 'Ready', delivered: 'Delivered', cancelled: 'Cancelled' };
-const dl = (id) => `${API}/api/media/${id}/download`;
+const dl = (x) => x?.purchase_id
+  ? `${API}/api/media/${x.media_id}/download?purchase=${x.purchase_id}`
+  : `${API}/api/media/${x?.media_id || x}/download`;
 
 export default function MediaHub() {
   useDocumentTitle('My media');
@@ -107,14 +109,14 @@ export default function MediaHub() {
                     {slice(photos).map((x) => (
                       <article key={`${x.purchase_id}-${x.media_id}`} className="my-card">
                         <span className="my-image">
-                          {x.thumb_url || x.preview_url
-                            ? <SmartImage src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' and ') || x.event_name || 'Purchased photo'} fill sizes="(max-width: 768px) 50vw, 25vw" />
+                          {x.designed_url || x.thumb_url || x.preview_url
+                            ? <SmartImage src={x.designed_url || x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' and ') || x.event_name || 'Purchased photo'} fill sizes="(max-width: 768px) 50vw, 25vw" />
                             : <span className="cover-fallback">Boss Media</span>}
                         </span>
                         <div className="my-status"><i className="live" aria-hidden="true" /><span>{x.license_tier || 'Photo'}</span></div>
                         <h3>{[x.horse, x.rider].filter(Boolean).join(' · ') || x.event_name || 'Photo'}</h3>
                         <div className="my-data"><p>{x.event_name || '—'}</p><p>{fmtDay(x.created_at)}</p></div>
-                        <div className="my-action"><p>Lifetime download</p><a href={dl(x.media_id)}>Download <Icon name="arrow" size={14} /></a></div>
+                        <div className="my-action"><p>Lifetime download</p><a href={dl(x)}>Download <Icon name="arrow" size={14} /></a></div>
                       </article>
                     ))}
                   </div>

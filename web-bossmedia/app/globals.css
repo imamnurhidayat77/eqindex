@@ -1466,6 +1466,29 @@ button.license-option { width: 100%; padding: 13px; background: transparent; cur
 @media (max-width: 800px) { .reel-pick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .st-modal-card { max-height: calc(100vh - 60px); overflow-y: auto; }
 
+/* ---- Sponsor design modal: visual template picker + position row ---- */
+.template-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 10px; }
+.template-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 12px; }
+@media (max-width: 700px) { .template-gallery { grid-template-columns: 1fr; } }
+.template-gallery .template-card canvas { border-radius: 6; }
+.design-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 20px; align-items: start; margin-top: 12px; }
+.design-preview { position: sticky; top: 0; }
+@media (max-width: 860px) {
+  .design-grid { grid-template-columns: 1fr; }
+  .design-preview { position: static; }
+  .template-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) { .template-grid { grid-template-columns: 1fr; } }
+.template-card { border: 1px solid #3a3a3a; background: #101010; padding: 10px; cursor: pointer; color: inherit; font: inherit; text-align: left; }
+.template-card:hover { border-color: #888; }
+.template-card.selected { border-color: #fff; box-shadow: inset 0 0 0 1px #fff; }
+.template-card > div:last-child { margin-top: 8px; }
+.template-card strong { display: block; font-size: 13px; }
+.template-card span { color: #888; font-size: 11px; }
+.pos-row { display: flex; gap: 8px; margin: 8px 0 10px; flex-wrap: wrap; }
+.pos-idle { min-height: 40px; padding: 0 14px; background: transparent; border: 1px solid #555; color: #ddd; font-size: 12px; font-weight: 600; cursor: pointer; }
+.pos-idle:hover { border-color: #999; color: #fff; }
+
 /* ---- Proper reel player ---- */
 .rp { position: absolute; inset: 0; background: #000; overflow: hidden; border-radius: inherit; outline: none; }
 .rp:focus-visible { outline: 2px solid rgba(255,255,255,.7); outline-offset: -2px; }

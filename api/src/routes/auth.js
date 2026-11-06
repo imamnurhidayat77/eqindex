@@ -90,12 +90,12 @@ module.exports = function mountAuthRoutes(app) {
     res.json({ data: { id: u.id, name: u.name, email: u.email, role: u.role } });
   }));
 
-  // ---- TOTP MFA for money/power roles (ADMIN, PHOTOGRAPHER, ORGANIZER) ----
-  const MFA_ROLES = ['ADMIN', 'PHOTOGRAPHER', 'ORGANIZER'];
+  // ---- TOTP MFA for money/power roles (ADMIN, PHOTOGRAPHER, ORGANIZER, SPONSOR) ----
+  const MFA_ROLES = ['ADMIN', 'PHOTOGRAPHER', 'ORGANIZER', 'SPONSOR'];
   const mfaAllowed = (req, res) => {
     if (!req.authUser) { res.status(401).json({ error: 'login required' }); return false; }
     if (!MFA_ROLES.includes(req.authUser.role)) {
-      res.status(403).json({ error: 'MFA is available for admin, photographer and organizer accounts' }); return false;
+      res.status(403).json({ error: 'MFA is available for admin, photographer, organizer and sponsor accounts' }); return false;
     }
     return true;
   };

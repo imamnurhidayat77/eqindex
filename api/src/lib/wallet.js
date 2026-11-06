@@ -85,7 +85,13 @@ async function recordPurchaseSplit(pool, purchaseId, { rates } = {}) {
   if (!row || row.status !== 'paid' || row.platform_fee_cents !== null) return null;
   const { platform, organizer } = rates || await getRates(pool);
   const ctx = await resolvePurchaseContext(pool, row);
-  const split = computeSplit(row.amount_cents, platform, organizer, !!ctx.organizer_id);
+  // Sponsor discount (Option 2): the photographer is paid on the FULL
+  // original price; the platform absorbs the discount out of its own fee
+  // and underwrites collection from the sponsor (billed later).
+  const gross = row.original_amount_cents || row.amount_cents;
+  const discount = row.sponsor_budget_id ? Math.max(0, gross - row.amount_cents) : 0;
+  const split = computeSplit(gross, platform, organizer, !!ctx.organizer_id);
+  split.platformFee = gross - split.photographerPayout - split.organizerPayout - discount;
 
   const client = await pool.connect();
   try {
@@ -96,6 +102,20 @@ async function recordPurchaseSplit(pool, purchaseId, { rates } = {}) {
         WHERE id = $1 AND platform_fee_cents IS NULL`,
       [purchaseId, split.platformFee, split.photographerPayout, split.organizerPayout, ctx.organizer_id]
     );
+    if (row.sponsor_budget_id && discount > 0) {
+      // Lock the budget so concurrent paid purchases can't overspend it.
+      const b = await client.query('SELECT * FROM sponsor_budgets WHERE id = $1 FOR UPDATE', [row.sponsor_budget_id]);
+      if (b.rows.length && b.rows[0].status === 'active') {
+        const remaining = Number(b.rows[0].agreed_cents) - Number(b.rows[0].spent_cents);
+        const applied = Math.min(discount, Math.max(0, remaining));
+        await client.query('UPDATE sponsor_budgets SET spent_cents = spent_cents + $2 WHERE id = $1', [row.sponsor_budget_id, applied]);
+        await client.query(
+          `INSERT INTO sponsored_redemptions (purchase_id, budget_id, discount_cents)
+           VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [purchaseId, row.sponsor_budget_id, applied]
+        );
+      }
+    }
     if (split.organizerPayout > 0 && ctx.organizer_user_id) {
       const cur = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [ctx.organizer_user_id]);
       if (cur.rows.length) {

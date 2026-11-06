@@ -32,6 +32,10 @@
   dengan menjalankan test yang relevan, bukan sekadar "kelihatannya benar".
 - Error message untuk user: bahasa manusia, tanpa stack trace / detail
   internal bocor ke UI.
+- Setiap perubahan UI yang terlihat user (halaman, komponen, style)
+  wajib diverifikasi visual via Playwright (snapshot + screenshot/take_screenshot
+  halaman yang diubah, dalam kondisi login maupun logout bila relevan)
+  SEBELUM bilang "beres". Jangan pernah klaim tampilan benar tanpa melihatnya.
 
 ## Security (WAJIB — tidak bisa ditawar)
 
@@ -40,7 +44,7 @@
   signed download URL, dan semua route `needRole('PHOTOGRAPHER'/'ADMIN')`.
 - Validasi & sanitasi SEMUA input di boundary: tipe, panjang, format, allowlist
   role (`PUBLIC/RIDER/COACH` untuk register — JANGAN pernah izinkan client
-  mengklaim role `PHOTOGRAPHER`/`ADMIN`; itu eskalasi hidden privilege).
+  mengklaim role `PHOTOGRAPHER`/`ORGANIZER`/`SPONSOR`/`ADMIN`; itu eskalasi hidden privilege).
 - Jangan pernah: commit secret/key/token ke git, log PII atau secret, echo secret
   ke terminal, menonaktifkan auth/rate-limit/CORS check "sementara", atau
   mem-bypass `needRole`/`needUser` (IDOR: scope selalu dari session, bukan dari

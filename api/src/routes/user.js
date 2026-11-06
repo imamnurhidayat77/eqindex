@@ -3,7 +3,27 @@ const privacy = require('../privacy');
 const { asyncH } = require('../lib/async');
 const { needRole, needUser } = require('../lib/auth');
 const { audit } = require('../lib/audit');
-const { resolveId } = require('../lib/resolve');
+const { resolveId, UUID_RE } = require('../lib/resolve');
+const multer = require('multer');
+const mediaStore = require('../lib/mediaStore');
+
+const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+});
+
+// Ownership guard: a sponsor only touches their own profile (ADMIN exempt
+// for support). Missing/inactive profile is 403, like ownPhotographerId.
+async function ownSponsor(poolQ, authUser) {
+  if (!authUser || authUser.role === 'ADMIN') return null;
+  const { rows } = await poolQ.query(
+    'SELECT id, name FROM sponsors WHERE user_id = $1 AND is_active', [authUser.id]);
+  if (!rows.length) {
+    const err = new Error('no sponsor profile — ask an admin to approve your application');
+    err.status = 403; throw err;
+  }
+  return rows[0];
+}
 
 module.exports = function mountUserRoutes(app) {
   // Watchlist (entity_type: horse | rider | combination | event)
@@ -290,5 +310,221 @@ module.exports = function mountUserRoutes(app) {
     await pool.query('DELETE FROM coach_athletes WHERE coach_user_id=$1 AND rider_id=$2',
       [req.authUser.id, req.params.riderId]);
     res.json({ ok: true });
+  }));
+
+  // ---- Sponsor overview (own sponsor only — IDOR guard by session user) ----
+  app.get('/sponsor/overview', needRole('SPONSOR'), asyncH(async (req, res) => {
+    const s = await pool.query(
+      'SELECT id, name, contact_email, website, is_active, created_at FROM sponsors WHERE user_id = $1 AND is_active ORDER BY created_at DESC LIMIT 1',
+      [req.authUser.id]);
+    if (!s.rows.length) return res.status(404).json({ error: 'no active sponsor profile — awaiting admin approval' });
+    const sponsor = s.rows[0];
+    const budgets = await pool.query(
+      `SELECT b.id, b.agreed_cents, b.spent_cents, b.status, b.created_at,
+        e.name AS event_name
+       FROM sponsor_budgets b LEFT JOIN events e ON e.id = b.event_id
+       WHERE b.sponsor_id = $1 ORDER BY b.created_at DESC LIMIT 50`, [sponsor.id]);
+    const logos = await pool.query(
+      `SELECT id, label, mime, bytes, is_active, created_at FROM sponsor_logos
+       WHERE sponsor_id = $1 AND is_active ORDER BY created_at DESC LIMIT 50`, [sponsor.id]);
+    const approvals = await pool.query(
+      `SELECT a.id, a.status, a.created_at, a.decided_at, m.id AS media_id,
+        l.label AS logo_label FROM logo_approvals a
+       JOIN sponsor_logos l ON l.id = a.sponsor_logo_id
+       LEFT JOIN media m ON m.id = a.media_id
+       WHERE a.sponsor_id = $1 ORDER BY a.created_at DESC LIMIT 50`, [sponsor.id]);
+    const gifts = await pool.query(
+      `SELECT g.id, g.recipient_email, g.slots, g.cost_cents, g.created_at,
+        b.status AS bundle_status FROM sponsor_gifts g
+       JOIN credit_bundles b ON b.id = g.bundle_id
+       JOIN sponsor_budgets bud ON bud.id = g.budget_id
+       WHERE bud.sponsor_id = $1 ORDER BY g.created_at DESC LIMIT 50`, [sponsor.id]);
+    res.json({ data: { sponsor, budgets: budgets.rows, logos: logos.rows, approvals: approvals.rows, gifts: gifts.rows } });
+  }));
+
+  // ---- Sponsor logo file (private preview for the dashboard <img>).
+  app.get('/sponsor/logos/:id/file', needRole('SPONSOR'), asyncH(async (req, res) => {
+    const sponsor = await ownSponsor(pool, req.authUser);
+    if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
+    const { rows } = await pool.query(
+      'SELECT r2_key FROM sponsor_logos WHERE id = $1 AND sponsor_id = $2 AND is_active',
+      [String(req.params.id), sponsor.id]);
+    if (!rows.length || !rows[0].r2_key) return res.status(404).json({ error: 'logo not found' });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.redirect(303, await mediaStore.signedDownloadUrl(rows[0].r2_key, 300));
+  }));
+
+  // ---- Remove a logo (soft delete: past purchases keep their baked
+  // files, but the logo leaves checkouts and the dashboard at once).
+  app.delete('/sponsor/logos/:id', needRole('SPONSOR'), asyncH(async (req, res) => {
+    const sponsor = await ownSponsor(pool, req.authUser);
+    if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
+    const { rows } = await pool.query(
+      `UPDATE sponsor_logos SET is_active = false WHERE id = $1 AND sponsor_id = $2 AND is_active
+       RETURNING id`,
+      [String(req.params.id), sponsor.id]);
+    if (!rows.length) return res.status(404).json({ error: 'logo not found' });
+    audit(req, 'sponsor.logo.remove', 'sponsor', sponsor.id, { logo_id: rows[0].id });
+    res.json({ ok: true });
+  }));
+
+  // ---- Sponsor discount setting (Option 2): per-photo discount in cents
+  // for one of our own budgets. Checkout still enforces discount < price
+  // and remaining funds, so this is safe to expose.
+  app.patch('/sponsor/budgets/:id', needRole('SPONSOR'), asyncH(async (req, res) => {
+    const sponsor = await ownSponsor(pool, req.authUser);
+    if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
+    const discount = Math.round(Number(req.body?.discount_cents));
+    if (!Number.isFinite(discount) || discount < 0 || discount > 100000) {
+      return res.status(400).json({ error: 'discount_cents must be 0–100000' });
+    }
+    const { rows } = await pool.query(
+      `UPDATE sponsor_budgets SET discount_cents = $3 WHERE id = $1 AND sponsor_id = $2
+       AND status = 'active' RETURNING id, discount_cents`,
+      [String(req.params.id), sponsor.id, discount]);
+    if (!rows.length) return res.status(404).json({ error: 'budget not found' });
+    audit(req, 'sponsor.budget.discount', 'sponsor', sponsor.id, { budget_id: rows[0].id, discount_cents: discount });
+    res.json({ data: rows[0] });
+  }));
+
+  // ---- Coverage report (who used our discounts): own budgets only.
+  // Buyer emails are the coverage proof the sponsor pays for — same basis
+  // as the photographer sales table.
+  app.get('/sponsor/redemptions', needRole('SPONSOR'), asyncH(async (req, res) => {
+    const sponsor = await ownSponsor(pool, req.authUser);
+    const { rows } = await pool.query(
+      `SELECT r.discount_cents, r.created_at,
+        p.buyer_email, p.license_tier, p.amount_cents, p.original_amount_cents,
+        COALESCE(h.name, '—') AS horse, COALESCE(rid.name, '—') AS rider,
+        COALESCE(e.name, '—') AS event
+       FROM sponsored_redemptions r
+       JOIN purchases p ON p.id = r.purchase_id
+       JOIN sponsor_budgets b ON b.id = r.budget_id
+       LEFT JOIN media m ON m.id = p.media_id
+       LEFT JOIN horses h ON h.id = m.horse_id
+       LEFT JOIN riders rid ON rid.id = m.rider_id
+       LEFT JOIN events e ON e.id = m.event_id
+       WHERE b.sponsor_id = $1 ORDER BY r.created_at DESC LIMIT 100`,
+      [sponsor.id]);
+    res.json({ data: rows });
+  }));
+
+  // ---- Option 3: request permission to bake our logo into a photo.
+  // The photo's photographer approves in the studio; the actual purchase
+  // then goes through the normal Option 1 flow (no money moves here).
+  app.post('/sponsor/approvals', needRole('SPONSOR'), asyncH(async (req, res) => {
+    const sponsor = await ownSponsor(pool, req.authUser);
+    const { media_id, sponsor_logo_id } = req.body || {};
+    if (!UUID_RE.test(String(media_id || ''))) return res.status(400).json({ error: 'bad media_id' });
+    if (!UUID_RE.test(String(sponsor_logo_id || ''))) return res.status(400).json({ error: 'bad sponsor_logo_id' });
+    const m = await pool.query(`SELECT id, photographer_id FROM media WHERE id = $1 AND status = 'published'`, [String(media_id)]);
+    if (!m.rows.length) return res.status(404).json({ error: 'photo not found or not for sale' });
+    const l = await pool.query('SELECT id FROM sponsor_logos WHERE id = $1 AND sponsor_id = $2 AND is_active', [String(sponsor_logo_id), sponsor.id]);
+    if (!l.rows.length) return res.status(404).json({ error: 'logo not found' });
+    const dupe = await pool.query(
+      `SELECT id FROM logo_approvals WHERE media_id = $1 AND sponsor_logo_id = $2 AND sponsor_id = $3 AND status = 'pending'`,
+      [String(media_id), String(sponsor_logo_id), sponsor.id]);
+    if (dupe.rows.length) return res.status(409).json({ error: 'request already pending', approval_id: dupe.rows[0].id });
+    const ins = await pool.query(
+      `INSERT INTO logo_approvals (media_id, sponsor_logo_id, sponsor_id) VALUES ($1, $2, $3) RETURNING id, status, created_at`,
+      [String(media_id), String(sponsor_logo_id), sponsor.id]);
+    audit(req, 'sponsor.approval.request', 'sponsor', sponsor.id, { approval_id: ins.rows[0].id, media_id: String(media_id) });
+    res.status(201).json({ data: ins.rows[0] });
+  }));
+
+  // ---- PLUS 2: gift winner credits funded by a budget. One discount unit
+  // per gifted slot comes off the budget immediately (same unit the
+  // checkout ledger uses), so the fund can never overspend.
+  const EMAIL_RE_SPONSOR = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  app.post('/sponsor/gifts', needRole('SPONSOR'), asyncH(async (req, res) => {
+    const sponsor = await ownSponsor(pool, req.authUser);
+    const { budget_id, pack_id, buyer_email, rider_id, horse_id } = req.body || {};
+    if (!UUID_RE.test(String(budget_id || ''))) return res.status(400).json({ error: 'bad budget_id' });
+    if (!UUID_RE.test(String(pack_id || ''))) return res.status(400).json({ error: 'bad pack_id' });
+    const email = String(buyer_email || '').trim().toLowerCase();
+    if (!EMAIL_RE_SPONSOR.test(email)) return res.status(400).json({ error: 'valid buyer_email required (winner claims by email)' });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const b = await client.query(
+        `SELECT * FROM sponsor_budgets WHERE id = $1 AND sponsor_id = $2 FOR UPDATE`, [String(budget_id), sponsor.id]);
+      if (!b.rows.length || b.rows[0].status !== 'active') {
+        await client.query('ROLLBACK'); return res.status(404).json({ error: 'budget not available' });
+      }
+      const bud = b.rows[0];
+      const pk = await client.query(`SELECT * FROM credit_packs WHERE id = $1 AND status = 'published'`, [String(pack_id)]);
+      if (!pk.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'credit pack not found' }); }
+      const pack = pk.rows[0];
+      if (bud.event_id && pack.event_id && bud.event_id !== pack.event_id) {
+        await client.query('ROLLBACK'); return res.status(400).json({ error: 'pack event does not match budget event' });
+      }
+      const slots = Number(pack.slots) || 0;
+      if (slots <= 0) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'pack has no slots' }); }
+      const cost = slots * (Number(bud.discount_cents) || 0);
+      const remaining = Number(bud.agreed_cents) - Number(bud.spent_cents);
+      if (cost <= 0 || remaining < cost) {
+        await client.query('ROLLBACK'); return res.status(409).json({ error: 'budget cannot cover this gift' });
+      }
+      const bundle = (await client.query(
+        `INSERT INTO credit_bundles (pack_id, event_id, rider_id, horse_id, buyer_email, slots_total, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'active') RETURNING id`,
+        [pack.id, pack.event_id,
+         rider_id && UUID_RE.test(String(rider_id)) ? String(rider_id) : (pack.rider_id || null),
+         horse_id && UUID_RE.test(String(horse_id)) ? String(horse_id) : (pack.horse_id || null),
+         email, slots])).rows[0];
+      await client.query('UPDATE sponsor_budgets SET spent_cents = spent_cents + $2 WHERE id = $1', [bud.id, cost]);
+      const gift = (await client.query(
+        `INSERT INTO sponsor_gifts (budget_id, bundle_id, recipient_email, slots, cost_cents)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
+        [bud.id, bundle.id, email, slots, cost])).rows[0];
+      await client.query('COMMIT');
+      audit(req, 'sponsor.gift', 'sponsor', sponsor.id, { gift_id: gift.id, bundle_id: bundle.id, cost_cents: cost });
+      res.status(201).json({ data: { ...gift, bundle_id: bundle.id, slots, cost_cents: cost } });
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+  }));
+
+  // ---- Sponsor logo upload (PNG/JPEG ≤2MB, magic bytes sniffed).
+  // Stored namespaced per sponsor; the row is what the shop reads.
+  const LOGO_MIMES = ['image/png', 'image/jpeg'];
+  app.post('/sponsor/logos', needRole('SPONSOR'), logoUpload.single('logo'), asyncH(async (req, res) => {
+    const sponsor = await ownSponsor(pool, req.authUser);
+    const label = String(req.body?.label || '').trim().slice(0, 100);
+    if (!label) return res.status(400).json({ error: 'need {label} (brand name on the logo)' });
+    const f = req.file;
+    if (!f?.buffer?.length) return res.status(400).json({ error: 'need logo file (multipart, PNG/JPEG ≤2MB)' });
+    const { fileTypeFromBuffer } = await import('file-type');
+    const detected = await fileTypeFromBuffer(f.buffer).catch(() => null);
+    const real = detected?.mime || '';
+    // Prefer transparency-capable PNG; never trust the client MIME/extension.
+    if (!LOGO_MIMES.includes(real)) {
+      return res.status(400).json({ error: 'logo must be a real PNG or JPEG image' });
+    }
+    const ext = ((detected?.ext || 'png').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 8)) || 'png';
+    const { rows } = await pool.query(
+      `INSERT INTO sponsor_logos (sponsor_id, label, r2_key, mime, bytes)
+       VALUES ($1, $2, '', $3, $4) RETURNING id`,
+      [sponsor.id, label, real, f.buffer.length]
+    );
+    const id = rows[0].id;
+    const key = `sponsors/${sponsor.id}/${id}.${ext}`;
+    try {
+      await mediaStore.putBuffer(key, f.buffer, real);
+    } catch (e) {
+      // Don't leave an orphan row when storage is down — the shop reads
+      // this table, and a logo without bytes can never render.
+      await pool.query('DELETE FROM sponsor_logos WHERE id = $1', [id]).catch(() => {});
+      const err = new Error('logo storage unavailable — try again shortly');
+      err.status = 502; throw err;
+    }
+    const done = (await pool.query(
+      'UPDATE sponsor_logos SET r2_key = $2 WHERE id = $1 RETURNING id, label, mime, bytes, is_active, created_at',
+      [id, key])).rows[0];
+    audit(req, 'sponsor.logo.upload', 'sponsor', sponsor.id, { logo_id: id, label });
+    res.status(201).json({ data: done });
   }));
 };

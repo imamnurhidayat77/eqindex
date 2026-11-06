@@ -46,9 +46,17 @@ async function putBuffer(key, body, contentType) {
 }
 
 // Short-lived download URL for paid originals (15 min per plan §3.5).
-async function signedDownloadUrl(key, seconds = 900) {
+// Pass downloadName to force a file download (Content-Disposition:
+// attachment) instead of inline display — the browser then downloads
+// without navigating away from the page. Previews/thumbs omit it.
+async function signedDownloadUrl(key, seconds = 900, downloadName = null) {
   const { R2_BUCKET } = cfg();
-  return getSignedUrl(s3(), new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }), { expiresIn: seconds });
+  const params = { Bucket: R2_BUCKET, Key: key };
+  if (downloadName) {
+    const safe = String(downloadName).replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 120);
+    params.ResponseContentDisposition = `attachment; filename="${safe}"`;
+  }
+  return getSignedUrl(s3(), new GetObjectCommand(params), { expiresIn: seconds });
 }
 
 // Direct browser-to-R2 upload (P2B): videos bypass the API/proxy entirely
