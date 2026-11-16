@@ -16,7 +16,7 @@ const BUDGETS = [
 describe('latency budgets (mean of 5, local dev)', () => {
   for (const [name, url, budget] of BUDGETS) {
     test(`${name} < ${budget}ms mean`, async (t) => {
-      await requireServer(t, url.startsWith(BOSS) ? BOSS : APIB);
+      if (!(await requireServer(t, url.startsWith(BOSS) ? BOSS : APIB))) return;
       const { mean, p50, max } = await meanMs(url);
       console.log(`  ${name}: mean=${mean.toFixed(0)}ms p50=${p50.toFixed(0)}ms max=${max.toFixed(0)}ms`);
       assert.ok(mean < budget, `${name} mean ${mean.toFixed(0)}ms over ${budget}ms budget`);

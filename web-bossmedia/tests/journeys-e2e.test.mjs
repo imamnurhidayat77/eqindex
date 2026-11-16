@@ -12,7 +12,7 @@ const firstHref = (html, re) => {
 
 describe('journey 1: browse → event → photo (license UI present)', () => {
   test('events list links into an event with a buyable photo', async (t) => {
-    await requireServer(t, BOSS);
+    if (!(await requireServer(t, BOSS))) return;
     const events = await getText(`${BOSS}/events`);
     assert.equal(events.status, 200);
     const eventHref = firstHref(events.body, /href="(\/events\/[^"]+)"/);
@@ -29,7 +29,7 @@ describe('journey 1: browse → event → photo (license UI present)', () => {
 
 describe('journey 2: guest cart is reachable and gated on email', () => {
   test('cart page renders empty state + receipt email field', async (t) => {
-    await requireServer(t, BOSS);
+    if (!(await requireServer(t, BOSS))) return;
     const { status, body } = await getText(`${BOSS}/cart`);
     assert.equal(status, 200);
     assert.ok(body.includes('Your cart is empty') || body.includes('Your selection'), 'cart shell changed');
@@ -40,14 +40,14 @@ describe('journey 3: post-payment landing degrades gracefully', () => {
   test('success without ids renders the confirming shell (no dead end)', async (t) => {
     // SSR renders `checking`; the empty-link branch ("No order in this
     // link." + escape hatches) is client-side, verified in browser.
-    await requireServer(t, BOSS);
+    if (!(await requireServer(t, BOSS))) return;
     const { status, body } = await getText(`${BOSS}/photos/success`);
     assert.equal(status, 200);
     assert.ok(body.includes('Confirming payment'), 'success shell changed');
   });
 
   test('login preserves the success context for guests', async (t) => {
-    await requireServer(t, BOSS);
+    if (!(await requireServer(t, BOSS))) return;
     const { status } = await getText(`${BOSS}/login?next=%2Fphotos%2Fsuccess%3Fpurchases%3Dabc`);
     assert.equal(status, 200);
   });

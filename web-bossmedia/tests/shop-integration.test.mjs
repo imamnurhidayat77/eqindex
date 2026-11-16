@@ -6,7 +6,7 @@ import { BOSS, APIB, getText, requireServer } from './helpers.mjs';
 
 describe('storefront pages serve with their contracts', async () => {
   test('cart + pre-book + success(empty) + login render 200 with markers', async (t) => {
-    await requireServer(t, BOSS);
+    if (!(await requireServer(t, BOSS))) return;
     // Note: /photos/success is a client component — SSR always renders the
     // `checking` branch ("Confirming payment…"); the empty-link copy
     // ("No order in this link.") appears after hydration (verified in browser).
@@ -24,7 +24,7 @@ describe('storefront pages serve with their contracts', async () => {
   });
 
   test('studio pages serve for guests (gate is client-side, no 500s)', async (t) => {
-    await requireServer(t, BOSS);
+    if (!(await requireServer(t, BOSS))) return;
     for (const [path, marker] of [['/studio/upload', 'Upload'], ['/studio/library', 'Library']]) {
       const { status, body } = await getText(`${BOSS}${path}`);
       assert.equal(status, 200, `${path} → ${status}`);
@@ -35,7 +35,7 @@ describe('storefront pages serve with their contracts', async () => {
 
 describe('api contract behind the shop', () => {
   test('health + one ranking shape', async (t) => {
-    await requireServer(t, APIB);
+    if (!(await requireServer(t, APIB))) return;
     const h = await (await fetch(`${APIB}/health`)).json();
     assert.equal(h.ok, true);
     const r = await (await fetch(`${APIB}/rankings/horses?limit=1`)).json();

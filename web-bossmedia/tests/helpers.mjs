@@ -9,13 +9,17 @@ export async function getText(url, timeoutMs = 8000) {
   return { status: res.status, body };
 }
 
-// Throws a skip (not a failure) when the target server is down.
+// True when the target server answers. Otherwise marks the test skipped
+// and returns false — callers MUST `return` on false, because t.skip()
+// only flags, it never aborts: anything thrown after it (or any fetch
+// below it) turns the skip into a failure. That exact bug kept CI red.
 export async function requireServer(t, base) {
   try {
     await fetch(`${base}/`, { signal: AbortSignal.timeout(3000) });
+    return true;
   } catch {
     t.skip(`server down at ${base} — start it, then re-run`);
-    throw new Error('unreachable'); // never reached: t.skip aborts the test
+    return false;
   }
 }
 
