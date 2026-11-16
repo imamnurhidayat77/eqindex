@@ -91,14 +91,15 @@ const VARIANT_TO_TEMPLATE = {
 };
 // Theme toggle only exists for these three (preview: THEMED_VARIANTS).
 const THEMED_VARIANTS = ['banner-wave', 'square-bar', 'top-banner'];
-const OVERLAY_POS = ['bottom-left', 'bottom-right', 'top-right'];
+const OVERLAY_POS = ['bottom-left', 'bottom-right', 'top-right', 'top-left'];
 
 const templateOf = (v) => VARIANT_TO_TEMPLATE[v] || 'corner';
 const isVariant = (v) => LOGO_VARIANTS.includes(v);
 
 const NAVY = '#0e2233', NAVY2 = '#14304a', DEEP = '#0c1c2c';
 const GOLD = '#d4a017', GOLD_LT = '#f2cd6b', GOLD_DK = '#cf9a2b';
-const RESULT_TEXT = 'WINNER';
+// Winner laurel fallback: painters receive the buyer result text as b.result
+// (migration 097 design tags); 'WINNER' when the design has none.
 const FONT = 'Manrope, sans-serif';
 
 const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -494,8 +495,8 @@ Object.assign(painters, {
     const midY = (y + panelH) / 2;
     // Panel children are left-aligned (flex-start); the laurel group
     // starts at the panel padding, like the preview.
-    const lauCx = px + (tw(RESULT_TEXT, 4.6 * u, 0.04) + 2 * (4.6 * u + 1 * u)) / 2;
-    svg += laurel(u, lauCx, midY - 1.2 * u, RESULT_TEXT, true);
+    const lauCx = px + (tw((b.result || 'WINNER'), 4.6 * u, 0.04) + 2 * (4.6 * u + 1 * u)) / 2;
+    svg += laurel(u, lauCx, midY - 1.2 * u, (b.result || 'WINNER'), true);
     let sy = midY + 4.6 * u * 0.5 + 1.5 * u;
     for (const l of winnerSubjectLines(u, panelW, ctx.subject)) {
       svg += `<text x="${r(px)}" y="${r(sy)}" font-family="${FONT}" font-size="${r(2.5 * u)}" font-style="italic" fill="#ffffff">${esc(l)}</text>`;
@@ -525,9 +526,9 @@ Object.assign(painters, {
       y += pill.h + 1.2 * u;
     }
     const midY = (y + panelH) / 2;
-    svg += crown(u, px + (tw(RESULT_TEXT, 4.6 * u, 0.04) + 2 * (4.6 * u + 1 * u)) / 2, midY - 4.6 * u - 1.2 * u, 6.5 * u);
-    const lauCx = px + (tw(RESULT_TEXT, 4.6 * u, 0.04) + 2 * (4.6 * u + 1 * u)) / 2;
-    svg += laurel(u, lauCx, midY, RESULT_TEXT, true);
+    svg += crown(u, px + (tw((b.result || 'WINNER'), 4.6 * u, 0.04) + 2 * (4.6 * u + 1 * u)) / 2, midY - 4.6 * u - 1.2 * u, 6.5 * u);
+    const lauCx = px + (tw((b.result || 'WINNER'), 4.6 * u, 0.04) + 2 * (4.6 * u + 1 * u)) / 2;
+    svg += laurel(u, lauCx, midY, (b.result || 'WINNER'), true);
     let sy = midY + 4.6 * u * 0.5 + 1.5 * u;
     for (const l of winnerSubjectLines(u, panelW, ctx.subject)) {
       svg += `<text x="${r(px)}" y="${r(sy)}" font-family="${FONT}" font-size="${r(2.5 * u)}" font-style="italic" fill="#ffffff">${esc(l)}</text>`;
@@ -564,7 +565,7 @@ Object.assign(painters, {
       svg += `<g transform="translate(${r(cx - pill.w / 2)},${r(fy)})">${pill.svg}</g>`;
       fy += pillH + 1 * u;
     }
-    svg += laurel(u, cx, fy + lauH / 2, RESULT_TEXT, true);
+    svg += laurel(u, cx, fy + lauH / 2, (b.result || 'WINNER'), true);
     fy += lauH + 1 * u;
     if (ctx.subject) {
       for (const l of subj) {
@@ -606,8 +607,8 @@ Object.assign(painters, {
     // Mid block (laurel + subject) centered vertically, left-aligned
     // horizontally like the preview (.st-wside-mid flex-start).
     const midY = (y + fy) / 2;
-    const lauCx = px + (tw(RESULT_TEXT, 4.6 * u, 0.04) + 2 * (4.6 * u + 1 * u)) / 2;
-    svg += laurel(u, lauCx, midY - 1.2 * u, RESULT_TEXT, false);
+    const lauCx = px + (tw((b.result || 'WINNER'), 4.6 * u, 0.04) + 2 * (4.6 * u + 1 * u)) / 2;
+    svg += laurel(u, lauCx, midY - 1.2 * u, (b.result || 'WINNER'), false);
     let sy = midY + 4.6 * u * 0.5 + 1.5 * u;
     for (const l of winnerSubjectLines(u, panelW, ctx.subject)) {
       svg += `<text x="${r(px)}" y="${r(sy)}" font-family="${FONT}" font-size="${r(2.5 * u)}" font-style="italic" fill="${NAVY}">${esc(l)}</text>`;
@@ -620,7 +621,7 @@ Object.assign(painters, {
     // Top strip: one centered row — laurel + class lockup (tag + name).
     const cFs = 2.3 * u;
     const tagW = tw('CLASS', 1.6 * u, 0.1, true) + 2 * 1.4 * u;
-    const lauTextW = tw(RESULT_TEXT, 4.6 * u, 0.04);
+    const lauTextW = tw((b.result || 'WINNER'), 4.6 * u, 0.04);
     const lauW = lauTextW + 2 * (4.6 * u + 1 * u);
     const nameMaxW = W - 2 * 3.2 * u - lauW - 2.5 * u - tagW - 1.4 * u - 1 * u;
     const pill = ctx.className ? classPill(u, 0, 0, cFs, String(ctx.className), 'row', NAVY, nameMaxW) : null;
@@ -630,7 +631,7 @@ Object.assign(painters, {
     let svg = `<rect x="0" y="0" width="${W}" height="${topH}" fill="#ffffff"/>`;
     let gx = (W - groupW) / 2;
     const cy = 1 * u + contentH / 2;
-    svg += laurel(u, gx + lauW / 2, cy, RESULT_TEXT, false);
+    svg += laurel(u, gx + lauW / 2, cy, (b.result || 'WINNER'), false);
     gx += lauW + 2.5 * u;
     if (pill) svg += `<g transform="translate(${r(gx)},${r(cy - pill.h / 2)})">${pill.svg}</g>`;
     const stripH = Math.round(0.12 * H);
@@ -645,7 +646,7 @@ Object.assign(painters, {
     const cFs = 2 * u;
     // Left navy cell: one row — laurel left, class lockup (tag above name)
     // right of it, both vertically centered (preview .st-wbar-win row).
-    const lauTextW = tw(RESULT_TEXT, 4.6 * u, 0.04);
+    const lauTextW = tw((b.result || 'WINNER'), 4.6 * u, 0.04);
     const lauW = lauTextW + 2 * (4.6 * u + 1 * u);
     const classX = m + 2.5 * u + lauW + 2 * u;
     const classW = Math.max(60, m + leftW - 2.5 * u - classX);
@@ -682,7 +683,7 @@ Object.assign(painters, {
       `<rect x="${r(m + leftW)}" y="${r(by)}" width="${r(rightW)}" height="${barH}" fill="#ffffff"/></g>` +
       `<path d="${rrect(m, by, W - 2 * m, barH, rad, rad, rad, rad)}" fill="none"/>`;
     const lcy = by + barH / 2;
-    svg += laurel(u, m + 2.5 * u + lauW / 2, lcy, RESULT_TEXT, true);
+    svg += laurel(u, m + 2.5 * u + lauW / 2, lcy, (b.result || 'WINNER'), true);
     if (pillSvg) svg += `<g transform="translate(${r(classX)},${r(lcy - pillH / 2)})">${pillSvg}</g>`;
     const rx = m + leftW + 2.5 * u;
     const rcy = by + (barH - Math.max(rLogo ? rLogo.h : 0, supportedH(u, fs))) / 2;
@@ -718,7 +719,7 @@ Object.assign(painters, {
     const fs = 1.8 * u;
     const labelW = tw('SUPPORTED BY', fs, 0.14, true);
     const divRowW = labelW + (chipLogo ? 2 * u + chipW : 0);
-    const lauW = tw(RESULT_TEXT, 4.6 * u, 0.04) + 2 * (4.6 * u + 1 * u);
+    const lauW = tw((b.result || 'WINNER'), 4.6 * u, 0.04) + 2 * (4.6 * u + 1 * u);
     const classSingleW = ctx.className ? tw(ctx.className, cFs) : 0;
     // Shrink-to-fit like the preview flex column, capped at 46% width.
     const cardW = Math.min(maxW, Math.max(lauW, divRowW, Math.min(classSingleW, 40 * u)) + 2 * padH);
@@ -731,7 +732,7 @@ Object.assign(painters, {
     let svg = `<rect x="${r(cardX)}" y="${r(cardY)}" width="${r(cardW)}" height="${r(cardH)}" rx="${r(1.8 * u)}" fill="#0a1018" fill-opacity="0.72" stroke="${GOLD}" stroke-opacity="0.5"/>`;
     const cx = cardX + cardW / 2;
     let y = cardY + padV;
-    svg += laurel(u, cx, y + 4.6 * u * 0.5, RESULT_TEXT, true);
+    svg += laurel(u, cx, y + 4.6 * u * 0.5, (b.result || 'WINNER'), true);
     y += 4.6 * u + 1 * u;
     for (const l of classLines) {
       svg += `<text x="${r(cardX + padH)}" y="${r(y + cFs * 0.8)}" font-family="${FONT}" font-size="${r(cFs)}" font-weight="800" fill="${GOLD_LT}">${esc(l)}</text>`;
@@ -754,22 +755,75 @@ Object.assign(painters, {
   },
 });
 
-async function bakeVariant({ photoBuf, logoBufs, variant, positions, ctx, theme }) {
+// Overlay variants paint one badge per logo — each at its own position,
+// exactly like the buyer preview. All other layouts keep one lockup:
+// the logos are pre-composed into a single row (shrunk by count, like
+// the preview .st-logos.multi CSS) so the 19 painters stay untouched.
+const OVERLAY_MULTI = ['corner-badge', 'minimal-corner', 'round-badge'];
+// Row sizing mirrors the preview: single 5.4u, pair 4.2u, 3–4 share 3.4u.
+function rowSize(count, u) {
+  if (count > 2) return { h: 3.4 * u, maxW: 13 * u };
+  if (count > 1) return { h: 4.2 * u, maxW: 18 * u };
+  return { h: 5.4 * u, maxW: 27 * u };
+}
+async function bakeVariant({ photoBuf, logoBufs, variant, positions, ctx, theme, designTags }) {
   if (!isVariant(variant)) throw new Error(`unknown logo variant: ${variant}`);
   const meta = await sharp(photoBuf).metadata();
   const W = meta.width || 1600, H = meta.height || 1000;
   const u = W / 100;
   const dark = theme === 'dark' && THEMED_VARIANTS.includes(variant);
-  const pos = OVERLAY_POS.includes(positions?.[0]) ? positions[0] : 'bottom-left';
-  let logo = null;
-  const first = (logoBufs || [])[0];
-  if (first) {
-    const fit = await fitLogo(first, 5.4 * u, 27 * u);
-    logo = { data: fit.data, w: fit.w, h: fit.h, raw: first };
+  const bufs = (logoBufs || []).slice(0, 4);
+  const bakeCtx = { event: ctx?.event || '', className: ctx?.className || '', subject: ctx?.subject || '' };
+  // Buyer result text (migration 097) or the default laurel word.
+  const resultText = designTags?.result || 'WINNER';
+  const posAt = (i) => OVERLAY_POS.includes(positions?.[i]) ? positions[i] : OVERLAY_POS[i % OVERLAY_POS.length];
+  const paint = painters[variant];
+  if (OVERLAY_MULTI.includes(variant) && bufs.length > 1) {
+    let svg = '';
+    const arts = [];
+    for (let i = 0; i < bufs.length; i++) {
+      const fit = await fitLogo(bufs[i], 5.4 * u, 27 * u);
+      const out = await paint({
+        W, H, u, logo: { data: fit.data, w: fit.w, h: fit.h, raw: bufs[i] }, pos: posAt(i), ctx: bakeCtx, dark,
+        result: resultText,
+        refit: (h, maxW) => fitLogo(bufs[i], h, maxW),
+      });
+      svg += out.svg;
+      arts.push(...out.arts);
+    }
+    const overlay = Buffer.from(
+      `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${svg}</svg>`
+    );
+    return sharp(photoBuf)
+      .composite([{ input: overlay, top: 0, left: 0 }, ...arts])
+      .jpeg({ quality: 90 }).toBuffer();
   }
-  const out = await painters[variant]({
-    W, H, u, logo, pos, ctx: { event: ctx?.event || '', className: ctx?.className || '', subject: ctx?.subject || '' }, dark,
-    refit: (h, maxW) => fitLogo(first, h, maxW),
+  const { h: rowH, maxW: rowMaxW } = rowSize(bufs.length, u);
+  const fitted = [];
+  for (const b of bufs) fitted.push(await fitLogo(b, rowH, rowMaxW));
+  let logo = null;
+  let rowSrc = bufs[0] || null;
+  if (fitted.length === 1) {
+    logo = { data: fitted[0].data, w: fitted[0].w, h: fitted[0].h, raw: bufs[0] };
+  } else if (fitted.length > 1) {
+    const gap = Math.round(1.4 * u);
+    const totalW = fitted.reduce((s, f, i) => s + f.w + (i ? gap : 0), 0);
+    const maxH = Math.max(...fitted.map((f) => f.h));
+    const parts = [];
+    let x = 0;
+    for (const f of fitted) {
+      parts.push({ input: f.data, left: x, top: Math.round((maxH - f.h) / 2) });
+      x += f.w + gap;
+    }
+    rowSrc = await sharp({
+      create: { width: totalW, height: maxH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    }).composite(parts).png().toBuffer();
+    logo = { data: rowSrc, w: totalW, h: maxH, raw: rowSrc };
+  }
+  const out = await paint({
+    W, H, u, logo, pos: posAt(0), ctx: bakeCtx, dark,
+    result: resultText,
+    refit: (h, maxW) => fitLogo(rowSrc, h, maxW),
   });
   const overlay = Buffer.from(
     `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${out.svg}</svg>`

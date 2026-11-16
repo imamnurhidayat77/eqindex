@@ -320,7 +320,7 @@ module.exports = function mountUserRoutes(app) {
     if (!s.rows.length) return res.status(404).json({ error: 'no active sponsor profile — awaiting admin approval' });
     const sponsor = s.rows[0];
     const budgets = await pool.query(
-      `SELECT b.id, b.agreed_cents, b.spent_cents, b.discount_cents, b.status, b.created_at,
+      `SELECT b.id, b.event_id, b.agreed_cents, b.spent_cents, b.discount_cents, b.status, b.created_at,
         e.name AS event_name
        FROM sponsor_budgets b LEFT JOIN events e ON e.id = b.event_id
        WHERE b.sponsor_id = $1 ORDER BY b.created_at DESC LIMIT 50`, [sponsor.id]);
@@ -465,13 +465,45 @@ module.exports = function mountUserRoutes(app) {
       if (cost <= 0 || remaining < cost) {
         await client.query('ROLLBACK'); return res.status(409).json({ error: 'budget cannot cover this gift' });
       }
+      // Subject must match the pack scope, and the event falls back from
+      // pack to budget (global packs and any-event budgets carry NULLs).
+      const scopeCol = pack.scope_type === 'horse' ? 'horse_id' : 'rider_id';
+      const subjectId = String(req.body?.[scopeCol] || rider_id || horse_id || '');
+      if (!UUID_RE.test(subjectId)) {
+        await client.query('ROLLBACK'); return res.status(400).json({ error: `pack is ${pack.scope_type}-scoped: need {${scopeCol}}` });
+      }
+      const subj = await client.query(
+        `SELECT id FROM ${pack.scope_type === 'horse' ? 'horses' : 'riders'} WHERE id = $1`, [subjectId]);
+      if (!subj.rows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: `${pack.scope_type} not found` }); }
+      const eventId = pack.event_id || bud.event_id || (UUID_RE.test(String(req.body?.event_id || '')) ? String(req.body.event_id) : null);
+      if (!eventId) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'need {event_id} for global pack + any-event budget' }); }
+      // Winner owns the credits at once: find-or-create their account
+      // (same password-less pattern as guest checkout) so the bundle is
+      // visible in My credits and unlockable right away — no claim code
+      // to lose. The email below tells them how to sign in.
+      let recipientId = null, recipientNew = false;
+      const found = await client.query('SELECT id FROM users WHERE lower(email) = lower($1)', [email]);
+      if (found.rows.length) {
+        recipientId = found.rows[0].id;
+      } else {
+        const name = email.split('@')[0].replace(/[^a-zA-Z0-9 _.-]/g, '').trim().slice(0, 100) || 'Winner';
+        try {
+          recipientId = (await client.query(
+            `INSERT INTO users (name, email, role) VALUES ($1, $2, 'PUBLIC') RETURNING id`, [name, email])).rows[0].id;
+          recipientNew = true;
+        } catch (e) {
+          if (e.code !== '23505') throw e;
+          recipientId = (await client.query('SELECT id FROM users WHERE lower(email) = lower($1)', [email])).rows[0]?.id || null;
+          if (!recipientId) throw e;
+        }
+      }
       const bundle = (await client.query(
-        `INSERT INTO credit_bundles (pack_id, event_id, rider_id, horse_id, buyer_email, slots_total, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'active') RETURNING id`,
-        [pack.id, pack.event_id,
-         rider_id && UUID_RE.test(String(rider_id)) ? String(rider_id) : (pack.rider_id || null),
-         horse_id && UUID_RE.test(String(horse_id)) ? String(horse_id) : (pack.horse_id || null),
-         email, slots])).rows[0];
+        `INSERT INTO credit_bundles (pack_id, event_id, rider_id, horse_id, buyer_user_id, buyer_email, slots_total, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'active') RETURNING id`,
+        [pack.id, eventId,
+         pack.scope_type === 'rider' ? subjectId : null,
+         pack.scope_type === 'horse' ? subjectId : null,
+         recipientId, email, slots])).rows[0];
       await client.query('UPDATE sponsor_budgets SET spent_cents = spent_cents + $2 WHERE id = $1', [bud.id, cost]);
       const gift = (await client.query(
         `INSERT INTO sponsor_gifts (budget_id, bundle_id, recipient_email, slots, cost_cents)
@@ -479,6 +511,30 @@ module.exports = function mountUserRoutes(app) {
         [bud.id, bundle.id, email, slots, cost])).rows[0];
       await client.query('COMMIT');
       audit(req, 'sponsor.gift', 'sponsor', sponsor.id, { gift_id: gift.id, bundle_id: bundle.id, cost_cents: cost });
+      // Best-effort winner email (never fail the gift over mail): names the
+      // sponsor, the prize scope, and how to sign in. New accounts also get
+      // the same password-set claim link guest buyers receive.
+      try {
+        const ev = await pool.query('SELECT name FROM events WHERE id = $1', [eventId]);
+        const sn = await pool.query(`SELECT name FROM ${pack.scope_type === 'horse' ? 'horses' : 'riders'} WHERE id = $1`, [subjectId]);
+        const scope = `${ev.rows[0]?.name || 'your event'} · ${sn.rows[0]?.name || ''}`.trim();
+        let claimLink = '';
+        if (recipientNew) {
+          const { randomBytes, createHash } = require('crypto');
+          const raw = randomBytes(32).toString('hex');
+          await pool.query(
+            `INSERT INTO password_resets (user_id, token_hash, expires_at)
+             VALUES ($1, $2, NOW() + INTERVAL '1 hour')`, [recipientId, createHash('sha256').update(raw).digest('hex')]);
+          const base = (process.env.APP_URL || '').replace(/\/$/, '');
+          if (base) claimLink = `${base}/reset?token=${raw}`;
+        }
+        await require('../lib/mailer').sendMail({
+          to: email,
+          subject: `${sponsor.name} gifted you ${slots} photo credits — ${scope}`,
+          text: `Hi there,\n\n${sponsor.name} gifted you ${slots} photo credits for ${scope}. Sign in with this email to unlock your winning photos — re-downloads stay free.${claimLink ? `\nSet a password to access them anytime: ${claimLink} (link expires in 1 hour — you can always request a new one at sign-in).` : ''}\n\nDidn't expect this? Ignore this email.`,
+          html: `<p>Hi there,</p><p><strong>${sponsor.name}</strong> gifted you <strong>${slots} photo credits</strong> for ${scope}. Sign in with this email to unlock your winning photos — re-downloads stay free.</p>${claimLink ? `<p><a href="${claimLink}">Set a password to access them anytime</a> (link expires in 1 hour).</p>` : ''}<p>Didn't expect this? Ignore this email.</p>`,
+        });
+      } catch (e) { console.error('[gift] winner email failed:', e.message); }
       res.status(201).json({ data: { ...gift, bundle_id: bundle.id, slots, cost_cents: cost } });
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});

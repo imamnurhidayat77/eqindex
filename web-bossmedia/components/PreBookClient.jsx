@@ -8,6 +8,7 @@ import { addToCart } from '../lib/cart';
 import { checkoutBase, nzd, stripeCheckoutUrl } from '../lib/figma-data';
 import { Icon, SiteFooter, SiteHeader } from './figma';
 import { useToast } from './Toaster';
+import accent from './PayAccent.module.css';
 
 const MUSIC = [
   ['choose_for_me', 'Choose for me', 'Our editor selects a licensed track that fits.'],
@@ -78,6 +79,10 @@ export default function PreBookClient({ events, products }) {
 
   function onSubmit(e) {
     e.preventDefault();
+    // Single gate for the cart path: no event → no `reel:open` junk item
+    // (the cart rejects those as "Nothing here…"). Same check as buyNow.
+    if (!event) { setNeedEvent(true); return; }
+    setNeedEvent(false);
     const form = formRef.current;
     if (!form || !form.reportValidity()) return;
     const payload = collect(form);
@@ -147,9 +152,9 @@ export default function PreBookClient({ events, products }) {
           <p>Tell us where and when you’re riding. We’ll be there to capture the moments that matter.</p>
         </div>
         <div className="booking-progress" aria-label="Booking progress">
-          <span className="active">01 Coverage</span>
-          <span>02 Rider details</span>
-          <span>03 Review</span>
+          <span className={event ? '' : 'active'} aria-current={event ? undefined : 'step'}>01 Coverage</span>
+          <span className={event && !added ? 'active' : ''} aria-current={event && !added ? 'step' : undefined}>02 Rider details</span>
+          <span className={added ? 'active' : ''} aria-current={added ? 'step' : undefined}>03 Review</span>
         </div>
         <div className="booking-layout">
           <form className="booking-form" ref={formRef} onSubmit={onSubmit}>
@@ -248,13 +253,11 @@ export default function PreBookClient({ events, products }) {
                 <div className="summary-total"><span>Total</span><strong>{summary.total}</strong></div>
               </>
             )}
-            <button disabled={buying} onClick={buyNow}>
+            <button disabled={buying} onClick={buyNow} className={accent.pay}>
               {buying ? 'Opening secure checkout…' : <>Buy now{summary ? ` · ${summary.total}` : ''}</>}
               <Icon name="arrow" size={18} />
             </button>
-            <button type="button" className="summary-ghost-btn" onClick={() => {
-              if (!event) { setNeedEvent(true); return; }
-              setNeedEvent(false);
+            <button type="button" className="summary-ghost-btn" disabled={buying} onClick={() => {
               formRef.current?.requestSubmit();
             }}>
               {added ? 'Booking added ✓' : 'Add booking to cart'}

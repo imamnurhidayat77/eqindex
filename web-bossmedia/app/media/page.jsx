@@ -9,6 +9,7 @@ import { newIdempotencyKey } from '../../lib/figma-data';
 import { stripeCheckoutUrl } from '../../lib/figma-data';
 import { Icon, SiteFooter, SiteHeader } from '../../components/figma';
 import GalleryPager from '../../components/GalleryPager';
+import PostToSocial from '../../components/PostToSocial';
 import ReelPlayer from '../../components/ReelPlayer';
 import SearchSelect from '../../components/SearchSelect';
 import { isValidEmail, normalizeEmail } from '../../lib/validation.mjs';
@@ -32,6 +33,18 @@ export default function MediaHub() {
   const [reels, setReels] = useState(null);
   const [credits, setCredits] = useState(null);
   const [left, setLeft] = useState(0);
+  const [postPhoto, setPostPhoto] = useState(null);
+  const [sponsor, setSponsor] = useState('');
+  const allSponsors = (() => {
+    const seen = new Map();
+    for (const p of photos || []) for (const s of p.sponsors || []) {
+      if (!seen.has(String(s.id))) seen.set(String(s.id), s.name);
+    }
+    return [...seen].map(([id, name]) => ({ id, label: name }));
+  })();
+  const visiblePhotos = sponsor
+    ? (photos || []).filter((p) => (p.sponsors || []).some((s) => String(s.id) === sponsor))
+    : (photos || []);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -44,7 +57,7 @@ export default function MediaHub() {
     }).catch(() => setCredits([]));
   }, [loading, user]);
 
-  const count = tab === 'photos' ? photos?.length : tab === 'reels' ? reels?.length : credits?.length;
+  const count = tab === 'photos' ? (photos ? visiblePhotos.length : undefined) : tab === 'reels' ? reels?.length : credits?.length;
   const pages = typeof count === 'number' ? Math.max(1, Math.ceil(count / PAGE_SIZE)) : 1;
   const safePage = Math.min(page, pages);
   const slice = (rows) => (rows || []).slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
@@ -93,6 +106,20 @@ export default function MediaHub() {
 
               <div className="results-meta">
                 <p>{typeof count === 'number' ? `${count} ${tab === 'photos' ? (count === 1 ? 'photo' : 'photos') : tab === 'reels' ? (count === 1 ? 'reel' : 'reels') : (count === 1 ? 'pack' : 'packs')}` : 'Loading…'}</p>
+                {tab === 'photos' && allSponsors.length > 0 && (
+                  <label className="filter" style={{
+                    minWidth: 210, border: '1px solid #333', borderRadius: 10,
+                    padding: '8px 12px', display: 'grid', gap: 2, cursor: 'pointer',
+                  }}>
+                    <span style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '.08em' }}>Sponsor</span>
+                    <select value={sponsor} onChange={(e) => { setSponsor(e.target.value); setPage(1); }}
+                      aria-label="Filter by sponsor"
+                      style={{ background: 'none', border: 0, padding: 0, color: '#fff', fontSize: 13, cursor: 'pointer', outline: 'none' }}>
+                      <option value="">All sponsors</option>
+                      {allSponsors.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                    </select>
+                  </label>
+                )}
               </div>
 
               {tab === 'photos' && (
@@ -106,7 +133,7 @@ export default function MediaHub() {
                 ) : (
                   <>
                   <div className="event-media-grid">
-                    {slice(photos).map((x) => (
+                    {slice(visiblePhotos).map((x) => (
                       <article key={`${x.purchase_id}-${x.media_id}`} className="my-card">
                         <span className="my-image">
                           {x.designed_url || x.thumb_url || x.preview_url
@@ -115,12 +142,24 @@ export default function MediaHub() {
                         </span>
                         <div className="my-status"><i className="live" aria-hidden="true" /><span>{x.license_tier || 'Photo'}</span></div>
                         <h3>{[x.horse, x.rider].filter(Boolean).join(' · ') || x.event_name || 'Photo'}</h3>
+                        {(x.sponsors || []).length > 0 && (
+                          <p style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '0 0 12px' }}>
+                            {(x.sponsors || []).map((s) => <span key={s.id} className="my-pill" title={`Sponsored by ${s.name}`}>{s.name}</span>)}
+                          </p>
+                        )}
                         <div className="my-data"><p>{x.event_name || '—'}</p><p>{fmtDay(x.created_at)}</p></div>
-                        <div className="my-action"><p>Lifetime download</p><a href={dl(x)}>Download <Icon name="arrow" size={14} /></a></div>
+                        <div className="my-action"><p>Lifetime download</p><span className="my-links"><button type="button" onClick={() => setPostPhoto({
+                          media_id: x.media_id,
+                          thumb: x.designed_url || x.thumb_url || x.preview_url || null,
+                          title: [x.horse, x.rider].filter(Boolean).join(' · ') || x.event_name || 'Your photo',
+                          sub: [x.event_name, fmtDay(x.created_at)].filter(Boolean).join(' · '),
+                          caption: `${[x.horse, x.rider].filter(Boolean).join(' × ')}${x.event_name ? ` at ${x.event_name}` : ''} via BossMedia`,
+                        })}>Post <Icon name="arrow" size={14} /></button><a href={dl(x)}>Download <Icon name="arrow" size={14} /></a></span></div>
                       </article>
                     ))}
                   </div>
                   <GalleryPager page={safePage} pages={pages} onPage={setPage} />
+                  <PostToSocial open={!!postPhoto} onClose={() => setPostPhoto(null)} media={postPhoto} />
                   </>
                 )
               )}
@@ -138,6 +177,7 @@ export default function MediaHub() {
                   <div className="event-media-grid">
                     {slice(reels).map((o) => {
                       const done = ['ready', 'delivered'].includes(o.status);
+                      const cancelled = o.status === 'cancelled';
                       return (
                         <article key={o.id} className="my-card">
                           <span className="my-image">
@@ -157,7 +197,9 @@ export default function MediaHub() {
                           <div className="my-data"><p>{o.event_name || '—'}</p><p>{fmtDay(o.created_at)}</p></div>
                           <div className="my-action">
                             <p>{o.scope ? `${o.scope} cut` : 'Custom cut'}</p>
-                            {o.media_id && done ? <a href={dl(o.media_id)}>Download <Icon name="arrow" size={14} /></a> : <span />}
+                            {cancelled ? <span>Cancelled — no charge for production</span>
+                              : o.media_id && done ? <a href={dl(o.media_id)}>Download <Icon name="arrow" size={14} /></a>
+                              : done ? <span>Final file processing…</span> : <span />}
                           </div>
                         </article>
                       );
@@ -235,6 +277,7 @@ function BuyCredits({ user }) {
     return searchSubjects(pack.scope_type, v);
   };
   const buy = async () => {
+    if (busy) return;
     setErr('');
     if (!pack || !effectiveEvent || !subjectId) { setErr('Pick a pack, event and rider or horse first.'); return; }
     if (!isValidEmail(email)) { setErr('Enter a valid email for delivery.'); return; }
@@ -258,7 +301,7 @@ function BuyCredits({ user }) {
       <h3 style={{ margin: '10px 0 16px' }}>Top up a pack, spend per photo.</h3>
       <div className="st-filters" style={{ margin: 0 }}>
         <SearchSelect options={packs.map((p) => ({ id: p.id, label: `${p.slots}-photo credits · ${p.scope_type} · $${(Number(p.price_cents) / 100).toFixed(0)}`, sub: p.event_name || 'Any event' }))}
-          value={packId} onChange={(id) => { setPackId(id); setSubjectId(null); setSubjectName(''); }} placeholder="Pick a pack…" />
+          value={packId} onChange={(id) => { setPackId(id); setSubjectId(null); setSubjectName(''); setEventId(null); }} placeholder="Pick a pack…" />
         {!scopedEvent && (
           <SearchSelect options={events.map((e) => ({ id: e.id, label: e.name }))} value={eventId}
             onChange={(id) => setEventId(id)} placeholder="Pick an event…" />

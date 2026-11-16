@@ -4,15 +4,19 @@ import { API } from './api';
 // Polls purchase status until every id is paid. One batched request per
 // round with backoff (2s → 8s, ~60s total), timers cleaned on unmount.
 // States: checking | pending | paid | login | unknown.
+// unknown covers: empty link, timeout, or nothing found. rows keeps any
+// paid rows seen so far so the page can show partial progress on timeout.
 export function usePurchasePoll(ids, { interval0 = 2000, cap = 8000, total = 60000 } = {}) {
   const [state, setState] = useState('checking');
   const [rows, setRows] = useState([]);
   const [attempt, setAttempt] = useState(0);
+  const [empty, setEmpty] = useState(false);
   const key = (ids || []).join(',');
 
   useEffect(() => {
     const list = key.split(',').filter(Boolean);
-    if (!list.length) { setState('unknown'); return undefined; }
+    if (!list.length) { setEmpty(true); setRows([]); setState('unknown'); return undefined; }
+    setEmpty(false);
     let live = true;
     let timer;
     let wait = interval0;
@@ -26,7 +30,8 @@ export function usePurchasePoll(ids, { interval0 = 2000, cap = 8000, total = 600
         const got = Array.isArray(j.data) ? j.data : [];
         if (!live) return true;
         const paid = got.filter((g) => g && g.status === 'paid');
-        if (paid.length === list.length) { setRows(paid); setState('paid'); return true; }
+        if (paid.length) setRows(paid);
+        if (paid.length === list.length) { setState('paid'); return true; }
         if (paid.length || got.length) setState('pending');
         return false;
       } catch { return false; }
@@ -41,5 +46,5 @@ export function usePurchasePoll(ids, { interval0 = 2000, cap = 8000, total = 600
     return () => { live = false; if (timer) clearTimeout(timer); };
   }, [key, attempt, interval0, cap, total]);
 
-  return { state, rows, retry: () => setAttempt((a) => a + 1) };
+  return { state, rows, empty, retry: () => setAttempt((a) => a + 1) };
 }

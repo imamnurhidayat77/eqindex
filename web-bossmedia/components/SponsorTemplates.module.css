@@ -14,8 +14,9 @@
 .st-supported.light { color: #fff; }
 .st-divider { width: 2px; align-self: stretch; background: #d4a017; margin: 0 1.8cqw; min-height: 4.6cqw; }
 .st-divider-v { position: absolute; right: -2.5cqw; top: 0.7cqw; bottom: 0.7cqw; width: 2px; background: #d4a017; }
-.st-logos { display: inline-flex; align-items: center; gap: 1.4cqw; }
-.st-logo-img { height: 5.4cqw; width: auto; max-width: 27cqw; object-fit: contain; }
+.st-logos { display: inline-flex; align-items: center; gap: 1.4cqw; flex-wrap: nowrap; }
+.st-logos > * { min-width: 0; flex-shrink: 1; }
+.st-logo-img { height: 4.6cqw; width: auto; max-width: 20cqw; object-fit: contain; }
 .st-logo-default { display: inline-flex; align-items: center; gap: 1.4cqw; color: #0e2233; }
 .st-logo-default > svg { width: 6cqw; height: auto; }
 .st-logo-words { display: inline-flex; flex-direction: column; line-height: 1; }
@@ -76,8 +77,10 @@
 .st-swoosh-lockup small { font-size: 1.6cqw; font-weight: 800; letter-spacing: .16em; color: #0e2233; }
 
 /* — portrait drape (tirai putih dari atas) — */
-.st-drape { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 34%; z-index: 1; }
-.st-drape-lockup { position: absolute; z-index: 2; right: 2.5cqw; top: 2.2cqw; display: flex; flex-direction: column; align-items: flex-end; gap: 0.7cqw; }
+/* Tinggi 34% → 24%: di foto landscape tirai lama menutup kepala rider.
+   Lockup ikut naik agar tetap di dalam area putih. */
+.st-drape { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 24%; z-index: 1; }
+.st-drape-lockup { position: absolute; z-index: 2; right: 2.5cqw; top: 1.6cqw; display: flex; flex-direction: column; align-items: flex-end; gap: 0.6cqw; }
 .st-drape-lockup small { font-size: 1.6cqw; font-weight: 800; letter-spacing: .16em; color: #0e2233; }
 
 /* — round floating badge — */
@@ -96,14 +99,27 @@
 .st-side small { font-size: 1.6cqw; font-weight: 800; letter-spacing: .16em; color: #0e2233; }
 .st-side-event { font-size: 2.2cqw; line-height: 1.4; color: #0e2233; }
 .st-side-class { font-size: 2cqw; color: #444; }
-.st-wpanel { position: absolute; z-index: 2; left: 0; top: 0; bottom: 12%; width: 34%; background: linear-gradient(160deg, #0b1b2b, #14304a); border-right: 4px solid #d4a017; border-radius: 1.8cqw 0 0 0; padding: 2.8cqw 2.5cqw; display: flex; flex-direction: column; justify-content: space-between; gap: 1.8cqw; }
+.st-wpanel { position: absolute; z-index: 2; left: 0; top: 0; bottom: 12%; width: 28%; background: linear-gradient(105deg, #0b1b2b 82%, rgba(11,27,43,0) 100%); border-right: 3px solid #d4a017; border-radius: 1.8cqw 0 0 0; padding: 2.4cqw 2.2cqw; display: flex; flex-direction: column; justify-content: space-between; gap: 1.6cqw; }
 .st-wpanel-top { display: flex; flex-direction: column; gap: 1.8cqw; }
 .st-wpanel .st-class { color: #fff; font-size: 2.2cqw; }
 .st-wpanel-arch { border-right: 0; }
-.st-arch-seam { position: absolute; z-index: 2; left: 34%; top: 0; bottom: 12%; width: 9cqw; margin-left: -4.5cqw; }
 .st-arch-crown { color: #d4a017; display: inline-flex; }
 .st-crown { width: 6.5cqw; height: auto; }
 .st-wpanel .st-class, .st-wside .st-class, .st-wbar-win .st-class { flex-direction: column; align-items: flex-start; gap: 0.8cqw; }
+/* Panel winner sempit: event 1 baris ellipsis agar tak makan 2 baris. */
+.st-wpanel .st-event strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22cqw; font-size: 1.9cqw; letter-spacing: .06em; }
+/* Laurel WINNER muat di panel 28%: kecilkan dari 4.6cqw bawaan. */
+.st-wpanel .st-winner { gap: 0.6cqw; }
+.st-wpanel .st-winner svg { width: 3.2cqw; }
+.st-wpanel .st-winner-mid strong { font-size: 3.6cqw; }
+/* winner polos gold tanpa laurel (banner + arch): satu focal, tak jadi kurung. */
+.st-winner-plain strong { font-size: 4cqw; font-weight: 900; letter-spacing: .06em; white-space: nowrap;
+  background: linear-gradient(180deg, #f7dd8b, #c9962e); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* Hierarki wpanel: crown kecil, subject regular (bukan italic goyang). */
+.st-wpanel .st-crown { width: 4.5cqw; }
+.st-wpanel .st-subject { font-style: normal; font-size: 2.2cqw; }
+/* Logo strip bawah dikunci agar kuning PAKnSAVE tak jadi hero. */
+.st-strip-bottom .st-logo-img { height: 4.2cqw; }
 .st-wside { position: absolute; z-index: 2; left: 0; top: 0; bottom: 0; width: 34%; background: #fff; border-right: 4px solid #d4a017; border-radius: 1.8cqw 0 0 1.8cqw; padding: 2.5cqw 2.2cqw; display: flex; flex-direction: column; gap: 1.4cqw; }
 .st-wside-top { display: flex; flex-direction: column; gap: 1.4cqw; }
 .st-wside-mid { margin: auto 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1.5cqw; }
@@ -137,7 +153,7 @@
 .st-compact .st-minclass, .st-compact .st-swoosh-lockup small, .st-compact .st-drape-lockup small,
 .st-compact .st-logo-words small { display: none; }
 .st-compact .st-side, .st-compact .st-wside { width: 36%; }
-.st-compact .st-wpanel { width: 40%; }
+.st-compact .st-wpanel { width: 34%; }
 .st-compact .st-badge { width: 54%; }
 
 /* — teks panjang (nama event/kelas/subject) dibatasi 2 baris + ellipsis
@@ -147,6 +163,15 @@
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
   overflow: hidden;
 }
+
+/* — multi-logo (2–3): strip menyusut, overlay mengecil agar tak tabrakan.
+   Ukuran mengikuti jumlah logo, posisi mengikuti pilihan per logo. — */
+.st-logos.multi .st-logo-img { height: 4.2cqw; max-width: 18cqw; }
+.st-logos.multi3 .st-logo-img { height: 3.4cqw; max-width: 13cqw; }
+.st-logos.col { flex-direction: column; align-items: flex-start; }
+.st-minchip .st-logos.multi .st-logo-img { height: 3.2cqw; max-width: 10cqw; }
+.st-frame.multi .st-badge { width: 36%; }
+.st-frame.multi .st-round { width: 19cqw; }
 
 /* — posisi overlay (pilihan buyer: bottom-left / bottom-right / top-right) — */
 .st-badge.pos-tr { top: 0; right: 0; }

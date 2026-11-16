@@ -1,16 +1,17 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { API, cachedJson } from '../../lib/api';
+import { API, bustCache, cachedJson } from '../../lib/api';
 import { fmtDay } from '../../lib/format';
 import { nzd } from '../../lib/figma-data';
 import { safeError } from '../../lib/errors';
 import { Icon, SiteFooter, SiteHeader } from '../../components/figma';
 import { Pager } from '../../components/studio';
+import SmartImage from '../../components/SmartImage';
 import { useAuthed } from '../../lib/use-authed';
 import { useDocumentTitle } from '../../lib/use-document-title';
 
-const TABS = [['overview', 'Overview'], ['wallet', 'Wallet'], ['credits', 'Credits'], ['history', 'History'], ['profile', 'Profile']];
+const TABS = [['overview', 'Overview'], ['wallet', 'Wallet'], ['credits', 'Credits'], ['history', 'History'], ['posts', 'Posts'], ['profile', 'Profile']];
 
 export default function AccountPage() {
   useDocumentTitle('My account');
@@ -180,6 +181,8 @@ export default function AccountPage() {
                 </div>
               )}
 
+              {tab === 'posts' && <PostsPanel />}
+
               {tab === 'profile' && (
                 <>
                   <div className="st-card">
@@ -196,6 +199,11 @@ export default function AccountPage() {
                     <p style={{ margin: '14px 0 0', color: '#777', fontSize: 12 }}>
                       Name or email wrong? <Link href="/contact" className="text-link">Contact support</Link> — we update it for you.
                     </p>
+                  </div>
+                  <div className="st-card" style={{ marginTop: 18 }}>
+                    <h3>Social accounts</h3>
+                    <p className="st-csub">Connect your own Instagram Business/Creator or Facebook Page to post and track insights. Personal accounts are not supported by Meta.</p>
+                    <SocialAccounts />
                   </div>
                   <div className="st-card" style={{ marginTop: 18 }}>
                     <h3>Security</h3>
@@ -215,6 +223,328 @@ export default function AccountPage() {
       </main>
       <SiteFooter />
     </div>
+  );
+}
+
+function SocialAccounts() {
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState('');
+  const [notice, setNotice] = useState('');
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('connected')) setNotice('Connected — pick it below when posting.');
+    else if (q.get('connect_error') === 'noig') setNotice('No Instagram Business/Creator found on your Pages — switch the IG account to Professional and link it to a Page first.');
+    else if (q.get('connect_error') === 'nopage') setNotice('No Facebook Page found on this login — create or ask for access to a Page first.');
+    window.history.replaceState(null, '', window.location.pathname);
+  }, []);
+  const load = () => {
+    fetch(`${API}/api/my/social/accounts`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setRows(j?.data || []))
+      .catch(() => setRows([]));
+  };
+  useEffect(() => { load(); }, []);
+  const connect = async (provider) => {
+    setErr(''); setBusy(provider);
+    try {
+      const r = await fetch(`${API}/api/my/social/connect?provider=${provider}`, { credentials: 'include' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Could not start connect — try again.');
+      window.location.href = j.data.url;
+    } catch (e) { setErr(e.message); setBusy(''); }
+  };
+  const disconnect = async (a) => {
+    setErr(''); setBusy(a.id);
+    try {
+      const r = await fetch(`${API}/api/my/social/disconnect`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: a.provider, remote_id: a.remote_id }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Could not disconnect — try again.');
+      bustCache(); load();
+    } catch (e) { setErr(e.message); }
+    setBusy('');
+  };
+  if (rows === null) return <p className="empty-note">Loading…</p>;
+  return (
+    <div style={{ maxWidth: 560 }}>
+      {err && <p className="auth-error" role="alert">{safeError(err)}</p>}
+      {notice && <p style={{ color: '#8fd694', fontSize: 13 }}>{notice}</p>}
+      {!rows.length ? (
+        <p className="empty-note">Not connected yet — connect to post from BossMedia and see insights per photo.</p>
+      ) : (
+        <ul style={{ listStyle: 'none', margin: '0 0 12px', padding: 0, display: 'grid', gap: 8 }}>
+          {rows.map((a) => (
+            <li key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px solid #2a2a2a', borderRadius: 10, padding: '10px 12px' }}>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>{a.provider === 'ig' ? 'Instagram' : 'Facebook Page'}</span>
+              <span style={{ color: '#999', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name || a.remote_id}</span>
+              <button type="button" className="st-btn-ghost st-btn-danger" disabled={busy === a.id} onClick={() => disconnect(a)} style={{ marginLeft: 'auto' }}>
+                {busy === a.id ? 'Removing…' : 'Disconnect'}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+        <button type="button" className="st-btn" disabled={busy === 'ig'} onClick={() => connect('ig')}>
+          {busy === 'ig' ? 'Opening…' : 'Connect Instagram'}
+        </button>
+        <button type="button" className="st-btn-ghost" disabled={busy === 'fb_page'} onClick={() => connect('fb_page')}>
+          {busy === 'fb_page' ? 'Opening…' : 'Connect Facebook Page'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Engagement = every counted interaction; ER divides it by the audience that
+// saw the post (reach, else views). Shown as a title tooltip on the column.
+const engOf = (p) => (Number(p.likes) || 0) + (Number(p.comments) || 0)
+  + (Number(p.shares) || 0) + (Number(p.saved) || 0);
+const reachOf = (p) => p.reach ?? p.views ?? null;
+const erOf = (p) => {
+  const d = reachOf(p);
+  if (d === null || d <= 0) return null;
+  return (engOf(p) / d) * 100;
+};
+
+function Spark({ points, width = 72, height = 26 }) {
+  const vals = (points || []).map((v) => Number(v) || 0);
+  // A trend needs at least 2 days — one dot says nothing, so show a dash.
+  if (vals.length < 2) return <span style={{ color: '#555' }} title="Trend needs at least 2 days of data">—</span>;
+  const max = Math.max(...vals, 1);
+  const min = Math.min(...vals, 0);
+  const span = max - min || 1;
+  const step = vals.length > 1 ? (width - 8) / (vals.length - 1) : 0;
+  const pts = vals.map((v, i) => `${(4 + i * step).toFixed(1)},${(height - 4 - ((v - min) / span) * (height - 8)).toFixed(1)}`).join(' ');
+  const last = vals.length - 1;
+  const lx = 4 + last * step, ly = height - 4 - ((vals[last] - min) / span) * (height - 8);
+  return (
+    <svg width={width} height={height} role="img" aria-label={`trend: ${vals.join(', ')}`}>
+      <polyline points={pts} fill="none" stroke="#8fd694" strokeWidth="1.5" />
+      <circle cx={lx} cy={ly} r="2.5" fill="#8fd694" />
+    </svg>
+  );
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const shortDay = (iso) => {
+  const d = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? iso.slice(5) : `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+};
+
+function TrendChart({ days }) {
+  const W = 560, H = 150, PAD = 30;
+  const max = Math.max(1, ...days.map((d) => d.value));
+  const x = (i) => days.length > 1 ? PAD + (i * (W - PAD - 12)) / (days.length - 1) : W / 2;
+  const y = (v) => 12 + (H - 34) * (1 - v / max);
+  const line = days.map((d, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(d.value).toFixed(1)}`).join(' ');
+  const area = `${line} L${x(days.length - 1).toFixed(1)},${(H - 22).toFixed(1)} L${x(0).toFixed(1)},${(H - 22).toFixed(1)} Z`;
+  const idx = [0, Math.floor((days.length - 1) / 2), days.length - 1].filter((v, i, a) => a.indexOf(v) === i);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block' }} role="img"
+      aria-label={`total engagement per day, max ${max}`}>
+      {[0.33, 0.66, 1].map((f) => (
+        <g key={f}>
+          <line x1={PAD} x2={W - 12} y1={y(max * f)} y2={y(max * f)} stroke="#242424" strokeWidth="1" />
+          <text x={PAD - 6} y={y(max * f) + 3} textAnchor="end" fontSize="10" fill="#777">{Math.round(max * f)}</text>
+        </g>
+      ))}
+      <path d={area} fill="rgba(143,214,148,.14)" />
+      <path d={line} fill="none" stroke="#8fd694" strokeWidth="2" />
+      {days.map((d, i) => (
+        <circle key={d.day} cx={x(i)} cy={y(d.value)} r="3" fill="#8fd694" />
+      ))}
+      {idx.map((i) => (
+        <text key={days[i].day} x={x(i)} y={H - 6} textAnchor="middle" fontSize="10" fill="#777">{shortDay(days[i].day)}</text>
+      ))}
+    </svg>
+  );
+}
+
+function PostsPanel() {
+  const [rows, setRows] = useState(undefined);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshErr, setRefreshErr] = useState('');
+  const [syncedAt, setSyncedAt] = useState(null);
+  const [sponsor, setSponsor] = useState('');
+  const load = () => {
+    fetch(`${API}/api/my/social/posts?limit=20`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => setRows(j?.data || []))
+      .catch(() => setRows([]));
+  };
+  useEffect(load, []);
+  const refresh = async () => {
+    setRefreshing(true); setRefreshErr('');
+    try {
+      const r = await fetch(`${API}/api/my/social/insights/refresh`, {
+        method: 'POST', credentials: 'include',
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Refresh failed — try again.');
+      setSyncedAt(new Date());
+      load();
+    } catch (e) { setRefreshErr(e.message); }
+    setRefreshing(false);
+  };
+  if (rows === undefined) return <p className="empty-note">Loading…</p>;
+  if (!rows.length) {
+    return (
+      <div className="st-card">
+        <h3>Post analytics</h3>
+        <p className="st-csub">Which of your photos performs best — likes, comments, reach and trend per post.</p>
+        <div className="my-stats" aria-label="No posts yet">
+          <div><span>Posts</span><strong>0</strong></div>
+          <div><span>Likes</span><strong>0</strong></div>
+          <div><span>Comments</span><strong>0</strong></div>
+        </div>
+        <p className="empty-note">Nothing posted yet. <Link href="/media" className="text-link">Post a photo from your library</Link> and its numbers will land here.</p>
+      </div>
+    );
+  }
+  const enriched = rows.map((p) => ({ ...p, eng: engOf(p), er: erOf(p) }));
+  const allSponsors = (() => {
+    const seen = new Map();
+    for (const p of enriched) for (const s of p.sponsors || []) {
+      if (!seen.has(String(s.id))) seen.set(String(s.id), s.name);
+    }
+    return [...seen].map(([id, name]) => ({ id, label: name }));
+  })();
+  const visible = sponsor
+    ? enriched.filter((p) => (p.sponsors || []).some((s) => String(s.id) === sponsor))
+    : enriched;
+  const topId = visible.length > 1
+    ? visible.filter((p) => p.er !== null).sort((a, b) => b.er - a.er)[0]?.id ?? null
+    : null;
+  const totals = {
+    likes: enriched.reduce((s, p) => s + (Number(p.likes) || 0), 0),
+    comments: enriched.reduce((s, p) => s + (Number(p.comments) || 0), 0),
+  };
+  const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+  // Last-14-day daily totals across posts. A chart with fewer than 3 days of
+  // movement says nothing — the table sparklines carry sparse histories.
+  const dayMap = {};
+  for (const p of enriched) {
+    for (const s of p.series || []) {
+      const v = (Number(s.likes) || 0) + (Number(s.comments) || 0) + (Number(s.shares) || 0);
+      dayMap[s.day] = (dayMap[s.day] || 0) + v;
+    }
+  }
+  const trendDays = (() => {
+    const out = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 864e5).toISOString().slice(0, 10);
+      out.push({ day: d, value: dayMap[d] || 0 });
+    }
+    return out;
+  })();
+  const showChart = trendDays.filter((d) => d.value > 0).length >= 3;
+  return (
+    <>
+      <div className="st-card">
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Post analytics</h3>
+            <p className="st-csub">
+              {plural(enriched.length, 'post')} · {plural(totals.likes, 'like')} · {plural(totals.comments, 'comment')} in the last 14 days.
+              {syncedAt ? ` Updated ${syncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : ' Syncs nightly.'}
+            </p>
+          </div>
+          <button type="button" className="st-btn-ghost" disabled={refreshing} onClick={refresh}
+            style={{ marginLeft: 'auto', minHeight: 40 }}>
+            {refreshing ? 'Refreshing…' : 'Refresh now'}
+          </button>
+        </div>
+        {refreshErr && <p className="auth-error" role="alert">{safeError(refreshErr)}</p>}
+        <div className="my-stats" aria-label="Totals">
+          <div><span>Posts</span><strong>{enriched.length}</strong></div>
+          <div><span>Likes</span><strong>{totals.likes}</strong></div>
+          <div><span>Comments</span><strong>{totals.comments}</strong></div>
+        </div>
+        {showChart && (
+          <>
+            <h4 style={{ margin: '18px 0 8px', fontSize: 13, color: '#999' }}>Engagement · last 14 days</h4>
+            <TrendChart days={trendDays} />
+          </>
+        )}
+      </div>
+      <div className="st-card" style={{ marginTop: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h3 style={{ margin: 0 }}>Per-post performance</h3>
+            <p className="st-csub" title="Engagement rate = (likes + comments + shares + saves) / reach (or views) × 100">
+              Ranked by engagement rate. Hover the rate for the formula.
+            </p>
+          </div>
+          {allSponsors.length > 0 && (
+            <label className="filter" style={{
+              marginLeft: 'auto', minWidth: 210, border: '1px solid #333', borderRadius: 10,
+              padding: '8px 12px', display: 'grid', gap: 2, cursor: 'pointer',
+            }}>
+              <span style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '.08em' }}>Sponsor</span>
+              <select value={sponsor} onChange={(e) => setSponsor(e.target.value)}
+                aria-label="Filter by sponsor"
+                style={{ background: 'none', border: 0, padding: 0, color: '#fff', fontSize: 13, cursor: 'pointer', outline: 'none' }}>
+                <option value="">All sponsors</option>
+                {allSponsors.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </label>
+          )}
+        </div>
+        {!visible.length && (
+          <p className="empty-note">No posts with this sponsor yet — clear the filter to see all posts.</p>
+        )}
+        <div className="table-scroll"><table className="st-table">
+          <thead><tr><th scope="col">Photo</th><th scope="col">Posted</th><th scope="col">Where</th>
+            <th scope="col" style={{ textAlign: 'right' }}>Likes</th>
+            <th scope="col" style={{ textAlign: 'right' }}>Comments</th>
+            <th scope="col" style={{ textAlign: 'right' }}>Eng.</th>
+            <th scope="col" style={{ textAlign: 'right' }} title="Engagement rate = (likes + comments + shares + saves) / reach (or views) × 100">ER</th>
+            <th scope="col" style={{ textAlign: 'right' }} title="Daily engagement, last 14 days — needs 2+ days to draw">Trend</th></tr></thead>
+          <tbody>
+            {visible.map((p) => (
+              <tr key={p.id}>
+                <td>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {p.thumb_url
+                      ? <span style={{ flex: 'none', width: 64, height: 48, borderRadius: 6, overflow: 'hidden', position: 'relative', display: 'block', background: '#000' }}>
+                        <SmartImage src={p.thumb_url} alt={[p.horse, p.rider].filter(Boolean).join(' × ') || p.event_name || 'Sponsored photo'} width={128} height={96} sizes="64px"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      </span>
+                      : null}
+                    <span>
+                      <strong>{[p.horse, p.rider].filter(Boolean).join(' × ') || p.event_name || 'Photo'}</strong>
+                      {p.id === topId && <span className="my-pill my-pill-live" style={{ marginLeft: 8 }}>Top</span>}
+                      <br /><small style={{ color: '#777' }}>{p.event_name || ''}</small>
+                      {(p.sponsors || []).length > 0 && (
+                        <><br /><small style={{ color: '#999' }}>Sponsored by {(p.sponsors || []).map((s) => s.name).join(', ')}</small></>
+                      )}
+                    </span>
+                  </span>
+                </td>
+                <td style={{ whiteSpace: 'nowrap' }}>{fmtDay(p.posted_at)}</td>
+                <td>{p.post_url
+                  ? <a className="text-link" href={p.post_url} target="_blank" rel="noreferrer">{p.provider === 'ig' ? 'Instagram' : 'Facebook'}</a>
+                  : (p.provider === 'ig' ? 'Instagram' : 'Facebook')}</td>
+                <td style={{ textAlign: 'right' }}>{p.likes ?? '—'}</td>
+                <td style={{ textAlign: 'right' }}>{p.comments ?? '—'}</td>
+                <td style={{ textAlign: 'right' }}>{p.eng}</td>
+                <td style={{ textAlign: 'right' }} title="Engagement rate = (likes + comments + shares + saves) / reach (or views) × 100">
+                  {p.er === null ? '—' : `${p.er.toFixed(1)}%`}
+                </td>
+                <td style={{ textAlign: 'right' }}>
+                  <Spark points={(p.series || []).map((s) =>
+                    (Number(s.likes) || 0) + (Number(s.comments) || 0) + (Number(s.shares) || 0))} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </div>
+    </>
   );
 }
 

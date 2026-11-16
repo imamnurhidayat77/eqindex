@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { getJSON } from '../../../lib/api';
 import { SiteFooter, SiteHeader } from '../../../components/figma';
 import MediaPurchase from '../../../components/MediaPurchase';
+import { PostCta } from '../../../components/PostToSocial';
 import ProductJsonLd from '../../../components/ProductJsonLd';
 
 export const revalidate = 30;
@@ -43,6 +44,17 @@ export default async function PhotoDetail({ params }) {
         backHref="/photos"
         backLabel="Back to collection"
       />
+      {d.kind !== 'reel' && (
+        <main className="section-gutter" style={{ maxWidth: 1100, margin: '0 auto', paddingBottom: 8 }}>
+          <PostCta label="Post to Instagram / Facebook" media={{
+            media_id: params.id,
+            thumb: d.thumb_url || d.preview_url || null,
+            title: [d.horse, d.rider].filter(Boolean).join(' · ') || 'Your photo',
+            sub: d.event_name || null,
+            caption: `${[d.horse, d.rider].filter(Boolean).join(' × ')}${d.event_name ? ` at ${d.event_name}` : ''} via BossMedia`,
+          }} />
+        </main>
+      )}
       <SiteFooter />
     </div>
   );

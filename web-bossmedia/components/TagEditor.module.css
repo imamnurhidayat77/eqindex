@@ -1,0 +1,22 @@
+/* Tag editor inputs — same hover/focus language as the modal module. */
+.label {
+  display: grid;
+  gap: 6px;
+  color: #999;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+}
+.input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  color: white;
+  background: #0b0b0b;
+  border: 1px solid #333;
+  outline: 0;
+  font-size: 13px;
+  transition: border-color .15s ease;
+}
+.input:hover { border-color: #555; }
+.input:focus { border-color: #777; }

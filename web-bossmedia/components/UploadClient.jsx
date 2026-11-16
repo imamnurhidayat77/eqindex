@@ -83,6 +83,9 @@ export default function UploadClient({ events }) {
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  // Single explicit phase: uploading vs publishing are the same working
+  // moment — never both at once, or a publish can catch a half-uploaded batch.
+  const working = busy || publishing;
   const [tagged, setTagged] = useState([]); // full media rows for uploaded files
   const [tiers, setTiers] = useState([]);
   const [tagId, setTagId] = useState(null);
@@ -183,7 +186,7 @@ export default function UploadClient({ events }) {
 
   async function start() {
     const queued = files.map((f, i) => ({ ...f, i })).filter((f) => f.status === 'queued' || f.status === 'failed');
-    if (!queued.length || busy) return;
+    if (!queued.length || working) return;
     setBusy(true);
     const setOne = (i, patch) => setFiles((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)));
     const newIds = [];
@@ -213,7 +216,7 @@ export default function UploadClient({ events }) {
   }
 
   async function publishIds(ids) {
-    if (!ids.length || publishing) return;
+    if (!ids.length || working) return;
     setPublishing(true);
     let ok = 0; const fails = [];
     for (const id of ids) {
@@ -306,7 +309,7 @@ export default function UploadClient({ events }) {
                         </span>
                       )}
                     </div>
-                    {!busy && (
+                    {!working && (
                       <button type="button" className="st-file-x" onClick={() => removeAt(i)} aria-label={`Remove ${f.file.name}`}>×</button>
                     )}
                   </li>
@@ -361,7 +364,7 @@ export default function UploadClient({ events }) {
                     </div>
                     <button type="button" className="st-btn-ghost" onClick={() => setTagId(m.id)}>Tag</button>
                     {m.status !== 'published' && (
-                      <button type="button" className="st-btn-ghost" disabled={publishing || !m.event_id}
+                      <button type="button" className="st-btn-ghost" disabled={working || !m.event_id}
                         title={m.event_id ? 'Make it live in the shop' : 'Pick an event in the Tag dialog first'}
                         onClick={() => publishIds([m.id])}>Publish</button>
                     )}
@@ -369,8 +372,8 @@ export default function UploadClient({ events }) {
                 ))}
               </ul>
               <div className="st-tagger-foot">
-                <button type="button" className="st-btn" disabled={publishing || !publishable.length} onClick={() => publishIds(publishable.map((m) => m.id))}>
-                  {publishing ? 'Publishing…' : publishable.length ? `Publish all (${publishable.length})` : 'Nothing ready to publish'}
+                <button type="button" className="st-btn" disabled={working || !publishable.length} onClick={() => publishIds(publishable.map((m) => m.id))}>
+                  {publishing ? 'Publishing…' : busy ? 'Uploading…' : publishable.length ? `Publish all (${publishable.length})` : 'Nothing ready to publish'}
                 </button>
                 <span className="st-ksub">Needs an event per file — set it in the Tag dialog.</span>
               </div>
@@ -380,7 +383,7 @@ export default function UploadClient({ events }) {
 
         <aside className="st-card st-summary" aria-label="Review and upload">
           <p className="st-klabel">03 · Review &amp; upload</p>
-          <strong className="st-kval">{valid.length ? `${valid.length} file${valid.length === 1 ? '' : 's'}` : 'Empty batch'}</strong>
+          <strong className="st-kval">{valid.length ? `${valid.length} file${valid.length === 1 ? '' : 's'}` : files.length ? `${files.length} skipped` : 'Empty batch'}</strong>
           <small className="st-ksub">
             {evName || 'No event selected'}
             {(photos || reels) ? ` · ${photos} photo${photos === 1 ? '' : 's'} · ${reels} reel${reels === 1 ? '' : 's'}` : ''}
@@ -393,6 +396,8 @@ export default function UploadClient({ events }) {
           <div className="st-summary-actions">
             {busy ? (
               <button className="st-btn" disabled>Uploading…</button>
+            ) : publishing ? (
+              <button className="st-btn" disabled>Publishing…</button>
             ) : queued.length ? (
               <button className="st-btn" onClick={start}>
                 Upload {queued.length} file{queued.length === 1 ? '' : 's'}
@@ -406,7 +411,7 @@ export default function UploadClient({ events }) {
             ) : (
               <button className="st-btn" disabled>Add files first</button>
             )}
-            {!!files.length && <button className="st-btn-ghost" disabled={busy} onClick={clearAll}>Clear all</button>}
+            {!!files.length && <button className="st-btn-ghost" disabled={working} onClick={clearAll}>Clear all</button>}
           </div>
           {failed.length > 0 && !busy && <small className="st-ksub st-ksub-err">{failed.length} failed — fix and re-upload just those.</small>}
           {openDrafts.length > 0 && !busy && (

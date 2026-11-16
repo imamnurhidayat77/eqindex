@@ -63,10 +63,13 @@ export default function LibraryClient({ events, initial }) {
   useEffect(() => { setConfirmDelete(false); }, [selected]);
 
   async function bulk(patch, label) {
-    if (!selected.size) return;
+    // Snapshot the selection: filter changes reload items + clear selection,
+    // and that must not shrink a run already in flight.
+    const ids = [...selected];
+    if (!ids.length || busy) return;
     setBusy(true);
     let ok = 0; const fails = [];
-    for (const id of selected) {
+    for (const id of ids) {
       try {
         if (label === 'delete') { await studio.del(`/admin/media/${id}`); setItems((xs) => (xs || []).filter((m) => m.id !== id)); }
         else await patchOne(id, patch);
@@ -80,6 +83,7 @@ export default function LibraryClient({ events, initial }) {
 
   const allVisible = visible.length > 0 && visible.every((m) => selected.has(m.id));
   const toggleAll = () => {
+    if (busy) return;
     if (allVisible) setSelected(new Set());
     else setSelected(new Set(visible.map((m) => m.id)));
   };
@@ -87,23 +91,23 @@ export default function LibraryClient({ events, initial }) {
   return (
     <StudioShell active="library" kpis={{ library: drafts }}>
       <div className="st-filters">
-        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search horse, rider, class…" aria-label="Search media" />
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search horse, rider, class…" aria-label="Search media" disabled={busy} />
         <SearchSelect
           options={[{ id: '', label: 'All statuses' }, { id: 'draft', label: 'Draft' }, { id: 'published', label: 'Published' }, { id: 'archived', label: 'Archived' }]}
-          value={status} onChange={(v) => setStatus(v || '')} placeholder="Status" />
+          value={status} onChange={(v) => setStatus(v || '')} placeholder="Status" disabled={busy} />
         <SearchSelect
           options={[{ id: '', label: 'All events' }, ...(events || []).map((e) => ({ id: e.id, label: e.name }))]}
-          value={eventId} onChange={(v) => setEventId(v || '')} placeholder="Event" />
+          value={eventId} onChange={(v) => setEventId(v || '')} placeholder="Event" disabled={busy} />
         <SearchSelect
           options={[{ id: '', label: 'Photo + reel' }, { id: 'photo', label: 'Photos' }, { id: 'reel', label: 'Reels' }]}
-          value={kind} onChange={(v) => setKind(v || '')} placeholder="Kind" />
+          value={kind} onChange={(v) => setKind(v || '')} placeholder="Kind" disabled={busy} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#aaa', fontSize: 13 }}>
-          <input type="checkbox" checked={untagged} onChange={(e) => setUntagged(e.target.checked)} style={{ accentColor: '#fff' }} />
+          <input type="checkbox" checked={untagged} onChange={(e) => setUntagged(e.target.checked)} style={{ accentColor: '#fff' }} disabled={busy} />
           Untagged only
         </label>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 6 }}>
-        <button className="st-btn-ghost" onClick={toggleAll}>{allVisible ? 'Deselect all' : `Select all (${visible.length})`}</button>
+        <button className="st-btn-ghost" onClick={toggleAll} disabled={busy}>{busy ? 'Working…' : allVisible ? 'Deselect all' : `Select all (${visible.length})`}</button>
         <button className="st-btn-ghost" disabled={!selected.size || busy} onClick={() => bulk({ status: 'published' }, 'publish')}>Publish ({selected.size})</button>
         <button className="st-btn-ghost" disabled={!selected.size || busy} onClick={() => bulk({ status: 'archived' }, 'archive')}>Archive</button>
         <button className="st-btn-ghost st-btn-danger" disabled={!selected.size || busy} onClick={() => selected.size && setConfirmDelete(true)}>Delete</button>
@@ -127,7 +131,8 @@ export default function LibraryClient({ events, initial }) {
             <ItemCard
               key={m.id} m={m}
               checked={selected.has(m.id)}
-              onCheck={(on) => setSelected((s) => { const n = new Set(s); on ? n.add(m.id) : n.delete(m.id); return n; })}
+              disabled={busy}
+              onCheck={(on) => { if (busy) return; setSelected((s) => { const n = new Set(s); on ? n.add(m.id) : n.delete(m.id); return n; }); }}
               onOpen={() => setEditingId(m.id)}
             />
           ))}
@@ -144,10 +149,10 @@ export default function LibraryClient({ events, initial }) {
   );
 }
 
-function ItemCard({ m, checked, onCheck, onOpen }) {
+function ItemCard({ m, checked, disabled, onCheck, onOpen }) {
   return (
     <article className="st-media-card">
-      <input type="checkbox" className="sel" checked={checked} onChange={(e) => onCheck(e.target.checked)} aria-label="Select asset" />
+      <input type="checkbox" className="sel" checked={checked} disabled={disabled} onChange={(e) => onCheck(e.target.checked)} aria-label={`Select ${[m.horse, m.rider].filter(Boolean).join(' · ') || m.id.slice(0, 8)}`} />
       {m.thumb_url || m.preview_url ? <SmartImage src={m.thumb_url || m.preview_url} alt={`${[m.horse, m.rider].filter(Boolean).join(' ridden by ') || 'Library photo'}${m.event_name ? ` at ${m.event_name}` : ''}`} width={800} height={600} sizes="(max-width: 768px) 50vw, 25vw" /> : <span className="cover-fallback">No preview</span>}
       <footer>
         <span><Chip status={m.status} /> {m.kind === 'reel' && <Chip status="reel" />}</span>

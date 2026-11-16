@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { AdminCardsSk } from '../../../components/Skeletons';
@@ -14,20 +14,31 @@ export default function AdminCorrections() {
   const [note, setNote] = useState({});
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState(null);
+  const seq = useRef(0);
   const call = useAdminApi();
   async function load() {
+    // Sequence guard: fast filter switches must not let a stale
+    // response overwrite the current filter's rows.
+    const my = ++seq.current;
     setLoading(true); setErr('');
-    try { setRows(await call(`/admin/corrections?status=${status}`)); }
-    catch (e) { setErr(e.message); }
-    setLoading(false);
+    try {
+      const data = await call(`/admin/corrections?status=${status}`);
+      if (seq.current === my) setRows(data);
+    }
+    catch (e) { if (seq.current === my) setErr(e.message); }
+    if (seq.current === my) setLoading(false);
   }
   useEffect(() => { load(); }, [status]);
   async function decide(id, st) {
-    setErr('');
+    if (busyId) return;
+    setBusyId(id); setErr('');
     try {
       await call(`/admin/corrections/${id}`, { method: 'POST', body: JSON.stringify({ status: st, resolved_note: note[id] || undefined }) });
+      setNote((n) => { const c = { ...n }; delete c[id]; return c; });
       await load();
     } catch (e) { setErr(e.message); }
+    setBusyId(null);
   }
   return (
     <>
@@ -48,13 +59,13 @@ export default function AdminCorrections() {
           </div>
           <p className="text-sm">{r.message}</p>
           {r.entity_type && <p className="text-faint text-[12px] mt-1">About: {r.entity_type}{r.entity_id ? ` · ${String(r.entity_id).slice(0, 8)}` : ''}</p>}
-          {(status === 'open' || status === 'in_review') && (
+          {(r.status === 'open' || r.status === 'in_review') && (
             <div className="flex flex-wrap gap-2 mt-2.5 items-end">
               <label className="text-xs text-muted flex flex-col gap-1">Resolution note
-                <input className={INP} value={note[r.id] || ''} onChange={(e) => setNote({ ...note, [r.id]: e.target.value })} placeholder="optional" /></label>
-              {status === 'open' && <button className={BTN_PRIMARY} onClick={() => decide(r.id, 'in_review')}>Take up</button>}
-              <button className={BTN_PRIMARY} onClick={() => decide(r.id, 'resolved')}>Resolve</button>
-              <button className={BTN_DANGER} onClick={() => decide(r.id, 'rejected')}>Reject</button>
+                <input className={INP} value={note[r.id] || ''} onChange={(e) => setNote({ ...note, [r.id]: e.target.value })} placeholder="optional" disabled={busyId === r.id} /></label>
+              {r.status === 'open' && <button className={BTN_PRIMARY} disabled={busyId === r.id} onClick={() => decide(r.id, 'in_review')}>Take up</button>}
+              <button className={BTN_PRIMARY} disabled={busyId === r.id} onClick={() => decide(r.id, 'resolved')}>{busyId === r.id ? 'Working…' : 'Resolve'}</button>
+              <button className={BTN_DANGER} disabled={busyId === r.id} onClick={() => decide(r.id, 'rejected')}>Reject</button>
             </div>
           )}
           {r.resolved_note && <p className="text-moss text-[13px] mt-2">Resolution: {r.resolved_note}</p>}

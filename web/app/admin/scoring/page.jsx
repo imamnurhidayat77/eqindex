@@ -264,7 +264,7 @@ export default function AdminScoring() {
     modelb: JSON.parse(JSON.stringify(MODELB_DEFAULTS)),
   };
   async function create() {
-    if (!sel) return;
+    if (!sel || busy) return;
     setBusy(true); setErr(''); setNotice('');
     try {
       const created = await call('/admin/scoring/versions', {
@@ -277,6 +277,7 @@ export default function AdminScoring() {
     setBusy(false);
   }
   async function createBlank() {
+    if (busy) return;
     setBusy(true); setErr(''); setNotice('');
     try {
       const created = await call('/admin/scoring/versions', {
@@ -289,7 +290,7 @@ export default function AdminScoring() {
     setBusy(false);
   }
   async function cloneDefaults(targetSeason) {
-    if (!defaults) return;
+    if (!defaults || busy) return;
     setBusy(true); setErr(''); setNotice('');
     try {
       const created = await call('/admin/scoring/versions', {
@@ -302,7 +303,7 @@ export default function AdminScoring() {
     setBusy(false);
   }
   async function removeDraft() {
-    if (!deleting) return;
+    if (!deleting || busy) return;
     setBusy(true); setErr('');
     try {
       await call(`/admin/scoring/versions/${deleting.id}`, { method: 'DELETE' });
@@ -313,7 +314,7 @@ export default function AdminScoring() {
     setBusy(false);
   }
   async function save() {
-    if (!sel || sel.status !== 'draft' || !draft) return;
+    if (!sel || sel.status !== 'draft' || !draft || busy) return;
     setBusy(true); setErr(''); setNotice('');
     try {
       const updated = await call(`/admin/scoring/versions/${sel.id}`, { method: 'PUT', body: JSON.stringify({ params: draft }) });
@@ -324,7 +325,7 @@ export default function AdminScoring() {
     setBusy(false);
   }
   async function runPreview() {
-    if (!sel) return;
+    if (!sel || busy) return;
     setBusy(true); setErr('');
     try {
       setPreview(await call(`/admin/scoring/versions/${sel.id}/preview`, { method: 'POST' }));
@@ -332,7 +333,7 @@ export default function AdminScoring() {
     setBusy(false);
   }
   async function activate() {
-    if (!sel) return;
+    if (!sel || busy) return;
     setBusy(true); setErr('');
     try {
       await call(`/admin/scoring/versions/${sel.id}/activate`, { method: 'POST' });

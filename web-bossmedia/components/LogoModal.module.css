@@ -1,0 +1,163 @@
+/* Sponsor design modal — interactive language (globals.css frozen).
+   Satu hover untuk semua kontrol: border terang + permukaan naik.
+   Focus ring gold (accent situs) menggantikan halo putih global yang
+   terlalu menyala di kartu gelap. Tanpa !important. */
+
+/* Lingkup kartu: label global jadi satu dialek yang lolos kontras. */
+.card .purchase-label { color: #999; }
+.card .st-btn { transition: background .2s ease; }
+.card .st-btn:hover { background: #d8d8d8; }
+.card :is(button, input):focus-visible {
+  outline: 2px solid #e3b341;
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+/* Pilihan (chip sponsor, tab, radio posisi/tema): satu dialek. */
+.pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  background: transparent;
+  border: 1px solid #3a3a3a;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.pick:hover { border-color: #888; background: #161616; }
+.pick[aria-checked='true'], .pick[aria-selected='true'] { background: #2a2a2a; border-color: #fff; }
+.pick[aria-checked='true']:hover, .pick[aria-selected='true']:hover { background: #333; border-color: #fff; }
+.chip { width: 100%; padding-left: 6px; text-align: left; }
+.chipThumb {
+  width: 56px;
+  height: 28px;
+  background: #fff;
+  border-radius: 4px;
+  overflow: hidden;
+  flex: none;
+}
+.chipLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Thumbnail template carousel. */
+.thumb {
+  position: relative;
+  flex: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: #101010;
+  padding: 10px;
+  border: 1px solid #3a3a3a;
+  transition: border-color .15s ease;
+}
+.thumb:hover { border-color: #888; }
+.thumb[aria-checked='true'] { border-color: #e3b341; box-shadow: inset 0 0 0 1px #e3b341; }
+.thumb[aria-checked='true']:hover { border-color: #e3b341; }
+.currentPill {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  background: #e3b341;
+  color: #101010;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 20px;
+}
+/* Tombol garis (upload, tambah sponsor): ghost dengan hover sendiri. */
+.outlineBtn {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid #555;
+  color: white;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .15s ease, background .15s ease;
+}
+.outlineBtn:hover { border-color: #999; background: #161616; }
+.outlineBtn:disabled { opacity: .55; cursor: default; }
+.addNew {
+  width: 100%;
+  margin-top: 8px;
+  background: transparent;
+  border: 1px dashed #555;
+  color: #ccc;
+  min-height: 44px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+.addNew:hover { border-color: #999; background: #161616; color: #fff; }
+.linkBtn {
+  background: none;
+  border: 0;
+  border-bottom: 1px solid #444;
+  padding: 0 0 2px;
+  color: #999;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease;
+}
+.linkBtn:hover { color: #fff; border-color: #999; }
+
+/* Input teks di modal: hover + fokus tanpa halo. */
+.field {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  color: white;
+  background: #0b0b0b;
+  border: 1px solid #333;
+  outline: 0;
+  font-size: 13px;
+  transition: border-color .15s ease;
+}
+.field:hover { border-color: #555; }
+.field:focus { border-color: #777; }
+
+/* Dropzone file: input ASLI yang diklik langsung (opacity 0 menutupi box),
+   tanpa label-activation maupun ref.click() — dua-duanya pernah gagal di
+   Chrome user. Yang terlihat 100% styling kita. */
+.dropWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  color: #999;
+  background: #0b0b0b;
+  border: 1px solid #333;
+  font-size: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color .15s ease;
+}
+.dropWrap:hover { border-color: #888; }
+.dropWrap:focus-within { border-color: #e3b341; }
+.dropText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fileGhost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}

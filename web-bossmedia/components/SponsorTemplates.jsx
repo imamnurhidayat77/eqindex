@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import SmartImage from './SmartImage';
 import s from './SponsorTemplates.module.css';
+import { MAX_SPONSOR_LOGOS } from '../lib/sponsor-logos.mjs';
 
 // Sponsor overlay templates — tempel di atas foto mana pun.
 // Satu wrapper relative + foto cover; overlay absolute CSS/SVG murni,
@@ -30,8 +31,8 @@ export const TEMPLATE_VARIANTS = [
   { id: 'gold-frame', group: 'Sponsor', name: 'Frame · Gold line', short: 'Gold frame', desc: 'Bingkai gold tipis + pil logo bawah. Premium.' },
   { id: 'minimal-corner', group: 'Sponsor', name: 'Minimal · Corner marks', short: 'Minimal', desc: 'Hanya logo + bracket. Foto nyaris utuh.' },
   { id: 'class-spotlight', group: 'Sponsor', needsClass: true, name: 'Class · Spotlight band', short: 'Class spotlight', desc: 'Band navy: nama kelas + sponsor. Hanya untuk foto bertag kelas.' },
-  { id: 'winner-banner', group: 'Winner', name: 'Winner · Full banner', short: 'Winner banner', desc: 'Panel navy kiri + gelombang sponsor. Poster landscape.' },
-  { id: 'winner-arch', group: 'Winner', name: 'Winner · Gold arch', short: 'Winner arch', desc: 'Lengkung gold + mahkota. Poster premium.' },
+  { id: 'winner-banner', group: 'Winner', name: 'Winner · Full banner', short: 'Winner banner', desc: 'Panel navy kiri + strip sponsor. Poster landscape.' },
+  { id: 'winner-arch', group: 'Winner', name: 'Winner · Gold arch', short: 'Winner arch', desc: 'Garis gold + mahkota. Poster premium.' },
   { id: 'winner-portrait', group: 'Winner', name: 'Winner · Vertical poster', short: 'Winner poster', desc: 'Judul event atas, winner tengah, sponsor bawah.' },
   { id: 'winner-side', group: 'Winner', name: 'Winner · Side panel', short: 'Winner panel', desc: 'Panel putih kiri: event, class, winner, sponsor.' },
   { id: 'winner-top', group: 'Winner', name: 'Winner · Top banner', short: 'Winner top', desc: 'Bar winner atas + strip sponsor bawah. Minimal.' },
@@ -74,16 +75,27 @@ export const isTheme = (t) => t === 'light' || t === 'dark';
 // Pilihan desain terakhir per foto — tombol Save di modal menulis ini,
 // halaman checkout membacanya lagi supaya tidak hilang saat reload.
 const SAVE_PREFIX = 'bossmedia:sponsor-design:';
-export function saveDesign(mediaId, { template, logoIds, logoPos, theme }) {
+export function saveDesign(mediaId, { template, logoIds, logoPos, theme, tags }) {
   try {
     if (!mediaId) return;
+    // tags (buyer tag override) merge dari draft tersimpan bila panggilan
+    // ini tidak menyebutnya — mis. Save di LogoModal tidak boleh menghapus
+    // tag yang diedit di TagEditor.
+    const prev = loadDesign(mediaId);
     localStorage.setItem(SAVE_PREFIX + mediaId, JSON.stringify({
       template: isVariant(template) ? template : 'banner-wave',
-      logoIds: (logoIds || []).slice(0, 1),
+      logoIds: (logoIds || []).slice(0, MAX_SPONSOR_LOGOS),
       logoPos: logoPos || {},
       theme: isTheme(theme) ? theme : 'light',
+      tags: tags !== undefined ? tags : (prev?.tags || null),
     }));
   } catch { /* private mode: pilihan sesi ini tetap jalan */ }
+}
+export function clearDesign(mediaId) {
+  try {
+    if (!mediaId) return;
+    localStorage.removeItem(SAVE_PREFIX + mediaId);
+  } catch { /* private mode: nothing stored anyway */ }
 }
 export function loadDesign(mediaId) {
   try {
@@ -92,7 +104,7 @@ export function loadDesign(mediaId) {
     if (!raw) return null;
     const j = JSON.parse(raw);
     if (!j || !isVariant(j.template)) return null;
-    return { template: j.template, logoIds: Array.isArray(j.logoIds) ? j.logoIds : [], logoPos: j.logoPos || {}, theme: isTheme(j.theme) ? j.theme : 'light' };
+    return { template: j.template, logoIds: Array.isArray(j.logoIds) ? j.logoIds : [], logoPos: j.logoPos || {}, theme: isTheme(j.theme) ? j.theme : 'light', tags: j.tags || null };
   } catch { return null; }
 }
 
@@ -160,11 +172,37 @@ function CrownMark() {
   );
 }
 
+// Nama event asli bisa 50+ karakter ("Auckland SJ & Waitemata SJ Spring
+// Showjumping Festival") — panel 28% tak muat. Pendekkan konsisten di semua
+// overlay, nama penuh tetap di title.
+export function shortEventName(name = '') {
+  const raw = String(name || '').trim();
+  if (raw.length <= 26) return raw;
+  const head = raw.split(/\s*[&·\-–—]\s*/)[0].trim();
+  if (head && head.length <= 26) return head;
+  return `${raw.slice(0, 24).trim()}…`;
+}
+// "Kuda × Rider" kepotong CSS jadi "Olivia.." gantung. Potong sadar delimiter:
+// kuda penuh + nama depan rider, maks 28 char, penuh di title.
+export function shortSubject(name = '') {
+  const raw = String(name || '').trim();
+  if (raw.length <= 28) return raw;
+  const parts = raw.split('×');
+  if (parts.length === 2) {
+    const horse = parts[0].trim();
+    const riderFirst = parts[1].trim().split(/\s+/)[0] || '';
+    const combo = riderFirst ? `${horse} × ${riderFirst}` : horse;
+    if (combo.length <= 28) return combo;
+    if (horse.length <= 26) return horse;
+  }
+  return `${raw.slice(0, 26).trim()}…`;
+}
 function EventHead({ event = 'AUCKLAND SHOW JUMPING CHAMPIONSHIP', light = false }) {
+  const short = shortEventName(event);
   return (
-    <span className={`${s["st-event"]}${light ? " " + s["light"] : ""}`}>
+    <span className={`${s["st-event"]}${light ? " " + s["light"] : ""}`} title={event}>
       <svg viewBox="0 0 32 24" aria-hidden="true"><path d="M3 20C5 12 10 5 17 4c4-.5 8 1 11 5M7 20c2-6 6-11 12-12M17 4c-1 3-1 7 1 11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
-      <strong>{event}</strong>
+      <strong>{short}</strong>
     </span>
   );
 }
@@ -176,9 +214,20 @@ function ClassPill({ children }) {
   );
 }
 
-// shortcut: logo pertama untuk lockup single
-function firstLogo(sponsors) {
-  return sponsors?.length ? sponsors.slice(0, 1) : [{ label: 'YOUR LOGO' }];
+// Satu baris untuk 1–8 logo: ukuran menciut ikut jumlah (CSS .multi,
+// .multi3 untuk 3–4, .multi5 untuk 5–8). Satu baris terus — tidak wrap —
+// supaya preview selalu sama dengan hasil bake. Dipakai semua lockup
+// strip; overlay (badge/minimal/round) dirender per posisi lewat posCls,
+// dan diringkas jadi satu badge berisi baris ini saat logo > 4.
+function LogoRow({ logos, column = false }) {
+  const list = logos?.length ? logos : [{ label: 'YOUR LOGO' }];
+  const multi = list.length > 1 ? ` ${s["multi"]}${list.length > 4 ? ` ${s["multi5"]}` : list.length > 2 ? ` ${s["multi3"]}` : ''}` : '';
+  const col = column ? ` ${s["col"]}` : '';
+  return (
+    <span className={`${s["st-logos"]}${multi}${col}`}>
+      {list.map((logo, i) => <LogoImg key={logo.id || i} logo={logo} />)}
+    </span>
+  );
 }
 
 export default function SponsorPhoto({
@@ -202,13 +251,22 @@ export default function SponsorPhoto({
     im.src = photo;
   }, [ratio, photo, onAspect]);
   const ar = ratio || (nat ? `${nat.w} / ${nat.h}` : undefined);
-  const posOf = (i) => positions[logos[i]?.id] || ['bottom-left', 'bottom-right', 'top-right'][i % 3];
+  // Empat sudut = empat posisi; logo ke-5+ tidak pernah mencapai sini
+  // (overlay diringkas jadi satu badge — lihat wide di bawah).
+  const posOf = (i) => positions[logos[i]?.id] || ['bottom-left', 'bottom-right', 'top-right', 'top-left'][i % 4];
   const posCls = (i) => {
     const p = posOf(i);
-    return p === 'top-right' ? s['pos-tr'] : p === 'bottom-right' ? s['pos-br'] : s['pos-bl'];
+    if (p === 'top-right') return s['pos-tr'];
+    if (p === 'bottom-right') return s['pos-br'];
+    if (p === 'top-left') return s['pos-tl'];
+    return s['pos-bl'];
   };
+  // Overlay menampung 1 badge per sudut; lebih dari 4 logo diringkas jadi
+  // satu badge berisi baris penuh di posisi pertama (tidak overlap,
+  // tidak ada logo terbuang — bake melakukan hal yang sama).
+  const wide = logos.length > 4;
   return (
-    <div className={`${s["st-frame"]}${ar ? '' : ` ${s["st-natural"]}`}${compact ? ` ${s["st-compact"]}` : ''}`} style={{ ...(ar ? { aspectRatio: ar } : undefined), ...frameStyle }}>
+    <div className={`${s["st-frame"]}${ar ? '' : ` ${s["st-natural"]}`}${compact ? ` ${s["st-compact"]}` : ''}${logos.length > 1 ? ` ${s["multi"]}` : ''}`} style={{ ...(ar ? { aspectRatio: ar } : undefined), ...frameStyle }}>
       {photo && ar ? (
         <SmartImage src={photo} alt={alt} fill sizes="(max-width: 640px) 100vw, 560px" className={`${s["st-photo"]}`} />
       ) : (
@@ -226,7 +284,7 @@ export default function SponsorPhoto({
           )}
           <div className={`${s["st-strip"]} ${s["st-strip-bottom"]}${dark ? ` ${s["st-dark"]}` : ''}`}>
             <SupportedLabel light={dark} />
-            <span className={`${s["st-logos"]}`}><LogoImg logo={logos[0]} /></span>
+            <LogoRow logos={logos} />
           </div>
         </>
       )}
@@ -240,7 +298,7 @@ export default function SponsorPhoto({
           </svg>
           <div className={`${s["st-swoosh-lockup"]}`}>
             <small>SUPPORTED BY</small>
-            <LogoImg logo={logos[0]} />
+            <LogoRow logos={logos} />
           </div>
         </>
       )}
@@ -249,14 +307,14 @@ export default function SponsorPhoto({
         <div className={`${s["st-strip"]} ${s["st-strip-square"]}${dark ? ` ${s["st-dark"]}` : ''}`}>
           <SupportedLabel light={dark} />
           <span className={`${s["st-divider"]}`} aria-hidden="true" />
-          <span className={`${s["st-logos"]}`}><LogoImg logo={logos[0]} /></span>
+          <LogoRow logos={logos} />
         </div>
       )}
 
       {variant === 'left-panel' && (
         <div className={`${s["st-side"]}`}>
           <small>SUPPORTED BY</small>
-          <LogoImg logo={logos[0]} />
+          <LogoRow logos={logos} column />
           {event && <strong className={`${s["st-side-event"]}`}>{event}</strong>}
           {classLabel && <span className={`${s["st-side-class"]}`}>{classLabel}</span>}
         </div>
@@ -266,43 +324,52 @@ export default function SponsorPhoto({
         <div className={`${s["st-strip"]} ${s["st-strip-top"]}${dark ? ` ${s["st-dark"]}` : ''}`}>
           <SupportedLabel light={dark} />
           <span className={`${s["st-divider"]}`} aria-hidden="true" />
-          <span className={`${s["st-logos"]}`}><LogoImg logo={logos[0]} /></span>
+          <LogoRow logos={logos} />
         </div>
       )}
 
-      {variant === 'corner-badge' && (
-        <div className={`${s["st-badge"]} ${posCls(0)}`}>
+      {variant === 'corner-badge' && (wide ? (
+        <div className={`${s["st-badge"]} ${s["wide"]} ${posCls(0)}`}>
           <small>SUPPORTED BY</small>
-          <span className={`${s["st-badge-logo"]}`}><LogoImg logo={logos[0]} light /></span>
+          <span className={`${s["st-badge-logo"]}`}><LogoRow logos={logos} /></span>
         </div>
-      )}
+      ) : logos.map((logo, i) => (
+        <div key={logo.id || i} className={`${s["st-badge"]} ${posCls(i)}`}>
+          <small>SUPPORTED BY</small>
+          <span className={`${s["st-badge-logo"]}`}><LogoImg logo={logo} light /></span>
+        </div>
+      )))}
 
       {variant === 'portrait-drape' && (
         <>
           <svg className={`${s["st-drape"]}`} viewBox="0 0 400 140" preserveAspectRatio="none" aria-hidden="true">
             <path d="M0 0 L400 0 L400 60 C320 96 240 70 160 92 C100 108 40 104 0 118 Z" fill="#fff" />
-            <path d="M0 118 C40 104 100 108 160 92 C240 70 320 96 400 60" fill="none" stroke="#d4a017" strokeWidth="5" />
-            <path d="M0 126 C40 112 100 116 160 100 C240 78 320 104 400 68" fill="none" stroke="#0e2233" strokeWidth="9" />
+            <path d="M0 118 C40 104 100 108 160 92 C240 70 320 96 400 60" fill="none" stroke="#d4a017" strokeWidth="3.5" />
+            <path d="M0 126 C40 112 100 116 160 100 C240 78 320 104 400 68" fill="none" stroke="#0e2233" strokeWidth="5" />
           </svg>
           <div className={`${s["st-drape-lockup"]}`}>
             <small>SUPPORTED BY</small>
-            <LogoImg logo={logos[0]} />
+            <LogoRow logos={logos} />
           </div>
         </>
       )}
 
-      {variant === 'round-badge' && (
-        <div className={`${s["st-round"]} ${posCls(0)}`}>
-          <LogoImg logo={logos[0]} />
+      {variant === 'round-badge' && (wide ? (
+        <div className={`${s["st-round"]} ${s["wide"]} ${posCls(0)}`}>
+          <LogoRow logos={logos} />
         </div>
-      )}
+      ) : logos.map((logo, i) => (
+        <div key={logo.id || i} className={`${s["st-round"]} ${posCls(i)}`}>
+          <LogoImg logo={logo} />
+        </div>
+      )))}
 
       {variant === 'gold-frame' && (
         <>
           <span className={`${s["st-gframe"]}`} aria-hidden="true" />
           <div className={`${s["st-gpill"]}`}>
             <SupportedLabel />
-            <LogoImg logo={logos[0]} />
+            <LogoRow logos={logos} />
           </div>
         </>
       )}
@@ -311,7 +378,11 @@ export default function SponsorPhoto({
         <>
           <span className={`${s["st-corner"]} ${s["tl"]}`} aria-hidden="true" />
           <span className={`${s["st-corner"]} ${s["br"]}`} aria-hidden="true" />
-          <div className={`${s["st-minimal"]} ${posCls(0)}`}><LogoImg logo={logos[0]} /></div>
+          {wide ? (
+            <div className={`${s["st-minimal"]} ${s["wide"]} ${posCls(0)}`}><LogoRow logos={logos} /></div>
+          ) : logos.map((logo, i) => (
+            <div key={logo.id || i} className={`${s["st-minimal"]} ${posCls(i)}`}><LogoImg logo={logo} /></div>
+          ))}
         </>
       )}
 
@@ -321,7 +392,7 @@ export default function SponsorPhoto({
             <span className={`${s["st-class-tag"]}`}>CLASS</span>
             <strong className={`${s["st-classband-name"]}`}>{classLabel}</strong>
           </span>
-          <span className={`${s["st-minchip"]}`}>{logos[0]?.src ? <LogoImg logo={logos[0]} /> : <DefaultLogo />}</span>
+          <span className={`${s["st-minchip"]}`}><LogoRow logos={logos} /></span>
         </div>
       )}
 
@@ -333,19 +404,15 @@ export default function SponsorPhoto({
               {classLabel ? <ClassPill>{classLabel}</ClassPill> : null}
             </div>
             <span className={`${s["st-arch-crown"]}`}><CrownMark /></span>
-            <WinnerLaurel gold><strong>{result || 'WINNER'}</strong></WinnerLaurel>
-            {subject && <em className={`${s["st-subject"]} ${s["light"]}`}>{subject}</em>}
+            {/* Laurel dicabut juga di sini: di panel 28% daun 3.2cqw terbaca
+                sebagai kurung "( )". Arch = crown + WINNER polos + border lurus;
+                seam melengkung yang motong subjek dihapus. */}
+            <span className={`${s["st-winner-plain"]}`}><strong>{result || 'WINNER'}</strong></span>
+            {subject && <em className={`${s["st-subject"]} ${s["light"]}`} title={subject}>{shortSubject(subject)}</em>}
           </div>
-          <svg className={`${s["st-arch-seam"]}`} viewBox="0 0 100 800" preserveAspectRatio="none" aria-hidden="true">
-            <path d="M28 0 C88 220 88 580 28 800" fill="none" stroke="#d4a017" strokeWidth="7" />
-          </svg>
-          <svg className={`${s["st-wave"]}`} viewBox="0 0 800 120" preserveAspectRatio="none" aria-hidden="true">
-            <path d="M0 78 C160 60 260 96 420 74 C580 52 660 88 800 40 L800 120 L0 120 Z" fill="#fff" />
-            <path d="M0 78 C160 60 260 96 420 74 C580 52 660 88 800 40" fill="none" stroke="#d4a017" strokeWidth="4" />
-          </svg>
           <div className={`${s["st-strip"]} ${s["st-strip-bottom"]}`}>
             <SupportedLabel />
-            <span className={`${s["st-logos"]}`}><LogoImg logo={logos[0]} /></span>
+            <LogoRow logos={logos} />
           </div>
         </>
       )}
@@ -356,20 +423,17 @@ export default function SponsorPhoto({
               <EventHead event={event} light />
               {classLabel ? <ClassPill>{classLabel}</ClassPill> : null}
             </div>
-            <WinnerLaurel gold><strong>{result || 'WINNER'}</strong></WinnerLaurel>
-            {subject && <em className={`${s["st-subject"]} ${s["light"]}`}>{subject}</em>}
+            {/* WINNER polos tanpa laurel: daun 3.2cqw di panel 28% terbaca
+                sebagai kurung "( )". Laurel + mahkota hanya milik winner-arch. */}
+            <span className={`${s["st-winner-plain"]}`}><strong>{result || 'WINNER'}</strong></span>
+            {subject && <em className={`${s["st-subject"]} ${s["light"]}`} title={subject}>{shortSubject(subject)}</em>}
           </div>
-          <svg className={`${s["st-wave"]}`} viewBox="0 0 800 120" preserveAspectRatio="none" aria-hidden="true">
-            <path d="M0 78 C160 60 260 96 420 74 C580 52 660 88 800 40 L800 120 L0 120 Z" fill="#fff" />
-            <path d="M0 78 C160 60 260 96 420 74 C580 52 660 88 800 40" fill="none" stroke="#d4a017" strokeWidth="4" />
-          </svg>
           <div className={`${s["st-strip"]} ${s["st-strip-bottom"]}`}>
             <SupportedLabel />
-            <span className={`${s["st-logos"]}`}><LogoImg logo={logos[0]} /></span>
+            <LogoRow logos={logos} />
           </div>
         </>
       )}
-
       {variant === 'winner-portrait' && (
         <>
           <div className={`${s["st-vhead"]}`}><EventHead event={event} /></div>
@@ -379,7 +443,7 @@ export default function SponsorPhoto({
             {subject && <em className={`${s["st-subject"]} ${s["light"]}`}>{subject}</em>}
             <div className={`${s["st-strip"]} ${s["st-strip-ghost"]}`}>
               <SupportedLabel light />
-              <span className={`${s["st-logos"]}`}><LogoImg logo={logos[0]} /></span>
+              <LogoRow logos={logos} />
             </div>
           </div>
         </>
@@ -396,7 +460,7 @@ export default function SponsorPhoto({
               <WinnerLaurel><strong>{result || 'WINNER'}</strong></WinnerLaurel>
               {subject && <em className={`${s["st-subject"]}`}>{subject}</em>}
             </div>
-            <div className={`${s["st-wside-sponsor"]}`}><SupportedLabel /><LogoImg logo={logos[0]} /></div>
+            <div className={`${s["st-wside-sponsor"]}`}><SupportedLabel /><LogoRow logos={logos} column /></div>
           </div>
         </>
       )}
@@ -409,7 +473,7 @@ export default function SponsorPhoto({
           </div>
           <div className={`${s["st-strip"]} ${s["st-strip-bottom"]}`}>
             <SupportedLabel />
-            <span className={`${s["st-logos"]}`}><LogoImg logo={logos[0]} /></span>
+            <LogoRow logos={logos} />
           </div>
         </>
       )}
@@ -422,14 +486,14 @@ export default function SponsorPhoto({
           </span>
           <span className={`${s["st-wbar-sp"]}`}>
             <SupportedLabel />
-            <LogoImg logo={logos[0]} />
+            <LogoRow logos={logos} />
           </span>
         </div>
       )}
 
       {variant === 'winner-corner' && (
         <>
-          <div className={`${s["st-diag"]}`}><SupportedLabel /><LogoImg logo={firstLogo(logos)[0]} /></div>
+          <div className={`${s["st-diag"]}`}><SupportedLabel /><LogoRow logos={logos} /></div>
         </>
       )}
 
@@ -439,7 +503,7 @@ export default function SponsorPhoto({
           {classLabel && <span className={`${s["st-minclass"]}`}>{classLabel}</span>}
           <span className={`${s["st-minsponsor"]}`}>
             <SupportedLabel light />
-            <span className={`${s["st-minchip"]}`}>{logos[0]?.src ? <LogoImg logo={logos[0]} /> : <DefaultLogo />}</span>
+            <span className={`${s["st-minchip"]}`}><LogoRow logos={logos} /></span>
           </span>
         </div>
       )}

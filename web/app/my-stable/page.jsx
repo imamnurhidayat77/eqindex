@@ -103,17 +103,20 @@ export default function MyStable() {
   }
   useEffect(() => { if (user && (user.role === 'COACH' || user.role === 'ADMIN')) load(); else setLoading(false); }, [user]);
   useEffect(() => {
+    // Public ranking leak into coach wall: only fetch candidates for coaches.
+    if (!user || (user.role !== 'COACH' && user.role !== 'ADMIN')) return;
     fetch(`${API}/rankings/riders?limit=100`).then((r) => r.json()).then((j) => setCandidates(j.data || [])).catch(() => {});
-  }, []);
+  }, [user]);
 
   async function add(riderId) {
-    if (!riderId) return;
+    if (!riderId || busy) return;
     setBusy(true); setErr('');
     try { await authed('/coach/athletes', { method: 'POST', body: JSON.stringify({ rider_id: riderId }) }); setQ(''); await load(); }
     catch (e) { setErr(e.message); }
     setBusy(false);
   }
   async function remove(riderId) {
+    if (busy) return;
     setBusy(true);
     try { await authed(`/coach/athletes/${riderId}`, { method: 'DELETE' }); await load(); }
     catch (e) { setErr(e.message); }
@@ -236,7 +239,7 @@ export default function MyStable() {
         <div className="text-[11px] uppercase tracking-wide text-faint font-bold mb-2">Add athlete to roster</div>
         <div className="relative flex flex-wrap gap-2">
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type rider name… (min 2 chars)"
-            className={`${INP} flex-1 min-w-[200px]`} />
+            className={`${INP} flex-1 min-w-[200px]`} disabled={busy} aria-busy={busy} />
           {!!sugg.length && (
             <div className="absolute top-full left-0 mt-1 w-full max-w-[420px] z-10 rounded border border-line bg-card2 shadow-xl overflow-hidden">
               {sugg.map((c) => (

@@ -42,7 +42,7 @@ function LoginInner({ visual }) {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'That didn’t work — check your details and try again.');
-      if (j.data?.mfa_required) { setChallenge(j.data.challenge); setBusy(false); return; }
+      if (j.data?.mfa_required) { setChallenge(j.data.challenge); setShow(false); setForm((f) => ({ ...f, password: '' })); setBusy(false); return; }
       land(j.data?.role);
     } catch (e2) { setErr(e2.message); setBusy(false); }
   }
@@ -55,6 +55,7 @@ function LoginInner({ visual }) {
   async function submitCode(e) {
     e.preventDefault();
     if (busy) return;
+    if (!challenge) { setErr('Session expired — sign in again.'); return; }
     setErr('');
     if (!/^\d{6}$/.test(code.trim())) { setErr('Enter the 6-digit code from your authenticator app.'); return; }
     setBusy(true);
@@ -90,7 +91,7 @@ function LoginInner({ visual }) {
           {challenge ? (
             <form onSubmit={submitCode}>
               <label><span>Authenticator code</span>
-                <input required inputMode="numeric" autoComplete="one-time-code" value={code}
+                <input required autoFocus inputMode="numeric" autoComplete="one-time-code" value={code}
                   onChange={(e) => setCode(e.target.value)} placeholder="123456" maxLength={6} />
               </label>
               {err && <p className="auth-error" role="alert">{err}</p>}

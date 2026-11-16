@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test smoke.test.mjs",
+    "test": "node --test *.test.mjs",
     "test:smoke": "node --test smoke.test.mjs",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",

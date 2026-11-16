@@ -76,6 +76,122 @@ function LogoDrop({ file, setFile }) {
 }
 const TABS = [['overview', 'Overview'], ['budgets', 'Budgets'], ['logos', 'Logos'], ['coverage', 'Coverage']];
 
+// Winner gift form: budget → event → winner (rider/horse) → pack → email.
+// The pack lookup mirrors the buyer flow, so what the sponsor sees
+// (slots + cost) is exactly what the winner receives.
+function GiftForm({ budgets, onSent, flash }) {
+  const [budgetId, setBudgetId] = useState('');
+  const [events, setEvents] = useState([]);
+  const [eventId, setEventId] = useState('');
+  const [scope, setScope] = useState('rider');
+  const [query, setQuery] = useState('');
+  const [hits, setHits] = useState([]);
+  const [subject, setSubject] = useState(null);
+  const [pack, setPack] = useState(null);
+  const [email, setEmail] = useState('');
+  const [sending, setSending] = useState(false);
+  const budget = (budgets || []).find((b) => String(b.id) === String(budgetId)) || null;
+  const fixedEvent = budget?.event_id || '';
+  const effEvent = fixedEvent || eventId;
+
+  useEffect(() => {
+    fetch(`${API}/events?limit=200`, { credentials: 'include' }).then((r) => r.json())
+      .then((j) => setEvents(j?.data || [])).catch(() => {});
+  }, []);
+  useEffect(() => { setSubject(null); setHits([]); }, [scope, effEvent]);
+  useEffect(() => {
+    if (!query.trim()) { setHits([]); return; }
+    const t = setTimeout(() => {
+      fetch(`${API}/api/${scope}s/search?q=${encodeURIComponent(query.trim())}`)
+        .then((r) => r.json()).then((j) => setHits((j?.data || []).slice(0, 6))).catch(() => {});
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query, scope]);
+  useEffect(() => {
+    setPack(null);
+    if (!effEvent || !subject) return;
+    fetch(`${API}/api/credit-packs?event_id=${effEvent}&${scope}_id=${subject.id}`)
+      .then((r) => (r.ok ? r.json() : null)).then((j) => setPack(j?.data || null)).catch(() => {});
+  }, [effEvent, subject, scope]);
+  const cost = pack && budget ? Number(pack.slots) * Number(budget.discount_cents || 0) : 0;
+  const remaining = budget ? Number(budget.agreed_cents) - Number(budget.spent_cents) : 0;
+  const ready = budget && pack && subject && /.+@.+\..+/.test(email.trim()) && cost > 0 && remaining >= cost;
+
+  async function send() {
+    if (!ready || sending) return;
+    setSending(true);
+    try {
+      const body = { budget_id: budget.id, pack_id: pack.id, buyer_email: email.trim(), event_id: effEvent, [`${scope}_id`]: subject.id };
+      const res = await fetch(`${API}/sponsor/gifts`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || 'Couldn’t send — try again.');
+      setEmail(''); setSubject(null); setQuery(''); setPack(null);
+      flash(`Sent ${pack.slots} credits to ${email.trim()} — they’ve been emailed.`);
+      onSent();
+    } catch (e2) { flash(e2.message || 'Couldn’t send — try again.', 'err'); } finally { setSending(false); }
+  }
+
+  return (
+    <section className="st-step" aria-label="Send winner credits">
+      <header>
+        <span className="st-step-n">★</span>
+        <div>
+          <h3>Gift winner credits</h3>
+          <p>Pick a budget, a winner and their photo scope — they’re emailed and can unlock right away. Cost comes off the budget now.</p>
+        </div>
+      </header>
+      <div className="st-form">
+        <label><span>Budget</span>
+          <select value={budgetId} onChange={(e) => setBudgetId(e.target.value)}>
+            <option value="">Choose a budget…</option>
+            {(budgets || []).filter((b) => b.status === 'active').map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.event_name || 'Any event'} · {nzd(Number(b.agreed_cents) - Number(b.spent_cents))} left · {nzd(b.discount_cents)}/slot
+              </option>
+            ))}
+          </select>
+        </label>
+        <label><span>Event</span>
+          <select value={effEvent} disabled={!!fixedEvent} onChange={(e) => setEventId(e.target.value)}>
+            <option value="">{fixedEvent ? (budget.event_name || 'Budget event') : 'Choose an event…'}</option>
+            {events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+        </label>
+        <label><span>Winner is a…</span>
+          <select value={scope} onChange={(e) => setScope(e.target.value)}>
+            <option value="rider">Rider</option>
+            <option value="horse">Horse</option>
+          </select>
+        </label>
+        <label><span>Find {scope}</span>
+          <input type="text" value={subject ? subject.name : query} onChange={(e) => { setSubject(null); setQuery(e.target.value); }} placeholder={`Type ${scope} name…`} autoComplete="off" />
+        </label>
+        {!subject && !!hits.length && (
+          <ul className="st-taglist">
+            {hits.map((h) => (
+              <li key={h.id} className="st-tagrow" style={{ cursor: 'pointer' }} onClick={() => { setSubject(h); setHits([]); }}>
+                <div className="st-tagmeta"><strong>{h.name}</strong></div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {pack && subject && (
+          <p className="empty-note">{pack.slots} credits for {subject.name} · cost {nzd(cost)}{remaining < cost ? ' — over budget, top up first' : ''}</p>
+        )}
+        {effEvent && subject && !pack && <p className="empty-note">No credit pack for this event × {scope} — ask the photographer to publish one.</p>}
+        <label><span>Winner email</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="winner@example.nz" autoComplete="off" />
+        </label>
+        <p style={{ marginTop: 12 }}>
+          <button type="button" className="st-btn" disabled={!ready || sending} onClick={send}>
+            {sending ? 'Sending…' : 'Send gift'}
+          </button>
+        </p>
+      </div>
+    </section>
+  );
+}
+
 export default function SponsorHub() {
   useDocumentTitle('Sponsor dashboard');
   const { user, loading } = useAuthed();
@@ -393,6 +509,7 @@ export default function SponsorHub() {
                     </ul>
                   )}
                   <h2>Winner gifts</h2>
+                  <GiftForm budgets={data.budgets} onSent={reload} flash={flash} />
                   {!data.gifts?.length ? (
                     <p className="empty-note">No gifted credits yet.</p>
                   ) : (

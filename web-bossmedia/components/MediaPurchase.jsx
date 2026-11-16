@@ -9,13 +9,15 @@ import { checkoutBase, newIdempotencyKey, nzd, stripeCheckoutUrl } from '../lib/
 import { useAuthed } from '../lib/use-authed';
 import SmartImage from './SmartImage';
 import LogoModal from './LogoModal';
-import SponsorPhoto, { isVariant, isTheme, loadDesign, templateOf, variantGroup, variantNeedsClass, variantShort } from './SponsorTemplates';
+import SponsorPhoto, { isVariant, isTheme, clearDesign, loadDesign, saveDesign, templateOf, variantShort } from './SponsorTemplates';
 import FollowButton from './FollowButton';
 import { safeError } from '../lib/errors';
 import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
+import { MAX_SPONSOR_LOGOS, designTagsSig, isWinningResult, normalizeTagDraft } from '../lib/sponsor-logos.mjs';
 import { Icon } from './figma';
 import { useToast } from './Toaster';
 import ReelPlayer from './ReelPlayer';
+import accent from './PayAccent.module.css';
 
 // Honest per-tier subline when the DB has no custom description. Never
 // promises "full resolution" for small/medium renditions.
@@ -55,17 +57,24 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   // Desain yang tampil di foto utama = yang terakhir di-Save di modal saja.
   // Browsing template / centang logo tidak mengubah foto sampai Save.
   const [applied, setApplied] = useState(null); // {template, logoIds, theme} | null
-  const isWinMoment = (media.moment || '') === 'win';
-  const hasClass = !!media.class_name;
-  const templateVisible = (t) => isVariant(t)
-    && (variantGroup(t) !== 'Winner' || isWinMoment)
-    && (!variantNeedsClass(t) || hasClass);
+  // Buyer tag overrides (TagEditor, design-scoped): empty class = photo's
+  // original class. These feed the template preview + baked file only —
+  // the canonical media row (title, cart, gallery) is untouched.
+  // Picking happens inside the modal; here only the SAVED draft lives.
+  const [tagDraft, setTagDraft] = useState({ class: '', result: '' });
+  useEffect(() => {
+    setTagDraft(normalizeTagDraft(loadDesign(media.id)?.tags));
+  }, [media.id]);
+  const isWinMoment = isWinningResult(tagDraft.result) || (media.moment || '') === 'win';
+  // Semua template selalu bisa dipilih (ranking di modal yang menyesuaikan),
+  // jadi desain tersimpan selalu tampil — tak ada yang disembunyikan.
+  const templateVisible = (t) => isVariant(t);
   // Save di modal dikembalikan ke sini sekali, saat daftar logo tiba.
   useEffect(() => {
     if (logoRestored || !logos.length) return;
     const saved = loadDesign(media.id);
     if (!saved) { setLogoRestored(true); return; }
-    const ids = saved.logoIds.filter((id) => logos.some((l) => String(l.id) === String(id))).slice(0, 1);
+    const ids = saved.logoIds.filter((id) => logos.some((l) => String(l.id) === String(id))).slice(0, MAX_SPONSOR_LOGOS);
     if (isVariant(saved.template)) setLogoTemplate(saved.template);
     if (isTheme(saved.theme)) setLogoTheme(saved.theme);
     if (ids.length) {
@@ -82,9 +91,20 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
     && applied.logoIds.every((id) => logoIds.includes(id))
     && templateVisible(applied.template) ? applied : null;
   const pickedLogo = logos.find((l) => String(l.id) === String(logoIds[0]));
+  const pickedLabel = logoIds.length > 1 ? `${logoIds.length} sponsor logos` : (pickedLogo?.label || 'sponsor');
   const [logoOpen, setLogoOpen] = useState(false);
   const setPos = (id, pos) => setLogoPos((v) => ({ ...v, [id]: pos }));
-  const posOf = (id, i) => logoPos[id] || ['bottom-left', 'bottom-right', 'top-right'][i % 3];
+  const posOf = (id, i) => logoPos[id] || ['bottom-left', 'bottom-right', 'top-right', 'top-left'][i % 4];
+  const isReel = media.kind === 'reel';
+  // Buyer tag overrides for THIS design: class baked into the file,
+  // canonical row untouched. Sent only when edited AND logos are picked
+  // (without a design it renders nowhere).
+  const tagClass = tagDraft.class.trim().slice(0, 100);
+  const tagResult = tagDraft.result.trim().slice(0, 40);
+  const designTags = !isReel && logoIds.length && (tagClass || tagResult)
+    ? { ...(tagClass ? { class_name: tagClass } : {}),
+        ...(tagResult ? { result: tagResult } : {}) }
+    : null;
   const [discounts, setDiscounts] = useState([]); // sponsor budgets for Option 2
   // The discount is automatic: picking a logo opts in, and the best funded
   // budget among the chosen logos' sponsors applies (server decides).
@@ -96,17 +116,20 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   };
   const discount = logoIds.map(discountFor).filter(Boolean)
     .reduce((a, b) => (Number(b.discount_cents) > Number(a?.discount_cents || 0) ? b : a), null);
-  // Satu logo per foto. Klik logo = pilih + langsung buka modal desain
-  // (1 klik). Batal via Remove — foto & diskon kembali seperti semula.
-  // The server bakes the real file at download.
-  const selectAndOpen = (id) => {
-    if (!logoIds.includes(id)) setLogoIds([id]);
-    setAdded(false);
-    setLogoOpen(true);
-  };
-  const removeLogo = () => {
+  // Picking (sponsor + tags) happens inside the modal — the panel below
+  // is a read-only summary with one entry point. The server bakes the
+  // real file at download.
+  const pickedLogos = logoIds
+    .map((id) => logos.find((l) => String(l.id) === String(id)))
+    .filter(Boolean);
+  // Removing the whole design: page state, saved draft and stale cart all
+  // reset — the photo returns to plain, no silent discount opt-in remains.
+  const removeDesign = () => {
     setLogoIds([]);
+    setApplied(null);
+    setTagDraft({ class: '', result: '' });
     setAdded(false);
+    clearDesign(media.id);
   };
   const [owned, setOwned] = useState(null); // {owned, owned_tier, versions[], viaPackage} | {credit:{slots_left}} | null
   const versions = Array.isArray(owned?.versions) ? owned.versions : [];
@@ -120,6 +143,9 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
     (v.logos?.length || 0) === logoIds.length
     && v.logo_variant === logoTemplate
     && (v.logos || []).map((l) => String(l.id)).sort().join() === logoIds.map(String).sort().join()
+    && (v.design_class || '') === (designTags?.class_name || '')
+    && (v.design_subject || '') === (designTags?.subject || '')
+    && (v.design_result || '') === (designTags?.result || '')
   ) : null;
   const ownedDesigns = designVersions.map((v) => ({
     variant: v.logo_variant, template: v.logo_template, theme: v.logo_theme,
@@ -150,6 +176,9 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   const meEmail = meUser?.email || null;
   const [balance, setBalance] = useState(0);
   const [busy, setBusy] = useState(false);
+  // Single explicit checkout phase: idle vs working. busy (card) and
+  // unlocking (credit) are the same money moment — never both at once.
+  const working = busy || unlocking;
   const [err, setErr] = useState('');
   const [added, setAdded] = useState(false);
   const [nav, setNav] = useState(null); // { prev, next, index, total }
@@ -162,6 +191,9 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   }, [media.id]);
   const goId = (id) => {
     if (!id) return;
+    // Foto baru = halaman baru: kembalikan ke atas supaya judul tidak
+    // tertinggal di bawah sticky header (param [id] ganti tanpa scroll).
+    window.scrollTo({ top: 0 });
     if (eventSlug && (pathname || '').includes('/events/')) router.push(`/events/${eventSlug}/media/${id}`);
     else router.push(`/p/${id}`);
   };
@@ -179,10 +211,13 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
     return em;
   };
 
-  const isReel = media.kind === 'reel';
   const rider = media.rider || media.other_people || 'Unknown rider';
   const horse = media.horse || (media.rider || media.other_people ? '' : 'Unknown horse');
   const subject = [horse, rider].filter(Boolean).join(' × ');
+  // Design-effective tags (canonical identity above stays untouched).
+  const effSubject = designTags?.subject || subject;
+  const effClass = tagClass || media.class_name || '';
+  const effResult = tagResult;
 
   useEffect(() => {
     fetch(`${API}/api/license-tiers?kind=${media.kind === 'reel' ? 'reel' : 'photo'}`)
@@ -224,6 +259,24 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
         .catch(() => {});
     }
   }, [media.id]);
+  // Buyer-nominated logos (§2.2): the client's own uploads merge into THEIR
+  // picker only — everyone else never sees them. Runs on login too, so a
+  // session that arrives after mount still picks them up.
+  useEffect(() => {
+    if (!meUser || isReel) return;
+    fetch(`${API}/api/my/sponsor-logos`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((m) => {
+        const mine = (m?.data || []).map((l) => ({ ...l, mine: true }));
+        if (mine.length) {
+          setLogos((prev) => {
+            const have = new Set(prev.map((l) => String(l.id)));
+            return [...prev, ...mine.filter((l) => !have.has(String(l.id)))];
+          });
+        }
+      })
+      .catch(() => {});
+  }, [media.id, meUser]);
 
   const tier = tiers.find((t) => String(t.id) === String(tierId)) || tiers[0];
   const grossCents = Number(tier?.price_cents) || 0;
@@ -303,14 +356,14 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   // the account email, downloads live in My media.
 
   async function unlock() {
-    if (unlocking) return;
+    if (working) return;
     setUnlocking(true); setErr('');
     try {
       // Same logo params as paid checkout (sponsor_logo_*): a credit unlock
       // bakes the picked design but pays no money, so no sponsor discount.
       const res = await fetch(`${API}/api/credits/unlock`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ media_id: media.id, ...(logoIds.length && !isReel ? { sponsor_logo_ids: logoIds, sponsor_logo_positions: Object.fromEntries(logoIds.map((id, i) => [id, posOf(id, i)])), sponsor_logo_template: templateOf(logoTemplate), sponsor_logo_variant: logoTemplate, sponsor_logo_theme: logoTheme } : {}) }),
+        body: JSON.stringify({ media_id: media.id, ...(logoIds.length && !isReel ? { sponsor_logo_ids: logoIds, sponsor_logo_positions: Object.fromEntries(logoIds.map((id, i) => [id, posOf(id, i)])), sponsor_logo_template: templateOf(logoTemplate), sponsor_logo_variant: logoTemplate, sponsor_logo_theme: logoTheme, ...(designTags ? { design_tags: designTags } : {}) } : {}) }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'Unlock failed — try again.');
@@ -320,6 +373,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   }
 
   async function buyNow(tierOverride) {
+    if (working) return;
     const t = tierOverride || tier;
     if (!t) { setErr('Licensing is unavailable right now — try again shortly.'); return; }
     const em = checkoutEmail();
@@ -332,12 +386,12 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
     try {
       const gross = Number(t.price_cents) || 0;
       const use_balance_cents = meEmail ? Math.min(balance, gross) : 0;
-      await checkoutPost('/api/checkout', { media_id: media.id, license_tier: t.id, email: em, ...(use_balance_cents ? { use_balance_cents } : {}), ...(logoIds.length && !isReel ? { sponsor_logo_ids: logoIds, sponsor_logo_positions: Object.fromEntries(logoIds.map((id, i) => [id, posOf(id, i)])), sponsor_logo_template: templateOf(logoTemplate), sponsor_logo_variant: logoTemplate, sponsor_logo_theme: logoTheme } : {}) }, backHref);
+      await checkoutPost('/api/checkout', { media_id: media.id, license_tier: t.id, email: em, ...(use_balance_cents ? { use_balance_cents } : {}), ...(logoIds.length && !isReel ? { sponsor_logo_ids: logoIds, sponsor_logo_positions: Object.fromEntries(logoIds.map((id, i) => [id, posOf(id, i)])), sponsor_logo_template: templateOf(logoTemplate), sponsor_logo_variant: logoTemplate, sponsor_logo_theme: logoTheme, ...(designTags ? { design_tags: designTags } : {}) } : {}) }, backHref);
     } catch (e) { setErr(e.message); setBusy(false); }
   }
 
   async function buyBundle() {
-    if (!bundle) return;
+    if (working || !bundle) return;
     const em = checkoutEmail();
     if (!em) return;
     setBusy(true); setErr('');
@@ -353,7 +407,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   }
 
   async function buyCredits() {
-    if (!creditPack) return;
+    if (working || !creditPack) return;
     const em = checkoutEmail();
     if (!em) return;
     setBusy(true); setErr('');
@@ -374,7 +428,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
     const href = eventSlug && (pathname || '').includes('/events/')
       ? `/events/${eventSlug}/media/${media.id}` : `/p/${media.id}`;
     addToCart({
-      key: `media:${media.id}:${t.id}${withLogos.length ? `:logos:${withLogos.slice().sort().join(',')}:${logoTemplate}` : ''}`,
+      key: `media:${media.id}:${t.id}${withLogos.length ? `:logos:${withLogos.slice().sort().join(',')}:${logoTemplate}` : ''}${designTags ? `:tags:${designTagsSig(designTags)}` : ''}`,
       kind: 'media',
       href,
       image: media.thumb_url || media.preview_url,
@@ -386,6 +440,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
       tierId: t.id,
       tierLabel: t.label,
       ...(withLogos.length ? { logoIds: withLogos, logoPos: Object.fromEntries(withLogos.map((id) => [id, posOf(id, logoIds.indexOf(id))])), logoTemplate, logoTheme } : {}),
+      ...(designTags ? { designTags } : {}),
     });
     setAdded(true);
     toast('Added to cart', { action: { label: 'View cart', href: '/cart' } });
@@ -446,7 +501,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                   return { id, label: l?.label, src: `${API}/api/sponsor-logos/${id}/file` };
                 })}
                 positions={Object.fromEntries(appliedLive.logoIds.map((id, i) => [id, posOf(id, i)]))}
-                event={eventName} className={media.class_name} subject={subject} />
+                event={eventName} className={effClass} subject={effSubject} />
             ) : heroOwned ? (
               // Owned design matching the draft — the owner verifies what
               // they own instead of reading an id like `banner`.
@@ -455,7 +510,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                 frameStyle={{ height: 'min(68vh, 720px)', width: 'auto', maxWidth: '100%' }}
                 sponsors={(heroOwned.logos || []).map((l) => ({ id: l.id, label: l.label, src: `${API}/api/sponsor-logos/${l.id}/file` }))}
                 positions={Object.fromEntries((heroOwned.logos || []).map((l) => [l.id, l.position || 'bottom-left']))}
-                event={eventName} className={media.class_name} subject={subject} />
+                event={eventName} className={effClass} subject={effSubject} />
             ) : (
               <SmartImage src={media.preview_url || media.thumb_url} alt={subject} width={1200} height={800} priority />
             )}
@@ -477,7 +532,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                   justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '14px 17px',
                   background: 'rgba(0,0,0,.62)', border: 0, borderTop: '1px dashed rgba(255,255,255,.45)',
                   color: '#fff', fontSize: 12, cursor: 'pointer', textAlign: 'left' }}>
-                <span>Your {pickedLogo?.label || 'sponsor'} bar will appear here</span>
+                <span>Your {pickedLabel} design will appear here</span>
                 <span style={{ borderBottom: '1px solid #fff', fontWeight: 700, whiteSpace: 'nowrap' }}>Design & preview →</span>
               </button>
             )}
@@ -515,7 +570,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                         variant={v.logo_variant} ratio="16 / 10" theme={v.logo_theme || 'light'}
                         sponsors={(v.logos || []).map((l) => ({ id: l.id, label: l.label, src: `${API}/api/sponsor-logos/${l.id}/file` }))}
                         positions={Object.fromEntries((v.logos || []).map((l) => [l.id, l.position || 'bottom-left']))}
-                        event={eventName} className={media.class_name} subject={subject} />
+                        event={eventName} className={effClass} subject={effSubject} />
                     ) : (
                       <div className="license-option selected">
                         <div><strong>✓ Your sponsor design</strong><span>Baked into your download.</span></div>
@@ -539,7 +594,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
             {(!owned?.owned || versions.length > 0) && (
               <>
                 {owned?.credit && Number(owned.credit.slots_left) > 0 && !ownsPlain && (
-                  <button disabled={unlocking} onClick={unlock}
+                  <button disabled={working} onClick={unlock}
                     style={{ width: '100%', minHeight: 50, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 2, padding: '8px 16px', marginBottom: 12, border: '1px solid #4a6fa5', background: 'rgba(74,111,165,.12)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', textAlign: 'left' }}>
                     <span>{unlocking ? 'Unlocking…' : `Unlock with credit (${owned.credit.slots_left} left)`}</span>
                     <span style={{ color: '#888', fontSize: 11, fontWeight: 400 }}>Uses 1 credit — full resolution, no extra charge.</span>
@@ -555,7 +610,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                 ) : (
                   <div role="radiogroup" aria-label="Choose your license">
                   {tiers.map((t) => (
-                    <button type="button" key={t.id} role="radio" onClick={() => { setTierId(t.id); setAdded(false); }}
+                    <button type="button" key={t.id} role="radio" disabled={working} onClick={() => { setTierId(t.id); setAdded(false); }}
                       className={`license-option${String(t.id) === String(tierId) ? ' selected' : ''}`}
                       aria-checked={String(t.id) === String(tierId)}>
                       <div><strong>{t.label}</strong><span>{t.description || licenseSubline(t)}</span></div>
@@ -565,31 +620,35 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                   </div>
                 ))}
             {!isReel && logos.length > 0 && (
-              <div style={{ margin: '12px 0' }} role="group" aria-label="Add sponsor logos">
-                <p className="purchase-label">Sponsor logo <em className="auth-opt">(optional · baked in)</em></p>
-                {logos.map((l) => {
-                  const d = discountFor(l.id);
-                  const on = logoIds.includes(l.id);
-                  return (
-                    <div key={l.id}>
-                      <button type="button" role="checkbox" aria-checked={on} onClick={() => selectAndOpen(l.id)}
-                        className={`license-option${on ? ' selected' : ''}`}>
-                        <span style={{ flex: 'none', width: 72, height: 36, background: '#fff', borderRadius: 4, overflow: 'hidden' }}>
-                          <SmartImage src={`${API}/api/sponsor-logos/${l.id}/file`} alt={`${l.label} logo`} width={72} height={36}
-                            unoptimized style={{ objectFit: 'contain', width: '100%', height: '100%' }} />
-                        </span>
-                        <div><strong>{l.label}</strong>{on ? <span> · {variantShort(logoTemplate)}</span> : (d && <span> −{nzd(d.discount_cents)} off</span>)}</div>
-                        <b>{d ? `−${nzd(d.discount_cents)}` : 'Free'}</b>
-                      </button>
-                      {on && (
-                        <button type="button" onClick={removeLogo}
-                          style={{ marginTop: 8, background: 'none', border: 0, padding: '0 0 2px', color: '#999', fontSize: 12, borderBottom: '1px solid #444', cursor: 'pointer' }}>
-                          Remove logo
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+              <div style={{ margin: '12px 0' }} role="group" aria-label="Sponsor design">
+                <p className="purchase-label">Sponsor design <em className="auth-opt">(optional · baked in)</em></p>
+                {pickedLogos.length > 0 && (
+                  <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+                    {pickedLogos.map((l) => {
+                      const d = l ? discountFor(l.id) : null;
+                      return (
+                        <div key={l.id} className="license-option selected" style={{ cursor: 'default' }}>
+                          <span style={{ flex: 'none', width: 72, height: 36, background: '#fff', borderRadius: 4, overflow: 'hidden' }}>
+                            <SmartImage src={`${API}/api/sponsor-logos/${l.id}/file`} alt={`${l.label} logo`} width={72} height={36}
+                              unoptimized style={{ objectFit: 'contain', width: '100%', height: '100%' }} />
+                          </span>
+                          <div><strong>{l.label}</strong><span> · {variantShort(logoTemplate)}{tagClass ? ` · ${tagClass}` : ''}</span></div>
+                          <b>{d ? `−${nzd(d.discount_cents)}` : 'Free'}</b>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <button type="button" onClick={() => setLogoOpen(true)}
+                  style={{ width: '100%', background: 'transparent', border: '1px solid #555', color: 'white', minHeight: 46, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                  {pickedLogos.length > 0 ? `Edit design (${pickedLogos.length}) →` : 'Add sponsors & design →'}
+                </button>
+                {pickedLogos.length > 0 && (
+                  <button type="button" onClick={removeDesign}
+                    style={{ marginTop: 8, background: 'none', border: 0, padding: '0 0 2px', color: '#999', fontSize: 12, borderBottom: '1px solid #444', cursor: 'pointer' }}>
+                    Remove design
+                  </button>
+                )}
               </div>
             )}
             <LogoModal open={logoOpen} onClose={() => setLogoOpen(false)}
@@ -598,12 +657,29 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
               theme={logoTheme} setTheme={setLogoTheme}
               photo={media.preview_url || media.thumb_url} mediaId={media.id}
               ownedDesigns={ownedDesigns}
+              tags={tagDraft}
+              discountCents={Object.fromEntries(logos.map((l) => [l.id, discountFor(l.id)?.discount_cents ?? null]))}
+              onOwnLogos={(row) => setLogos((prev) => (prev.some((l) => String(l.id) === String(row.id)) ? prev : [...prev, row]))}
+              onOwnRemoved={(id) => {
+                const key = String(id);
+                setLogos((prev) => prev.filter((l) => String(l.id) !== key));
+                if (logoIds.some((x) => String(x) === key)) {
+                  const next = logoIds.filter((x) => String(x) !== key);
+                  setLogoIds(next);
+                  setApplied(null);
+                  setAdded(false);
+                  saveDesign(media.id, { template: logoTemplate, logoIds: next, logoPos, theme: logoTheme, tags: tagDraft });
+                }
+              }}
               onSave={(d) => {
                 setApplied(d);
+                if (Array.isArray(d?.logoIds)) setLogoIds(d.logoIds);
                 if (isTheme(d?.theme)) setLogoTheme(d.theme);
                 if (d?.logoPos) setLogoPos((v) => ({ ...v, ...d.logoPos }));
+                if (d?.tags) setTagDraft(normalizeTagDraft(d.tags));
+                setAdded(false);
               }}
-              meta={{ event: eventName, className: media.class_name, subject, moment: media.moment || null }} />
+              meta={{ event: eventName, className: effClass, subject: effSubject, moment: isWinMoment ? 'win' : (media.moment || null), result: effResult }} />
             {draftOwnedVersion && (
               <p role="status" style={{ marginTop: 8, fontSize: 12, color: '#e08a8a' }}>
                 Already yours — <Link href="/media" style={{ color: '#fff', borderBottom: '1px solid #555' }}>download it from My photos</Link>.
@@ -626,7 +702,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
               </p>
             )}
             {err && <p className="auth-error" role="alert">{safeError(err)}{' '}<Link href="/contact" style={{ color: '#fff', borderBottom: '1px solid #555' }}>Need help? Contact support</Link></p>}
-            <button className={showAdded ? 'added' : ''} disabled={busy || !tier}
+            <button className={showAdded ? 'added' : accent.pay} disabled={working || !tier}
               onClick={() => tier && addItem(tier)} aria-label={showAdded ? 'Added to cart — view cart to check out' : tiersReady ? `Add this ${isReel ? 'reel' : 'photo'} to cart for ${price}` : 'Loading price'}>
               {!tiersReady ? 'Loading…' : showAdded ? 'Added to cart' : `Add to cart · ${price}`}
               <Icon name="cart" size={17} />
@@ -638,7 +714,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                   style={{ minHeight: 46, padding: '0 12px', color: 'white', background: '#0b0b0b', border: '1px solid #333', outline: 0, fontSize: 13 }} />
               </label>
             )}
-            <button disabled={busy || !tier} onClick={() => buyNow()}
+            <button disabled={working || !tier} onClick={() => buyNow()}
               style={{ marginTop: 10, background: 'transparent', border: '1px solid #555', color: 'white' }}>
               {busy ? 'Opening checkout…' : 'Buy now — pay immediately'}
               <Icon name="arrow" size={17} />
@@ -660,7 +736,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                     <SaveLine value={savingsFor(bundle.items, bundle.price_cents)} />
                     <span>{nzd(bundle.price_cents)}</span>
                   </div>
-                  <button disabled={busy} onClick={buyBundle}>Buy</button>
+                  <button disabled={working} onClick={buyBundle}>Buy</button>
                 </article>
               )}
               {creditPack && (
@@ -671,7 +747,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                     <SaveLine value={savingsFor(creditPack.slots, creditPack.price_cents)} />
                     <span>{nzd(creditPack.price_cents)}</span>
                   </div>
-                  <button disabled={busy} onClick={buyCredits}>Buy</button>
+                  <button disabled={working} onClick={buyCredits}>Buy</button>
                 </article>
               )}
             </div>

@@ -1,0 +1,23 @@
+/* 2 selaras (ink/paper) + 1 kontras (gold) — aturan 60-30-10.
+   Satu-satunya tombol uang pakai accent. Ghost/secondary tetap putih/transparan.
+   `.pay.pay` sengaja dobel biar menang lawan globals.css frozen
+   (`.license-panel > button`, `.cart-summary > button`, `.booking-summary > button`)
+   tanpa !important. */
+.pay.pay.pay {
+  --accent: #e3b341;
+  --accent-hover: #c9982f;
+  --accent-ink: #101010;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.pay.pay.pay:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.pay.pay.pay:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

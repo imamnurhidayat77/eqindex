@@ -16,7 +16,7 @@ function Inner() {
   const ids = useMemo(() => (purchase ? [purchase]
     : batchKey.split(',').map((s) => s.trim()).filter((s) => /^[0-9a-f-]{36}$/i.test(s)).slice(0, 20)),
     [purchase, batchKey]);
-  const { state, rows: details, retry } = usePurchasePoll(ids);
+  const { state, rows: details, empty, retry } = usePurchasePoll(ids);
   // DIAGNOSTIK: cabang thumbnail dimatikan sementara — dikembalikan
   // setelah halaman paid terbukti sembuh tanpa-nya.
   const subjectOf = (detail) => [detail.horse, detail.rider].filter(Boolean).join(' × ');
@@ -26,9 +26,10 @@ function Inner() {
       <SiteHeader />
       <main className="section-gutter" style={{ paddingTop: 72, paddingBottom: 80 }}>
         <p className="eyebrow" style={{ color: '#666' }}>Checkout</p>
-        {state === 'checking' && (<><h1 style={{ fontSize: 44 }}>Confirming payment…</h1><p className="empty-note">Talking to Stripe — this usually takes a few seconds.</p></>)}
-        {state === 'pending' && (<><h1 style={{ fontSize: 44 }}>Confirming payment…</h1><p className="empty-note">{details.length > 0 ? `${details.length} of ${ids.length} confirmed — ` : ''}still talking to Stripe, this usually takes a few seconds.</p></>)}
-        {state === 'login' && (<><h1 style={{ fontSize: 44 }}>One more step.</h1><p className="empty-note">Checked out as a guest? We emailed you an access link — or sign in with the account you checked out with to see your purchase.</p><p style={{ marginTop: 18 }}><Link href={`/login?next=/photos/success?${sp.toString()}`} style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Sign in</Link></p></>)}
+        <div aria-live="polite">
+        {state === 'checking' && (<><h1 style={{ fontSize: 44 }}>Confirming payment…</h1><p className="empty-note" role="status">Talking to Stripe — this usually takes a few seconds.</p></>)}
+        {state === 'pending' && (<><h1 style={{ fontSize: 44 }}>Confirming payment…</h1><p className="empty-note" role="status">{details.length > 0 ? `${details.length} of ${ids.length} confirmed — ` : ''}still talking to Stripe, this usually takes a few seconds.</p></>)}
+        {state === 'login' && (<><h1 style={{ fontSize: 44 }}>One more step.</h1><p className="empty-note">Checked out as a guest? We emailed you an access link — or sign in with the account you checked out with to see your purchase.</p><p style={{ marginTop: 18 }}><Link href={`/login?next=${encodeURIComponent(`/photos/success?${sp.toString()}`)}`} style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Sign in</Link></p></>)}
         {state === 'paid' && details.length && (
           <><h1 style={{ fontSize: 44 }}>{details.length === 1 ? 'Payment confirmed.' : `${details.length} payments confirmed.`}</h1>
           {details.map((detail) => (
@@ -45,7 +46,10 @@ function Inner() {
           ))}
           <p style={{ marginTop: 22, display: 'flex', gap: 12, flexWrap: 'wrap' }}><Link href={`/receipts?purchases=${ids.join(',')}`} className="st-btn" style={{ textDecoration: 'none' }}>Download receipt</Link><Link href="/media" className="st-btn-ghost" style={{ textDecoration: 'none' }}>Open my library</Link></p></>
         )}
-        {state === 'unknown' && (<><h1 style={{ fontSize: 44 }}>Can’t find that order.</h1><p className="empty-note">The link may have expired — check your email receipt or library.</p>          <p style={{ marginTop: 18, display: 'flex', gap: 16, flexWrap: 'wrap' }}><button onClick={retry} style={{ paddingBottom: 5, border: 0, borderBottom: '1px solid #666', background: 'none', fontSize: 13, color: '#fff', cursor: 'pointer' }}>Try again</button><Link href="/media" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Open my library</Link><Link href="/contact" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Contact support</Link></p></>)}
+        {state === 'unknown' && (empty || !ids.length ? (<><h1 style={{ fontSize: 44 }}>No order in this link.</h1><p className="empty-note" role="alert">This success link has no order attached — open your library or keep browsing galleries.</p><p style={{ marginTop: 18, display: 'flex', gap: 16, flexWrap: 'wrap' }}><Link href="/media" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Open my library</Link><Link href="/events" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Browse galleries</Link></p></>)
+          : details.length > 0 ? (<><h1 style={{ fontSize: 44 }}>{details.length} of {ids.length} confirmed.</h1><p className="empty-note" role="alert">Stripe is still settling the rest — your confirmed items are safe. Wait a minute then try again.</p><p style={{ marginTop: 18, display: 'flex', gap: 16, flexWrap: 'wrap' }}><button onClick={retry} style={{ paddingBottom: 5, border: 0, borderBottom: '1px solid #666', background: 'none', fontSize: 13, color: '#fff', cursor: 'pointer' }}>Try again</button><Link href="/media" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Open my library</Link><Link href="/contact" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Contact support</Link></p></>)
+          : (<><h1 style={{ fontSize: 44 }}>Can’t find that order.</h1><p className="empty-note" role="alert">The link may have expired — check your email receipt or library.</p><p style={{ marginTop: 18, display: 'flex', gap: 16, flexWrap: 'wrap' }}><button onClick={retry} style={{ paddingBottom: 5, border: 0, borderBottom: '1px solid #666', background: 'none', fontSize: 13, color: '#fff', cursor: 'pointer' }}>Try again</button><Link href="/media" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Open my library</Link><Link href="/contact" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 13, color: '#fff' }}>Contact support</Link></p></>))}
+        </div>
       </main>
       <SiteFooter />
     </div>

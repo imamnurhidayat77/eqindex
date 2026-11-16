@@ -895,7 +895,8 @@ module.exports = function mountMediaRoutes(app) {
         }
         const vers = await pool.query(
           `SELECT p.id, p.license_tier, p.created_at, p.logo_variant, p.logo_theme,
-              COALESCE(p.logo_template, 'corner') AS logo_template
+              COALESCE(p.logo_template, 'corner') AS logo_template,
+              p.design_class, p.design_subject, p.design_result
             FROM purchases p
             WHERE p.status = 'paid' AND p.buyer_user_id = $2 AND p.media_id = $1
             ORDER BY p.created_at`,
@@ -909,6 +910,8 @@ module.exports = function mountMediaRoutes(app) {
           data.owned_versions.push({
             purchase_id: v.id, license_tier: v.license_tier, created_at: v.created_at,
             logo_variant: v.logo_variant, logo_theme: v.logo_theme, logo_template: v.logo_template,
+            design_class: v.design_class || null, design_subject: v.design_subject || null,
+            design_result: v.design_result || null,
             logos: lg.rows.map((g) => ({ id: g.id, label: g.label, position: g.position })),
           });
         }
@@ -920,8 +923,9 @@ module.exports = function mountMediaRoutes(app) {
           // Hint for the BuyBox: credits available in this photo's scope?
           const bal = await pool.query(
             `SELECT COALESCE(SUM(cb.slots_total - (SELECT COUNT(*) FROM credit_redemptions WHERE bundle_id = cb.id)), 0)::INT AS slots_left
-              FROM credit_bundles cb JOIN purchases pu ON pu.id = cb.purchase_id
-              WHERE cb.status = 'active' AND pu.status = 'paid' AND pu.buyer_user_id = $1
+              FROM credit_bundles cb LEFT JOIN purchases pu ON pu.id = cb.purchase_id
+              WHERE cb.status = 'active' AND cb.buyer_user_id = $1
+                AND (pu.status = 'paid' OR cb.purchase_id IS NULL)
                 AND cb.event_id = $2
                 AND ((cb.rider_id IS NOT NULL AND cb.rider_id = $3)
                   OR (cb.horse_id IS NOT NULL AND cb.horse_id = $4))`,
@@ -1098,22 +1102,31 @@ module.exports = function mountMediaRoutes(app) {
   // with just an email and get a password-less account (see checkoutBuyer).
   // whole_event: buys the managed package for a whole event or one
   // event x subject, materializing its row on demand (no manual creation).
-  // sponsor_logo_ids: up to 3 active sponsor logos baked into the download
-  // (Option 1). Single photos only — packages keep the plain files.
-  const LOGO_POSITIONS = ['bottom-left', 'bottom-right', 'top-right'];
-  async function resolveLogoIds(raw) {
+  // sponsor_logo_ids: up to 4 active sponsor logos baked into the download
+  // (Option 1) — one per corner, so badges never paint over each other.
+  // Single photos only — packages keep the plain files.
+  const LOGO_POSITIONS = ['bottom-left', 'bottom-right', 'top-right', 'top-left'];
+  async function resolveLogoIds(raw, buyerId) {
     if (raw === undefined || raw === null) return [];
-    const ids = (Array.isArray(raw) ? raw : [raw]).map(String).filter((s) => UUID_RE.test(s)).slice(0, 3);
+    const ids = (Array.isArray(raw) ? raw : [raw]).map(String).filter((s) => UUID_RE.test(s)).slice(0, 4);
     if (!ids.length) {
-      const err = new Error('sponsor_logo_ids must be 1–3 logo UUIDs');
+      const err = new Error('sponsor_logo_ids must be 1–4 logo UUIDs');
       err.status = 400; throw err;
     }
     const found = await pool.query(
-      `SELECT l.id FROM sponsor_logos l JOIN sponsors s ON s.id = l.sponsor_id
+      `SELECT l.id, s.user_id AS owner_id FROM sponsor_logos l JOIN sponsors s ON s.id = l.sponsor_id
        WHERE l.id = ANY($1::UUID[]) AND l.is_active AND s.is_active`, [ids]);
     if (found.rows.length !== ids.length) {
       const err = new Error('unknown or inactive sponsor logo');
       err.status = 400; throw err;
+    }
+    // Buyer-nominated logos (personal sponsor rows, user_id set) work only
+    // for the buyer who uploaded them — no cross-buyer logo use. Shared
+    // sponsor rows (user_id NULL) stay usable by everyone.
+    const foreign = found.rows.find((r) => r.owner_id && String(r.owner_id) !== String(buyerId || ''));
+    if (foreign) {
+      const err = new Error('logo not available to you');
+      err.status = 403; throw err;
     }
     return ids;
   }
@@ -1137,13 +1150,36 @@ module.exports = function mountMediaRoutes(app) {
       );
     }
   }
-  // Version fingerprint for the per-version uniqueness (migration 094):
-  // '' = plain, else template|theme|variant|sorted-logo-ids. Computes the
-  // same value the backfill wrote, so the index and the guards agree.
-  function logoSig(logoTemplate, logoTheme, logoVariant, logoIds) {
+  // Version fingerprint for the per-version uniqueness (migration 094,
+  // extended by 096 with buyer tag overrides): '' = plain, else
+  // template|theme|variant|sorted-logo-ids|class|subject. Computes the same
+  // value the backfill wrote, so the index and the guards agree.
+  function logoSig(logoTemplate, logoTheme, logoVariant, logoIds, designTags) {
     if (!logoIds?.length) return '';
     return [logoTemplate || 'corner', logoTheme || 'light', logoVariant || '',
-      ...logoIds.map(String).sort()].join('|');
+      ...logoIds.map(String).sort(),
+      designTags?.class_name || '', designTags?.subject || '', designTags?.result || ''].join('|');
+  }
+  // Buyer tag overrides, design-scoped (096: class/subject, 097: result
+  // text): shown in THIS buyer's sponsor design only. Canonical media row
+  // untouched. Returns null when nothing overridden; 400 on wrong shape.
+  function resolveDesignTags(raw) {
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw !== 'object' || Array.isArray(raw)) {
+      const err = new Error('design_tags must be {class_name?, subject?, result?}');
+      err.status = 400; throw err;
+    }
+    const clean = (v, max) => {
+      if (v === undefined || v === null) return null;
+      if (typeof v !== 'string') {
+        const err = new Error('design_tags must be {class_name?, subject?, result?}');
+        err.status = 400; throw err;
+      }
+      const t = v.trim().slice(0, max);
+      return t || null;
+    };
+    const out = { class_name: clean(raw.class_name, 100), subject: clean(raw.subject, 200), result: clean(raw.result, 40) };
+    return (out.class_name || out.subject || out.result) ? out : null;
   }
   app.post('/api/checkout', asyncH(async (req, res) => {
     if (await throttled(pool, req.ip, 'checkout')) return res.status(429).json({ error: 'too many requests, try again later' });
@@ -1328,26 +1364,45 @@ module.exports = function mountMediaRoutes(app) {
     if (sponsor_logo_ids !== undefined && sponsor_logo_ids !== null) {
       if (!mediaId) return res.status(400).json({ error: 'sponsor logos are for single photos only' });
       try {
-        logoIds = await resolveLogoIds(sponsor_logo_ids);
+        logoIds = await resolveLogoIds(sponsor_logo_ids, buyer.id);
       } catch (e) {
         return res.status(e.status || 400).json({ error: e.message });
       }
     }
+  // Buyer tag overrides (migration 096): class/subject for THIS design
+    // only. Accepted alongside logos (without a design they render nowhere);
+    // anything else ignores them instead of failing the money moment.
+    let designTags = null;
+    try {
+      designTags = logoIds.length ? resolveDesignTags(req.body?.design_tags) : null;
+    } catch (e) {
+      return res.status(e.status || 400).json({ error: e.message });
+    }
     // True when the buyer already paid for this photo in EXACTLY the
-    // requested version (same logo set + template + theme + variant) —
-    // then re-selling would double-charge. Every other version stays
+    // requested version (same logo set + template + theme + variant +
+    // buyer tag overrides) — then re-selling would double-charge.
+    // Every other version stays
     // buyable: each winner variant is its own design, and legacy rows
     // (logo_variant NULL, generic bake) never collide with an exact one.
     async function sameVersionOwned() {
       const { rows } = await pool.query(
-        `SELECT p.id, COALESCE(p.logo_variant, '') AS logo_variant FROM purchases p
+        `SELECT p.id, COALESCE(p.logo_variant, '') AS logo_variant,
+            COALESCE(p.design_class, '') AS design_class,
+            COALESCE(p.design_subject, '') AS design_subject,
+            COALESCE(p.design_result, '') AS design_result FROM purchases p
          WHERE p.status = 'paid' AND p.buyer_user_id = $2 AND p.media_id = $1
-           AND COALESCE(p.logo_template, 'corner') = $3
-           AND COALESCE(p.logo_theme, 'light') = $4`, [mediaId, buyer.id, logoTemplate, logoTheme]);
+            AND COALESCE(p.logo_template, 'corner') = $3
+            AND COALESCE(p.logo_theme, 'light') = $4`, [mediaId, buyer.id, logoTemplate, logoTheme]);
       const want = logoIds.map(String).sort();
       const wantVariant = logoVariant || '';
+      const wantClass = designTags?.class_name || '';
+      const wantSubject = designTags?.subject || '';
+      const wantResult = designTags?.result || '';
       for (const p of rows) {
         if ((p.logo_variant || '') !== wantVariant) continue;
+        if ((p.design_class || '') !== wantClass) continue;
+        if ((p.design_subject || '') !== wantSubject) continue;
+        if ((p.design_result || '') !== wantResult) continue;
         const cur = await pool.query(
           'SELECT sponsor_logo_id FROM purchase_sponsor_logos WHERE purchase_id = $1 ORDER BY sponsor_logo_id',
           [p.id]);
@@ -1464,9 +1519,9 @@ module.exports = function mountMediaRoutes(app) {
           return res.status(404).json({ error: 'account not found' });
         }
         const ins = await client.query(
-          `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig)
-            VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
-          [mediaId, packageId, buyerEmail, buyer.id, tierId, amount, idempotency_key || null, useBalance, amount - useBalance, originalCents, budgetId, logoTemplate, logoTheme, logoVariant, logoSig(logoTemplate, logoTheme, logoVariant, logoIds)]
+          `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig, design_class, design_subject, design_result)
+            VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
+          [mediaId, packageId, buyerEmail, buyer.id, tierId, amount, idempotency_key || null, useBalance, amount - useBalance, originalCents, budgetId, logoTemplate, logoTheme, logoVariant, logoSig(logoTemplate, logoTheme, logoVariant, logoIds, designTags), designTags?.class_name || null, designTags?.subject || null, designTags?.result || null]
         );
         purchaseId = ins.rows[0].id;
         if (logoIds.length) {
@@ -1495,9 +1550,9 @@ module.exports = function mountMediaRoutes(app) {
     } else {
     try {
       const { rows } = await pool.query(
-        `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig)
-          VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, 0, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
-        [mediaId, packageId, buyerEmail, buyer.id, tierId, amount, idempotency_key || null, amount, originalCents, budgetId, logoTemplate, logoTheme, logoVariant, logoSig(logoTemplate, logoTheme, logoVariant, logoIds)]
+        `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig, design_class, design_subject, design_result)
+          VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, 0, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+        [mediaId, packageId, buyerEmail, buyer.id, tierId, amount, idempotency_key || null, amount, originalCents, budgetId, logoTemplate, logoTheme, logoVariant, logoSig(logoTemplate, logoTheme, logoVariant, logoIds, designTags), designTags?.class_name || null, designTags?.subject || null, designTags?.result || null]
       );
       purchaseId = rows[0].id;
       if (logoIds.length) {
@@ -1563,6 +1618,7 @@ module.exports = function mountMediaRoutes(app) {
     let tierId = license_tier || null, amount, title, mediaId = null, packageId = null;
     // Sponsor optionals ride every priced item; only single photos set them.
     let logoIds = [], logoPositions = {}, logoTemplate = 'corner', logoTheme = 'light', logoVariant = null;
+    let designTags = null;
     let originalCents = null, budgetId = null;
     if (media_id) {
       const m = await q.query(
@@ -1609,7 +1665,7 @@ module.exports = function mountMediaRoutes(app) {
       if (sLogos !== undefined && sLogos !== null) {
         if (!media_id) fail(idx, 400, 'sponsor logos are for single photos only');
         try {
-          logoIds = await resolveLogoIds(sLogos);
+          logoIds = await resolveLogoIds(sLogos, authUser.id);
         } catch (e) { fail(idx, e.status || 400, e.message); }
         const tpl = it.sponsor_logo_template;
         if (tpl !== undefined && tpl !== null) {
@@ -1634,6 +1690,12 @@ module.exports = function mountMediaRoutes(app) {
           logoVariant = v;
         }
         logoPositions = resolveLogoPositions(it.sponsor_logo_positions, logoIds);
+        if (it.design_tags !== undefined && it.design_tags !== null) {
+          if (!logoIds.length) fail(idx, 400, 'design_tags need sponsor logos on the same item');
+          try {
+            designTags = resolveDesignTags(it.design_tags);
+          } catch (e) { fail(idx, e.status || 400, e.message); }
+        }
         if (logoIds.length) {
           const best = await q.query(
             `SELECT b.id, b.discount_cents FROM sponsor_budgets b
@@ -1668,15 +1730,24 @@ module.exports = function mountMediaRoutes(app) {
         let sameSet = false;
         {
           const prior = await q.query(
-            `SELECT p.id, COALESCE(p.logo_variant, '') AS logo_variant FROM purchases p
+            `SELECT p.id, COALESCE(p.logo_variant, '') AS logo_variant,
+              COALESCE(p.design_class, '') AS design_class,
+              COALESCE(p.design_subject, '') AS design_subject,
+              COALESCE(p.design_result, '') AS design_result FROM purchases p
               WHERE p.status = 'paid' AND p.buyer_user_id = $2 AND p.media_id = $1
                 AND COALESCE(p.logo_template, 'corner') = $3
                 AND COALESCE(p.logo_theme, 'light') = $4`,
             [media_id, authUser.id, logoTemplate, logoTheme]);
           const want = logoIds.slice().sort();
           const wantVariant = logoVariant || '';
+          const wantClass = designTags?.class_name || '';
+          const wantSubject = designTags?.subject || '';
+          const wantResult = designTags?.result || '';
           for (const pr of prior.rows) {
             if ((pr.logo_variant || '') !== wantVariant) continue;
+            if ((pr.design_class || '') !== wantClass) continue;
+            if ((pr.design_subject || '') !== wantSubject) continue;
+            if ((pr.design_result || '') !== wantResult) continue;
             const cur = await q.query(
               'SELECT sponsor_logo_id FROM purchase_sponsor_logos WHERE purchase_id = $1 ORDER BY sponsor_logo_id',
               [pr.id]);
@@ -1706,7 +1777,7 @@ module.exports = function mountMediaRoutes(app) {
       title = pk.rows[0].title;
       packageId = pk.rows[0].id;
     }
-    return { mediaId, packageId, tierId, amount, title, originalCents, budgetId, logoIds, logoPositions, logoTemplate, logoTheme, logoVariant };
+    return { mediaId, packageId, tierId, amount, title, originalCents, budgetId, logoIds, logoPositions, logoTemplate, logoTheme, logoVariant, designTags };
   }
 
   // Validates a reel-order payload (read-only). Throws with .status.
@@ -1885,9 +1956,9 @@ module.exports = function mountMediaRoutes(app) {
         let running = Number(locked.rows[0].balance_cents);
         for (const p of splits) {
           const { rows } = await client.query(
-            `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig)
-              VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
-            [p.mediaId, p.packageId, buyerEmail, buyer.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.used, p.stripe, p.originalCents, p.budgetId, p.logoTemplate, p.logoTheme, p.logoVariant || null, logoSig(p.logoTemplate, p.logoTheme, p.logoVariant, p.logoIds)]
+            `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig, design_class, design_subject, design_result)
+              VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
+            [p.mediaId, p.packageId, buyerEmail, buyer.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.used, p.stripe, p.originalCents, p.budgetId, p.logoTemplate, p.logoTheme, p.logoVariant || null, logoSig(p.logoTemplate, p.logoTheme, p.logoVariant, p.logoIds, p.designTags), p.designTags?.class_name || null, p.designTags?.subject || null, p.designTags?.result || null]
           );
           ids.push(rows[0].id);
           if (Array.isArray(p.logoIds) && p.logoIds.length) {
@@ -1924,9 +1995,9 @@ module.exports = function mountMediaRoutes(app) {
     for (const p of priced) {
       try {
         const { rows } = await pool.query(
-          `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig)
-            VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, 0, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
-          [p.mediaId, p.packageId, buyerEmail, buyer.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.amount, p.originalCents, p.budgetId, p.logoTemplate, p.logoTheme, p.logoVariant || null, logoSig(p.logoTemplate, p.logoTheme, p.logoVariant, p.logoIds)]
+          `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig, design_class, design_subject, design_result)
+            VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, 0, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
+          [p.mediaId, p.packageId, buyerEmail, buyer.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.amount, p.originalCents, p.budgetId, p.logoTemplate, p.logoTheme, p.logoVariant || null, logoSig(p.logoTemplate, p.logoTheme, p.logoVariant, p.logoIds, p.designTags), p.designTags?.class_name || null, p.designTags?.subject || null, p.designTags?.result || null]
         );
         ids.push(rows[0].id);
         if (Array.isArray(p.logoIds) && p.logoIds.length) {
@@ -2102,9 +2173,9 @@ module.exports = function mountMediaRoutes(app) {
           ids.push(purchaseId);
         } else {
           const { rows } = await client.query(
-            `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig)
-              VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
-            [p.mediaId, p.packageId, buyerEmail, buyerAuth.id, p.tierId, p.amount, idem, p.used, p.stripe, p.originalCents, p.budgetId, p.logoTemplate, p.logoTheme, p.logoVariant || null, logoSig(p.logoTemplate, p.logoTheme, p.logoVariant, p.logoIds)]
+            `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig, design_class, design_subject, design_result)
+              VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
+            [p.mediaId, p.packageId, buyerEmail, buyerAuth.id, p.tierId, p.amount, idem, p.used, p.stripe, p.originalCents, p.budgetId, p.logoTemplate, p.logoTheme, p.logoVariant || null, logoSig(p.logoTemplate, p.logoTheme, p.logoVariant, p.logoIds, p.designTags), p.designTags?.class_name || null, p.designTags?.subject || null, p.designTags?.result || null]
           );
           ids.push(rows[0].id);
           if (Array.isArray(p.logoIds) && p.logoIds.length) {
@@ -2210,6 +2281,9 @@ module.exports = function mountMediaRoutes(app) {
         if (typeof session.amount_total === 'number' && session.amount_total !== sum) {
           console.error('[webhook] batch amount mismatch', { expected: sum, got: session.amount_total });
           audit(req, 'stripe.webhook.rejected', 'webhook', session.id, { reason: 'amount_mismatch', expected: sum, got: session.amount_total });
+          // Contract unchanged (still 200 to Stripe): stash the session id so
+          // paid-but-pending rows stay findable in admin sales CSV by session.
+          await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = ANY($1::UUID[])', [batchIds, session.id]).catch(() => {});
           return ok();
         }
         const email0 = cur.rows[0].buyer_email;
@@ -2217,6 +2291,7 @@ module.exports = function mountMediaRoutes(app) {
           String(session.customer_email).toLowerCase() !== String(email0).toLowerCase()) {
           console.error('[webhook] batch email mismatch');
           audit(req, 'stripe.webhook.rejected', 'webhook', session.id, { reason: 'email_mismatch' });
+          await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = ANY($1::UUID[])', [batchIds, session.id]).catch(() => {});
           return ok();
         }
         await markPurchasesPaid(pool, batchIds, {
@@ -2237,12 +2312,14 @@ module.exports = function mountMediaRoutes(app) {
       if (typeof session.amount_total === 'number' && session.amount_total !== expected) {
         console.error('[webhook] amount mismatch', { purchaseId, expected, got: session.amount_total });
         audit(req, 'stripe.webhook.rejected', 'webhook', session.id, { reason: 'amount_mismatch', purchaseId, expected, got: session.amount_total });
+        await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = $1', [purchaseId, session.id]).catch(() => {});
         return ok();
       }
       if (session.customer_email && cur.rows[0].buyer_email &&
         String(session.customer_email).toLowerCase() !== String(cur.rows[0].buyer_email).toLowerCase()) {
         console.error('[webhook] email mismatch', { purchaseId });
         audit(req, 'stripe.webhook.rejected', 'webhook', session.id, { reason: 'email_mismatch', purchaseId });
+        await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = $1', [purchaseId, session.id]).catch(() => {});
         return ok();
       }
       await markPurchasesPaid(pool, [purchaseId], {
@@ -2374,9 +2451,9 @@ module.exports = function mountMediaRoutes(app) {
       if (!UUID_RE.test(String(wantPurchase))) return res.status(400).json({ error: 'bad purchase id' });
       logoBuy = await pool.query(
         `SELECT p.id, p.logo_variant_key, p.logo_variant, COALESCE(p.logo_template, 'corner') AS logo_template,
-           COALESCE(p.logo_theme, 'light') AS logo_theme FROM purchases p
-         WHERE p.status = 'paid' AND p.buyer_user_id = $2 AND p.id = $3
-           AND (p.media_id = $1 OR p.package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))`,
+           COALESCE(p.logo_theme, 'light') AS logo_theme, p.design_class, p.design_subject, p.design_result FROM purchases p
+          WHERE p.status = 'paid' AND p.buyer_user_id = $2 AND p.id = $3
+            AND (p.media_id = $1 OR p.package_id IN (SELECT package_id FROM package_items WHERE media_id = $1))`,
         [req.params.id, req.authUser.id, String(wantPurchase)]
       );
       if (!logoBuy.rows.length) return res.status(404).json({ error: 'purchase not found' });
@@ -2389,10 +2466,10 @@ module.exports = function mountMediaRoutes(app) {
     } else {
       logoBuy = await pool.query(
         `SELECT p.id, p.logo_variant_key, p.logo_variant, COALESCE(p.logo_template, 'corner') AS logo_template,
-           COALESCE(p.logo_theme, 'light') AS logo_theme FROM purchases p
-         WHERE p.status = 'paid' AND p.buyer_user_id = $2 AND p.media_id = $1
-           AND EXISTS (SELECT 1 FROM purchase_sponsor_logos l WHERE l.purchase_id = p.id)
-         ORDER BY p.created_at DESC LIMIT 1`,
+           COALESCE(p.logo_theme, 'light') AS logo_theme, p.design_class, p.design_subject, p.design_result FROM purchases p
+          WHERE p.status = 'paid' AND p.buyer_user_id = $2 AND p.media_id = $1
+            AND EXISTS (SELECT 1 FROM purchase_sponsor_logos l WHERE l.purchase_id = p.id)
+          ORDER BY p.created_at DESC LIMIT 1`,
         [req.params.id, req.authUser.id]
       );
     }
@@ -2402,10 +2479,11 @@ module.exports = function mountMediaRoutes(app) {
       // re-downloads don't re-bake; re-picking the design clears the key.
       const cr = await pool.query(
         `SELECT cr.bundle_id, cr.sponsor_logo_ids, cr.logo_template, cr.logo_theme, cr.logo_variant,
-                cr.logo_positions, cr.logo_variant_key
+                cr.logo_positions, cr.logo_variant_key, cr.design_class, cr.design_subject, cr.design_result
            FROM credit_redemptions cr JOIN credit_bundles cb ON cb.id = cr.bundle_id
-           JOIN purchases pu ON pu.id = cb.purchase_id
-          WHERE pu.status = 'paid' AND pu.buyer_user_id = $2 AND cr.media_id = $1
+           LEFT JOIN purchases pu ON pu.id = cb.purchase_id
+          WHERE cb.buyer_user_id = $2 AND cr.media_id = $1
+            AND (pu.status = 'paid' OR cb.purchase_id IS NULL)
             AND cr.sponsor_logo_ids IS NOT NULL AND cardinality(cr.sponsor_logo_ids) > 0
           ORDER BY cr.created_at DESC LIMIT 1`,
         [req.params.id, req.authUser.id]
@@ -2429,6 +2507,8 @@ module.exports = function mountMediaRoutes(app) {
               mediaId: req.params.id, storageKey: m.rows[0].storage_key,
               logoVariant: c.logo_variant, logoTemplate: c.logo_template, logoTheme: c.logo_theme,
               links, variantKey,
+              designTags: c.design_class || c.design_subject
+                ? { class_name: c.design_class, subject: c.design_subject } : null,
             });
             key = baked.key;
             if (baked.fresh) {
@@ -2452,6 +2532,8 @@ module.exports = function mountMediaRoutes(app) {
       purchaseId: purchase.id, mediaId: req.params.id, storageKey: m.rows[0].storage_key,
       logoVariant: purchase.logo_variant, logoTemplate: purchase.logo_template,
       logoTheme: purchase.logo_theme, logoVariantKey: purchase.logo_variant_key,
+      designTags: purchase.design_class || purchase.design_subject
+        ? { class_name: purchase.design_class, subject: purchase.design_subject } : null,
     });
     if (designed?.fresh) {
       audit(req, 'media.logo_bake', 'media', req.params.id, { purchase_id: purchase.id, logos: designed.logos, template: designed.template, theme: designed.theme });
@@ -2645,8 +2727,9 @@ module.exports = function mountMediaRoutes(app) {
   // links: [{ r2_key, position }] in bake order. Renders, stores at
   // variantKey, returns the key — persistence is the caller's job.
   // Returns the original storage key when there is nothing to bake
-  // (no logo files readable).
-  async function bakeDesignedVariant({ mediaId, storageKey, logoVariant, logoTemplate, logoTheme, links, variantKey }) {
+  // (no logo files readable). designTags overrides the canonical
+  // class/subject for THIS file only (buyer's design, migration 096).
+  async function bakeDesignedVariant({ mediaId, storageKey, logoVariant, logoTemplate, logoTheme, links, variantKey, designTags }) {
     const readKey = async (key) => {
       const { stream } = await mediaStore.getStream(key);
       const chunks = [];
@@ -2654,34 +2737,39 @@ module.exports = function mountMediaRoutes(app) {
       return Buffer.concat(chunks);
     };
     const logoBufs = [];
+    const logoPos = [];
     for (const l of links) {
       try {
         logoBufs.push(await readKey(l.r2_key));
+        logoPos.push(l.position);
       } catch {
         continue;
       }
     }
     if (!logoBufs.length) return { key: storageKey, fresh: false };
+    const bakeCtx = await bakeContext(mediaId);
+    // Buyer tag overrides win over canonical tags for this file only.
+    if (designTags?.class_name) bakeCtx.className = designTags.class_name;
+    if (designTags?.subject) bakeCtx.subject = designTags.subject;
     const template = ['corner', 'banner', 'top', 'minimal', 'winner', 'bottombar'].includes(logoTemplate) ? logoTemplate : 'corner';
     const theme = logoTheme === 'dark' ? 'dark' : 'light';
     // Exact-variant bake (WYSIWYG with the buyer preview). Legacy rows
     // (logo_variant NULL) keep the mapped-template bake as before.
     const { isVariant: isLogoVariant } = require('../lib/logoBake');
     const exactVariant = isLogoVariant(logoVariant) ? logoVariant : null;
-    const bakeCtx = await bakeContext(mediaId);
     const baked = exactVariant
       ? await require('../lib/logoBake').bakeVariant({
           photoBuf: await readKey(storageKey), logoBufs, variant: exactVariant,
-          positions: links.map((l) => l.position), ctx: bakeCtx, theme,
+          positions: logoPos, ctx: bakeCtx, theme,
         })
       : await bakeLogoTemplate(
           await readKey(storageKey), logoBufs, template,
-          links.map((l) => l.position), bakeCtx, theme
+          logoPos, bakeCtx, theme
         );
     await mediaStore.putBuffer(variantKey, baked, 'image/jpeg');
     return { key: variantKey, fresh: true, logos: logoBufs.length, template, theme };
   }
-  async function ensureDesignedVariant({ purchaseId, mediaId, storageKey, logoVariant, logoTemplate, logoTheme, logoVariantKey }) {
+  async function ensureDesignedVariant({ purchaseId, mediaId, storageKey, logoVariant, logoTemplate, logoTheme, logoVariantKey, designTags }) {
     if (!storageKey) return null;
     if (logoVariantKey) return { key: logoVariantKey, fresh: false };
     const links = await pool.query(
@@ -2692,11 +2780,94 @@ module.exports = function mountMediaRoutes(app) {
     );
     const out = await bakeDesignedVariant({
       mediaId, storageKey, logoVariant, logoTemplate, logoTheme,
-      links: links.rows, variantKey: `logos/${purchaseId}.jpg`,
+      links: links.rows, variantKey: `logos/${purchaseId}.jpg`, designTags,
     });
     if (out.fresh) await pool.query('UPDATE purchases SET logo_variant_key = $2 WHERE id = $1', [purchaseId, out.key]);
     return out;
   }
+
+  // ---- Buyer-nominated sponsor logos (§2.2): a logged-in client uploads
+  // their OWN sponsor's logo for their own designs. Personal sponsor rows
+  // (sponsors.user_id) carry no budget, so no discount — and the public
+  // picker (budget-gated) never lists them. resolveLogoIds restricts each
+  // personal logo to its uploader, so one buyer can never spend another's.
+  const buyerLogoUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+  });
+  const BUYER_LOGO_MIMES = ['image/png', 'image/jpeg'];
+  app.get('/api/my/sponsor-logos', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    const { rows } = await pool.query(
+      `SELECT l.id, l.label, s.name AS sponsor_name FROM sponsor_logos l
+       JOIN sponsors s ON s.id = l.sponsor_id
+       WHERE s.user_id = $1 AND l.is_active AND s.is_active
+       ORDER BY l.created_at DESC LIMIT 50`, [req.authUser.id]);
+    res.json({ data: rows });
+  }));
+  app.post('/api/my/sponsor-logos', buyerLogoUpload.single('logo'), asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (await throttled(pool, req.ip, 'buyer-logo')) return res.status(429).json({ error: 'too many attempts, try later' });
+    const label = String(req.body?.label || '').trim().slice(0, 100);
+    if (!label) return res.status(400).json({ error: 'need {label} (brand name on the logo)' });
+    const f = req.file;
+    if (!f?.buffer?.length) return res.status(400).json({ error: 'need logo file (multipart, PNG/JPEG ≤2MB)' });
+    const { fileTypeFromBuffer } = await import('file-type');
+    const detected = await fileTypeFromBuffer(f.buffer).catch(() => null);
+    const real = detected?.mime || '';
+    // Never trust the client MIME/extension: sniff the real magic bytes.
+    if (!BUYER_LOGO_MIMES.includes(real)) {
+      return res.status(400).json({ error: 'logo must be a real PNG or JPEG image' });
+    }
+    const ext = ((detected?.ext || 'png').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 8)) || 'png';
+    // One personal sponsor row per brand per buyer; budgets never attach
+    // here, so a nomination alone unlocks no discount (see §2.2).
+    let sp = await pool.query(
+      'SELECT id FROM sponsors WHERE user_id = $1 AND lower(name) = lower($2)',
+      [req.authUser.id, label]);
+    if (!sp.rows.length) {
+      sp = await pool.query(
+        'INSERT INTO sponsors (user_id, name) VALUES ($1, $2) RETURNING id',
+        [req.authUser.id, label]);
+    }
+    const sponsorId = sp.rows[0].id;
+    const ins = await pool.query(
+      `INSERT INTO sponsor_logos (sponsor_id, label, r2_key, mime, bytes)
+       VALUES ($1, $2, '', $3, $4) RETURNING id`,
+      [sponsorId, label, real, f.buffer.length]);
+    const id = ins.rows[0].id;
+    const key = `sponsors/${sponsorId}/${id}.${ext}`;
+    try {
+      await mediaStore.putBuffer(key, f.buffer, real);
+    } catch (e) {
+      // Don't leave an orphan row — the shop reads this table, and a logo
+      // without bytes can never render.
+      await pool.query('DELETE FROM sponsor_logos WHERE id = $1', [id]).catch(() => {});
+      const err = new Error('logo storage unavailable — try again shortly');
+      err.status = 502; throw err;
+    }
+    const done = (await pool.query(
+      'UPDATE sponsor_logos SET r2_key = $2 WHERE id = $1 RETURNING id, label, mime, bytes, is_active, created_at',
+      [id, key])).rows[0];
+    audit(req, 'buyer.logo.upload', 'sponsor', sponsorId, { logo_id: id, label });
+    res.status(201).json({ data: { ...done, sponsor_name: label } });
+  }));
+  // ---- Remove an own logo (soft delete like sponsor flow: past purchases
+  // keep their baked files, but the logo leaves the picker at once).
+  // Personal rows only — shared sponsor logos are untouchable here.
+  app.delete('/api/my/sponsor-logos/:id', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
+    const { rows } = await pool.query(
+      `UPDATE sponsor_logos SET is_active = false
+        WHERE id = $1 AND is_active AND sponsor_id IN (
+          SELECT id FROM sponsors WHERE user_id = $2)
+       RETURNING id, sponsor_id`,
+      [String(req.params.id), req.authUser.id]);
+    if (!rows.length) return res.status(404).json({ error: 'logo not found' });
+    audit(req, 'buyer.logo.remove', 'sponsor', rows[0].sponsor_id, { logo_id: rows[0].id });
+    res.json({ ok: true });
+  }));
 
   // Option 3 decision: only the photo's own photographer (or ADMIN) may
   // approve/reject a sponsor logo request. Approval is permission only —
@@ -3061,8 +3232,9 @@ module.exports = function mountMediaRoutes(app) {
   app.get('/api/my/photos', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
     const { rows } = await pool.query(
-      `SELECT pu.id AS purchase_id, pu.license_tier, pu.amount_cents, pu.status, pu.created_at,
+      `SELECT NULL AS bundle_id, pu.id AS purchase_id, pu.license_tier, pu.amount_cents, pu.status, pu.created_at,
           pu.logo_variant, pu.logo_template, pu.logo_theme, pu.logo_variant_key,
+          pu.design_class, pu.design_subject, pu.design_result,
           EXISTS (SELECT 1 FROM purchase_sponsor_logos l WHERE l.purchase_id = pu.id) AS has_logos,
           m.id AS media_id, m.kind, m.thumb_key, m.preview_key, m.storage_key, m.event_id,
           e.name AS event_name, h.name AS horse, r.name AS rider
@@ -3077,21 +3249,48 @@ module.exports = function mountMediaRoutes(app) {
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
         WHERE pu.buyer_user_id = $1 AND pu.status = 'paid'
         UNION ALL
-        SELECT pu.id AS purchase_id, 'credit' AS license_tier, pu.amount_cents, pu.status, cr.created_at,
-          NULL AS logo_variant, NULL AS logo_template, NULL AS logo_theme, NULL AS logo_variant_key, FALSE AS has_logos,
+        SELECT cb.id AS bundle_id, pu.id AS purchase_id, 'credit' AS license_tier, pu.amount_cents, pu.status, cr.created_at,
+          NULL AS logo_variant, NULL AS logo_template, NULL AS logo_theme, NULL AS logo_variant_key,
+          NULL AS design_class, NULL AS design_subject, NULL AS design_result, FALSE AS has_logos,
           m.id AS media_id, m.kind, m.thumb_key, m.preview_key, m.storage_key, m.event_id,
           e.name AS event_name, h.name AS horse, r.name AS rider
         FROM credit_redemptions cr
         JOIN credit_bundles cb ON cb.id = cr.bundle_id
-        JOIN purchases pu ON pu.id = cb.purchase_id
+        LEFT JOIN purchases pu ON pu.id = cb.purchase_id
         JOIN media m ON m.id = cr.media_id
         LEFT JOIN events e ON e.id = m.event_id
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
-        WHERE pu.buyer_user_id = $1 AND pu.status = 'paid' AND cb.status = 'active'
+        WHERE cb.buyer_user_id = $1 AND cb.status = 'active'
+          AND (pu.status = 'paid' OR cb.purchase_id IS NULL)
         ORDER BY created_at DESC LIMIT 200`,
       [req.authUser.id]
     );
     withUrls(rows);
+    // Sponsors per row (paid purchases + credit unlocks), for display + filter.
+    try {
+      const paidIds = [...new Set(rows.filter((r) => !r.bundle_id).map((r) => r.purchase_id).filter(Boolean))];
+      const redKeys = [...new Set(rows.filter((r) => r.bundle_id).map((r) => `${r.bundle_id}:${r.media_id}`))];
+      const byKey = {};
+      if (paidIds.length) {
+        const s = await pool.query(
+          `SELECT l.purchase_id AS key, s.id, s.name FROM purchase_sponsor_logos l
+           JOIN sponsor_logos sl ON sl.id = l.sponsor_logo_id JOIN sponsors s ON s.id = sl.sponsor_id
+           WHERE l.purchase_id = ANY($1::UUID[]) ORDER BY l.position`,
+          [paidIds]
+        );
+        for (const x of s.rows) (byKey[`p:${x.key}`] = byKey[`p:${x.key}`] || []).push({ id: x.id, name: x.name });
+      }
+      if (redKeys.length) {
+        const s = await pool.query(
+          `SELECT (cr.bundle_id || ':' || cr.media_id) AS key, s.id, s.name FROM credit_redemptions cr,
+           LATERAL unnest(cr.sponsor_logo_ids) AS lid
+           JOIN sponsor_logos sl ON sl.id = lid JOIN sponsors s ON s.id = sl.sponsor_id
+           WHERE (cr.bundle_id || ':' || cr.media_id) = ANY($1::TEXT[])`, [redKeys]
+        );
+        for (const x of s.rows) (byKey[`r:${x.key}`] = byKey[`r:${x.key}`] || []).push({ id: x.id, name: x.name });
+      }
+      for (const r of rows) r.sponsors = byKey[r.bundle_id ? `r:${r.bundle_id}:${r.media_id}` : `p:${r.purchase_id}`] || [];
+    } catch { for (const r of rows) r.sponsors = []; }
     // Logo purchases show the bought design (the same file download serves).
     // Bakes lazily on first sight; one failure never breaks the library.
     for (const row of rows) {
@@ -3103,6 +3302,8 @@ module.exports = function mountMediaRoutes(app) {
           purchaseId: row.purchase_id, mediaId: row.media_id, storageKey,
           logoVariant: row.logo_variant, logoTemplate: row.logo_template,
           logoTheme: row.logo_theme, logoVariantKey: row.logo_variant_key,
+          designTags: row.design_class || row.design_subject
+            ? { class_name: row.design_class, subject: row.design_subject } : null,
         });
         if (designed?.key) {
           row.designed_url = await mediaStore.signedDownloadUrl(designed.key);
@@ -4058,8 +4259,9 @@ module.exports = function mountMediaRoutes(app) {
   const creditOwnedSql = ($uid, $mid) =>
     `EXISTS (SELECT 1 FROM credit_redemptions cr
        JOIN credit_bundles cb ON cb.id = cr.bundle_id
-       JOIN purchases p2 ON p2.id = cb.purchase_id
-       WHERE p2.status = 'paid' AND p2.buyer_user_id = ${$uid} AND cr.media_id = ${$mid})`;
+       LEFT JOIN purchases p2 ON p2.id = cb.purchase_id
+       WHERE cb.buyer_user_id = ${$uid} AND cr.media_id = ${$mid}
+         AND (p2.status = 'paid' OR cb.purchase_id IS NULL))`;
 
   // Public: applicable credit pack for one event x subject (event-specific
   // first, global default fallback). Prices are admin-set (MASTER_PLAN §2).
@@ -4194,7 +4396,7 @@ module.exports = function mountMediaRoutes(app) {
   app.post('/api/credits/unlock', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
     if (await throttled(pool, req.ip, 'credit-unlock')) return res.status(429).json({ error: 'too many requests, try again later' });
-    const { media_id, sponsor_logo_ids } = req.body || {};
+    const { media_id, sponsor_logo_ids, design_tags } = req.body || {};
     if (!media_id || !UUID_RE.test(String(media_id))) return res.status(400).json({ error: 'need {media_id}' });
     const m = await pool.query(
       `SELECT id, kind, status, event_id, horse_id, rider_id FROM media WHERE id = $1`, [String(media_id)]);
@@ -4207,12 +4409,12 @@ module.exports = function mountMediaRoutes(app) {
     }
     // Sponsor logos, same picker as paid checkout — but free: no per-photo
     // money moves on a credit unlock, so no sponsor discount or billing.
-    let logoIds = [], logoTemplate = 'corner', logoTheme = 'light', logoVariant = null, logoPositions = {};
+    let logoIds = [], logoTemplate = 'corner', logoTheme = 'light', logoVariant = null, logoPositions = {}, designTags = null;
     const wantLogos = sponsor_logo_ids !== undefined && sponsor_logo_ids !== null &&
       (Array.isArray(sponsor_logo_ids) ? sponsor_logo_ids.length > 0 : String(sponsor_logo_ids).trim() !== '');
     if (wantLogos) {
       try {
-        logoIds = await resolveLogoIds(sponsor_logo_ids);
+        logoIds = await resolveLogoIds(sponsor_logo_ids, req.authUser.id);
       } catch (e) { return res.status(e.status || 400).json({ error: e.message }); }
       const LOGO_TEMPLATES = ['corner', 'banner', 'top', 'minimal', 'winner', 'bottombar'];
       if (req.body?.sponsor_logo_template !== undefined && req.body?.sponsor_logo_template !== null) {
@@ -4230,11 +4432,15 @@ module.exports = function mountMediaRoutes(app) {
         if (variantTemplateOf(logoVariant) !== logoTemplate) return res.status(400).json({ error: 'sponsor_logo_variant does not match sponsor_logo_template' });
       }
       logoPositions = resolveLogoPositions(req.body?.sponsor_logo_positions, logoIds);
+      try {
+        designTags = resolveDesignTags(design_tags);
+      } catch (e) { return res.status(e.status || 400).json({ error: e.message }); }
     }
     const dupe = await pool.query(
       `SELECT cr.bundle_id FROM credit_redemptions cr JOIN credit_bundles cb ON cb.id = cr.bundle_id
-        JOIN purchases pu ON pu.id = cb.purchase_id
-        WHERE pu.status = 'paid' AND pu.buyer_user_id = $2 AND cr.media_id = $1 LIMIT 1`,
+        LEFT JOIN purchases pu ON pu.id = cb.purchase_id
+        WHERE cb.buyer_user_id = $2 AND cr.media_id = $1
+          AND (pu.status = 'paid' OR cb.purchase_id IS NULL) LIMIT 1`,
       [media.id, req.authUser.id]
     );
     if (dupe.rows.length) {
@@ -4243,9 +4449,11 @@ module.exports = function mountMediaRoutes(app) {
       if (logoIds.length) {
         await pool.query(
           `UPDATE credit_redemptions SET sponsor_logo_ids = $3::UUID[], logo_template = $4, logo_theme = $5,
-             logo_variant = $6, logo_positions = $7::jsonb, logo_variant_key = NULL
+             logo_variant = $6, logo_positions = $7::jsonb, logo_variant_key = NULL,
+             design_class = $8, design_subject = $9, design_result = $10
            WHERE bundle_id = $1 AND media_id = $2`,
-          [dupe.rows[0].bundle_id, media.id, logoIds, logoTemplate, logoTheme, logoVariant, JSON.stringify(logoPositions)]);
+          [dupe.rows[0].bundle_id, media.id, logoIds, logoTemplate, logoTheme, logoVariant, JSON.stringify(logoPositions),
+            designTags?.class_name || null, designTags?.subject || null, designTags?.result || null]);
         return res.status(200).json({ data: { unlocked: true, reused: true, redesigned: true, logo_ids: logoIds } });
       }
       return res.status(200).json({ data: { unlocked: true, reused: true } });
@@ -4256,8 +4464,9 @@ module.exports = function mountMediaRoutes(app) {
       // Statement 1: lock candidate bundles (blocks concurrent unlocks here).
       const locked = await client.query(
         `SELECT cb.id, cb.slots_total FROM credit_bundles cb
-          JOIN purchases pu ON pu.id = cb.purchase_id
-          WHERE cb.status = 'active' AND pu.status = 'paid' AND pu.buyer_user_id = $1
+          LEFT JOIN purchases pu ON pu.id = cb.purchase_id
+          WHERE cb.status = 'active' AND cb.buyer_user_id = $1
+            AND (pu.status = 'paid' OR cb.purchase_id IS NULL)
             AND cb.event_id = $2
             AND ((cb.rider_id IS NOT NULL AND cb.rider_id = $3)
               OR (cb.horse_id IS NOT NULL AND cb.horse_id = $4))
@@ -4281,12 +4490,15 @@ module.exports = function mountMediaRoutes(app) {
       }
       try {
         await client.query(
-          `INSERT INTO credit_redemptions (bundle_id, media_id, sponsor_logo_ids, logo_template, logo_theme, logo_variant, logo_positions)
-           VALUES ($1, $2, $3::UUID[], $4, $5, $6, $7::jsonb)`,
+          `INSERT INTO credit_redemptions (bundle_id, media_id, sponsor_logo_ids, logo_template, logo_theme, logo_variant, logo_positions, design_class, design_subject, design_result)
+           VALUES ($1, $2, $3::UUID[], $4, $5, $6, $7::jsonb, $8, $9, $10)`,
           [bundle.id, media.id,
            logoIds.length ? logoIds : null, logoIds.length ? logoTemplate : null,
            logoIds.length ? logoTheme : null, logoIds.length ? logoVariant : null,
-           logoIds.length ? JSON.stringify(logoPositions) : null]);
+           logoIds.length ? JSON.stringify(logoPositions) : null,
+           logoIds.length ? designTags?.class_name || null : null,
+           logoIds.length ? designTags?.subject || null : null,
+           logoIds.length ? designTags?.result || null : null]);
       } catch (e) {
         await client.query('ROLLBACK');
         if (e.code === '23505') return res.status(200).json({ data: { unlocked: true, reused: true } });
@@ -4320,7 +4532,8 @@ module.exports = function mountMediaRoutes(app) {
         LEFT JOIN events e ON e.id = cb.event_id
         LEFT JOIN horses h ON h.id = cb.horse_id
         LEFT JOIN riders r ON r.id = cb.rider_id
-        WHERE cb.buyer_user_id = $1 AND pu.status = 'paid' AND cb.status = 'active'
+        WHERE cb.buyer_user_id = $1 AND cb.status = 'active'
+          AND (pu.status = 'paid' OR cb.purchase_id IS NULL)
         ORDER BY cb.created_at DESC LIMIT 50`,
       [req.authUser.id]
     );

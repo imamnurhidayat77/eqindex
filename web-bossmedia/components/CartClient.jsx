@@ -10,6 +10,7 @@ import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
 import { Icon, SiteFooter, SiteHeader } from './figma';
 import SmartImage from './SmartImage';
 import s from './CartClient.module.css';
+import accent from './PayAccent.module.css';
 import { templateOf } from './SponsorTemplates';
 import { useToast } from './Toaster';
 import { useAuthed } from '../lib/use-authed';
@@ -107,6 +108,7 @@ export default function CartClient() {
   // Single items go through their own endpoints; the combined session
   // below pays for the whole cart at once.
   async function buyMedia(item) {
+    if (busyKey) return;
     const em = checkoutEmail();
     if (!em) return;
     setBusyKey(item.key); setErr('');
@@ -117,7 +119,7 @@ export default function CartClient() {
           ...checkoutBase(), media_id: item.mediaId, license_tier: item.tierId,
           cancel_path: `/p/${item.mediaId}`,
           email: em, idempotency_key: newIdempotencyKey(),
-          ...(Array.isArray(item.logoIds) && item.logoIds.length ? { sponsor_logo_ids: item.logoIds, ...(item.logoPos ? { sponsor_logo_positions: item.logoPos } : {}), ...(item.logoTemplate ? { sponsor_logo_template: templateOf(item.logoTemplate), sponsor_logo_variant: item.logoTemplate } : {}), ...(item.logoTheme === 'dark' ? { sponsor_logo_theme: 'dark' } : {}) } : {}),
+          ...(Array.isArray(item.logoIds) && item.logoIds.length ? { sponsor_logo_ids: item.logoIds, ...(item.logoPos ? { sponsor_logo_positions: item.logoPos } : {}), ...(item.logoTemplate ? { sponsor_logo_template: templateOf(item.logoTemplate), sponsor_logo_variant: item.logoTemplate } : {}), ...(item.logoTheme === 'dark' ? { sponsor_logo_theme: 'dark' } : {}), ...(item.designTags ? { design_tags: item.designTags } : {}) } : {}),
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -128,6 +130,7 @@ export default function CartClient() {
   }
 
   async function buyReel(item) {
+    if (busyKey) return;
     const em = checkoutEmail();
     if (!em) return;
     setBusyKey(item.key); setErr('');
@@ -165,6 +168,7 @@ export default function CartClient() {
               ...(it.logoPos ? { sponsor_logo_positions: it.logoPos } : {}),
               ...(it.logoTemplate ? { sponsor_logo_template: templateOf(it.logoTemplate), sponsor_logo_variant: it.logoTemplate } : {}),
               ...(it.logoTheme ? { sponsor_logo_theme: it.logoTheme } : {}),
+              ...(it.designTags ? { design_tags: it.designTags } : {}),
             } : {}),
           })),
           reels: reelItems.map((it) => it.reelPayload),
@@ -217,10 +221,10 @@ export default function CartClient() {
                     <span>{item.detail}</span>
                     {(() => { const d = discForItem(item); return d ? <span style={{ display: 'block', marginTop: 4, color: '#8fd694' }}>−{nzd(d.cents)}{d.label ? ` ${d.label}` : ''} sponsor discount</span> : null; })()}
                     <div className="cart-item-actions">
-                      <button onClick={() => { removeFromCart(item.key); toast(`Removed — ${item.name}`, { type: 'info' }); }}>Remove</button>
-                      <button disabled={busyKey === item.key}
+                      <button disabled={!!busyKey} onClick={() => { removeFromCart(item.key); toast(`Removed — ${item.name}`, { type: 'info' }); }}>Remove</button>
+                      <button disabled={!!busyKey}
                         onClick={() => (item.kind === 'reel' ? buyReel(item) : buyMedia(item))}>
-                        {busyKey === item.key ? 'Opening…' : 'Buy now'}
+                        {busyKey === item.key ? 'Opening…' : busyKey ? 'Working…' : 'Buy now'}
                       </button>
                     </div>
                   </div>
@@ -258,7 +262,7 @@ export default function CartClient() {
                   <span style={{ display: 'block', marginTop: 4, color: '#777', fontSize: 11 }}>Balance payments are final — no refunds to balance.</span>
                 </p>
               )}
-              <button type="button" className="pay-all" disabled={busyKey}
+              <button type="button" className={`pay-all ${accent.pay}`} disabled={!!busyKey}
                 onClick={payAll}>
                 {busyKey === '__all' ? 'Opening secure checkout…' : (() => {
                   const used = meEmail ? Math.min(balance, photoTotal) : 0;
