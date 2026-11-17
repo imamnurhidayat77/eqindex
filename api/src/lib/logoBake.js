@@ -320,11 +320,21 @@ const painters = {
     return { svg, arts };
   },
   async 'corner-badge'(b) {
-    const { W, H, u, logo, pos } = b;
+    const { W, H, u, logo: logoIn, pos, wide, refit } = b;
     const padV = 1.8 * u, padH = 2.5 * u, sFs = 1.4 * u;
+    // Wide (>4 logos): shrink-wrap the row, capped at 92% like the
+    // preview's .wide badge — refit the row first so badge and art agree.
+    let logo = logoIn;
+    if (wide && logo && refit && logo.w + 2 * padH > Math.round(W * 0.92)) {
+      const maxRowW = Math.round(W * 0.92) - 2 * padH;
+      const fit = await refit(Math.max(1, Math.round(logo.h * maxRowW / logo.w)), maxRowW);
+      logo = { data: fit.data, w: fit.w, h: fit.h, raw: fit.data };
+    }
     const logoH = logo ? logo.h : 0;
-    // Fixed 44% width like the preview (content hugs the left padding).
-    const badgeW = Math.round(W * 0.44), badgeH = Math.round(padV + sFs + 0.7 * u + logoH + padV);
+    const logoW = logo ? logo.w : 0;
+    // Narrow: fixed 44% width like the preview (content hugs the left padding).
+    const badgeW = wide ? Math.min(Math.round(W * 0.92), Math.round(logoW + 2 * padH)) : Math.round(W * 0.44);
+    const badgeH = Math.round(padV + sFs + 0.7 * u + logoH + padV);
     const rad = 1.8 * u, radL = 4.2 * u;
     let x, y, path, borders;
     if (pos === 'bottom-left') {
@@ -335,6 +345,10 @@ const painters = {
       x = W - badgeW; y = H - badgeH;
       path = rrect(x, y, badgeW, badgeH, radL, 0, rad, 0);
       borders = `<path d="M${r(x)} ${r(y + 1.5)}L${r(x + badgeW)} ${r(y + 1.5)}" stroke="${GOLD}" stroke-width="3"/><path d="M${r(x + 1.5)} ${r(y)}L${r(x + 1.5)} ${r(y + badgeH)}" stroke="${GOLD}" stroke-width="3"/>`;
+    } else if (pos === 'top-left') {
+      x = 0; y = 0;
+      path = rrect(x, y, badgeW, badgeH, rad, 0, radL, 0);
+      borders = `<path d="M${r(x)} ${r(y + badgeH - 1.5)}L${r(x + badgeW)} ${r(y + badgeH - 1.5)}" stroke="${GOLD}" stroke-width="3"/><path d="M${r(x + badgeW - 1.5)} ${r(y)}L${r(x + badgeW - 1.5)} ${r(y + badgeH)}" stroke="${GOLD}" stroke-width="3"/>`;
     } else {
       x = W - badgeW; y = 0;
       path = rrect(x, y, badgeW, badgeH, 0, rad, 0, radL);
@@ -383,10 +397,21 @@ const painters = {
     return { svg, arts };
   },
   async 'round-badge'(b) {
-    const { W, H, u, logo, pos } = b;
+    const { W, H, u, logo, pos, wide } = b;
     const dia = 24 * u, off = 3 * u;
-    const cx = pos === 'bottom-left' ? off + dia / 2 : W - off - dia / 2;
-    const cy = pos === 'top-right' ? off + dia / 2 : H - off - dia / 2;
+    const leftish = pos === 'bottom-left' || pos === 'top-left';
+    const cx = leftish ? off + dia / 2 : W - off - dia / 2;
+    const cy = pos === 'top-right' || pos === 'top-left' ? off + dia / 2 : H - off - dia / 2;
+    // Wide (>4 logos): the circle becomes a pill holding the row, anchored
+    // at the same corner — mirrors the preview's .st-round.wide.
+    if (wide && logo) {
+      const pillW = logo.w + 2 * 3 * u, pillH = logo.h + 2 * 2 * u;
+      const px = leftish ? off : W - off - pillW;
+      const py = (pos === 'top-right' || pos === 'top-left') ? off : H - off - pillH;
+      const svg = `<rect x="${r(px)}" y="${r(py)}" width="${r(pillW)}" height="${r(pillH)}" rx="${r(pillH / 2)}" fill="#ffffff" stroke="${GOLD}" stroke-width="2"/>`;
+      const arts = [{ input: logo.data, top: Math.round(py + 2 * u), left: Math.round(px + 3 * u) }];
+      return { svg, arts };
+    }
     const svg = `<circle cx="${r(cx)}" cy="${r(cy)}" r="${r(dia / 2)}" fill="#ffffff" stroke="${GOLD}" stroke-width="2"/>`;
     const arts = [];
     if (logo) {
@@ -425,6 +450,7 @@ const painters = {
       let x, y;
       if (pos === 'bottom-left') { x = 2.2 * u; y = H - 2.2 * u - chipH; }
       else if (pos === 'bottom-right') { x = W - 2.2 * u - chipW; y = H - 2.2 * u - chipH; }
+      else if (pos === 'top-left') { x = 2.2 * u; y = 1.8 * u; }
       else { x = W - 2.2 * u - chipW; y = 1.8 * u; }
       svg += `<rect x="${r(x)}" y="${r(y)}" width="${r(chipW)}" height="${r(chipH)}" rx="${r(1 * u)}" fill="#ffffff" fill-opacity="0.92"/>`;
       arts.push({ input: logo.data, top: Math.round(y + 0.7 * u), left: Math.round(x + 1.8 * u) });
@@ -760,11 +786,34 @@ Object.assign(painters, {
 // the logos are pre-composed into a single row (shrunk by count, like
 // the preview .st-logos.multi CSS) so the 19 painters stay untouched.
 const OVERLAY_MULTI = ['corner-badge', 'minimal-corner', 'round-badge'];
-// Row sizing mirrors the preview: single 5.4u, pair 4.2u, 3–4 share 3.4u.
+// Row sizing mirrors the preview (.st-logos buckets): single 5.4u,
+// pair 4.2u, 3–4 share 3.4u, 5–8 share 2.6u. One row always — preview
+// never wraps, so bake never wraps either.
 function rowSize(count, u) {
+  if (count > 4) return { h: 2.6 * u, maxW: 10 * u };
   if (count > 2) return { h: 3.4 * u, maxW: 13 * u };
   if (count > 1) return { h: 4.2 * u, maxW: 18 * u };
   return { h: 5.4 * u, maxW: 27 * u };
+}
+// Compose N fitted logos into one transparent row bitmap (shared by the
+// strip path and the overlay-wide path below).
+async function composeRow(bufs, u) {
+  const { h: rowH, maxW: rowMaxW } = rowSize(bufs.length, u);
+  const fitted = [];
+  for (const b of bufs) fitted.push(await fitLogo(b, rowH, rowMaxW));
+  const gap = Math.round(1.4 * u);
+  const totalW = fitted.reduce((s, f, i) => s + f.w + (i ? gap : 0), 0);
+  const maxH = Math.max(...fitted.map((f) => f.h));
+  const parts = [];
+  let x = 0;
+  for (const f of fitted) {
+    parts.push({ input: f.data, left: x, top: Math.round((maxH - f.h) / 2) });
+    x += f.w + gap;
+  }
+  const rowSrc = await sharp({
+    create: { width: totalW, height: maxH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  }).composite(parts).png().toBuffer();
+  return { data: rowSrc, w: totalW, h: maxH };
 }
 async function bakeVariant({ photoBuf, logoBufs, variant, positions, ctx, theme, designTags }) {
   if (!isVariant(variant)) throw new Error(`unknown logo variant: ${variant}`);
@@ -772,12 +821,28 @@ async function bakeVariant({ photoBuf, logoBufs, variant, positions, ctx, theme,
   const W = meta.width || 1600, H = meta.height || 1000;
   const u = W / 100;
   const dark = theme === 'dark' && THEMED_VARIANTS.includes(variant);
-  const bufs = (logoBufs || []).slice(0, 4);
+  const bufs = (logoBufs || []).slice(0, 8);
   const bakeCtx = { event: ctx?.event || '', className: ctx?.className || '', subject: ctx?.subject || '' };
   // Buyer result text (migration 097) or the default laurel word.
   const resultText = designTags?.result || 'WINNER';
   const posAt = (i) => OVERLAY_POS.includes(positions?.[i]) ? positions[i] : OVERLAY_POS[i % OVERLAY_POS.length];
   const paint = painters[variant];
+  // Overlay >4 logos: one badge holding the full row at the first position
+  // (mirrors the preview's .wide branch) — corners never overlap.
+  if (OVERLAY_MULTI.includes(variant) && bufs.length > 4) {
+    const row = await composeRow(bufs, u);
+    const out = await paint({
+      W, H, u, logo: { data: row.data, w: row.w, h: row.h, raw: row.data }, pos: posAt(0), ctx: bakeCtx, dark,
+      result: resultText, wide: true,
+      refit: (h, maxW) => fitLogo(row.data, h, maxW),
+    });
+    const overlay = Buffer.from(
+      `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${out.svg}</svg>`
+    );
+    return sharp(photoBuf)
+      .composite([{ input: overlay, top: 0, left: 0 }, ...out.arts])
+      .jpeg({ quality: 90 }).toBuffer();
+  }
   if (OVERLAY_MULTI.includes(variant) && bufs.length > 1) {
     let svg = '';
     const arts = [];
@@ -799,26 +864,15 @@ async function bakeVariant({ photoBuf, logoBufs, variant, positions, ctx, theme,
       .jpeg({ quality: 90 }).toBuffer();
   }
   const { h: rowH, maxW: rowMaxW } = rowSize(bufs.length, u);
-  const fitted = [];
-  for (const b of bufs) fitted.push(await fitLogo(b, rowH, rowMaxW));
   let logo = null;
   let rowSrc = bufs[0] || null;
-  if (fitted.length === 1) {
-    logo = { data: fitted[0].data, w: fitted[0].w, h: fitted[0].h, raw: bufs[0] };
-  } else if (fitted.length > 1) {
-    const gap = Math.round(1.4 * u);
-    const totalW = fitted.reduce((s, f, i) => s + f.w + (i ? gap : 0), 0);
-    const maxH = Math.max(...fitted.map((f) => f.h));
-    const parts = [];
-    let x = 0;
-    for (const f of fitted) {
-      parts.push({ input: f.data, left: x, top: Math.round((maxH - f.h) / 2) });
-      x += f.w + gap;
-    }
-    rowSrc = await sharp({
-      create: { width: totalW, height: maxH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
-    }).composite(parts).png().toBuffer();
-    logo = { data: rowSrc, w: totalW, h: maxH, raw: rowSrc };
+  if (bufs.length === 1) {
+    const fit = await fitLogo(bufs[0], rowH, rowMaxW);
+    logo = { data: fit.data, w: fit.w, h: fit.h, raw: bufs[0] };
+  } else if (bufs.length > 1) {
+    const row = await composeRow(bufs, u);
+    rowSrc = row.data;
+    logo = { data: row.data, w: row.w, h: row.h, raw: row.data };
   }
   const out = await paint({
     W, H, u, logo, pos: posAt(0), ctx: bakeCtx, dark,

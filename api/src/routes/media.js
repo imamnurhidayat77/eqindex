@@ -1102,15 +1102,16 @@ module.exports = function mountMediaRoutes(app) {
   // with just an email and get a password-less account (see checkoutBuyer).
   // whole_event: buys the managed package for a whole event or one
   // event x subject, materializing its row on demand (no manual creation).
-  // sponsor_logo_ids: up to 4 active sponsor logos baked into the download
-  // (Option 1) — one per corner, so badges never paint over each other.
+  // sponsor_logo_ids: up to 8 active sponsor logos baked into the download
+  // (Option 1). Rows shrink by count; overlay variants hold one badge per
+  // corner up to 4, then collapse the rest into a single row badge.
   // Single photos only — packages keep the plain files.
   const LOGO_POSITIONS = ['bottom-left', 'bottom-right', 'top-right', 'top-left'];
   async function resolveLogoIds(raw, buyerId) {
     if (raw === undefined || raw === null) return [];
-    const ids = (Array.isArray(raw) ? raw : [raw]).map(String).filter((s) => UUID_RE.test(s)).slice(0, 4);
+    const ids = (Array.isArray(raw) ? raw : [raw]).map(String).filter((s) => UUID_RE.test(s)).slice(0, 8);
     if (!ids.length) {
-      const err = new Error('sponsor_logo_ids must be 1–4 logo UUIDs');
+      const err = new Error('sponsor_logo_ids must be 1–8 logo UUIDs');
       err.status = 400; throw err;
     }
     const found = await pool.query(

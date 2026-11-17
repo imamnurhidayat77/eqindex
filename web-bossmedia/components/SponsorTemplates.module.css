@@ -88,6 +88,7 @@
 .st-round.pos-tr { top: 3cqw; right: 3cqw; }
 .st-round.pos-br { bottom: 3cqw; right: 3cqw; }
 .st-round.pos-bl { bottom: 3cqw; left: 3cqw; }
+.st-round.pos-tl { top: 3cqw; left: 3cqw; }
 .st-round .st-logo-img { width: 100%; max-width: 100%; height: auto; max-height: 100%; }
 
 /* — gold frame + bottom pill — */
@@ -164,18 +165,29 @@
   overflow: hidden;
 }
 
-/* — multi-logo (2–3): strip menyusut, overlay mengecil agar tak tabrakan.
+/* — multi-logo: strip menyusut ikut jumlah (2 / 3–4 / 5–8), overlay
+   satu badge per sudut sampai 4 lalu satu badge berisi baris penuh.
    Ukuran mengikuti jumlah logo, posisi mengikuti pilihan per logo. — */
 .st-logos.multi .st-logo-img { height: 4.2cqw; max-width: 18cqw; }
 .st-logos.multi3 .st-logo-img { height: 3.4cqw; max-width: 13cqw; }
+.st-logos.multi5 .st-logo-img { height: 2.6cqw; max-width: 10cqw; }
 .st-logos.col { flex-direction: column; align-items: flex-start; }
 .st-minchip .st-logos.multi .st-logo-img { height: 3.2cqw; max-width: 10cqw; }
-.st-frame.multi .st-badge { width: 36%; }
-.st-frame.multi .st-round { width: 19cqw; }
+.st-minchip .st-logos.multi5 .st-logo-img { height: 2.4cqw; max-width: 7cqw; }
+.st-frame.multi .st-badge:not(.wide) { width: 36%; }
+.st-frame.multi .st-round:not(.wide) { width: 19cqw; }
+/* — wide: overlay >4 logo diringkas jadi satu badge berisi baris — */
+.st-badge.wide { width: auto; max-width: 92%; }
+.st-frame.multi .st-badge.wide { width: auto; }
+.st-round.wide { width: auto; max-width: 92%; aspect-ratio: auto; border-radius: 999px; padding: 2cqw 3cqw; }
+.st-frame.multi .st-round.wide { width: auto; }
+.st-minimal.wide { max-width: 92%; }
 
-/* — posisi overlay (pilihan buyer: bottom-left / bottom-right / top-right) — */
+/* — posisi overlay (pilihan buyer: 4 sudut; cerminan tr↔tl, br↔bl) — */
 .st-badge.pos-tr { top: 0; right: 0; }
+.st-badge.pos-tl { top: 0; left: 0; border-radius: 1.8cqw 0 4.2cqw 0; border-right: 3px solid #d4a017; border-bottom: 3px solid #d4a017; border-left: 0; border-top: 0; }
 .st-minimal.pos-tr { top: 1.8cqw; right: 2.2cqw; }
+.st-minimal.pos-tl { top: 1.8cqw; left: 2.2cqw; }
 .st-badge.pos-bl { top: auto; right: auto; left: 0; bottom: 0; border-radius: 0 4.2cqw 0 1.8cqw; border-left: 0; border-bottom: 0; border-top: 3px solid #d4a017; border-right: 3px solid #d4a017; }
 .st-badge.pos-br { top: auto; left: auto; right: 0; bottom: 0; border-radius: 4.2cqw 0 0 1.8cqw; border-right: 0; border-bottom: 0; border-top: 3px solid #d4a017; border-left: 3px solid #d4a017; }
 .st-minimal.pos-bl { top: auto; right: auto; left: 2.2cqw; bottom: 2.2cqw; }

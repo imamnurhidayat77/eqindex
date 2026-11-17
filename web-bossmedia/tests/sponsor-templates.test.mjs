@@ -75,6 +75,7 @@ test('every variant maps to a backend template id the server accepts', () => {
   assert.ok(modal.includes('createPortal'), 'modal portals above navbar stacking');
   assert.ok(modal.includes('flexDirection'), 'modal is a no-scroll flex column');
   assert.ok(modal.includes('Logo positions'), 'modal positions each picked logo');
+  assert.ok(modal.includes(`'Top left', 'top-left'`), 'position picker offers all four corners');
   assert.ok(!modal.includes('compact'), 'thumbnails render full text like the main preview — no compact hiding');
   assert.ok(!modal.includes("width: 'auto', maxWidth: '100%'"), 'height-clamped frame that broke ratio is gone');
   // Strip/wave % tinggi frame = ramping seperti referensi, proporsional di semua orientasi.
@@ -92,7 +93,7 @@ test('every variant maps to a backend template id the server accepts', () => {
   assert.ok(css.includes('.st-wpanel .st-class, .st-wside .st-class'), 'panel class stacks tag above text');
   assert.ok(purchase.includes('loadDesign(media.id)'), 'checkout restores saved design');
   assert.ok(purchase.includes('mediaId={media.id}'), 'checkout passes media id to modal');
-  assert.ok(purchase.includes('MAX_SPONSOR_LOGOS'), 'cap (4) comes from the shared helper');
+  assert.ok(purchase.includes('MAX_SPONSOR_LOGOS'), 'cap (8) comes from the shared helper');
   assert.ok(modal.includes('setDraft'), 'modal browses in draft (page untouched until Save)');
   assert.ok(purchase.includes('appliedLive'), 'main photo shows saved design only');
   assert.ok(!purchase.includes('selectAndOpen'), 'page has no picker — single modal entry point');
@@ -113,19 +114,28 @@ test('every variant maps to a backend template id the server accepts', () => {
   }
 });
 
-test('multi-sponsor: up to 4 logos from picker to preview to bake', () => {
+test('multi-sponsor: up to 8 logos from picker to preview to bake', () => {
   const purchase = readFileSync(join(root, 'components', 'MediaPurchase.jsx'), 'utf8');
   const modal = readFileSync(join(root, 'components', 'LogoModal.jsx'), 'utf8');
   // Picker lives in the modal and caps at the backend limit via the helper.
   assert.ok(modal.includes("toggleLogoIds(draftLogos, id)"), 'modal toggle goes through the capped helper');
   assert.ok(modal.includes('Pick at least one sponsor logo'), 'empty design cannot be saved');
   assert.ok(purchase.includes('pickedLogos'), 'panel summarizes the picked set');
-  assert.ok(purchase.includes('.slice(0, MAX_SPONSOR_LOGOS)'), 'restored drafts keep up to 4');
-  assert.ok(jsx.includes('.slice(0, MAX_SPONSOR_LOGOS)'), 'saved designs keep up to 4');
+  assert.ok(purchase.includes('.slice(0, MAX_SPONSOR_LOGOS)'), 'restored drafts keep up to 8');
+  assert.ok(jsx.includes('.slice(0, MAX_SPONSOR_LOGOS)'), 'saved designs keep up to 8');
   // Preview: one row that shrinks by count, overlays at own positions.
   assert.ok(jsx.includes('LogoRow'), 'strip lockups share one multi-logo row');
   assert.ok(css.includes('.st-logos.multi '), 'row shrinks for 2 logos');
-  assert.ok(css.includes('.st-logos.multi3 '), 'row shrinks further for 3');
+  assert.ok(css.includes('.st-logos.multi3 '), 'row shrinks further for 3–4');
+  assert.ok(css.includes('.st-logos.multi5 '), 'row shrinks further for 5–8');
+  // Overlay >4 collapses into one row badge instead of overlapping corners.
+  assert.ok(jsx.includes('wide'), 'overlay variants have a wide branch past 4 logos');
+  assert.ok(css.includes('.st-badge.wide') && css.includes('.st-round.wide'), 'wide badges restyle, not overlap');
+  // All four corners exist on both sides of the preview/bake contract.
+  for (const pos of ['pos-tl', 'pos-tr', 'pos-bl', 'pos-br']) {
+    assert.ok(css.includes(`.${pos}`), `preview positions ${pos}`);
+  }
+  assert.ok(jsx.includes(`'top-left'`) || jsx.includes(`"top-left"`), 'preview maps the fourth corner');
   assert.ok(css.includes('.st-logos.col'), 'narrow panels stack the row vertically');
   assert.ok(modal.includes('setDraftPosFor'), 'positions tracked per logo');
   assert.ok(modal.includes('draftPositions = draftPos'), 'thumbnails reflect every position');

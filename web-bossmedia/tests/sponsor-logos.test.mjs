@@ -1,23 +1,22 @@
-// Unit: multi-sponsor toggle (buyer picks up to 4 logos per photo).
+// Unit: multi-sponsor toggle (buyer picks up to 8 logos per photo).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MAX_SPONSOR_LOGOS, designTagsSig, isWinningResult, normalizeTagDraft, toggleLogoIds } from '../lib/sponsor-logos.mjs';
 
-test('caps at the backend limit (one logo per corner)', () => {
-  assert.equal(MAX_SPONSOR_LOGOS, 4);
+test('caps at the backend limit (rows shrink, overlays collapse past 4)', () => {
+  assert.equal(MAX_SPONSOR_LOGOS, 8);
 });
 
 test('adds until full, then refuses without dropping', () => {
   let r = toggleLogoIds([], 'a');
   assert.deepEqual(r, { ids: ['a'], added: true, full: false });
-  r = toggleLogoIds(r.ids, 'b');
-  assert.deepEqual(r.ids, ['a', 'b']);
-  r = toggleLogoIds(r.ids, 'c');
-  assert.deepEqual(r.ids, ['a', 'b', 'c']);
-  r = toggleLogoIds(r.ids, 'd');
-  assert.deepEqual(r.ids, ['a', 'b', 'c', 'd']);
-  r = toggleLogoIds(r.ids, 'e');
-  assert.deepEqual(r, { ids: ['a', 'b', 'c', 'd'], added: false, full: true });
+  for (const id of ['b', 'c', 'd', 'e', 'f', 'g', 'h']) {
+    r = toggleLogoIds(r.ids, id);
+    assert.equal(r.added, true, `adding ${id}`);
+  }
+  assert.deepEqual(r.ids, ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']);
+  r = toggleLogoIds(r.ids, 'i');
+  assert.deepEqual(r, { ids: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], added: false, full: true });
 });
 
 test('toggles off an already-picked logo', () => {
