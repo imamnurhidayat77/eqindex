@@ -10,7 +10,7 @@ import { searchSubjects } from '../lib/search-subjects';
 
 // Shared tag & publish dialog — used by the Library grid and inline by the
 // Upload page so photographers never have to leave the upload flow.
-export default function TagModal({ m, events, tiers, notify, onClose, onSaved, onDeleted }) {
+export default function TagModal({ m, events, tiers, notify, onClose, onSaved, onDeleted, publishedNote }) {
   const [ev, setEv] = useState(m.event_id || '');
   const [rider, setRider] = useState(m.rider || '');
   const [riderId, setRiderId] = useState(m.rider_id || '');
@@ -58,7 +58,7 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
     setBusy(true);
     try {
       const u = await studio.patch(`/admin/media/${m.id}`, { status });
-      onSaved(u.data); notify(status === 'published' ? 'Published — live in the shop' : `Moved to ${status}`); onClose();
+      onSaved(u.data); notify(status === 'published' ? (publishedNote || 'Published — live in the shop') : `Moved to ${status}`); onClose();
     } catch (e) { notify(e.message, true); }
     setBusy(false);
   }

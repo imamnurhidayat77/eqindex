@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 import { Icon, SiteFooter, SiteHeader } from './figma';
 import SmartImage from './SmartImage';
 import GalleryPager from './GalleryPager';
+import MomentsStrip from './MomentsStrip';
+import FollowButton from './FollowButton';
 import SaveButton from './SaveButton';
 import SearchSelect from './SearchSelect';
 
@@ -52,6 +54,10 @@ export default function EventDetailClient({ event, media }) {
               <h2>Photos &amp; reels.</h2>
             </div>
             <p>Select an image to preview. High-resolution downloads are available after purchase.</p>
+            <p style={{ marginTop: 10 }}>
+              <FollowButton kind="event" id={event.id} name={event.name} />
+              <span style={{ color: '#666', fontSize: 12, marginLeft: 8 }}>Get notified as new photos and moments drop.</span>
+            </p>
           </div>
           <div className="event-gallery-search">
             <label className="detail-media-search">
@@ -121,6 +127,7 @@ export default function EventDetailClient({ event, media }) {
           )}
           <GalleryPager page={safePage} pages={pages} onPage={setPage} />
         </section>
+        <MomentsStrip eventId={event.id} />
       </main>
       <SiteFooter />
     </div>

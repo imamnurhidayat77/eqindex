@@ -2,6 +2,7 @@
 
 import { HEIGHT_BANDS, heightParams } from '../lib/heights';
 import { keyOptions, FALLBACK_CATS } from '../lib/categories';
+import { INP } from '../lib/tokens';
 import Dropdown from './Dropdown';
 import { Count } from './TableBits';
 
@@ -21,7 +22,7 @@ export function FilterBar({ f, set, seasons, regions, arenas, categories = null,
       <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
         Search
         <input value={f.q} onChange={upd('q')} placeholder="Name…"
-          className="w-[170px] rounded border border-line bg-ink px-2.5 py-2 text-[13px] normal-case text-white placeholder:text-faint focus:border-gold/60 focus:outline-none" />
+          className={`${INP} w-[170px] normal-case`} />
       </label>
       <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">
         Season

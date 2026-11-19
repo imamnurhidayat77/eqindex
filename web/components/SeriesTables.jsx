@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import DataTable from './DataTable';
-import { NUM, TD, TH } from '../lib/tokens';
+import { INP, NUM, TD, TH } from '../lib/tokens';
 import { statusBadge } from '../lib/tokens';
 
 // Standings scale to any season length: one row per combination, rounds
@@ -18,7 +18,7 @@ export function SeriesStandingsTable({ table }) {
     <>
       <div className="mb-3">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by rider or horse…"
-          className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 240 }} />
+          className={`${INP} w-[240px]`} />
       </div>
       <table className="w-full border-collapse text-[13px]">
         <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
@@ -214,7 +214,7 @@ export function SeriesRiderTable({ riders, seriesKey }) {
     <>
       <div className="mb-3">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by rider or horse…"
-          className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 240 }} />
+          className={`${INP} w-[240px]`} />
       </div>
       <table className="w-full border-collapse text-[13px]">
         <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">

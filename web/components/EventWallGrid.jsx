@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { API } from '../lib/api';
 import { bossPhotoUrl } from '../lib/bossmedia';
 import Dropdown from './Dropdown';
-import { CARD } from '../lib/tokens';
+import { CARD, INP } from '../lib/tokens';
 import { PhotoCardSk } from './Skeletons';
 
 const PAGE = 48;
@@ -133,7 +133,7 @@ export default function EventWallGrid({ initialRows = [], eventId, kind }) {
           onSelect={(o) => pickRider(o.value || '')} block />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search horse, rider, class…"
           aria-label="Search photos"
-          className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none w-full" />
+          className={`${INP} w-full`} />
       </div>
       {busy && !rows.length ? (
         <PhotoCardSk n={8} />

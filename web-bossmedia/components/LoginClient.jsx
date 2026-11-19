@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { Icon } from './figma';
 import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
@@ -27,6 +27,21 @@ function LoginInner({ visual }) {
   const [err, setErr] = useState('');
   const [challenge, setChallenge] = useState(null);
   const [code, setCode] = useState('');
+  const [checking, setChecking] = useState(true);
+  const [alreadyIn, setAlreadyIn] = useState(false);
+
+  // If already logged in, bounce forward instead of showing the form.
+  useEffect(() => {
+    fetch(`${API}/auth/me`, { credentials: 'include' })
+      .then((r) => {
+        if (r.ok) {
+          setAlreadyIn(true);
+          router.replace(next);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setChecking(false));
+  }, [router, next]);
 
   async function submit(e) {
     e.preventDefault();
@@ -88,7 +103,18 @@ function LoginInner({ visual }) {
           <p className="eyebrow">Boss Media account</p>
           <h1>Welcome back.</h1>
           <p className="login-intro">Sign in to access purchased media, private galleries, and coverage bookings.</p>
-          {challenge ? (
+          {checking ? (
+            <p className="auth-note" role="status">Checking your session…</p>
+          ) : alreadyIn ? (
+            <div className="auth-card">
+              <p className="eyebrow">Already signed in</p>
+              <p>You’re already logged in — head to your library or keep browsing.</p>
+              <p className="btn-row">
+                <Link href={next} className="btn-light">Go to my media</Link>
+                <Link href="/events" className="btn-ghost">Browse galleries</Link>
+              </p>
+            </div>
+          ) : challenge ? (
             <form onSubmit={submitCode}>
               <label><span>Authenticator code</span>
                 <input required autoFocus inputMode="numeric" autoComplete="one-time-code" value={code}

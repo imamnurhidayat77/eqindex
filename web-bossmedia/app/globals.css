@@ -224,16 +224,16 @@ button.text-link { min-height: 44px; }
 .gallery-page .event-results.grid .event-card:hover { transform: translateY(-3px); border-color: #555; box-shadow: 0 16px 38px rgba(0,0,0,.28); }
 .gallery-page .event-results.grid .event-image { height: auto; aspect-ratio: 4 / 3; }
 .gallery-page .event-results.grid .event-image::after { content: ''; position: absolute; inset: 65% 0 0; background: linear-gradient(transparent, rgba(0,0,0,.16)); pointer-events: none; }
-.gallery-page .event-results.grid .event-copy { padding: 0 10px 11px; }
+.gallery-page .event-results.grid .event-copy { padding: 0 12px 14px; }
 .gallery-page .event-results.grid .event-status { margin-top: 12px; }
-.gallery-page .event-results.grid .event-copy h3 { max-width: 100%; font-size: 17px; line-height: 1.2; margin-bottom: 12px; }
-.gallery-page .event-results.grid .event-data { padding-top: 10px; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.gallery-page .event-results.grid .event-copy h3 { max-width: 100%; font-size: 17px; line-height: 1.3; margin-bottom: 12px; }
+.gallery-page .event-results.grid .event-data { padding-top: 12px; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .gallery-page .event-results.grid .event-status { color: #999; }
 .gallery-page .event-results.grid .event-status span.live { background: white; box-shadow: 0 0 0 3px #444; }
 .gallery-page .event-results.grid .event-copy h3 { color: white; }
 .gallery-page .event-results.grid .event-data { border-top-color: #333; }
 .gallery-page .event-results.grid .event-data p { color: #999; }
-.gallery-page .event-results.grid .event-action { margin-top: 12px; padding-top: 10px; border-top: 1px solid #2d2d2d; }
+.gallery-page .event-results.grid .event-action { margin-top: 14px; padding-top: 10px; border-top: 1px solid #2d2d2d; }
 .gallery-page .event-results.grid .event-action p { color: #777; }
 .gallery-page .event-results.grid .event-action a { color: white; padding-bottom: 4px; border-bottom: 1px solid #666; }
 .gallery-page .event-results.list { gap: 10px; }
@@ -848,10 +848,10 @@ button.text-link { min-height: 44px; }
 .site-shell .event-results.grid .event-card { padding: 6px; background: #151515; border: 1px solid #303030; transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease; }
 .site-shell .event-results.grid .event-card:hover { transform: translateY(-3px); border-color: #555; box-shadow: 0 16px 38px rgba(0,0,0,.28); }
 .site-shell .event-results.grid .event-image { height: auto; aspect-ratio: 4 / 3; }
-.site-shell .event-results.grid .event-copy { padding: 0 10px 11px; }
-.site-shell .event-results.grid .event-copy h3 { font-size: 17px; line-height: 1.2; margin-bottom: 12px; }
-.site-shell .event-results.grid .event-data { grid-template-columns: minmax(0, 1fr); gap: 4px; padding-top: 10px; }
-.site-shell .event-results.grid .event-action { margin-top: 12px; }
+.site-shell .event-results.grid .event-copy { padding: 0 12px 14px; }
+.site-shell .event-results.grid .event-copy h3 { font-size: 17px; line-height: 1.3; margin-bottom: 12px; }
+.site-shell .event-results.grid .event-data { grid-template-columns: minmax(0, 1fr); gap: 8px; padding-top: 12px; }
+.site-shell .event-results.grid .event-action { margin-top: 14px; }
 .site-shell .event-results.grid .event-status { margin-top: 12px; }
 .site-shell .event-status { color: #999; }
 .site-shell .event-status span.live { background: white; box-shadow: 0 0 0 3px #444; }

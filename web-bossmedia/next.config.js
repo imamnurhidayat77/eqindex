@@ -29,7 +29,9 @@ module.exports = {
       "font-src 'self' https://fonts.gstatic.com",
       'img-src \'self\' data: https:',
       "media-src 'self' https: blob:",
-      "connect-src 'self'",
+      // https: extra allows the browser's direct-to-R2 video PUTs (venue-QR
+      // and studio reel flows both use presigned URLs, never the API proxy).
+      "connect-src 'self' https:",
       "frame-ancestors 'none'",
     ].join('; ');
     return [{

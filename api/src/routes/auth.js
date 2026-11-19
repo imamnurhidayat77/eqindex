@@ -12,7 +12,6 @@ const totp = require('../lib/totp');
 
 // Reset tokens live 1 hour (enforced in SQL), single-use, sha256 at rest.
 const sha256 = (v) => crypto.createHash('sha256').update(v).digest('hex');
-const escHtml = (v) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 // Email unavailable: in dev with DEV_MAIL_SKIP=1, print the link and let
 // the flow succeed (the token stays live so it can be used from console).
@@ -61,12 +60,8 @@ module.exports = function mountAuthRoutes(app) {
         return res.json({ data: { claim_sent: true } });
       }
       try {
-        await sendMail({
-          to: cleanEmail,
-          subject: 'Claim your Boss Media account',
-          text: `Hi ${d.name || 'there'},\n\nThis email was used for a guest purchase. Set a password to claim the account and reach your downloads anytime:\n${link}\n\nThis link expires in 1 hour. Didn't buy anything? Ignore this email.`,
-          html: `<p>Hi ${escHtml(d.name) || 'there'},</p><p>This email was used for a guest purchase. <a href="${link}">Set a password to claim your account</a> and reach your downloads anytime.</p><p>This link expires in 1 hour. Didn't buy anything? Ignore this email.</p>`,
-        });
+        const t = require('../lib/emailTemplates').claimAccount({ name: d.name, link });
+        await sendMail({ to: cleanEmail, subject: t.subject, text: t.text, html: t.html });
       } catch (e) {
         console.error('[register.claim] sendMail failed:', e.message);
         await pool.query(`DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL`, [d.id]);
@@ -253,12 +248,8 @@ module.exports = function mountAuthRoutes(app) {
         return res.json({ ok: true });
       }
       try {
-        await sendMail({
-          to: cleanEmail,
-          subject: 'Reset your Boss Media password',
-          text: `Hi ${u.name || 'there'},\n\nReset your password here (expires in 1 hour):\n${link}\n\nDidn't ask for this? Ignore this email — your password stays as is.`,
-          html: `<p>Hi ${escHtml(u.name) || 'there'},</p><p><a href="${link}">Reset your password</a> (expires in 1 hour).</p><p>Didn't ask for this? Ignore this email — your password stays as is.</p>`,
-        });
+        const t = require('../lib/emailTemplates').resetPassword({ name: u.name, link });
+        await sendMail({ to: cleanEmail, subject: t.subject, text: t.text, html: t.html });
       } catch (e) {
         // Don't leave a live token the user can never receive.
         console.error('[forgot] sendMail failed:', e.message);

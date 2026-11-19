@@ -4,6 +4,7 @@ import StudioShell, { Pager } from '../../../components/studio';
 import { useNotify } from '../../../components/Toaster';
 import { useConfirm } from '../../../components/ConfirmModal';
 import SearchSelect from '../../../components/SearchSelect';
+import QrPosterModal from '../../../components/QrPosterModal';
 import { dayOf, nzdc, studio, useStudioUser } from '../../../lib/studio';
 import { useDocumentTitle } from '../../../lib/use-document-title';
 
@@ -454,6 +455,25 @@ function Events() {
     } catch (e) { notify(e.message, true); }
   }
 
+  const [qr, setQr] = useState(null); // { event, code }
+  const [qrBusy, setQrBusy] = useState(false);
+
+  // Venue QR for any event (results events included): mints the upload code
+  // on first use, same minter the organizer dashboard uses.
+  async function showQr(ev) {
+    if (qrBusy) return;
+    if (ev.upload_code) return setQr({ event: ev, code: ev.upload_code });
+    setQrBusy(true);
+    try {
+      const j = await studio.post(`/admin/events/${ev.id}/upload-code`, {});
+      const code = j?.upload_code || j?.data?.upload_code;
+      if (!code) throw new Error('no code returned');
+      setRows((xs) => (xs || []).map((x) => (x.id === ev.id ? { ...x, upload_code: code } : x)));
+      setQr({ event: ev, code });
+    } catch (e) { notify(e.message, true); }
+    setQrBusy(false);
+  }
+
   // Pre-book visibility: hidden by default, only enabled events show.
   const pbVal = (ev) => (ev.prebook_open === true ? 'show' : 'hide');
   async function setPrebook(ev, v) {
@@ -477,7 +497,7 @@ function Events() {
       ) : (
         <div className="st-card" style={{ padding: '6px 22px' }}>
           <div className="table-scroll"><table className="st-table">
-            <thead><tr><th>Event</th><th>Date</th><th>Data</th><th>Pre-book</th><th>Organizer</th></tr></thead>
+            <thead><tr><th>Event</th><th>Date</th><th>Data</th><th>Pre-book</th><th>Organizer</th><th style={{ textAlign: 'right' }}>QR</th></tr></thead>
             <tbody>
               {rows.slice(safe, safe + PAGE).map((ev) => (
                 <tr key={ev.id}>
@@ -497,6 +517,12 @@ function Events() {
                       options={[{ id: '', label: '— none —' }, ...orgs.map((o) => ({ id: o.id, label: o.name }))]}
                       onChange={(id) => link(ev, id)} />
                   </td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button className="st-btn-ghost" style={{ minHeight: 36 }} onClick={() => showQr(ev)} disabled={qrBusy}
+                      title="Venue QR poster for spectator uploads">
+                      {ev.upload_code ? 'QR ✓' : 'QR'}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -507,6 +533,7 @@ function Events() {
           </p>
         </div>
       )}
+      {qr && <QrPosterModal qr={qr} onClose={() => setQr(null)} />}
       {confirmUI}
     </>
   );

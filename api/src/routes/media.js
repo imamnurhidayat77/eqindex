@@ -48,16 +48,31 @@ function watermarkSvg(w, h, text) {
   );
 }
 
-// Lighter variant for REELS: same treatment as photos — a moving picture
-// already carries motion branding, so identical density suffices.
-function watermarkSvgLight(w, h, text) {
-  const size = Math.max(22, Math.round(Math.min(w, h) / 18));
-  return Buffer.from(
-    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">` +
-    `<defs><pattern id="wm" width="700" height="240" patternUnits="userSpaceOnUse" patternTransform="rotate(-24)">` +
-    `<text x="12" y="96" font-family="sans-serif" font-size="${size}" font-weight="bold" fill="white" fill-opacity="0.16">${escXml(text)}</text>` +
-    `</pattern></defs><rect width="${w}" height="${h}" fill="url(#wm)"/></svg>`
-  );
+const finalizeReel = require('../lib/reelFinalize');
+
+// QR upload code for venue posters: short, dialable, always carries digits
+// (TAKAPO26) so it routes on both the email and web doors.
+function buildUploadCodeBase(name, dateStr) {
+  const letters = String(name || '').toUpperCase().replace(/[^A-Z]/g, '') || 'SHOW';
+  // pg returns DATE columns as Date objects, forms send 'YYYY-MM-DD' —
+  // both stringify to something with the year at a known spot.
+  const iso = dateStr instanceof Date && !Number.isNaN(dateStr.getTime())
+    ? dateStr.toISOString()
+    : String(dateStr || '');
+  const year = /^\d{4}/.test(iso) ? iso.slice(2, 4) : '';
+  return `${letters.slice(0, 5)}${year}`.slice(0, 12);
+}
+
+async function mintUploadCode(poolQ, event) {
+  const base = buildUploadCodeBase(event.name, event.date_start);
+  for (let i = 0; i < 10; i++) {
+    const candidate = i === 0 ? base : `${base}${i}`.slice(0, 12);
+    if (!/^(?=.*[0-9])[A-Z0-9]{4,12}$/.test(candidate)) continue;
+    const taken = await poolQ.query(
+      'SELECT 1 FROM events WHERE UPPER(upload_code) = $1 AND id <> $2', [candidate, event.id]);
+    if (!taken.rows.length) return candidate;
+  }
+  return `${base}${Math.random().toString(36).slice(2, 5).toUpperCase()}`.replace(/[^A-Z0-9]/g, '').slice(0, 12);
 }
 
 async function activePhotographer(poolQ, id) {
@@ -278,53 +293,6 @@ module.exports = function mountMediaRoutes(app) {
     res.status(202).json({ data: { media_id: m.id, processing: true } });
   }));
 
-  async function finalizeReel(mediaId) {
-    const os = require('node:os');
-    const path = require('node:path');
-    const fs = require('node:fs');
-    const { probeDims, renderPreview, renderPoster } = require('../lib/reelProcess');
-    const { rows } = await pool.query('SELECT * FROM media WHERE id = $1', [mediaId]);
-    const m = rows[0];
-    if (!m || m.thumb_key) return; // done or gone
-    const ev = await pool.query('SELECT name FROM events WHERE id = $1', [m.event_id]).catch(() => ({ rows: [] }));
-    const photographer = await pool.query('SELECT name FROM photographers WHERE id = $1', [m.photographer_id])
-      .catch(() => ({ rows: [] }));
-    // 1. Probe dimensions (fresh stream; the probe kills its input early).
-    const s1 = await mediaStore.getStream(m.storage_key);
-    const dims = await probeDims(s1.stream);
-    const pvH = Math.max(2, Math.round((640 * dims.height) / Math.max(1, dims.width)));
-    // 2. Watermark tile PNG (lighter reel variant — fewer, fainter tiles).
-    const wmPng = await sharp(watermarkSvgLight(640, pvH, `© ${photographer.rows[0]?.name || 'EQINDEX'}`))
-      .png().toBuffer();
-    const wmPath = path.join(os.tmpdir(), `eqindex-wm-${mediaId}.png`);
-    await fs.promises.writeFile(wmPath, wmPng);
-    try {
-      // 3. Preview transcode (fresh stream; only small outputs buffered).
-      const s2 = await mediaStore.getStream(m.storage_key);
-      const preview = await renderPreview(s2.stream, wmPath);
-      // 4. Poster is rendered from the ORIGINAL (no watermark) — it is the
-      // shop window, the watermark lives on the playable teaser instead.
-      const s3 = await mediaStore.getStream(m.storage_key);
-      const chunks = [];
-      for await (const c of s3.stream) chunks.push(c);
-      const poster = await renderPoster(Buffer.concat(chunks));
-      const ns = photographer.rows[0]?.name || null;
-      const thumbKey = mediaStore.keyFor('thumbs', m.event_id, m.id, 'jpg', ns);
-      const previewKey = mediaStore.keyFor('previews', m.event_id, m.id, 'mp4', ns);
-      await mediaStore.putBuffer(thumbKey, poster, 'image/jpeg');
-      await mediaStore.putBuffer(previewKey, preview.buffer, 'video/mp4');
-      await pool.query(
-        `UPDATE media SET thumb_key = $2, preview_key = $3, width = $4, height = $5 WHERE id = $1`,
-        [m.id, thumbKey, previewKey, dims.width, dims.height]
-      );
-      audit({ authUser: { name: 'job', id: 'finalize' }, body: {}, query: {} },
-        'media.finalize', 'media', m.id,
-        { width: dims.width, height: dims.height, event: ev.rows[0]?.name || null });
-    } finally {
-      await fs.promises.unlink(wmPath).catch(() => {});
-    }
-  }
-
   // Re-render photo previews with the current watermark style (sparse ©
   // photographer tiles). Baked previews can't restyle themselves: this
   // endpoint re-renders them from the stored originals. Returns 202 and
@@ -339,8 +307,8 @@ module.exports = function mountMediaRoutes(app) {
       scope = ` AND m.event_id = $${params.length}`;
     }
     const { rows } = await pool.query(
-      `SELECT m.id FROM media m
-        WHERE m.kind = 'photo' AND m.status = 'published' AND m.storage_key IS NOT NULL${scope}
+        `SELECT m.id FROM media m
+        WHERE m.kind = 'photo' AND m.status = 'published' AND m.source = 'studio' AND m.storage_key IS NOT NULL${scope}
         ORDER BY m.created_at`,
       params
     );
@@ -403,6 +371,12 @@ module.exports = function mountMediaRoutes(app) {
       push('m.rider_id = ?', rid);
     }
     if (req.query.kind) push('m.kind = ?', String(req.query.kind));
+    // source=email,admin for the moments history tabs (validated allowlist).
+    if (req.query.source) {
+      const srcs = String(req.query.source).split(',').map((s) => s.trim())
+        .filter((s) => ['studio', 'email', 'web', 'admin'].includes(s));
+      if (srcs.length) { params.push(srcs); conds.push(`m.source = ANY($${params.length})`); }
+    }
     if (req.query.untagged === '1') conds.push('(m.horse_id IS NULL OR m.rider_id IS NULL)');
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
     params.push(limit);
@@ -497,11 +471,344 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows[0] });
   }));
 
+  // ---- Community moments review queue (P3; ADMIN only) ----
+  // Intakes awaiting human review with their draft photos. Admin publishes
+  // (tags optional — untagged publishes notify nobody, see notifyPublish)
+  // or rejects with a reason that is emailed to the sender.
+  app.get('/admin/moments', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows: intakes } = await pool.query(
+      `SELECT i.*, e.name AS event_name,
+              COALESCE(s.verified_at IS NOT NULL, FALSE) AS sender_verified
+         FROM upload_intakes i
+         LEFT JOIN events e ON e.id = i.event_id
+         LEFT JOIN upload_senders s ON s.email = i.sender_email
+        WHERE i.status IN ('in_review', 'awaiting_verify')
+           OR (i.status = 'done' AND EXISTS (
+                 SELECT 1 FROM media m
+                  WHERE m.source IN ('email', 'web') AND m.source_ref = i.provider_msg_id
+                    AND m.status = 'draft'))
+        ORDER BY i.created_at DESC LIMIT 100`
+    );
+    for (const it of intakes) {
+      const { rows: photos } = await pool.query(
+        `SELECT m.id, m.status, m.kind, m.width, m.height, m.created_at,
+                m.horse_id, m.rider_id, m.class_id,
+                h.name AS horse, r.name AS rider, c.name AS class_name,
+                m.thumb_key, m.preview_key
+           FROM media m
+           LEFT JOIN horses h ON h.id = m.horse_id
+           LEFT JOIN riders r ON r.id = m.rider_id
+           LEFT JOIN classes c ON c.id = m.class_id
+           WHERE m.source IN ('email', 'web') AND m.source_ref = $1 AND m.status = 'draft'
+          ORDER BY m.created_at`,
+        [it.provider_msg_id]
+      );
+      withUrls(photos);
+      for (const p of photos) { delete p.thumb_key; delete p.preview_key; }
+      // QR web uploads share the intake table — the ref prefix says which door.
+      it.origin = String(it.provider_msg_id || '').startsWith('web:') ? 'web' : 'email';
+      it.photos = photos;
+    }
+    // Admin manual uploads have no intake row — group them by batch
+    // (source_ref) into the same card shape so one queue serves both doors.
+    const { rows: manual } = await pool.query(
+      `SELECT m.id, m.status, m.kind, m.width, m.height, m.created_at,
+              m.horse_id, m.rider_id, m.class_id, m.source_ref, m.event_id,
+              h.name AS horse, r.name AS rider, c.name AS class_name,
+              m.thumb_key, m.preview_key,
+              e.name AS event_name, u.name AS uploader_name, u.email AS uploader_email
+         FROM media m
+         LEFT JOIN horses h ON h.id = m.horse_id
+         LEFT JOIN riders r ON r.id = m.rider_id
+         LEFT JOIN classes c ON c.id = m.class_id
+         LEFT JOIN events e ON e.id = m.event_id
+         LEFT JOIN users u ON u.id = m.uploader_user_id
+        WHERE m.source = 'admin' AND m.status = 'draft'
+        ORDER BY m.created_at DESC`
+    );
+    const batches = new Map();
+    withUrls(manual);
+    for (const p of manual) {
+      delete p.thumb_key; delete p.preview_key;
+      if (!batches.has(p.source_ref)) {
+        batches.set(p.source_ref, {
+          id: `manual:${p.source_ref}`, origin: 'admin',
+          sender_email: p.uploader_name || p.uploader_email || 'admin upload',
+          sender_verified: true, status: 'in_review', event_id: p.event_id,
+          event_name: p.event_name, claimed_rider_name: null, claimed_horse_name: null,
+          created_at: p.created_at, photos: [],
+        });
+      }
+      batches.get(p.source_ref).photos.push(p);
+    }
+    res.json({ data: [...batches.values(), ...intakes] });
+  }));
+
+  // Pilot metrics: intake funnel at a glance (received → verified →
+  // reviewed). No PII beyond counts.
+  app.get('/admin/moments/stats', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows } = await pool.query(
+      `SELECT status, COUNT(*)::INT AS n FROM upload_intakes GROUP BY status`
+    );
+    const { rows: week } = await pool.query(
+      `SELECT COUNT(*)::INT AS received_week,
+              COUNT(*) FILTER (WHERE status = 'done')::INT AS done_week
+         FROM upload_intakes WHERE created_at > NOW() - INTERVAL '7 days'`
+    );
+    const { rows: media } = await pool.query(
+      `SELECT source, status, COUNT(*)::INT AS n FROM media
+        WHERE source IN ('email', 'admin', 'web') GROUP BY source, status`
+    );
+    const { rows: senders } = await pool.query(
+      `SELECT COUNT(*)::INT AS senders, COUNT(*) FILTER (WHERE verified_at IS NOT NULL)::INT AS verified
+         FROM upload_senders`
+    );
+    res.json({ data: { intakes: rows, week: week[0], media: media, senders: senders[0] } });
+  }));
+
+  app.post('/admin/moments/decide', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { media_ids, action, reason, horse_id, rider_id, class_id } = req.body || {};
+    if (!Array.isArray(media_ids) || !media_ids.length || media_ids.length > 50) {
+      return res.status(400).json({ error: 'need media_ids[1..50]' });
+    }
+    if (action !== 'publish' && action !== 'reject') {
+      return res.status(400).json({ error: 'action must be publish|reject' });
+    }
+    // Bulk applies one tag set — per-photo tweaks go through TagModal instead.
+    let horse = null, rider = null, cls = null;
+    if (action === 'publish') {
+      if (horse_id) { horse = await resolveId('horses', horse_id, res); if (!horse) return; }
+      if (rider_id) { rider = await resolveId('riders', rider_id, res); if (!rider) return; }
+      if (class_id) {
+        const c = await pool.query('SELECT id FROM classes WHERE id = $1', [class_id]);
+        if (!c.rows.length) return res.status(404).json({ error: 'class not found' });
+        cls = class_id;
+      }
+    }
+    const cleanReason = String(reason || '').trim().slice(0, 500);
+    if (action === 'reject' && !cleanReason) {
+      return res.status(400).json({ error: 'need a reason — it is emailed to the sender' });
+    }
+    // Guard triple-lock: community source (any door: email, admin, web) +
+    // still draft + never priced, so a bug here can never publish (or sell)
+    // the wrong photo.
+    // Admin rows have no intake — LEFT JOIN keeps them reviewable.
+    const { rows } = await pool.query(
+      `SELECT m.*, i.sender_email, m.source_ref AS provider_msg_id, e.name AS event_name
+         FROM media m LEFT JOIN upload_intakes i ON i.provider_msg_id = m.source_ref
+         LEFT JOIN events e ON e.id = m.event_id
+        WHERE m.id = ANY($1) AND m.source IN ('email', 'admin', 'web') AND m.status = 'draft' AND m.price_cents IS NULL`,
+      [media_ids]
+    );
+    if (rows.length !== media_ids.length) {
+      const found = new Set(rows.map((r) => r.id));
+      return res.status(409).json({
+        error: 'some photos are not reviewable community drafts',
+        missing: media_ids.filter((id) => !found.has(id)),
+      });
+    }
+    const decided = [];
+    for (const m of rows) {
+      if (action === 'publish') {
+        const { rows: up } = await pool.query(
+          `UPDATE media SET horse_id = COALESCE($2, horse_id), rider_id = COALESCE($3, rider_id),
+             class_id = COALESCE($4, class_id), status = 'published', price_cents = NULL
+             WHERE id = $1 RETURNING *`,
+          [m.id, horse, rider, cls]
+        );
+        // Watchers fire only on tagged photos (notifyPublish no-ops untagged).
+        try { await notifyPublish(pool, up.rows[0]); }
+        catch (e) { console.error('[moments.publish-hook] non-fatal:', e.message); }
+      } else {
+        await pool.query(`UPDATE media SET status = 'archived' WHERE id = $1`, [m.id]);
+      }
+      decided.push(m.id);
+      audit(req, `moments.${action}`, 'media', m.id, { reason: cleanReason || undefined });
+    }
+    const refs = [...new Set(rows.map((r) => r.provider_msg_id))];
+    for (const ref of refs) {
+      const left = await pool.query(
+        `SELECT COUNT(*)::INT AS n FROM media
+          WHERE source IN ('email', 'web') AND source_ref = $1 AND status = 'draft'`, [ref]);
+      if (left.rows[0].n === 0) {
+        await pool.query(
+          `UPDATE upload_intakes SET status = 'done', error = $2 WHERE provider_msg_id = $1`,
+          [ref, action === 'reject' ? cleanReason : null]);
+      }
+      if (action === 'reject') {
+        const r0 = rows.find((r) => r.provider_msg_id === ref);
+        // Admin-uploaded batches have no sender to email — the admin is
+        // looking right at them.
+        if (!r0.sender_email) continue;
+        const n = rows.filter((r) => r.provider_msg_id === ref).length;
+        try {
+          const t = require('../lib/emailTemplates').momentsReject({
+            eventName: r0.event_name, count: n, reason: cleanReason,
+          });
+          await sendMail({ to: r0.sender_email, subject: t.subject, text: t.text });
+        } catch (e) { console.error('[moments.reject] reply failed:', e.message); }
+      }
+    }
+    if (action === 'publish') {
+      // One batched email per follower for the whole decision (the per-photo
+      // in-app notifications above already collapsed; email must never send
+      // one row per photo). Backgrounded — a slow mail provider must never
+      // hold the admin response.
+      setImmediate(() => emailMomentFollowers(rows).catch(
+        (e) => console.error('[moments.follow-mail] failed:', e.message)));
+    }
+    res.json({ data: { [action === 'publish' ? 'published' : 'rejected']: decided } });
+  }));
+
+  // Email followers of the published event/horse/rider: one mail each with a
+  // link to the new moments. Best-effort (a failed mail run still leaves the
+  // in-app notifications from notifyPublish intact), capped, opt-in aware.
+  async function emailMomentFollowers(publishedRows) {
+    if (!APP_URL) return;
+    const eventIds = [...new Set(publishedRows.map((r) => r.event_id).filter(Boolean))];
+    const horseIds = [...new Set(publishedRows.map((r) => r.horse_id).filter(Boolean))];
+    const riderIds = [...new Set(publishedRows.map((r) => r.rider_id).filter(Boolean))];
+    if (!eventIds.length && !horseIds.length && !riderIds.length) return; // untagged: nobody to tell
+    const { rows: followers } = await pool.query(
+      `SELECT DISTINCT u.email, u.name,
+              MAX(CASE WHEN w.entity_type = 'event' THEN e.name END) AS event_name
+         FROM watchlist_items w
+         JOIN users u ON u.id = w.user_id
+         LEFT JOIN alert_prefs ap ON ap.user_id = w.user_id
+         LEFT JOIN events e ON e.id = w.entity_id AND w.entity_type = 'event'
+        WHERE u.email IS NOT NULL AND COALESCE(ap.new_photos, TRUE)
+          AND ((w.entity_type = 'event' AND w.entity_id = ANY($1::UUID[]))
+            OR (w.entity_type = 'horse' AND w.entity_id = ANY($2::UUID[]))
+            OR (w.entity_type = 'rider' AND w.entity_id = ANY($3::UUID[])))
+        LIMIT 500`,
+      [eventIds, horseIds, riderIds]
+    );
+    for (const f of followers) {
+      const qp = new URLSearchParams();
+      if (eventIds[0]) qp.set('event_id', eventIds[0]);
+      try {
+        const t = require('../lib/emailTemplates').momentsLive({
+          name: f.name, eventName: f.event_name,
+          link: `${APP_URL}/moments?${qp}`, forEvent: !!f.event_name,
+        });
+        await sendMail({ to: f.email, subject: t.subject, text: t.text });
+      } catch (e) { console.error('[moments.follow-mail] one failed:', e.message); }
+    }
+  }
+
+  // Presigned video URL for community moments (ADMIN): same server-friendly
+  // split as studio reels — ≤200MB PUTs go straight to R2 and never through
+  // the API/proxy, then POST /admin/media/:id/finalize renders poster +
+  // teaser (ADMIN bypasses the ownership check there). Photos keep the
+  // multipart path below; videos must come through here (multipart rejects
+  // them) so one giant upload can't OOM the API.
+  app.post('/admin/moments/upload-url', needRole('ADMIN'), asyncH(async (req, res) => {
+    const b = req.body || {};
+    const mimetype = String(b.mimetype || '');
+    if (!['video/mp4', 'video/quicktime', 'video/webm'].includes(mimetype)) {
+      return res.status(400).json({ error: 'upload-url is for video only (mp4/mov/webm)' });
+    }
+    const size = Number(b.size_bytes);
+    if (!Number.isFinite(size) || size <= 0 || size > 200 * 1024 * 1024) {
+      return res.status(400).json({ error: 'size_bytes must be 1–200MB' });
+    }
+    const eventId = String(b.event_id || '');
+    const ev = await pool.query('SELECT id FROM events WHERE id = $1', [eventId]);
+    if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
+    const { rows: community } = await pool.query(
+      `SELECT * FROM photographers WHERE name = 'Community' AND is_active LIMIT 1`);
+    if (!community.length) throw new Error('community photographer missing — run migration 100');
+    const ext = ((String(b.filename || 'video.mp4').split('.').pop() || 'mp4')
+      .toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 8)) || 'mp4';
+    const { rows } = await pool.query(
+      `INSERT INTO media (photographer_id, event_id, kind, status, source, source_ref, uploader_user_id)
+       VALUES ($1, $2, 'reel', 'draft', 'admin', $3, $4) RETURNING id`,
+      [community[0].id, eventId, `manual:${Date.now().toString(36)}`, req.authUser?.id || null]
+    );
+    const id = rows[0].id;
+    const origKey = mediaStore.keyFor('originals', eventId, id, ext, community[0].name);
+    await pool.query('UPDATE media SET storage_key = $2 WHERE id = $1', [id, origKey]);
+    const uploadUrl = await mediaStore.presignedPutUrl(origKey, mimetype);
+    audit(req, 'moments.upload-url', 'media', id, { mimetype, size_bytes: size, event_id: eventId });
+    res.status(201).json({ data: { media_id: id, upload_url: uploadUrl, max_bytes: 200 * 1024 * 1024 } });
+  }));
+
+  // Admin manual upload for community moments (P-waiting: the no-email
+  // fallback — venue staff with files on hand). Deliberately NOT the studio
+  // upload path: photographer is always Community, price is always NULL,
+  // status always starts draft, and files land in the SAME review queue as
+  // email moments (self-approve from there — same bar, no shortcut).
+  // Photos only here: video must use upload-url above (multipart would
+  // buffer it all in API memory).
+  const momentsUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 15 * 1024 * 1024, files: 20 },
+  });
+  app.post('/admin/moments/upload', needRole('ADMIN'), momentsUpload.array('files', 20), asyncH(async (req, res) => {
+    const eventId = req.body?.event_id || null;
+    if (!eventId) return res.status(400).json({ error: 'need event_id' });
+    const ev = await pool.query('SELECT id, name FROM events WHERE id = $1', [eventId]);
+    if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
+    if (!req.files?.length) return res.status(400).json({ error: 'need files[] (photos, ≤15MB each, ≤20)' });
+    const { rows: community } = await pool.query(
+      `SELECT * FROM photographers WHERE name = 'Community' AND is_active LIMIT 1`);
+    if (!community.length) throw new Error('community photographer missing — run migration 100');
+    const photographer = community[0];
+    const { fileTypeFromBuffer } = await import('file-type');
+    const out = [];
+    for (const f of req.files) {
+      const detected = await fileTypeFromBuffer(f.buffer).catch(() => null);
+      const real = (detected?.mime || f.mimetype || '').toLowerCase();
+      if (!real.startsWith('image/')) {
+        out.push({ file: f.originalname, ok: false, error: 'photos only — video goes through the reel flow' });
+        continue;
+      }
+      const ext = ((detected?.ext || String(f.originalname || '').split('.').pop() || 'jpg')
+        .toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 8) || 'jpg');
+      if (['heic', 'heif'].includes(ext)) {
+        out.push({ file: f.originalname, ok: false, error: 'HEIC not readable — resend as JPEG or PNG' });
+        continue;
+      }
+      const { rows } = await pool.query(
+        `INSERT INTO media (photographer_id, event_id, kind, status, source, source_ref, uploader_user_id)
+         VALUES ($1, $2, 'photo', 'draft', 'admin', $3, $4) RETURNING id`,
+        [photographer.id, eventId, `manual:${Date.now().toString(36)}`, req.authUser?.id || null]
+      );
+      const id = rows[0].id;
+      try {
+        // Clean preview for community moments (free, never for sale) — no
+        // proof watermark tile; originals were always stored clean.
+        const origKey = mediaStore.keyFor('originals', eventId, id, ext, photographer.name);
+        await mediaStore.putBuffer(origKey, f.buffer, detected.mime);
+        const meta = await sharp(f.buffer).metadata();
+        const thumb = await sharp(f.buffer).rotate().resize({ width: 480, withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
+        const preview = await sharp(f.buffer).rotate().resize({ width: 1024, withoutEnlargement: true })
+          .jpeg({ quality: 72 }).toBuffer();
+        const thumbKey = mediaStore.keyFor('thumbs', eventId, id, 'jpg', photographer.name);
+        const previewKey = mediaStore.keyFor('previews', eventId, id, 'jpg', photographer.name);
+        await mediaStore.putBuffer(thumbKey, thumb, 'image/jpeg');
+        await mediaStore.putBuffer(previewKey, preview, 'image/jpeg');
+        await pool.query(
+          `UPDATE media SET storage_key = $2, thumb_key = $3, preview_key = $4, width = $5, height = $6 WHERE id = $1`,
+          [id, origKey, thumbKey, previewKey, meta.width || null, meta.height || null]
+        );
+        audit(req, 'moments.upload', 'media', id, { file: f.originalname, event_id: eventId });
+        out.push({ file: f.originalname, ok: true, id });
+      } catch (e) {
+        await pool.query(`UPDATE media SET status = 'archived' WHERE id = $1`, [id]);
+        out.push({ file: f.originalname, ok: false, error: e.message });
+      }
+    }
+    res.status(201).json({ data: out });
+  }));
+
   // Insert a published photo into every matching auto package
   // (same event × same horse and/or same rider, plus whole-event packages
   // with no subject). Idempotent.
   async function refreshAutoPackages(poolQ, media) {
     if (!media.event_id) return [];
+    // Community moments never join paid packages (P3 source gate).
+    if (media.source && media.source !== 'studio') return [];
     const { rows } = await poolQ.query(
       `SELECT id FROM packages
         WHERE status = 'published' AND auto = true AND event_id = $1
@@ -534,6 +841,27 @@ module.exports = function mountMediaRoutes(app) {
   }
 
   async function notifyPublish(poolQ, media) {
+    // 0. Event followers: everything published at their event (photos AND
+    // moments, tagged or not). One collapsing row per event — never one
+    // row per photo, no matter how big the batch.
+    if (media.event_id) {
+      const isMoment = media.source && media.source !== 'studio';
+      const ev = await poolQ.query(
+        `SELECT DISTINCT w.user_id AS uid FROM watchlist_items w
+           LEFT JOIN alert_prefs ap ON ap.user_id = w.user_id
+          WHERE COALESCE(ap.new_photos, TRUE)
+            AND w.entity_type = 'event' AND w.entity_id = $1`,
+        [media.event_id]
+      );
+      const evLink = isMoment
+        ? `/moments?event_id=${media.event_id}`
+        : `/photos?event=${media.event_id}`;
+      for (const w of ev.rows) {
+        await upsertNotif(poolQ, w.uid, 'photos-live', `photos:${media.event_id}:event`,
+          isMoment ? 'New community moments at your event' : 'New photos at your event',
+          isMoment ? 'Fresh spectator moments just published' : 'Fresh photos just published', evLink);
+      }
+    }
     // 1. Buyers of affected auto packages ("your bundle grew").
     const pkgs = await poolQ.query(
       `SELECT pk.id, pk.title FROM packages pk
@@ -565,15 +893,19 @@ module.exports = function mountMediaRoutes(app) {
               AND (($1::UUID IS NOT NULL AND w.horse_id = $1) OR ($2::UUID IS NOT NULL AND w.rider_id = $2))))`,
       [media.horse_id, media.rider_id]
     );
+    // Community moments link to their own detail page with their own copy —
+    // watchers must never mistake a free moment for a photo for sale.
+    const isMoment = media.source && media.source !== 'studio';
     const qp = new URLSearchParams();
     if (media.event_id) qp.set('event', media.event_id);
     if (media.horse_id) qp.set('horse', media.horse_id);
     else if (media.rider_id) qp.set('rider', media.rider_id);
-    const link = `/photos?${qp}`;
+    const link = isMoment ? `/moments/${media.id}` : `/photos?${qp}`;
     const subject = media.horse_id || media.rider_id;
     for (const w of watchers.rows) {
       await upsertNotif(poolQ, w.uid, 'photos-live', `photos:${media.event_id}:${subject}`,
-        'New photos of your stable', 'Fresh photos just published', link);
+        isMoment ? 'New community moments' : 'New photos of your stable',
+        isMoment ? 'Fresh spectator moments just published' : 'Fresh photos just published', link);
     }
   }
 
@@ -606,7 +938,9 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   app.get('/photos', asyncH(async (req, res) => {
-    const conds = [`m.status = 'published'`, ORDER_PRIVATE_SQL], params = [];
+    // Shop catalog is studio photos only — community moments live on
+    // dedicated moments surfaces (P4), never in the buy flow.
+    const conds = [`m.status = 'published'`, `m.source = 'studio'`, ORDER_PRIVATE_SQL], params = [];
     const push = (sql, v) => { params.push(v); conds.push(sql.replace('?', `$${params.length}`)); };
     // Photo opt-out (migration 066): hidden subjects vanish from public
     // browsing but stay reachable via direct link, purchase, and the owner's
@@ -681,7 +1015,7 @@ module.exports = function mountMediaRoutes(app) {
       return res.json({ data: { prev: null, next: null, index: 0, total: 1 } });
     }
     const { rows } = await pool.query(
-      `SELECT id FROM media WHERE event_id = $1 AND status = 'published' ORDER BY created_at, id`,
+      `SELECT id FROM media WHERE event_id = $1 AND status = 'published' AND source = 'studio' ORDER BY created_at, id`,
       [m.rows[0].event_id]);
     const i = rows.findIndex((r) => r.id === req.params.id);
     if (i < 0) return res.json({ data: { prev: null, next: null, index: 0, total: rows.length } });
@@ -706,7 +1040,7 @@ module.exports = function mountMediaRoutes(app) {
       params.push(kind);
       kindFilter = `AND m.kind = $${params.length}`;
     }
-    const coverWhere = `m2.event_id = e.id AND m2.status = 'published'${kind ? ` AND m2.kind = $${params.length}` : ''}`;
+    const coverWhere = `m2.event_id = e.id AND m2.status = 'published' AND m2.source = 'studio'${kind ? ` AND m2.kind = $${params.length}` : ''}`;
     const { rows } = await pool.query(
       `SELECT e.id AS event_id, e.name AS event_name, e.slug AS event_slug, e.date_start,
           COUNT(*)::INT AS photos,
@@ -717,7 +1051,7 @@ module.exports = function mountMediaRoutes(app) {
         FROM media m JOIN events e ON e.id = m.event_id
         LEFT JOIN horses h ON h.id = m.horse_id
         LEFT JOIN riders r ON r.id = m.rider_id
-        WHERE m.status = 'published' ${kindFilter}
+        WHERE m.status = 'published' AND m.source = 'studio' ${kindFilter}
           AND NOT (COALESCE(h.photo_hidden, FALSE) OR COALESCE(r.photo_hidden, FALSE))
         GROUP BY e.id, e.name, e.slug, e.date_start
         ORDER BY e.date_start DESC NULLS LAST, latest DESC`,
@@ -737,7 +1071,7 @@ module.exports = function mountMediaRoutes(app) {
   async function packageSnapshot(poolQ, { event_id, horse_id = null, rider_id = null }) {
     const ev = await poolQ.query('SELECT id, name FROM events WHERE id = $1', [event_id]);
     if (!ev.rows.length) return null;
-    const conds = [`m.status = 'published'`, 'm.event_id = $1'];
+    const conds = [`m.status = 'published'`, `m.source = 'studio'`, 'm.event_id = $1'];
     const params = [event_id];
     if (horse_id) { params.push(horse_id); conds.push(`m.horse_id = $${params.length}`); }
     if (rider_id) { params.push(rider_id); conds.push(`m.rider_id = $${params.length}`); }
@@ -819,6 +1153,67 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows });
   }));
 
+  // ---- Community moments, public surfaces (P4) ----
+  // Same visibility rules as the shop (published, opt-out aware) but the
+  // shop never sees these rows and moments never see the shop: separated
+  // by source at every query, both directions.
+  app.get('/api/moments', asyncH(async (req, res) => {
+    const conds = [`m.status = 'published'`, `m.source IN ('email', 'admin', 'web')`, ORDER_PRIVATE_SQL], params = [];
+    const push = (sql, v) => { params.push(v); conds.push(sql.replace('?', `$${params.length}`)); };
+    const HIDDEN_SQL = `NOT (COALESCE(h.photo_hidden, FALSE) OR COALESCE(r.photo_hidden, FALSE))`;
+    conds.push(HIDDEN_SQL);
+    if (req.query.event_id) push('m.event_id = ?', String(req.query.event_id));
+    if (req.query.horse_id) {
+      const hid = await resolveId('horses', req.query.horse_id, res);
+      if (!hid) return;
+      push('m.horse_id = ?', hid);
+    }
+    if (req.query.rider_id) {
+      const rid = await resolveId('riders', req.query.rider_id, res);
+      if (!rid) return;
+      push('m.rider_id = ?', rid);
+    }
+    if (req.query.kind) push('m.kind = ?', String(req.query.kind));
+    const limit = Math.min(parseInt(req.query.limit, 10) || 48, 100);
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+    params.push(limit, offset);
+    const { rows } = await pool.query(
+      `SELECT m.id, m.kind, m.event_id, m.horse_id, m.rider_id, m.class_id,
+              m.width, m.height, m.created_at, m.thumb_key, m.preview_key,
+              e.name AS event_name, c.name AS class_name,
+              h.name AS horse, r.name AS rider
+         FROM media m LEFT JOIN events e ON e.id = m.event_id
+         LEFT JOIN classes c ON c.id = m.class_id
+         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        WHERE ${conds.join(' AND ')}
+        ORDER BY m.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
+    withUrls(rows);
+    for (const r of rows) { delete r.thumb_key; delete r.preview_key; }
+    res.json({ data: rows });
+  }));
+
+  app.get('/api/moments/:id', asyncH(async (req, res) => {
+    if (!UUID_RE.test(String(req.params.id))) return res.status(400).json({ error: 'bad id' });
+    const { rows } = await pool.query(
+      `SELECT m.id, m.kind, m.event_id, m.horse_id, m.rider_id, m.class_id,
+              m.width, m.height, m.created_at, m.thumb_key, m.preview_key,
+              e.name AS event_name, e.slug AS event_slug, c.name AS class_name,
+              h.name AS horse, r.name AS rider
+         FROM media m LEFT JOIN events e ON e.id = m.event_id
+         LEFT JOIN classes c ON c.id = m.class_id
+         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        WHERE m.id = $1 AND m.status = 'published' AND m.source IN ('email', 'admin', 'web')
+          AND NOT (COALESCE(h.photo_hidden, FALSE) OR COALESCE(r.photo_hidden, FALSE))`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'moment not found' });
+    withUrls(rows);
+    delete rows[0].thumb_key; delete rows[0].preview_key;
+    res.json({ data: rows[0] });
+  }));
+
   app.get('/photos/:id', asyncH(async (req, res) => {
     const { rows } = await pool.query(
       `SELECT m.*, e.name AS event_name, e.date_start AS event_date,
@@ -829,7 +1224,7 @@ module.exports = function mountMediaRoutes(app) {
         LEFT JOIN classes c ON c.id = m.class_id
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
         JOIN photographers p ON p.id = m.photographer_id
-        WHERE m.id = $1 AND m.status = 'published'`,
+        WHERE m.id = $1 AND m.status = 'published' AND m.source = 'studio'`,
       [req.params.id]
     );
     if (!rows.length) return res.status(404).json({ error: 'photo not found' });
@@ -1033,6 +1428,10 @@ module.exports = function mountMediaRoutes(app) {
   // emails password-less buyers a claim link (password reset) so they can
   // access downloads. Wallet balance is never spent as guest (card only) —
   // spending account money requires a login.
+  // CSRF-exempt by design: no session cookie is minted here, so csrfGuard
+  // (cookie-gated) skips these requests — a foreign Origin creating a
+  // pending guest checkout is expected, not an attack (proven by test:
+  // 'guest checkout is intentionally cross-origin capable').
   async function checkoutBuyer(req, email) {
     if (req.authUser) return { id: req.authUser.id, email: req.authUser.email, guest: false };
     const clean = normEmail(email);
@@ -1085,16 +1484,26 @@ module.exports = function mountMediaRoutes(app) {
         const base = (APP_URL || '').replace(/\/$/, '');
         if (!base) { console.error('[claim] APP_URL unset — guest claim link unsent'); continue; }
         const link = `${base}/reset?token=${raw}`;
-        await sendMail({
-          to: u.email,
-          subject: 'Your Boss Media photos are ready',
-          text: `Hi ${u.name || 'there'},\n\nThanks for your purchase! Set a password to access your downloads anytime:\n${link}\n\nThis link expires in 1 hour. Didn't buy anything? Ignore this email.`,
-          html: `<p>Hi ${u.name || 'there'},</p><p>Thanks for your purchase! <a href="${link}">Set a password to access your downloads anytime</a>.</p><p>This link expires in 1 hour. Didn't buy anything? Ignore this email.</p>`,
-        });
+        const t = require('../lib/emailTemplates').purchaseClaim({ name: u.name, link });
+        await sendMail({ to: u.email, subject: t.subject, text: t.text, html: t.html });
       }
     } catch (e) {
       console.error('[claim] guest claim email failed:', e.message);
     }
+  }
+
+  // Same-key concurrency: the purchases_idempotency_key unique index cannot
+  // dedupe NULL media/package pairs (Postgres NULLs never conflict), so
+  // parallel same-key checkouts must be serialized in the app. Call right
+  // after BEGIN: takes a transaction-scoped advisory lock for (buyer, key)
+  // and re-checks for the row the winner committed while we waited.
+  // Returns the winner's row when we lost, else null.
+  async function lockIdempotency(client, buyerId, key) {
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`checkout:${buyerId}:${key}`]);
+    const { rows } = await client.query(
+      `SELECT id, status FROM purchases WHERE idempotency_key = $1 AND buyer_user_id = $2 LIMIT 1`,
+      [String(key), buyerId]);
+    return rows[0] || null;
   }
 
   // POST /api/checkout {media_id|package_id|whole_event+event_id[+horse_id|rider_id], license_tier?, email?, idempotency_key?, sponsor_logo_ids?[]}
@@ -1213,7 +1622,7 @@ module.exports = function mountMediaRoutes(app) {
         `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label,
             t.applies_to AS tier_applies
           FROM media m LEFT JOIN license_tiers t ON t.id = $2
-          WHERE m.id = $1 AND m.status = 'published'`,
+          WHERE m.id = $1 AND m.status = 'published' AND m.source = 'studio'`,
         [media_id, tierId]
       );
       if (!m.rows.length) return res.status(404).json({ error: 'photo not found or not for sale' });
@@ -1315,7 +1724,7 @@ module.exports = function mountMediaRoutes(app) {
       }
       await pool.query(
         `INSERT INTO package_items (package_id, media_id)
-          SELECT $1, m.id FROM media m WHERE m.status = 'published' AND m.event_id = $2
+          SELECT $1, m.id FROM media m WHERE m.status = 'published' AND m.source = 'studio' AND m.event_id = $2
             ${wHorse ? 'AND m.horse_id = $3' : wRider ? 'AND m.rider_id = $3' : ''}
           ON CONFLICT DO NOTHING`,
         subjId ? [pkRow.id, snap.event.id, subjId] : [pkRow.id, snap.event.id]
@@ -1514,6 +1923,16 @@ module.exports = function mountMediaRoutes(app) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        if (idempotency_key) {
+          const prior = await lockIdempotency(client, buyer.id, idempotency_key);
+          if (prior) {
+            await client.query('ROLLBACK');
+            if (prior.status === 'paid') {
+              return res.status(409).json({ error: 'already paid — download it from My photos instead of paying again', paid: true });
+            }
+            return res.status(200).json({ data: { purchase_id: prior.id, checkout_url: null, reused: true, pending: true } });
+          }
+        }
         const locked = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [buyer.id]);
         if (!locked.rows.length) {
           await client.query('ROLLBACK');
@@ -1549,8 +1968,20 @@ module.exports = function mountMediaRoutes(app) {
       }
       stripeAmount = amount - useBalance;
     } else {
+    const client = await pool.connect();
     try {
-      const { rows } = await pool.query(
+      await client.query('BEGIN');
+      if (idempotency_key) {
+        const prior = await lockIdempotency(client, buyer.id, idempotency_key);
+        if (prior) {
+          await client.query('ROLLBACK');
+          if (prior.status === 'paid') {
+            return res.status(409).json({ error: 'already paid — download it from My photos instead of paying again', paid: true });
+          }
+          return res.status(200).json({ data: { purchase_id: prior.id, checkout_url: null, reused: true, pending: true } });
+        }
+      }
+      const { rows } = await client.query(
         `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig, design_class, design_subject, design_result)
           VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, 0, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
         [mediaId, packageId, buyerEmail, buyer.id, tierId, amount, idempotency_key || null, amount, originalCents, budgetId, logoTemplate, logoTheme, logoVariant, logoSig(logoTemplate, logoTheme, logoVariant, logoIds, designTags), designTags?.class_name || null, designTags?.subject || null, designTags?.result || null]
@@ -1559,22 +1990,17 @@ module.exports = function mountMediaRoutes(app) {
       if (logoIds.length) {
         await linkPurchaseLogos(purchaseId, logoIds, resolveLogoPositions(req.body?.sponsor_logo_positions, logoIds));
       }
+      await client.query('COMMIT');
     } catch (e) {
-      // SECURITY: concurrent duplicate checkouts both pass the owned-guard;
-      // the partial unique index (075) fails the second commit instead.
+      await client.query('ROLLBACK').catch(() => {});
+      // Concurrent duplicate checkouts both pass the owned-guard; the paid
+      // unique index fails the second commit instead.
       if (e.code === '23505' && e.constraint === 'purchases_paid_media_version') {
         return res.status(409).json({ error: 'you already own this photo — download it from My photos' });
       }
-      if (e.code === '23505' && idempotency_key) {
-        const prior = await pool.query(
-          'SELECT id, stripe_session_id FROM purchases WHERE idempotency_key = $1 AND buyer_user_id = $2',
-          [String(idempotency_key), buyer.id]
-        );
-        if (prior.rows.length) {
-          return res.status(200).json({ data: { purchase_id: prior.rows[0].id, checkout_url: null, reused: true, pending: true } });
-        }
-      }
       throw e;
+    } finally {
+      client.release();
     }
     }
     // Fully covered by balance: no Stripe session — complete inline.
@@ -1626,7 +2052,7 @@ module.exports = function mountMediaRoutes(app) {
         `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label,
             t.applies_to AS tier_applies
            FROM media m LEFT JOIN license_tiers t ON t.id = $2
-          WHERE m.id = $1 AND m.status = 'published'`,
+          WHERE m.id = $1 AND m.status = 'published' AND m.source = 'studio'`,
         [media_id, tierId]
       );
       if (!m.rows.length) fail(idx, 404, 'photo not found or not for sale');
@@ -1938,6 +2364,16 @@ module.exports = function mountMediaRoutes(app) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
+        if (idempotency_key) {
+          const prior = await lockIdempotency(client, buyer.id, idempotency_key);
+          if (prior) {
+            await client.query('ROLLBACK');
+            if (prior.status === 'paid') {
+              return res.status(409).json({ error: 'this cart was already paid — check My photos instead of paying again', paid: true });
+            }
+            return res.status(409).json({ error: 'a checkout for this cart is already in progress — finish it or wait a minute and retry', pending: true });
+          }
+        }
         const locked = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [buyer.id]);
         if (!locked.rows.length) {
           await client.query('ROLLBACK');
@@ -1993,9 +2429,22 @@ module.exports = function mountMediaRoutes(app) {
         client.release();
       }
     } else {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      if (idempotency_key) {
+        const prior = await lockIdempotency(client, buyer.id, idempotency_key);
+        if (prior) {
+          await client.query('ROLLBACK');
+          if (prior.status === 'paid') {
+            return res.status(409).json({ error: 'this cart was already paid — check My photos instead of paying again', paid: true });
+          }
+          return res.status(409).json({ error: 'a checkout for this cart is already in progress — finish it or wait a minute and retry', pending: true });
+        }
+      }
     for (const p of priced) {
       try {
-        const { rows } = await pool.query(
+        const { rows } = await client.query(
           `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig, design_class, design_subject, design_result)
             VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, 0, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
           [p.mediaId, p.packageId, buyerEmail, buyer.id, p.tierId, p.amount, idempotency_key ? String(idempotency_key) : null, p.amount, p.originalCents, p.budgetId, p.logoTemplate, p.logoTheme, p.logoVariant || null, logoSig(p.logoTemplate, p.logoTheme, p.logoVariant, p.logoIds, p.designTags), p.designTags?.class_name || null, p.designTags?.subject || null, p.designTags?.result || null]
@@ -2003,7 +2452,7 @@ module.exports = function mountMediaRoutes(app) {
         ids.push(rows[0].id);
         if (Array.isArray(p.logoIds) && p.logoIds.length) {
           for (let i = 0; i < p.logoIds.length; i++) {
-            await pool.query(
+            await client.query(
               `INSERT INTO purchase_sponsor_logos (purchase_id, sponsor_logo_id, position)
                VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
               [rows[0].id, p.logoIds[i], (p.logoPositions && p.logoPositions[p.logoIds[i]]) || LOGO_POSITIONS[i % LOGO_POSITIONS.length]]
@@ -2017,6 +2466,13 @@ module.exports = function mountMediaRoutes(app) {
         }
         throw e;
       }
+    }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
     }
     }
     const total = priced.reduce((s, p) => s + p.amount, 0);
@@ -2150,6 +2606,16 @@ module.exports = function mountMediaRoutes(app) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      if (idem) {
+        const prior = await lockIdempotency(client, buyerAuth.id, idem);
+        if (prior) {
+          await client.query('ROLLBACK');
+          if (prior.status === 'paid') {
+            return res.status(409).json({ error: 'this cart was already paid — check My photos instead of paying again', paid: true });
+          }
+          return res.status(409).json({ error: 'a checkout for this cart is already in progress — finish it or wait a minute and retry', pending: true });
+        }
+      }
       const locked = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [buyerAuth.id]);
       if (!locked.rows.length) {
         await client.query('ROLLBACK');
@@ -2205,6 +2671,10 @@ module.exports = function mountMediaRoutes(app) {
       if (e.code === '23505' && e.constraint === 'purchases_paid_media_version') {
         const bad = new Error('you already own this photo — download it from My photos');
         bad.status = 409; throw bad;
+      }
+      // Parallel same-key combined checkout: same 409 as the pre-check.
+      if (e.code === '23505' && e.constraint === 'purchases_idempotency_key' && idem) {
+        return res.status(409).json({ error: 'a checkout for this cart is already in progress — finish it or wait a minute and retry', pending: true });
       }
       throw e;
     } finally {
@@ -2997,7 +3467,7 @@ module.exports = function mountMediaRoutes(app) {
     const { rows } = await pool.query(
       `SELECT e.*,
         (SELECT COUNT(*)::INT FROM classes c WHERE c.event_id = e.id) AS class_count,
-        (SELECT COUNT(*)::INT FROM media m WHERE m.event_id = e.id AND m.status = 'published') AS photo_count,
+        (SELECT COUNT(*)::INT FROM media m WHERE m.event_id = e.id AND m.status = 'published' AND m.source = 'studio') AS photo_count,
         COALESCE((SELECT SUM(pu.amount_cents) FROM purchases pu WHERE pu.status = 'paid' AND (
           pu.media_id IN (SELECT id FROM media WHERE event_id = e.id)
           OR pu.package_id IN (SELECT id FROM packages WHERE event_id = e.id)
@@ -3072,6 +3542,17 @@ module.exports = function mountMediaRoutes(app) {
       `UPDATE events SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
     audit(req, 'event.edit', 'event', req.params.id, { fields: sets.length });
     res.json({ data: rows[0] });
+  }));
+
+  app.post('/api/organizer/events/:id/upload-code', needRole('ORGANIZER'), asyncH(async (req, res) => {
+    const found = await orgEventOr403(pool, req, res, req.params.id);
+    if (!found) return;
+    if (found.event.upload_code) return res.json({ data: { upload_code: found.event.upload_code } });
+    const code = await mintUploadCode(pool, found.event);
+    const { rows } = await pool.query(
+      'UPDATE events SET upload_code = $2 WHERE id = $1 RETURNING upload_code', [found.event.id, code]);
+    audit(req, 'event.upload-code', 'event', found.event.id, { upload_code: code });
+    res.status(201).json({ data: { upload_code: rows[0].upload_code } });
   }));
 
   // Organizer-owned event or 403/404 (same rule as the organizer event PATCH).
@@ -3620,13 +4101,13 @@ module.exports = function mountMediaRoutes(app) {
       ? await pool.query(
         `SELECT m.id, COALESCE(t.price_cents, 0) AS price_cents FROM media m
           LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
-          WHERE m.status = 'published' AND m.event_id = $1 AND m.${who.col} = $2`,
+          WHERE m.status = 'published' AND m.source = 'studio' AND m.event_id = $1 AND m.${who.col} = $2`,
         [event_id, who.id]
       )
       : await pool.query(
         `SELECT m.id, COALESCE(t.price_cents, 0) AS price_cents FROM media m
           LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
-          WHERE m.status = 'published' AND m.event_id = $1`,
+          WHERE m.status = 'published' AND m.source = 'studio' AND m.event_id = $1`,
         [event_id]
       );
     if (!items.rows.length) return res.status(409).json({ error: who ? 'no published photos for this event × subject' : 'no published photos for this event' });
@@ -4330,9 +4811,15 @@ module.exports = function mountMediaRoutes(app) {
     }
     // Idempotent resume: paid → report paid; still-pending → reuse the
     // bundle and mint (Stripe-idempotent `cr-` key recovers the session).
+    // Same-key parallel requests are serialized by an advisory lock — the
+    // idempotency unique index cannot dedupe NULL media/package pairs.
     let bundleId, purchaseId;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      if (b.idempotency_key) await lockIdempotency(client, buyer.id, b.idempotency_key);
     if (b.idempotency_key) {
-      const prior = await pool.query(
+      const prior = await client.query(
         `SELECT cb.id AS bundle_id, pu.id AS purchase_id, pu.status FROM credit_bundles cb
           JOIN purchases pu ON pu.id = cb.purchase_id
           WHERE pu.idempotency_key = $1 AND pu.buyer_user_id = $2`,
@@ -4340,6 +4827,8 @@ module.exports = function mountMediaRoutes(app) {
       ).catch(() => ({ rows: [] }));
       if (prior.rows.length) {
         if (prior.rows[0].status === 'paid') {
+          await client.query('ROLLBACK').catch(() => {});
+          client.release();
           return res.status(200).json({ data: { bundle_id: prior.rows[0].bundle_id, purchase_id: prior.rows[0].purchase_id, paid: true, reused: true } });
         }
         bundleId = prior.rows[0].bundle_id;
@@ -4347,7 +4836,7 @@ module.exports = function mountMediaRoutes(app) {
       }
     }
     if (!purchaseId) {
-      const { rows: brows } = await pool.query(
+      const { rows: brows } = await client.query(
         `INSERT INTO credit_bundles
           (pack_id, event_id, ${subjectCol}, buyer_user_id, buyer_email, slots_total, status)
           VALUES ($1, $2, $3, $4, $5, $6, 'awaiting_payment') RETURNING id`,
@@ -4355,17 +4844,23 @@ module.exports = function mountMediaRoutes(app) {
       );
       bundleId = brows[0].id;
       try {
-        const { rows } = await pool.query(
+        const { rows } = await client.query(
           `INSERT INTO purchases (credit_bundle_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key)
             VALUES ($1, $2, $3, NULL, $4, 'NZD', 'pending', $5) RETURNING id`,
           [bundleId, buyerEmail, buyer.id, amount, b.idempotency_key || null]
         );
         purchaseId = rows[0].id;
     } catch (e) {
-        await pool.query(`UPDATE credit_bundles SET status = 'cancelled' WHERE id = $1`, [bundleId]);
         throw e;
       }
-      await pool.query(`UPDATE credit_bundles SET purchase_id = $2 WHERE id = $1`, [bundleId, purchaseId]);
+      await client.query(`UPDATE credit_bundles SET purchase_id = $2 WHERE id = $1`, [bundleId, purchaseId]);
+    }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
     }
     const label = `${p.slots}-photo credits`.slice(0, 120);
     const session = await stripe().checkout.sessions.create({
@@ -4733,8 +5228,20 @@ module.exports = function mountMediaRoutes(app) {
       return res.status(401).json({ error: 'admin login required' });
     }
     const tasks = Array.isArray(req.body?.tasks) && req.body.tasks.length
-      ? req.body.tasks : ['retention', 'nudges'];
+      ? req.body.tasks : ['retention', 'intakes', 'nudges'];
     const out = {};
+    if (tasks.includes('intakes')) {
+      // Community intake hygiene: unverified emails older than 30 days will
+      // never verify — close them so the queue doesn't rot. Decided intakes
+      // (done/rejected, incl. consent records) are audit trail: never deleted.
+      const { rows } = await pool.query(
+        `UPDATE upload_intakes SET status = 'rejected', error = 'verification expired'
+          WHERE status = 'awaiting_verify' AND created_at < NOW() - INTERVAL '30 days'
+          RETURNING id`
+      );
+      audit(req, 'maint.intakes', 'upload_intakes', null, { expired: rows.length });
+      out.intakes = { expired: rows.length };
+    }
     if (tasks.includes('retention')) {
       const { rows } = await pool.query(
         `SELECT id, storage_key, preview_key, thumb_key FROM media
@@ -4902,4 +5409,7 @@ module.exports = function mountMediaRoutes(app) {
   }));
 };
 module.exports.watermarkSvg = watermarkSvg;
-module.exports.watermarkSvgLight = watermarkSvgLight;
+// watermarkSvgLight moved to lib/reelFinalize.js (shared with QR web
+// finalize); re-exported here so existing importers keep working.
+module.exports.buildUploadCodeBase = buildUploadCodeBase;
+module.exports.mintUploadCode = mintUploadCode;

@@ -11,6 +11,7 @@ const TABS = [
   ['/studio/reels', 'Pre-book orders', 'reels'],
   ['/studio/sales', 'Sales', 'sales'],
   ['/studio/pricing', 'Pricing', 'pricing'],
+  ['/studio/moments', 'Moments', 'moments', true], // adminOnly
   ['/studio/admin', 'Admin', 'admin', true], // adminOnly
 ];
 

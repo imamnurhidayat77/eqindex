@@ -11,7 +11,7 @@ const PANEL_H = 320;
 // placeholder, onRequestCustom(query), disabled.
 // loadOptions(query): remote search — when given, the list comes from the
 // loader (debounced) instead of local filtering.
-export default function SearchSelect({ options, value, onChange, placeholder = 'Select…', onRequestCustom, disabled = false, loadOptions = null, selectedOption = null, clearable = true, emptyHint = null, label = null, labelId = null }) {
+export default function SearchSelect({ options, value, onChange, placeholder = 'Select…', onRequestCustom, disabled = false, loadOptions = null, selectedOption = null, clearable = true, emptyHint = null, label = null, labelId = null, panelClassName = '' }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
   const [q, setQ] = useState('');
@@ -131,7 +131,7 @@ export default function SearchSelect({ options, value, onChange, placeholder = '
         </button>
       )}
       {open && !disabled && pos && createPortal(
-        <div ref={panelRef} className="ss-panel" role="listbox" id={listId} aria-label={placeholder}
+        <div ref={panelRef} className={`ss-panel${panelClassName ? ` ${panelClassName}` : ''}`} role="listbox" id={listId} aria-label={placeholder}
           style={{ position: 'fixed', zIndex: 90, left: pos.left ?? undefined, width: pos.width, top: pos.top, bottom: pos.bottom }}>
           <div className="ss-search">
             <Icon name="search" size={15} />

@@ -70,18 +70,22 @@ async function probeDims(inputStream) {
 // NOTE: MP4 cannot stream to a pipe (non-seekable muxer), so we render to a
 // temp file (a few MB at 640px) and read it back. /tmp pressure is bounded:
 // one small file per finalize job at a time.
-async function renderPreview(inputStream, watermarkPngPath) {
+async function renderPreview(inputStream, watermarkPngPath = null) {
   const os = require('node:os');
   const path = require('node:path');
   const fs = require('node:fs');
   const outPath = path.join(os.tmpdir(), `eqindex-pv-${process.pid}-${Date.now()}.mp4`);
-  try {
-    const { stderr } = await runFfmpeg([
-      '-hide_banner', '-i', 'pipe:0', '-i', watermarkPngPath,
-      '-filter_complex',
+  // Community moments are free and never for sale: no watermark tile.
+  const overlayArgs = watermarkPngPath
+    ? ['-i', watermarkPngPath, '-filter_complex',
       `[0:v]scale=${PREVIEW_WIDTH}:-2:flags=lanczos,format=yuv420p[bg];` +
       `[1:v]scale=${PREVIEW_WIDTH}:-2[wm];[bg][wm]overlay=0:0:format=auto[v]`,
-      '-map', '[v]', '-map', '0:a?',
+      '-map', '[v]']
+    : ['-vf', `scale=${PREVIEW_WIDTH}:-2:flags=lanczos,format=yuv420p`, '-map', '0:v'];
+  try {
+    const { stderr } = await runFfmpeg([
+      '-hide_banner', '-i', 'pipe:0', ...overlayArgs,
+      '-map', '0:a?',
       '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '30',
       '-c:a', 'aac', '-b:a', '64k',
       '-movflags', '+faststart', '-f', 'mp4', outPath,

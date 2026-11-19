@@ -528,12 +528,10 @@ module.exports = function mountUserRoutes(app) {
           const base = (process.env.APP_URL || '').replace(/\/$/, '');
           if (base) claimLink = `${base}/reset?token=${raw}`;
         }
-        await require('../lib/mailer').sendMail({
-          to: email,
-          subject: `${sponsor.name} gifted you ${slots} photo credits — ${scope}`,
-          text: `Hi there,\n\n${sponsor.name} gifted you ${slots} photo credits for ${scope}. Sign in with this email to unlock your winning photos — re-downloads stay free.${claimLink ? `\nSet a password to access them anytime: ${claimLink} (link expires in 1 hour — you can always request a new one at sign-in).` : ''}\n\nDidn't expect this? Ignore this email.`,
-          html: `<p>Hi there,</p><p><strong>${sponsor.name}</strong> gifted you <strong>${slots} photo credits</strong> for ${scope}. Sign in with this email to unlock your winning photos — re-downloads stay free.</p>${claimLink ? `<p><a href="${claimLink}">Set a password to access them anytime</a> (link expires in 1 hour).</p>` : ''}<p>Didn't expect this? Ignore this email.</p>`,
+        const t = require('../lib/emailTemplates').sponsorGift({
+          sponsor: sponsor.name, slots, scope, claimLink: claimLink || null,
         });
+        await require('../lib/mailer').sendMail({ to: email, subject: t.subject, text: t.text, html: t.html });
       } catch (e) { console.error('[gift] winner email failed:', e.message); }
       res.status(201).json({ data: { ...gift, bundle_id: bundle.id, slots, cost_cents: cost } });
     } catch (e) {

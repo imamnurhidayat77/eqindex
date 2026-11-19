@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { nzdc, studio } from '../../lib/studio';
 import { useAuthed } from '../../lib/use-authed';
 import { Icon, SiteFooter, SiteHeader } from '../../components/figma';
+import QrPosterModal from '../../components/QrPosterModal';
 
 import { useDocumentTitle } from '../../lib/use-document-title';
 
@@ -83,6 +84,8 @@ function EventsTab() {
   const [editing, setEditing] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [qr, setQr] = useState(null); // { event, code }
+  const [qrBusy, setQrBusy] = useState(false);
 
   const load = () => studio.get('/api/organizer/events').then(setRows).catch((e) => setMsg({ err: true, text: e.message }));
   useEffect(() => { load(); }, []);
@@ -111,6 +114,22 @@ function EventsTab() {
       setMsg({ text: 'Event updated.' });
     } catch (err) { setMsg({ err: true, text: err.message }); }
     setBusy(false);
+  }
+
+  // Venue QR: mints the event's upload code on first use (idempotent),
+  // then shows a printable poster code linking to /upload/<CODE>.
+  async function showQr(ev) {
+    if (qrBusy) return;
+    if (ev.upload_code) return setQr({ event: ev, code: ev.upload_code });
+    setQrBusy(true);
+    try {
+      const j = await studio.post(`/api/organizer/events/${ev.id}/upload-code`, {});
+      const code = j?.upload_code || j?.data?.upload_code;
+      if (!code) throw new Error('no code returned');
+      setRows((xs) => (xs || []).map((x) => (x.id === ev.id ? { ...x, upload_code: code } : x)));
+      setQr({ event: ev, code });
+    } catch (e2) { setMsg({ err: true, text: e2.message }); }
+    setQrBusy(false);
   }
 
   if (rows === null) return <p className="empty-note">Loading…</p>;
@@ -158,7 +177,11 @@ function EventsTab() {
                   <td style={{ fontSize: 12 }}>{(ev.date_start || '').slice(0, 10)} → {(ev.date_end || '').slice(0, 10)}</td>
                   <td>{ev.photo_count ?? '—'}</td>
                   <td>{ev.gross_cents != null ? nzdc(ev.gross_cents) : '—'}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button className="st-btn-ghost" style={{ minHeight: 36, marginRight: 6 }}
+                      onClick={() => showQr(ev)} disabled={qrBusy} title="Venue QR poster for spectator uploads">
+                      {qrBusy ? '…' : 'QR'}
+                    </button>
                     <button className="st-btn-ghost" style={{ minHeight: 36 }} onClick={() => setEditing(editing?.id === ev.id ? null : {
                       id: ev.id, name: ev.name || '', venue: ev.venue || '', region: ev.region || '',
                       date_start: (ev.date_start || '').slice(0, 10), date_end: (ev.date_end || '').slice(0, 10),
@@ -171,6 +194,7 @@ function EventsTab() {
           </table>
         </div>
       )}
+      {qr && <QrPosterModal qr={qr} onClose={() => setQr(null)} />}
       {editing && (
         <div className="st-card" style={{ padding: 18, marginTop: 16 }}>
           <form className="st-form" onSubmit={(e) => { e.preventDefault(); save(editing.id); }}>

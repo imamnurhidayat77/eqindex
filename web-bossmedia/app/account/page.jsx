@@ -275,7 +275,7 @@ function SocialAccounts() {
       {!rows.length ? (
         <p className="empty-note">Not connected yet — connect to post from BossMedia and see insights per photo.</p>
       ) : (
-        <ul style={{ listStyle: 'none', margin: '0 0 12px', padding: 0, display: 'grid', gap: 8 }}>
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 8 }}>
           {rows.map((a) => (
             <li key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1px solid #2a2a2a', borderRadius: 10, padding: '10px 12px' }}>
               <span style={{ fontSize: 13, fontWeight: 700 }}>{a.provider === 'ig' ? 'Instagram' : 'Facebook Page'}</span>
@@ -287,7 +287,7 @@ function SocialAccounts() {
           ))}
         </ul>
       )}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 14 }}>
         <button type="button" className="st-btn" disabled={busy === 'ig'} onClick={() => connect('ig')}>
           {busy === 'ig' ? 'Opening…' : 'Connect Instagram'}
         </button>

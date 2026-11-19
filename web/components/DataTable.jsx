@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Pagination } from './list-controls';
 import { TableEmpty } from './EmptyState';
+import { INP } from '../lib/tokens';
 
 // Generic client-side datatable: text filter + pagination around any table.
 // Props:
@@ -56,7 +57,7 @@ export default function DataTable({
         <div className="mb-3">
           <input
             value={q} onChange={(e) => setQ(e.target.value)} placeholder={placeholder}
-            className="w-full max-w-[320px] rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none"
+            className={`${INP} w-full max-w-[320px]`}
           />
         </div>
       )}

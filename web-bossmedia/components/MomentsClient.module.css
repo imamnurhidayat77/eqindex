@@ -1,0 +1,147 @@
+/* SearchSelect polish for the Moments review queue only. The dropdown panel
+   portals to document.body, so it cannot inherit an ancestor scope — instead
+   SearchSelect's panelClassName prop carries .panel onto the portal element
+   itself. globals.css stays frozen; nothing here touches other pages. */
+
+.panel {
+  border-color: #3a3a3a;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.panel :global(.ss-list) {
+  display: grid;
+  gap: 2px;
+}
+
+/* Hover + keyboard highlight share .hi: rounded pill, not a full-bleed slab. */
+.panel :global(.ss-opt) {
+  border: 0;
+  border-radius: 7px;
+  padding: 10px 12px;
+  transition: background-color 120ms ease-out;
+}
+.panel :global(.ss-opt.hi) {
+  background: #262626;
+}
+.panel :global(.ss-opt.hi .ss-opt-label) {
+  color: #fff;
+}
+
+/* Selected keeps its ✓ but trades the square left border for an inset bar. */
+.panel :global(.ss-opt.sel) {
+  border: 0;
+  box-shadow: inset 2px 0 0 #e3b341;
+}
+
+/* ---- Page rhythm + field voice (moments queue only) ----
+   Studio rhythm is 16–22px; this page used 10–12px inline gaps that left
+   the Event picker, intake headers and photo grids cramped. Labels follow
+   the studio voice (11px uppercase) so every text field on this page reads
+   the same; the native Reason select borrows the .ss-btn chrome. */
+.uploadCard {
+  margin-bottom: 20px;
+}
+
+.uploadBody {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.field > span {
+  color: #777;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+}
+
+.uploadFoot {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Bulk bar: SearchSelect buttons match the 46px ghost buttons beside them. */
+.scope :global(.st-filters .ss-btn) {
+  min-height: 46px;
+}
+
+.select {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 14px;
+  color: #fff;
+  background: #0b0b0b;
+  border: 1px solid #333;
+  outline: 0;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.select:focus-visible {
+  border-color: #e3b341;
+  outline: none;
+}
+
+.rejectFoot {
+  margin: 16px 0 0;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.intakeHead {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.scope input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: #e3b341;
+  cursor: pointer;
+}
+
+/* The file-chip list lives inside details.auth-card, whose generic
+   `.auth-card ul` article rule (18px indent) outranks `.st-files`.
+   Reset it here — grid gap already spaces the rows. */
+.scope ul:global(.st-files) {
+  margin: 16px 0 0;
+  padding: 0;
+}
+.scope ul:global(.st-files) > :global(li) {
+  margin: 0;
+}
+
+/* The closed button stays in the page tree, so the ancestor scope reaches it. */
+.scope :global(.ss-btn:focus-visible) {
+  border-color: #e3b341;
+  outline: none;
+}
+.scope :global(.ss-btn:hover) {
+  border-color: #555;
+}
+
+/* Replace the white halo blast with one gold ring (still visible for a11y). */
+.panel :global(.ss-search input:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+.panel :global(.ss-search:focus-within) {
+  border-bottom-color: #e3b341;
+}

@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../../lib/api';
-import { CARD, H1, H2, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
+import { CARD, H1, H2, INP, NUM, SUB, TABLE, TABLEWRAP, TD, TH } from '../../lib/tokens';
 import { Pagination } from '../../components/list-controls';
 import { TableEmpty } from '../../components/EmptyState';
 
@@ -111,7 +111,7 @@ export default function Standings() {
       <div className="mb-4 flex flex-wrap items-end gap-2.5 rounded-lg border border-line bg-card p-4">
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Horse or rider…"
-            className="rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 220 }} /></label>
+            className={`${INP} w-[220px]`} /></label>
       </div>
       )}
       {open !== null && (

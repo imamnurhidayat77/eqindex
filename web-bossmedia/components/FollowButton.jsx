@@ -3,10 +3,11 @@ import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { API } from '../lib/api';
 
-// Follow a horse or rider: get notified when their new photos publish
+// Follow a horse, rider, or event: get notified when new photos publish
 // (the publish hook already notifies watchlist_items). Members only.
 import { Icon } from './figma';
 import { toast } from './Toaster';
+import f from './FollowButton.module.css';
 
 export default function FollowButton({ kind, id, name, icon = false }) {
   const router = useRouter();
@@ -64,11 +65,17 @@ export default function FollowButton({ kind, id, name, icon = false }) {
       </button>
     );
   }
-  const short = (name || '').split(' ')[0] || (kind === 'horse' ? 'horse' : 'rider');
+  const short = (name || '').split(' ')[0] || (kind === 'horse' ? 'horse' : kind === 'event' ? 'event' : 'rider');
   return (
     <button type="button" onClick={toggle} disabled={checking} aria-pressed={!!watchId}
-      className="text-link" title={watchId ? `Unfollow ${name}` : `Follow ${name} — get notified of new photos`}>
-      {checking ? '…' : watchId ? '✓ Following' : `Follow ${short}`}
+      className={`${f.pill}${watchId ? ` ${f.on}` : ''}`}
+      title={watchId ? `Unfollow ${name}` : `Follow ${name} — get notified of new photos`}>
+      {checking ? '…' : (<>
+        <Icon name={watchId ? 'bell-fill' : 'bell'} size={15} />
+        {watchId
+          ? (<><span className={f.baseLabel}>Following</span><span className={f.hoverLabel}>Unfollow</span></>)
+          : `Follow ${short}`}
+      </>)}
     </button>
   );
 }

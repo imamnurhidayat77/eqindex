@@ -1,0 +1,193 @@
+/* Venue QR upload — mobile-first, scoped to these two pages. Brand tokens
+   mirror app globals (ink/paper) without touching globals.css (frozen). */
+.page {
+  min-height: 100dvh;
+  background: #101010;
+  color: #f7f7f5;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.card {
+  width: 100%;
+  max-width: 520px;
+  padding: 28px 20px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card h1 {
+  font-size: 28px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0;
+  overflow-wrap: break-word;
+}
+
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #b9b9b4;
+  margin: 0;
+}
+
+.lede {
+  font-size: 15px;
+  line-height: 1.6;
+  color: #d8d8d3;
+  margin: 0;
+}
+
+.meta {
+  font-size: 13px;
+  color: #b9b9b4;
+  margin: 0;
+}
+
+.side { display: none; }
+
+.stack { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field span {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e8e8e3;
+}
+.field input {
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid #3a3a3a;
+  background: #1c1c1c;
+  color: #f7f7f5;
+  padding: 12px 14px;
+  font-size: 16px; /* 16px+ stops iOS auto-zoom on focus */
+  width: 100%;
+}
+.field input::placeholder { color: #8a8a85; }
+
+.twoCol { display: grid; grid-template-columns: 1fr; gap: 14px; }
+
+.pickRow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pick {
+  border: 1px dashed #4a4a4a;
+  border-radius: 14px;
+  background: #1c1c1c;
+  color: #f7f7f5;
+  padding: 14px 10px;
+  min-height: 76px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 160ms ease-out, transform 160ms ease-out;
+}
+.pick strong { font-size: 14px; }
+.pick small { font-size: 11px; color: #b9b9b4; text-align: center; }
+.pick:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) {
+  .pick:hover { border-color: #8a8a85; }
+}
+
+.hidden { display: none; }
+
+.fileList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  color: #d8d8d3;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fileList span { color: #8a8a85; }
+
+.consent {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #d8d8d3;
+}
+.consent input { margin-top: 4px; width: 20px; height: 20px; flex-shrink: 0; }
+
+.primary {
+  min-height: 52px;
+  border: 0;
+  border-radius: 14px;
+  background: #f7f7f5;
+  color: #101010;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 160ms ease-out, opacity 160ms ease-out;
+}
+.primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.primary:not(:disabled):active { transform: scale(0.98); }
+
+.primaryLink {
+  display: inline-block;
+  min-height: 48px;
+  line-height: 48px;
+  padding: 0 22px;
+  border-radius: 14px;
+  background: #f7f7f5;
+  color: #101010;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.error {
+  background: #3a1d1d;
+  border: 1px solid #7a3535;
+  color: #f3c1c1;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin: 0;
+}
+
+.phase {
+  font-size: 14px;
+  color: #f7f7f5;
+  margin: 0;
+}
+
+.rejected {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  color: #e0a3a3;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fine { font-size: 13px; color: #b9b9b4; margin: 0; }
+.fine a { color: #f7f7f5; }
+
+@media (min-width: 900px) {
+  .page { align-items: center; padding: 40px 20px; }
+  .card {
+    border: 1px solid #2c2c2c;
+    border-radius: 20px;
+    background: #161616;
+    padding: 36px 32px;
+  }
+  .card h1 { font-size: 34px; }
+  .twoCol { grid-template-columns: 1fr 1fr; }
+  .side { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pick, .primary { transition: none; }
+}

@@ -30,6 +30,9 @@ export default function LibraryClient({ events, initial }) {
 
   const load = useCallback(() => {
     const p = new URLSearchParams({ limit: '200' });
+    // Photographer's own shop assets only — community moments live in
+    // Studio → Moments, never here (P3 source gate, enforced client-side).
+    p.set('source', 'studio');
     if (status) p.set('status', status);
     if (eventId) p.set('event_id', eventId);
     if (kind) p.set('kind', kind);

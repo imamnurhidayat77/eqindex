@@ -1205,7 +1205,7 @@ module.exports = function mountAdminRoutes(app) {
     .toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
   const HORSE_FIELDS = ['name', 'breed', 'gender', 'sire', 'dam', 'damsire', 'breeder', 'year_of_birth', 'color', 'height', 'country', 'image_url', 'visibility', 'photo_hidden'];
   const RIDER_FIELDS = ['name', 'region', 'series_category', 'nationality', 'bio', 'image_url', 'first_name', 'last_name', 'visibility', 'photo_hidden'];
-  const EVENT_FIELDS = ['name', 'venue', 'region', 'date_start', 'date_end', 'arena_type', 'event_type', 'status', 'description', 'image_url', 'is_active', 'tier', 'event_kind', 'prebook_open'];
+  const EVENT_FIELDS = ['name', 'venue', 'region', 'date_start', 'date_end', 'arena_type', 'event_type', 'status', 'description', 'image_url', 'is_active', 'tier', 'event_kind', 'prebook_open', 'upload_code'];
 
   function patcher(table, fields, label) {
     return asyncH(async (req, res) => {
@@ -1237,6 +1237,14 @@ module.exports = function mountAdminRoutes(app) {
             const m = typeof v === 'string' && /^(\d{4}-\d{2}-\d{2})/.exec(v);
             if (!m) return res.status(400).json({ error: `${f} must be YYYY-MM-DD` });
             v = m[1];
+          }
+          if (f === 'upload_code' && v !== null) {
+            // QR/email upload code: short, uppercase, always carries a digit
+            // so it routes on both community doors.
+            v = String(v).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+            if (v && !/^(?=.*[0-9])[A-Z0-9]{4,12}$/.test(v)) {
+              return res.status(400).json({ error: 'upload_code must be 4–12 letters/digits with at least one digit' });
+            }
           }
           vals.push(v); sets.push(`${f} = $${vals.length}`);
         }
@@ -1581,6 +1589,20 @@ module.exports = function mountAdminRoutes(app) {
       [req.params.id, organizer_id || null]);
     audit(req, 'event.link_organizer', 'event', req.params.id, { organizer_id: organizer_id || null });
     res.json({ data: rows[0] });
+  }));
+
+  // Mint a venue-QR upload code for any event (idempotent — an event that
+  // already has one keeps it). Same minter the organizer self-serve uses.
+  app.post('/admin/events/:id/upload-code', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { mintUploadCode } = require('./media.js');
+    const ev = await pool.query('SELECT * FROM events WHERE id = $1', [req.params.id]);
+    if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
+    if (ev.rows[0].upload_code) return res.json({ data: { upload_code: ev.rows[0].upload_code } });
+    const code = await mintUploadCode(pool, ev.rows[0]);
+    const { rows } = await pool.query(
+      'UPDATE events SET upload_code = $2 WHERE id = $1 RETURNING upload_code', [req.params.id, code]);
+    audit(req, 'event.upload-code', 'event', req.params.id, { upload_code: code });
+    res.status(201).json({ data: { upload_code: rows[0].upload_code } });
   }));
 
   // ---- Seasons master (events.season FK lands here — new seasons must

@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { API } from '../lib/api';
-import { H1, badge, BADGE } from '../lib/tokens';
+import { H1, INP, badge, BADGE } from '../lib/tokens';
 import { Pagination } from './list-controls';
 import { EmptyState } from './EmptyState';
 
@@ -218,7 +218,7 @@ export default function EventViews() {
         <input value={q} onChange={(e) => { setQ(e.target.value); resetPage(); }}
           placeholder="Search events, venues, regions…"
           aria-label="Search events"
-          className="w-full min-w-[220px] rounded-md border border-line bg-ink px-3.5 py-2.5 text-[14px] text-white placeholder:text-faint focus:border-gold/60 focus:outline-none" />
+          className={`${INP} w-full min-w-[220px]`} />
       </div>
 
       {mode === 'calendar' ? (

@@ -11,6 +11,7 @@ export default function PrivacyPage() {
         <p><b>Photo opt-out.</b> Riders (or parents/guardians) can ask for a rider&apos;s or horse&apos;s photos to be hidden from public galleries. Hidden photos stay purchasable via direct link.</p>
         <p><b>Takedown.</b> Anyone logged in can request takedown from the photo&apos;s own page. We review within <b>48 hours</b>; valid requests are archived. Buyers keep files they already paid for.</p>
         <p><b>Retention.</b> Unpublished drafts are deleted after 90 days. Withdrawing consent always works — including for previously published photos.</p>
+        <p><b>Community moments.</b> Photos emailed in by spectators are verified (one-tap link), reviewed by our team, and only then published — free to view, never for sale. We keep who sent what and when as our review record. The same opt-out, takedown (48 hours), and 90-day draft rules apply.</p>
       </div>
     </PageShell>
   );

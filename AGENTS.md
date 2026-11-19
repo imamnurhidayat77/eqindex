@@ -36,6 +36,11 @@
   wajib diverifikasi visual via Playwright (snapshot + screenshot/take_screenshot
   halaman yang diubah, dalam kondisi login maupun logout bila relevan)
   SEBELUM bilang "beres". Jangan pernah klaim tampilan benar tanpa melihatnya.
+- Skill `emil-design-eng` WAJIB dipakai sebelum membuat/mengubah UI apa pun:
+  load via skill tool dulu, pakai format review tabel Before/After/Why,
+  patuhi motion rules (<300ms, tanpa `transition: all`, tanpa `scale(0)`,
+  tanpa `ease-in` untuk UI), hormati `prefers-reduced-motion`, dan JANGAN
+  sentuh `globals.css` (frozen) — polish scoped per komponen via CSS module.
 
 ## Security (WAJIB — tidak bisa ditawar)
 

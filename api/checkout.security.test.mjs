@@ -88,25 +88,69 @@ test('batch idempotency: same key twice pays once', async () => {
   assert.ok(second.json.pending || second.json.paid, 'expected pending/paid flag');
 });
 
-test('webhook amount-mismatch guard', { skip: !process.env.STRIPE_WEBHOOK_SECRET }, async () => {
-  const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-  const payload = JSON.stringify({
-    id: 'evt_sectest', object: 'event', type: 'checkout.session.completed',
-    data: { object: { id: 'cs_sectest', object: 'checkout.session', payment_status: 'paid', amount_total: 1, customer_email: EMAIL, metadata: { purchase_ids: JSON.stringify(['00000000-0000-0000-0000-000000000000']) } } },
+test('guest checkout is intentionally cross-origin capable (no session minted)', async () => {
+  // Guest checkout mints no session (see checkoutBuyer), so csrfGuard skips
+  // it by design — a foreign Origin creating a PENDING guest checkout is
+  // expected, not an attack. The proof: no eq_session cookie is set.
+  const list = await (await fetch(`${BASE}/photos?limit=5`)).json().catch(() => ({}));
+  const photo = (list.data || []).find((x) => x.id);
+  assert.ok(photo, 'need at least one public photo in dev DB');
+  const res = await fetch(`${BASE}/api/checkout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' },
+    body: JSON.stringify({ media_id: photo.id, email: `guestx+${stamp}@example.com`, idempotency_key: `guestx-${stamp}` }),
   });
-  const sig = stripe.webhooks.generateTestHeaderString({ payload, secret: process.env.STRIPE_WEBHOOK_SECRET });
-  const res = await fetch(`${BASE}/api/stripe/webhook`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': sig }, body: payload,
-  });
-  assert.equal(res.status, 200);
-  const j = await res.json();
-  assert.equal(j.received, true);
-  // Bogus purchase id: nothing must flip to paid.
-  const { rows } = await pool.query(`SELECT COUNT(*)::INT AS n FROM purchases WHERE buyer_user_id = $1 AND status = 'paid' AND amount_cents = 1`, [userId]);
-  assert.equal(rows[0].n, 0);
+  assert.ok([201, 409].includes(res.status), `unexpected ${res.status}`);
+  assert.ok(!/eq_session=/.test(res.headers.get('set-cookie') || ''), 'guest checkout must not mint a session cookie');
+  const j = await res.json().catch(() => ({}));
+  if (j.data?.purchase_id) {
+    await pool.query(`DELETE FROM purchases WHERE id = $1`, [j.data.purchase_id]).catch(() => {});
+  }
+});
+
+test('webhook amount-mismatch guard', async () => {
+  // Self-contained: if the running API has no webhook secret, boot a
+  // throwaway instance on an ephemeral port with a generated one (same DB).
+  let target = BASE;
+  let secret = process.env.STRIPE_WEBHOOK_SECRET;
+  let extra = null;
+  const probe = await fetch(`${BASE}/api/stripe/webhook`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+  }).catch(() => null);
+  if (!secret || !probe || probe.status === 500) {
+    secret = require('crypto').randomBytes(32).toString('hex');
+    process.env.STRIPE_WEBHOOK_SECRET = secret;
+    const { createApp } = require('./src/app.js');
+    extra = await new Promise((resolve) => {
+      const s = createApp().listen(0, '127.0.0.1', () => resolve(s));
+    });
+    target = `http://127.0.0.1:${extra.address().port}`;
+  }
+  try {
+    const stripe = require('stripe')('sk_test_dummy');
+    const payload = JSON.stringify({
+      id: 'evt_sectest', object: 'event', type: 'checkout.session.completed',
+      data: { object: { id: 'cs_sectest', object: 'checkout.session', payment_status: 'paid', amount_total: 1, customer_email: EMAIL, metadata: { purchase_ids: JSON.stringify(['00000000-0000-0000-0000-000000000000']) } } },
+    });
+    const sig = stripe.webhooks.generateTestHeaderString({ payload, secret });
+    const res = await fetch(`${target}/api/stripe/webhook`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': sig }, body: payload,
+    });
+    assert.equal(res.status, 200);
+    const j = await res.json();
+    assert.equal(j.received, true);
+    // Bogus purchase id: nothing must flip to paid.
+    const { rows } = await pool.query(`SELECT COUNT(*)::INT AS n FROM purchases WHERE buyer_user_id = $1 AND status = 'paid' AND amount_cents = 1`, [userId]);
+    assert.equal(rows[0].n, 0);
+  } finally {
+    if (extra) await new Promise((resolve) => extra.close(resolve));
+  }
 });
 
 test('cleanup: remove test purchases', async () => {
   await pool.query(`DELETE FROM purchases WHERE buyer_user_id = $1 AND idempotency_key = $2`, [userId, IDEM]);
+  await pool.query(`DELETE FROM purchases WHERE buyer_email = $1`, [`guestx+${stamp}@example.com`]);
+  // Dev-only: reset throttle counters this file burned so reruns are stable.
+  await pool.query(`DELETE FROM rate_limits WHERE bucket IN ('checkout')`).catch(() => {});
   await pool.end();
 });

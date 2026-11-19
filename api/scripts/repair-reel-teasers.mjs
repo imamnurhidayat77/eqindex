@@ -20,7 +20,7 @@ const { Pool } = pg;
 const DRY = process.argv.includes('--dry');
 const onlyId = (process.argv.find((a) => a.startsWith('--id=')) || '').slice(5) || null;
 
-const { watermarkSvgLight } = require('../src/routes/media.js');
+const { watermarkSvgLight } = require('../src/lib/reelFinalize.js');
 
 async function streamToBuffer(stream) {
   const chunks = [];

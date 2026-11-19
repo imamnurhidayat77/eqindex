@@ -66,9 +66,13 @@ export function SiteHeader({ transparent = false }) {
   // invisible. The session check below swaps in the avatar when logged in.
   const [me, setMe] = useState(null);
   const [acctOpen, setAcctOpen] = useState(false);
+  // My Studio tetap untuk PHOTOGRAPHER + ADMIN (ada tab khusus admin di
+  // dalamnya). My events murni ORGANIZER, Sponsor dashboard murni SPONSOR —
+  // ADMIN tidak diberi pintasan menu ke dua itu (buka via URL tetap ikut
+  // guard halaman masing-masing).
   const studio = !!me && (me.role === 'PHOTOGRAPHER' || me.role === 'ADMIN');
-  const organizer = !!me && (me.role === 'ORGANIZER' || me.role === 'ADMIN');
-  const sponsor = !!me && (me.role === 'SPONSOR' || me.role === 'ADMIN');
+  const organizer = !!me && me.role === 'ORGANIZER';
+  const sponsor = !!me && me.role === 'SPONSOR';
   const active = pathname.startsWith('/events') ? 'events'
     : pathname === '/pre-book' ? 'pre-book'
     : pathname === '/reels' ? 'reels'
