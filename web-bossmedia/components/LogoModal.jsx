@@ -1,4 +1,6 @@
 'use client';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { API } from '../lib/api';
@@ -22,7 +24,7 @@ const toSponsors = (list) => (list || []).map((l) => ({
 // Browsing tidak mengubah halaman sampai Save diklik. Portal ke body agar
 // selalu di atas navbar sticky (globals.css frozen).
 const LOGO_POSITIONS = ['bottom-left', 'bottom-right', 'top-right', 'top-left'];
-export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {}, template, setTemplate, theme, setTheme, photo, meta, mediaId, onSave, ownedDesigns = [], tags = null, discountCents = {}, onOwnLogos, onOwnRemoved }) {
+export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {}, template, setTemplate, theme, setTheme, photo, meta, mediaId, onSave, ownedDesigns = [], tags = null, discountCents = {}, onOwnLogos, onOwnRemoved, signedIn = false }) {
   const rootRef = useRef(null);
   const toast = useToast();
   // Draft logo + tag: diisi dari desain tersimpan saat modal dibuka,
@@ -32,6 +34,10 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
   // Sponsor tabs: event logos (discount-backed, shared) vs the buyer's own
   // uploads (saved to their account, visible only to them).
   const [spTab, setSpTab] = useState('event');
+  const pathname = usePathname();
+  // Uploading a personal sponsor needs an account to attach it to —
+  // guests get a sign-in prompt instead of the upload form.
+  const mineLocked = spTab === 'mine' && !signedIn;
   // Aspek foto asli (dari probe preview) — thumbnail ikut rasio yang sama.
   const [photoAr, setPhotoAr] = useState(null);
   // Draft: browsing template tidak mengubah halaman sampai Save diklik.
@@ -263,7 +269,7 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
                 ))}
               </div>
               <div role="group" aria-label="Pick sponsor logos" style={{ display: 'grid', gap: 8 }}>
-                {tabLogos.length === 0 && (
+                {tabLogos.length === 0 && !mineLocked && (
                   <p style={{ margin: 0, color: '#999', fontSize: 12, lineHeight: 1.6 }}>
                     {spTab === 'mine'
                       ? 'No saved sponsors yet — upload your first below. It stays on your account.'
@@ -297,6 +303,15 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
                 })}
               </div>
               {spTab === 'mine' && (
+                mineLocked ? (
+                  <div className="auth-card" style={{ marginTop: 8 }}>
+                    <p className="eyebrow">Members only</p>
+                    <p>Sign in to save your own sponsors — they stay on your account, invisible to other buyers.</p>
+                    <p className="btn-row">
+                      <Link href={`/login?next=${encodeURIComponent(pathname || '/')}`} className="btn-light">Sign in</Link>
+                    </p>
+                  </div>
+                ) :
                 showUpload ? (
                   <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
                   <label style={{ display: 'grid', gap: 6, color: '#999', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' }}>Brand name

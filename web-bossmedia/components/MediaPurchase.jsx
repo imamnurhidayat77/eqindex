@@ -652,7 +652,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
               </div>
             )}
             <LogoModal open={logoOpen} onClose={() => setLogoOpen(false)}
-              logos={logos} logoIds={logoIds} logoPos={logoPos}
+              logos={logos} logoIds={logoIds} logoPos={logoPos} signedIn={!!meUser}
               template={logoTemplate} setTemplate={setLogoTemplate}
               theme={logoTheme} setTheme={setLogoTheme}
               photo={media.preview_url || media.thumb_url} mediaId={media.id}
