@@ -28,7 +28,7 @@ function Rich({ text }) {
       {parts.map((p, i) => {
         if (p.startsWith('**') && p.endsWith('**') && p.length > 4) return <b key={i}>{p.slice(2, -2)}</b>;
         if (p.startsWith('`') && p.endsWith('`') && p.length > 2) {
-          return <code key={i} className="rounded bg-ink px-1 py-px text-[12.5px] text-gold">{p.slice(1, -1)}</code>;
+          return <code key={i} className="rounded bg-ink px-1 py-px text-[13px] text-gold">{p.slice(1, -1)}</code>;
         }
         return <span key={i} className="whitespace-pre-wrap">{p}</span>;
       })}
@@ -375,13 +375,13 @@ export default function AdminAssistant() {
               <div className="flex flex-col items-center justify-center text-center py-14">
                 <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gold text-[20px] font-extrabold text-black mb-4">✦</span>
                 <h2 className="text-[22px] font-extrabold">What are we importing today?</h2>
-                <p className="text-muted text-[13.5px] mt-1 mb-6">A show link, a results file, or just a question.</p>
+                <p className="text-muted text-[14px] mt-1 mb-6">A show link, a results file, or just a question.</p>
                 <div className="grid gap-2.5 sm:grid-cols-3 w-full max-w-[640px]">
                   {SUGGESTIONS.map(([icon, t, d]) => (
                     <button key={t} disabled={!!busy} onClick={() => send(t === 'Ask about scoring' ? 'Why would a row score 0?' : t === 'Upload results' ? 'What formats can you read?' : 'Import an Equipe show URL')}
                       className="rounded-xl border border-line bg-card p-3.5 text-left hover:border-gold/50 bg-none cursor-pointer disabled:opacity-50">
                       <div className="text-[20px]">{icon}</div>
-                      <div className="text-[13.5px] font-bold text-white mt-1.5">{t}</div>
+                      <div className="text-[14px] font-bold text-white mt-1.5">{t}</div>
                       <div className="text-[12px] text-muted mt-0.5">{d}</div>
                     </button>
                   ))}
@@ -425,7 +425,7 @@ export default function AdminAssistant() {
                       <div className="mb-1 text-[14px] font-bold">Mapped: {analysis.detected.type}
                         <span className="ml-2 text-[12px] text-muted font-semibold">{analysis.stats.rounds} rounds · {analysis.stats.with_series} with series</span></div>
                       {!!analysis.warnings.length && (
-                        <ul className="text-[12.5px] text-gold mb-2">{analysis.warnings.slice(0, 4).map((w, i) => <li key={i}>{w}</li>)}</ul>
+                        <ul className="text-[13px] text-gold mb-2">{analysis.warnings.slice(0, 4).map((w, i) => <li key={i}>{w}</li>)}</ul>
                       )}
                       <div className="flex flex-wrap gap-2 items-end">
                         <label className="text-xs text-muted flex flex-col gap-1 grow min-w-[200px]">Target event
@@ -437,7 +437,7 @@ export default function AdminAssistant() {
                         <button className={BTN_DANGER} disabled={!!busy || !preview || preview.dry_run === false} onClick={() => run(false)}>{busy === 'commit' ? `Committing… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Commit'}</button>
                       </div>
                       {!!progress && progress.total > 0 && (
-                        <div className="mt-2 h-1.5 rounded bg-[#2A2A2A]"><div className="h-1.5 rounded bg-gold transition-[width] duration-300" style={{ width: `${Math.round((100 * progress.done) / progress.total)}%` }} /></div>
+                        <div className="mt-2 h-1.5 rounded bg-[#2A2A2A]"><div className="h-1.5 rounded bg-gold transition-[width] duration-200 motion-reduce:transition-none" style={{ width: `${Math.round((100 * progress.done) / progress.total)}%` }} /></div>
                       )}
                       {eventId === '__new__' && (
                         <div className="grid sm:grid-cols-3 gap-2 mt-2">
@@ -451,7 +451,7 @@ export default function AdminAssistant() {
                   )}
                   {preview && (
                     <div className="mt-2 border-t border-gold/30 pt-2">
-                      <div className="mb-1 text-[13.5px] font-bold">{preview.dry_run ? 'Preview (nothing saved)' : 'Import result'}
+                      <div className="mb-1 text-[14px] font-bold">{preview.dry_run ? 'Preview (nothing saved)' : 'Import result'}
                         <span className="ml-2 text-[12px] text-muted font-semibold">{preview.summary.ok} ok · {preview.summary.failed} failed</span></div>
                       <div className="overflow-x-auto">
                       <table className={TABLE}>
@@ -486,7 +486,7 @@ export default function AdminAssistant() {
               )}
               <div className="rounded-2xl border border-line bg-card p-2 focus-within:border-gold/60">
                 {file && (
-                  <div className="flex items-center gap-2 px-2 pt-1 text-[12.5px] text-gold">
+                  <div className="flex items-center gap-2 px-2 pt-1 text-[13px] text-gold">
                     <span className="truncate">📎 {file.name} ({(file.size / 1024).toFixed(0)} KB{/\.pdf$/i.test(file.name) && fileText ? ` → ${(fileText.length / 1024).toFixed(0)} KB text` : ''})</span>
                     <button onClick={() => { setFile(null); setFileText(''); }} className="text-faint hover:text-blood bg-none border-0 cursor-pointer">×</button>
                   </div>
@@ -506,7 +506,7 @@ export default function AdminAssistant() {
                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold text-[16px] font-bold text-black cursor-pointer disabled:opacity-40">↑</button>
                 </div>
               </div>
-              <p className="mt-1.5 text-center text-[11.5px] text-faint">Assistant maps results only — Validate & preview, then Commit, before anything is saved.</p>
+              <p className="mt-1.5 text-center text-[12px] text-faint">Assistant maps results only — Validate & preview, then Commit, before anything is saved.</p>
             </div>
           </div>
         </section>

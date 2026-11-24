@@ -20,7 +20,7 @@ export default function MediaDoorway({
   return (
     <section className={CARD}>
       <h2 className="text-[15px] font-bold">📷 Photos &amp; video</h2>
-      <p className="mt-0.5 mb-3 text-[12.5px] text-muted">
+      <p className="mt-0.5 mb-3 text-[13px] text-muted">
         Relive the moment — browse the photo gallery or order a custom video reel on Boss Media.
       </p>
       <div className="flex flex-wrap gap-2">

@@ -5,8 +5,8 @@ export default function SurfaceSplits({ rows, subject }) {
   const known = list.filter((r) => r.surface && r.surface !== 'Unknown');
   return (
     <>
-      <h2 className="text-[15px] font-bold">Surface Splits</h2>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">
+      <h2 className="text-[15px] font-bold">Surface splits</h2>
+      <p className="mb-3 mt-0.5 text-[13px] text-muted">
         How {subject} performs by arena type and surface — one venue can host many arenas.
       </p>
       <section className="mb-6 overflow-x-auto rounded-lg border border-line bg-card">

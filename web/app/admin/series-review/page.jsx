@@ -152,7 +152,7 @@ export default function AdminSeriesReview() {
       {tab === 'untagged' && (
         <section className={CARD}>
           <h2 className="text-[14px] font-bold mb-1">Classes without a series tag</h2>
-          <p className="text-[12.5px] text-muted mb-3">Tag to a series (points recalculate at once) or judge non-series (never asked again). <span className="text-gold">Series-like</span> names matched our patterns but no rule.</p>
+          <p className="text-[13px] text-muted mb-3">Tag to a series (points recalculate at once) or judge non-series (never asked again). <span className="text-gold">Series-like</span> names matched our patterns but no rule.</p>
           {sel.size > 0 && (
             <div className="sticky top-[60px] z-[5] mb-3 flex flex-wrap items-center gap-2 rounded border border-gold/40 bg-goldbg px-3 py-2">
               <span className="text-[13px] font-bold text-white">{sel.size} selected</span>
@@ -218,7 +218,7 @@ export default function AdminSeriesReview() {
         <>
           <section className={CARD}>
             <h2 className="text-[14px] font-bold mb-1">Per-series standard heights</h2>
-            <p className="text-[12.5px] text-muted mb-3">Applied to classes with no height ("as per series conditions"). Rows below are manual overrides — without them, the official ESNZ bands apply automatically (Premier shows upper band, 5/6YO by calendar, 7YO by championship status, tertiary never).</p>
+            <p className="text-[13px] text-muted mb-3">Applied to classes with no height ("as per series conditions"). Rows below are manual overrides — without them, the official ESNZ bands apply automatically (Premier shows upper band, 5/6YO by calendar, 7YO by championship status, tertiary never).</p>
             <div className={TABLEWRAP}>
             <table className={TABLE}>
               <thead><tr><th className={TH}>Series</th><th className={`${TH} ${NUM}`}>Height (cm)</th><th className={TH}>Source</th><th className={TH}><span className="sr-only">Actions</span></th></tr></thead>
@@ -254,7 +254,7 @@ export default function AdminSeriesReview() {
           {!!noHeight.length && (
             <section className={CARD}>
               <h2 className="text-[14px] font-bold mb-1">Still missing height ({noHeight.length})</h2>
-              <ul className="text-[12.5px] text-muted space-y-1">
+              <ul className="text-[13px] text-muted space-y-1">
                 {noHeight.slice(0, 20).map((r) => <li key={r.class_id}>{r.name} <span className="text-faint">· {r.event} · {r.rounds} rounds</span></li>)}
               </ul>
             </section>
@@ -265,7 +265,7 @@ export default function AdminSeriesReview() {
       {tab === 'official' && (
         <section className={CARD}>
           <h2 className="text-[14px] font-bold mb-1">Cross-check against the official board</h2>
-          <p className="text-[12.5px] text-muted mb-3">Paste an EvoEvents resultClass URL (per-series links on the ESNZ leaderboards page) or paste the board text as "Name points" lines. Differences come back for human verdict — never auto-applied.</p>
+          <p className="text-[13px] text-muted mb-3">Paste an EvoEvents resultClass URL (per-series links on the ESNZ leaderboards page) or paste the board text as "Name points" lines. Differences come back for human verdict — never auto-applied.</p>
           <div className="grid gap-2.5 mb-3" style={{ maxWidth: 640 }}>
             <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Our series
               <select value={checkSeries} onChange={(e) => setCheckSeries(e.target.value)} className={INP}>

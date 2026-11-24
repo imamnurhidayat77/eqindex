@@ -78,7 +78,7 @@ export default function Events() {
       <div className="flex gap-1.5 mb-3">
         {[['finished', 'Finished'], ['upcoming', 'Upcoming'], ['all', 'All']].map(([v, lbl]) => (
           <button key={v} onClick={() => { setState(v); setPage(1); }}
-            className={`text-[12.5px] font-semibold no-underline px-3 py-1.5 rounded-full border ${state === v ? 'bg-goldbg text-gold border-gold/50' : 'text-muted border-line hover:text-white'}`}>{lbl}</button>
+            className={`text-[13px] font-semibold no-underline px-3 py-1.5 rounded-full border ${state === v ? 'bg-goldbg text-gold border-gold/50' : 'text-muted border-line hover:text-white'}`}>{lbl}</button>
         ))}
       </div>
       <FilterBar f={f} set={setF} seasons={pools.seasons} regions={pools.regions} arenas={pools.arenas} showHeight={false} showMinStarts={false} />

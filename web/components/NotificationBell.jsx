@@ -45,7 +45,7 @@ export default function NotificationBell() {
         className="relative rounded-md border border-line bg-card px-2.5 py-1.5 text-[15px] text-muted hover:text-white cursor-pointer">
         🔔
         {!!unread && (
-          <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-gold text-black text-[10.5px] font-extrabold inline-flex items-center justify-center">
+          <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-gold text-black text-[11px] font-extrabold inline-flex items-center justify-center">
             {unread > 9 ? '9+' : unread}
           </span>
         )}
@@ -58,7 +58,7 @@ export default function NotificationBell() {
               <button onClick={markAll} className="text-sky text-[12px] bg-none border-0 cursor-pointer hover:underline">Mark all read</button>
             )}
           </div>
-          {!items.length && <p className="px-1.5 py-3 text-[12.5px] text-faint">Nothing yet — new photos of your stable land here.</p>}
+          {!items.length && <p className="px-1.5 py-3 text-[13px] text-faint">Nothing yet — new photos of your stable land here.</p>}
           {items.map((n) => (
             <Link key={n.id} href={n.link || '/watchlist'} onClick={() => setOpen(false)}
               className={`block rounded px-1.5 py-2 no-underline hover:bg-white/5 ${n.read_at ? '' : 'bg-goldbg/10'}`}>

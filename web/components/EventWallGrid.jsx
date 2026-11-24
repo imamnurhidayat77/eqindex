@@ -151,13 +151,13 @@ export default function EventWallGrid({ initialRows = [], eventId, kind }) {
               <a key={x.id} href={bossPhotoUrl(x.id)} target="_blank" rel="noreferrer" style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }} aria-label={[x.horse, x.rider].filter(Boolean).join(' × ') || x.other_people || x.event_name || 'Photo'} className="rise group flex flex-col rounded-lg border border-line bg-card overflow-hidden no-underline hover:border-gold/50 transition">
                 <div className="relative aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                   {x.thumb_url || x.preview_url
-                    ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || x.other_people || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-300" />
+                    ? <img src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' × ') || x.other_people || `${x.event_name || 'Show-jumping'} photo`} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.03] transition duration-200 motion-reduce:transition-none" />
                     : <span className="text-xl" aria-hidden="true">📷</span>}
                   {x.kind === 'reel' && (
-                    <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-white">▶ Reel</span>
+                    <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">▶ Reel</span>
                   )}
                   {x.moment && MOMENT[x.moment] && (
-                    <span className="absolute right-2 top-2 rounded-full bg-goldbg/80 px-2 py-0.5 text-[10.5px] font-bold text-gold">{MOMENT[x.moment]}</span>
+                    <span className="absolute right-2 top-2 rounded-full bg-goldbg/80 px-2 py-0.5 text-[11px] font-bold text-gold">{MOMENT[x.moment]}</span>
                   )}
                 </div>
                 <div className="flex grow flex-col gap-0.5 p-2.5">
@@ -175,7 +175,7 @@ export default function EventWallGrid({ initialRows = [], eventId, kind }) {
           </div>
           <div className="mt-4 text-center">
             {fetchingAll ? (
-              <p className="text-[12.5px] text-faint">Loading all photos for search…</p>
+              <p className="text-[13px] text-faint">Loading all photos for search…</p>
             ) : hasMore && !dq ? (
               <button onClick={loadMore} disabled={busy}
                 className="rounded-md border border-line bg-card2 px-5 py-2.5 text-[13px] font-bold text-white hover:border-gold/50 hover:text-gold cursor-pointer disabled:opacity-60">

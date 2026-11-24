@@ -28,12 +28,12 @@ function RulesSummary({ p }) {
   const bt = p.bestTen || {};
   const st = p.status || {};
   const aw = p.awards || {};
-  const row = 'flex justify-between gap-3 py-1 border-b border-rowline/60 last:border-0 text-[12.5px]';
+  const row = 'flex justify-between gap-3 py-1 border-b border-rowline/60 last:border-0 text-[13px]';
   return (
     <div className="mt-2.5 rounded-lg border border-line bg-card2/40 p-3.5 text-muted">
       <div className="flex flex-wrap gap-1.5 mb-2.5">
         {divs.map((d) => (
-          <span key={d.key} className="inline-flex items-center gap-1.5 rounded border border-line px-2 py-[3px] text-[11.5px]"
+          <span key={d.key} className="inline-flex items-center gap-1.5 rounded border border-line px-2 py-[3px] text-[12px]"
             title={`${d.min ?? '−∞'}–${d.max ?? '+∞'}cm`}>
             <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: d.color || '#888' }} />
             <b className="text-body">{d.label}</b> {d.min ?? '…'}-{d.max ?? '…'}cm
@@ -49,7 +49,7 @@ function RulesSummary({ p }) {
 }
 
 function EsnzSummary({ ez, divisions }) {
-  const row = 'flex justify-between gap-3 py-1 border-b border-rowline/60 last:border-0 text-[12.5px]';
+  const row = 'flex justify-between gap-3 py-1 border-b border-rowline/60 last:border-0 text-[13px]';
   const series = ez.series || {};
   return (
     <div className="mt-2.5 rounded-lg border border-line bg-card2/40 p-3.5 text-muted">
@@ -109,7 +109,7 @@ function EsnzSections({ draft, setDraft, tab }) {
           <span className="pb-1"><Check value={ez.nominationRule !== false} label="First-horse nomination (series points only for the nominated horse)"
             onChange={(v) => set((n) => { n.nominationRule = v; })} /></span>
         </div>
-        <div className="text-[11.5px] text-faint mt-2">Event kinds for overrides/multipliers: {EVENT_KINDS.join(', ')}</div>
+        <div className="text-[12px] text-faint mt-2">Event kinds for overrides/multipliers: {EVENT_KINDS.join(', ')}</div>
       </Sec>)}
       {tab === 'younghorse' && (<Sec title="Young-horse clear points" hint="First-round clear and double-clear totals (double = total, not added). Applies to the series keys below, plus any series with clearRound on.">
         <div className="flex flex-wrap gap-3 items-end">

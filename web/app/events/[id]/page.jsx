@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { getEntityJSON } from '../../../lib/api';
 import { ordinal } from '../../../lib/eq';
 import { BADGE, CARD, H1, H2, LINK, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
-import { nzDay, fmtRange } from '../../../lib/dates';
+import { fmtRange, fmtDay } from '../../../lib/dates';
 import ClassResults from '../../../components/ClassResults';
 import { EventDifficultyTable } from '../../../components/EventTables';
 import { StatCard, StatGrid } from '../../../components/StatCard';
@@ -98,29 +98,29 @@ export default async function EventDetail({ params }) {
     <>
       <div className="flex items-start justify-between gap-4 mb-3.5">
         <div>
-          <h1 className={H1}>Event Intelligence Overview</h1>
-          <p className={SUB}>Detailed physical arena, class, horse, and rider metadata from New Zealand&apos;s premier circuits.</p>
+          <div className="mb-1 text-[12px] text-faint">
+            <Link href="/events" className="text-muted hover:text-white">Events</Link>
+          </div>
+          <h1 className={H1}>{e.name}</h1>
+          <p className={SUB}>{fmtDate}{e.venue ? ` · ${e.venue}` : ''}</p>
         </div>
         <div className="flex gap-2.5 items-center shrink-0 pt-1.5">
-          {e.updated_at && <span className="text-muted border border-line rounded-full px-3 py-[5px] text-xs">◷ Updated {nzDay(e.updated_at)}</span>}
+          {e.updated_at && <span className="text-muted border border-line rounded-full px-3 py-[5px] text-xs">Updated {fmtDay(e.updated_at)}</span>}
         </div>
       </div>
 
       <section className={CARD}>
         <div className="flex items-center gap-2 mb-3">
-          <h2 className={H2}>Active Competition Summary</h2>
+          <h2 className={H2}>Details</h2>
           <div className="flex-1" />
           <span className={badge(BADGE.gold)}>{grade}</span>
         </div>
         <div className="flex gap-5 items-center">
           <div>
-            <div className="text-[20px] font-extrabold leading-snug">{e.name}</div>
-            <div className="text-muted text-xs mt-1.5">
-              {e.venue && <>Venue: <b className="text-body">{e.venue}</b>&nbsp;&nbsp;</>}
+            <div className="text-muted text-xs">
               {e.region && <>Region: <b className="text-body">{e.region}, NZ</b>&nbsp;&nbsp;</>}
               {e.arena_type && <>Arena: <b className="text-body">{e.arena_type}</b>&nbsp;&nbsp;</>}
-              Date: <b className="text-body">{fmtDate}</b>
-              {e.tier && <>&nbsp;&nbsp;Tier: <b className="text-gold">{e.tier}</b></>}
+              {e.tier && <>Tier: <b className="text-gold">{e.tier}</b></>}
             </div>
             {(e.series_flags || []).length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-2">
@@ -133,15 +133,14 @@ export default async function EventDetail({ params }) {
         </div>
       </section>
 
-      <h2 className={H2}>Circuit Performance Overview</h2>
-      <p className={SUB}>Consolidated statistics of {e.name} Event</p>
+      <h2 className={H2}>At a glance</h2>
       {(a.hidden?.hidden_classes > 0) && (
         <p className="text-[12px] text-faint -mt-3 mb-6">
           {a.hidden.hidden_classes} class{a.hidden.hidden_classes === 1 ? '' : 'es'} ({a.hidden.hidden_rounds} rounds)
           excluded from analytics by admin — data retained in the DB.
         </p>
       )}
-      <StatGrid cols={7}>
+      <StatGrid cols={7} className="mt-3">
         {[
           ['Total Classes', null, a.classes.length],
           ['Total Rounds', null, n],
@@ -149,27 +148,27 @@ export default async function EventDetail({ params }) {
           ['Riders Entered', null, ridersN],
           ['Clear Rate', null, `${clearPct.toFixed(0)}%`],
           ['Avg Faults', null, avgF.toFixed(1)],
-          ['Clear Rounds', `${n} rounds`, clears],
+          ['Clear Rounds', `of ${n} rounds`, clears],
         ].map(([lbl, delta, big]) => (
           <StatCard key={lbl} label={lbl} delta={delta} value={big} />
         ))}
       </StatGrid>
 
-      <h2 className={H2}>Class Results</h2>
+      <h2 className={H2}>Class results</h2>
       <p className={SUB}>Every round of this event, grouped by class — expand to inspect placings, faults and times.</p>
       <ClassResults groups={groups} />
 
-      <h2 className={H2}>Class Difficulty Analysis</h2>
+      <h2 className={H2}>Class difficulty</h2>
       <p className={SUB}>Clear rate and average faults per class.</p>
       <section className={CARD}>
         <EventDifficultyTable rows={a.classes} />
       </section>
 
-      <h2 className={H2}>Competition Performance Analytics</h2>
-      <p className={SUB}>Clear rates and faults across rounds</p>
+      <h2 className={H2}>Charts</h2>
+      <p className={SUB}>Clear rates and faults across rounds.</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <section className={CARD}>
-          <h2 className={H2}>Clear Round Distribution by Height</h2>
+          <h2 className={H2}>Clear rounds by height</h2>
           {hb.map((b) => (
             <div className="my-3" key={b.label}>
               <div className="flex justify-between text-[13px] mb-[5px]"><span className="text-muted">{b.label}</span><span className="text-gold font-semibold">{b.p.toFixed(0)}%</span></div>
@@ -178,7 +177,7 @@ export default async function EventDetail({ params }) {
           ))}
         </section>
         <section className={CARD}>
-          <h2 className={H2}>Fault Distribution Across Rounds</h2>
+          <h2 className={H2}>Faults per round</h2>
           {fb.map((x) => (
             <div className="my-3" key={x.label}>
               <div className="flex justify-between text-[13px] mb-[5px]"><span className="text-muted">{x.label}</span><span className="font-semibold" style={{ color: x.color }}>{x.p.toFixed(0)}% of rounds</span></div>
@@ -188,7 +187,7 @@ export default async function EventDetail({ params }) {
         </section>
       </div>
 
-      <h2 className={H2}>Top Performing Horses</h2>
+      <h2 className={H2}>Top horses</h2>
       <p className={SUB}>Leading equine ranking generated for the {e.name} class structure.</p>
       <section className={CARD}>
         <div className={TABLEWRAP}>
@@ -211,7 +210,7 @@ export default async function EventDetail({ params }) {
         </div>
       </section>
 
-      <h2 className={H2}>Top Performing Riders</h2>
+      <h2 className={H2}>Top riders</h2>
       <p className={SUB}>Leading national showjumping athletes.</p>
       <section className={CARD}>
         <div className={TABLEWRAP}>

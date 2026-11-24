@@ -24,7 +24,7 @@ export default function RootLayout({ children }) {
           rel="stylesheet"
         />
       </head>
-      <body className="bg-ink text-body text-sm min-h-screen flex flex-col">
+      <body className="bg-ink text-body text-sm font-sans antialiased min-h-screen flex flex-col">
         <RouteProgress />
         <SeasonProvider>
         <AuthProvider>

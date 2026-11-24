@@ -80,7 +80,7 @@ export const parseObjPairs = (s) => {
 
 export function ModelBSummary({ mb }) {
   if (!mb) return null;
-  const row = 'flex justify-between gap-3 py-1 border-b border-rowline/60 last:border-0 text-[12.5px]';
+  const row = 'flex justify-between gap-3 py-1 border-b border-rowline/60 last:border-0 text-[13px]';
   return (
     <div className="mt-2.5 rounded border border-line bg-card2/40 p-3.5 text-muted">
       <div className="mb-2"><span className="inline-flex items-center rounded-full bg-goldbg px-2 py-[3px] text-[11px] font-bold text-gold">MODEL B RATING</span></div>

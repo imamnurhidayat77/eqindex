@@ -59,7 +59,7 @@ export default function UserMenu() {
           <a href={`${BOSSMEDIA_URL}/media`} target="_blank" rel="noreferrer" onClick={() => setOpen(false)} className="flex items-center justify-between px-2 py-1.5 text-[13px] text-muted no-underline hover:text-white">
             <span>My Media ↗</span>
             {Number(creditLeft) > 0 && (
-              <span className="rounded-full bg-goldbg px-1.5 py-px text-[10.5px] font-bold text-gold">{creditLeft} credits</span>
+              <span className="rounded-full bg-goldbg px-1.5 py-px text-[11px] font-bold text-gold">{creditLeft} credits</span>
             )}
           </a>
           {user.role === 'ADMIN' && (

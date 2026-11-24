@@ -79,13 +79,13 @@ function EventCard({ e, today }) {
       <Link href={hrefOf(e)} aria-label={`${e.name} — view details`} className="mt-2.5 block font-extrabold text-[16px] leading-[1.25] text-white no-underline hover:text-gold line-clamp-2 transition-colors">
         {e.name}
       </Link>
-      <div className="mt-1 truncate text-[12.5px] text-muted">{metaLine(e)}</div>
+      <div className="mt-1 truncate text-[13px] text-muted">{metaLine(e)}</div>
       {!!stats.length && (
         <div className="mt-3 flex gap-6 rounded-md bg-card px-3.5 py-2.5">
           {stats.map((s) => (
             <span key={s.l}>
               <span className="block text-[16px] font-extrabold leading-none tabular-nums text-white">{s.v}</span>
-              <span className="mt-1 block text-[10.5px] uppercase tracking-[0.6px] text-faint">{s.l}</span>
+              <span className="mt-1 block text-[11px] uppercase tracking-[0.6px] text-faint">{s.l}</span>
             </span>
           ))}
         </div>
@@ -105,7 +105,7 @@ function EventRow({ e, today }) {
           <Link href={hrefOf(e)} className="font-bold text-[14px] text-white no-underline hover:text-gold">{e.name}</Link>
           <Badges e={e} today={today} />
         </div>
-        <div className="mt-1 text-[12.5px] text-muted">
+        <div className="mt-1 text-[13px] text-muted">
           {eventRange(e)}{e.venue ? ` · ${e.venue}` : ''}{e.region ? `, ${e.region}` : ''}
           {statLine(e) ? ` · ${statLine(e)}` : ''}
         </div>
@@ -221,7 +221,7 @@ export default function EventViews() {
             <button onClick={() => { setYm(({ y, m }) => (m === 0 ? { y: y - 1, m: 11 } : { y, m: m - 1 })); setSel(null); }}
               aria-label="Previous month"
               className="h-9 w-9 rounded-md border border-line bg-card2 text-body hover:text-gold hover:border-gold/50 transition-colors">←</button>
-            <div className="font-display text-[17px] font-bold">{MONTHS[ym.m]} {ym.y}</div>
+            <div className="font-display text-[18px] font-bold">{MONTHS[ym.m]} {ym.y}</div>
             <button onClick={() => { setYm(({ y, m }) => (m === 11 ? { y: y + 1, m: 0 } : { y, m: m + 1 })); setSel(null); }}
               aria-label="Next month"
               className="h-9 w-9 rounded-md border border-line bg-card2 text-body hover:text-gold hover:border-gold/50 transition-colors">→</button>
@@ -241,7 +241,7 @@ export default function EventViews() {
                   className={`min-h-[64px] border-b border-r border-line/60 px-2 py-1.5 text-left align-top transition-colors last:border-r-0
                     ${inMonth ? 'bg-ink hover:bg-card2' : 'bg-card text-faint'}
                     ${isSel ? 'outline outline-2 outline-gold -outline-offset-2 bg-goldbg/10' : ''}`}>
-                  <span className={`text-[12.5px] tabular-nums ${isToday ? 'font-extrabold text-gold' : inMonth ? 'text-body' : 'text-faint'}`}>{d.getDate()}</span>
+                  <span className={`text-[13px] tabular-nums ${isToday ? 'font-extrabold text-gold' : inMonth ? 'text-body' : 'text-faint'}`}>{d.getDate()}</span>
                   {n > 0 && (
                     <span className="mt-1 block w-fit rounded-full bg-gold px-1.5 py-px text-[11px] font-extrabold tabular-nums text-black">{n}</span>
                   )}
@@ -266,9 +266,9 @@ export default function EventViews() {
             </div>
           ) : view.length ? (
             mode === 'cards' ? (
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {view.map((e, i) => (
-                  <div key={e.id} className="rise flex flex-col" style={{ animationDelay: `${Math.min(i * 40, 240)}ms` }}>
+                  <div key={e.id} className="rise flex min-w-0 flex-col" style={{ animationDelay: `${Math.min(i * 40, 240)}ms` }}>
                     <EventCard e={e} today={today} />
                   </div>
                 ))}

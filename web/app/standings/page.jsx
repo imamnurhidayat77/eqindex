@@ -77,9 +77,8 @@ export default function Standings() {
       )}
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <h1 className={H1}>{open !== null ? (openDiv?.label || 'Division') : 'Standings'}</h1>
-        <span className="rounded-full border border-gold/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-gold">◦ {metric === 'clear' ? 'Clear rate' : 'Average score'}</span>
       </div>
-      <p className={SUB}>{metric === 'clear' ? 'Rider clear rate on each horse — min 3 rounds, rounds column shows sample size.' : 'Average round score per combination — min 3 rounds, rounds column shows sample size.'}</p>
+      <p className={SUB}>{open === null ? 'Pick a division to see horse and rider combinations ranked by average round score (minimum 3 rounds together).' : metric === 'clear' ? 'Rider clear rate on each horse — min 3 rounds, rounds column shows sample size.' : 'Average round score per combination — min 3 rounds, rounds column shows sample size.'}</p>
       {open !== null && (
         <div className="flex gap-1 bg-card2 border border-line rounded p-1 overflow-x-auto w-fit mb-4">
           {[['avg', 'Average'], ['clear', 'Clear %']].map(([k, lbl]) => (
@@ -94,14 +93,17 @@ export default function Standings() {
       <>
       <h2 className={`mb-3 ${H2}`}>Divisions</h2>
       <div className="grid gap-4 md:grid-cols-3 mb-6">
+        {!divs.length && Array.from({ length: 6 }, (_, i) => (
+          <div key={i} aria-hidden="true" className="h-[74px] rounded-lg border border-line bg-card animate-pulse motion-reduce:animate-none" />
+        ))}
         {divs.map((d) => (
           <button key={d.key} onClick={() => { setOpen(d.key); setPage(1); }}
-            className="group flex items-center justify-between rounded-lg border border-line bg-card p-4 text-left transition hover:border-gold/50">
+            className="group flex items-center justify-between rounded-lg border border-line bg-card p-4 text-left transition-colors duration-150 hover:border-gold/50">
             <div>
               <div className={`text-[15px] font-bold ${open === d.key ? 'text-gold' : 'text-white group-hover:text-gold'} leading-tight`}>{d.label}{divRange(d) ? ` (${divRange(d)})` : ''}</div>
-              <div className="mt-1 text-[12px] text-muted">Average score</div>
+              <div className="mt-1 text-[12px] text-muted">View combinations</div>
             </div>
-            <span className="text-gold transition group-hover:translate-x-0.5">→</span>
+            <span aria-hidden="true" className="text-gold transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none">→</span>
           </button>
         ))}
       </div>

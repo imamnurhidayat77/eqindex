@@ -41,7 +41,7 @@ const MedalIcon = ({ color, elite, label, detail }) => {
       </svg>
       <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-card2 px-2.5 py-1.5 text-center opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100">
         <span className="block text-[12px] font-bold text-white">{elite ? `Elite ${label} Medal` : `${label} Medal`}</span>
-        <span className="block text-[10px] text-muted">{detail}</span>
+        <span className="block text-[11px] text-muted">{detail}</span>
       </span>
     </span>
   );
@@ -120,19 +120,15 @@ export default async function HorseProfile({ params, searchParams }) {
 
   const placed = history.map((r) => Number(r.finish_place)).filter((p) => p >= 1);
   const bestPlace = placed.length ? Math.min(...placed) : null;
-  const sparkBest = chrono.map((_, i) => {
-    const soFar = chrono.slice(0, i + 1).map((x) => Number(x.finish_place)).filter((p) => p >= 1);
-    return soFar.length ? Math.min(...soFar) : null;
-  }).filter((v) => v !== null);
   // Deltas shown only when computed from real data — never invented.
   const metrics = [
-    { label: 'Total Rounds', value: String(starts), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
-    { label: 'Events Entered', value: String(eventsEntered || s?.starts ? eventsEntered : starts), data: chrono.map((_, i) => i + 1), color: '#FFD700' },
+    { label: 'Total Rounds', value: String(starts), data: null, color: '#FFD700' },
+    { label: 'Events Entered', value: String(eventsEntered || s?.starts ? eventsEntered : starts), data: null, color: '#FFD700' },
     { label: 'Clear Rate', value: `${Math.round(clearPct)}%`, data: sparkClear, color: '#00C853', good: true },
     { label: 'Avg Faults', value: avgFaults.toFixed(2), data: sparkFaults, color: '#00C853', good: true },
-    { label: 'Wins', value: String(wins), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) === 1).length), color: '#FFD700' },
-    { label: 'Top 10 Finishes', value: String(top10), data: chrono.map((r, i) => chrono.slice(0, i + 1).filter((x) => Number(x.finish_place) <= 10 && Number(x.finish_place) >= 1).length), color: '#FFD700' },
-    { label: 'Best Place', value: bestPlace === null ? '–' : `#${bestPlace}`, data: sparkBest, color: '#FFD700' },
+    { label: 'Wins', value: String(wins), data: null, color: '#FFD700' },
+    { label: 'Top 10 Finishes', value: String(top10), data: null, color: '#FFD700' },
+    { label: 'Best Place', value: bestPlace === null ? '–' : `#${bestPlace}`, data: null, color: '#FFD700' },
   ];
 
   const bandHistory = history.filter((r) => {
@@ -176,14 +172,14 @@ export default async function HorseProfile({ params, searchParams }) {
       <div className="mb-1 text-[12px] text-faint">
         <Link href="/horses" className="text-muted hover:text-white">Horses</Link>
         <span className="mx-1.5">/</span>
-        <span className="text-gold">{h.name} Profile</span>
+        <span className="text-gold">{h.name}</span>
       </div>
       {/* hero */}
       <div className="mb-6">
         <section className="rounded-lg border border-line bg-card p-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Equine Subject</div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-faint">Horse</div>
               <div className="mt-1 text-[24px] font-extrabold leading-none break-words">{h.name}</div>
               {!!earnedBadges.length && (
                 <div className="mt-2.5 flex flex-wrap gap-2" role="img" aria-label={`Division medals: ${earnedBadges.map((d) => d.label).join(', ')}`}>
@@ -199,9 +195,9 @@ export default async function HorseProfile({ params, searchParams }) {
             <div className="flex flex-col items-end gap-2.5 shrink-0">
               <div className="text-center">
                 <div className="text-[22px] font-extrabold leading-none tabular-nums text-gold">{horseRating === null || !formEligible ? '–' : horseRating.toFixed(1)}</div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-wide text-muted">Rating{formRank ? ` · #${formRank}` : ''}</div>
+                <div className="mt-0.5 text-[10px] uppercase tracking-wide text-muted">Rating{formRank ? ` · #${formRank}` : ''}</div>
                 {!!roundsNeeded && (
-                  <div className="mt-1 text-[10px] text-faint">needs {roundsNeeded} more round{roundsNeeded === 1 ? '' : 's'} to rank</div>
+                  <div className="mt-1 text-[11px] text-faint">needs {roundsNeeded} more round{roundsNeeded === 1 ? '' : 's'} to rank</div>
                 )}
               </div>
               <WatchButton entityType="horse" entityId={params.id} />
@@ -212,7 +208,7 @@ export default async function HorseProfile({ params, searchParams }) {
       </div>
 
       {/* metrics */}
-      <h2 className="text-[15px] font-bold">Circuit Metrics Summary</h2>
+      <h2 className="text-[15px] font-bold">Career summary</h2>
       <StatGrid cols={7} className="mt-3">
         {metrics.map((m) => (
           <StatCard
@@ -222,6 +218,7 @@ export default async function HorseProfile({ params, searchParams }) {
             value={m.value}
             spark={m.data}
             sparkColor={m.color}
+            compact
           />
         ))}
       </StatGrid>
@@ -229,8 +226,8 @@ export default async function HorseProfile({ params, searchParams }) {
       {/* division summary — rounds, clears and clear rate per division */}
       {!!divSummary.length && (
         <>
-          <h2 className="text-[15px] font-bold">Division Summary</h2>
-          <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rounds and clears per division across the full record.</p>
+          <h2 className="text-[15px] font-bold">Division summary</h2>
+          <p className="mb-3 mt-0.5 text-[13px] text-muted">Rounds and clears per division across the full record.</p>
           <section className="mb-6 rounded-lg border border-line bg-card p-4">
             <div className="overflow-x-auto">
             <table className="w-full border-collapse text-[13px]">
@@ -242,7 +239,7 @@ export default async function HorseProfile({ params, searchParams }) {
                       <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: d.color || '#888' }} />
                       {d.label}
                     </span>
-                    {divRange(d) && <span className="block text-[10px] font-normal text-faint">{divRange(d)}</span>}
+                    {divRange(d) && <span className="block text-[11px] font-normal text-faint">{divRange(d)}</span>}
                   </th>
                 ))}
                 <th className="border-b border-line px-3 py-2.5 font-semibold text-right">Total</th>
@@ -278,15 +275,15 @@ export default async function HorseProfile({ params, searchParams }) {
         </>
       )}
 
-      <h2 className="text-[15px] font-bold">Season Timeline</h2>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Last rounds at a glance — place, clear/faults, height and rider.</p>
+      <h2 className="text-[15px] font-bold">Season timeline</h2>
+      <p className="mb-3 mt-0.5 text-[13px] text-muted">Last rounds at a glance — place, clear/faults, height and rider.</p>
       <section className="mb-6 rounded-lg border border-line bg-card p-4">
         <SeasonTimeline history={history} />
       </section>
 
       {/* competition */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-[15px] font-bold">Competition Performance</h2>        <span className="flex items-center gap-1.5">
+        <h2 className="text-[15px] font-bold">Competition performance</h2>        <span className="flex items-center gap-1.5">
           <ExportCsv rows={history} filename={`${h.name}-record.csv`} />
           {[['', 'All'], ['110-120', '1.10–1.20'], ['120-130', '1.20–1.30'], ['130-140', '1.30–1.40'], ['140-', '1.40m+']].map(([v, l]) => {
             const href = `/horses/${params.id}${v ? `?h=${v}` : ''}`;
@@ -294,7 +291,7 @@ export default async function HorseProfile({ params, searchParams }) {
           })}
         </span>
       </div>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Historical performance records from the NZ Showjumping Circuit.</p>
+      <p className="mb-3 mt-0.5 text-[13px] text-muted">Historical performance records from the NZ Showjumping Circuit.</p>
       <section className="mb-6 rounded-lg border border-line bg-card p-4">
         <HistoryTable rows={bandHistory} mode="horse" />
       </section>

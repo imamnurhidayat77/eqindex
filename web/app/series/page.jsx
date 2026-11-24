@@ -40,7 +40,14 @@ export default function SeriesIndex() {
   const filtered = rows;
 
   const classSeries = filtered.filter((x) => !isHorseSeries(x.series_key));
-  const horseSeries = filtered.filter((x) => isHorseSeries(x.series_key));
+  // Youngest first: 5YO, 6YO, 7YO (key or name carries the age).
+  const ageOf = (x) => {
+    const m = `${x.series_key} ${x.series_name || ''}`.match(/(\d)\s*-?\s*yo|\b(five|six|seven|four|eight)-year/i);
+    if (!m) return 99;
+    return m[1] ? Number(m[1]) : { four: 4, five: 5, six: 6, seven: 7, eight: 8 }[m[2].toLowerCase()];
+  };
+  const horseSeries = filtered.filter((x) => isHorseSeries(x.series_key))
+    .sort((a, b) => ageOf(a) - ageOf(b));
 
   return (
     <>
@@ -65,7 +72,7 @@ export default function SeriesIndex() {
         <>
           {!!classSeries.length && (
             <>
-              <h2 className={`mb-3 ${H2}`}>Class Series</h2>
+              <h2 className={`mb-3 ${H2}`}>Class series</h2>
               <div className="grid gap-4 md:grid-cols-3 mb-6">
                 {classSeries.map((x) => <SeriesBox key={x.series_key} x={x} />)}
               </div>
@@ -73,7 +80,7 @@ export default function SeriesIndex() {
           )}
           {!!horseSeries.length && (
             <>
-              <h2 className={`mb-3 ${H2}`}>Horse Series</h2>
+              <h2 className={`mb-3 ${H2}`}>Horse series</h2>
               <div className="grid gap-4 md:grid-cols-3 mb-6">
                 {horseSeries.map((x) => <SeriesBox key={x.series_key} x={x} />)}
               </div>

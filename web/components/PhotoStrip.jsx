@@ -37,24 +37,24 @@ export default function PhotoStrip({ query, title = 'Photos', moreHref = '/photo
               <div className="relative aspect-[4/3] bg-card2 flex items-center justify-center overflow-hidden">
                 {x.thumb_url || x.preview_url
                   ? <img src={x.thumb_url || x.preview_url} alt={caption} loading="lazy" decoding="async"
-                      className="w-full h-full object-cover group-hover:scale-[1.04] transition duration-300" />
+                      className="w-full h-full object-cover group-hover:scale-[1.04] transition duration-200 motion-reduce:transition-none" />
                   : <span className="text-xl">{x.kind === 'reel' ? '🎬' : '📷'}</span>}
                 {x.kind === 'reel' && (
-                  <span className="absolute left-1.5 top-1.5 rounded-full bg-black/70 px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-white">
+                  <span className="absolute left-1.5 top-1.5 rounded-full bg-black/70 px-1.5 py-px text-[11px] font-bold uppercase tracking-wide text-white">
                     ▶ Reel
                   </span>
                 )}
                 {x.moment && MOMENT[x.moment] && (
-                  <span className="absolute right-1.5 top-1.5 rounded-full bg-goldbg/85 px-1.5 py-px text-[10px] font-bold text-gold">
+                  <span className="absolute right-1.5 top-1.5 rounded-full bg-goldbg/85 px-1.5 py-px text-[11px] font-bold text-gold">
                     {MOMENT[x.moment]}
                   </span>
                 )}
               </div>
               <div className="flex grow flex-col gap-0.5 p-2">
-                <div className="text-[12.5px] font-bold text-white truncate group-hover:text-gold transition">{caption}</div>
+                <div className="text-[13px] font-bold text-white truncate group-hover:text-gold transition">{caption}</div>
                 <div className="mt-auto flex items-center justify-between pt-0.5">
-                  <span className="text-[10.5px] text-faint">{x.kind === 'reel' ? 'Video' : 'Photo'}</span>
-                  <span className="text-[10.5px] text-faint">Boss Media ↗</span>
+                  <span className="text-[11px] text-faint">{x.kind === 'reel' ? 'Video' : 'Photo'}</span>
+                  <span className="text-[11px] text-faint">Boss Media ↗</span>
                 </div>
               </div>
             </a>
@@ -64,7 +64,7 @@ export default function PhotoStrip({ query, title = 'Photos', moreHref = '/photo
           <a href={moreHref} target="_blank" rel="noreferrer"
               className="group flex min-h-[120px] flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-gold/40 bg-goldbg/10 no-underline hover:border-gold hover:bg-goldbg/20 transition">
             <span className="text-[20px] font-extrabold text-gold">+{extra}</span>
-            <span className="text-[11.5px] font-bold text-muted group-hover:text-gold">View all →</span>
+            <span className="text-[12px] font-bold text-muted group-hover:text-gold">View all →</span>
           </a>
         )}
       </div>

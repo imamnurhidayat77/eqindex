@@ -180,14 +180,14 @@ export default function AdminImport() {
             {assist.detected.filename ? ` · ${assist.detected.filename}` : ''}
             <span className="text-muted"> — {assist.stats.rounds} rounds · {assist.stats.with_series} with series · {assist.stats.finished} finished</span>
             {!!assist.warnings.length && (
-              <ul className="mt-1.5 text-[12.5px] text-gold">{assist.warnings.slice(0, 6).map((w, i) => <li key={i}>{w}</li>)}</ul>
+              <ul className="mt-1.5 text-[13px] text-gold">{assist.warnings.slice(0, 6).map((w, i) => <li key={i}>{w}</li>)}</ul>
             )}
             <p className="mt-1.5 text-[12px] text-faint">Check the rows, edit if needed, then Validate & preview below — nothing is saved until Commit.</p>
           </div>
         )}
       </section>
       <section className={CARD}>
-        <div className="flex gap-1 rounded bg-card2 p-1 text-[12.5px] w-fit mb-3">
+        <div className="flex gap-1 rounded bg-card2 p-1 text-[13px] w-fit mb-3">
           {[['csv', 'CSV'], ['json', 'JSON']].map(([v, l]) => (
             <button key={v} onClick={() => { setMode(v); setPreview(null); }}
               className={`rounded-md px-4 py-1.5 font-semibold ${mode === v ? 'bg-[#2a3342] text-gold' : 'text-muted hover:text-white'}`}>{l}</button>
@@ -237,7 +237,7 @@ export default function AdminImport() {
         {!!gate?.verify?.length && (
           <div className="mt-3 rounded border border-blood/60 bg-redbg/20 p-3">
             <p className="text-[13px] font-bold text-blood mb-1">Commit blocked — {gate.verify.length} classe(s) look like series classes but have no series tag (they would score 0).</p>
-            <ul className="text-[12.5px] text-muted space-y-0.5 mb-2.5">
+            <ul className="text-[13px] text-muted space-y-0.5 mb-2.5">
               {gate.verify.slice(0, 8).map((v) => <li key={v.name}>“{String(v.name).slice(0, 70)}” ({v.rows} row(s))</li>)}
             </ul>
             <div className="flex flex-wrap gap-2">

@@ -1,5 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  // hover: styles only on devices with a real pointer, so a tap on a phone
+  // doesn't leave a button stuck in its hover state.
+  future: { hoverOnlyWhenSupported: true },
   content: ['./app/**/*.{js,jsx}', './components/**/*.{js,jsx}', './lib/**/*.{js,jsx}'],
   theme: {
     extend: {
@@ -14,7 +17,8 @@ module.exports = {
         rowline: '#242424',
         body: '#FFFFFF',
         muted: '#A0A0A0',
-        faint: '#666666',
+        // #666 failed WCAG AA on ink/card (3.6:1). #8A8A8A = 5.3:1 on card.
+        faint: '#8A8A8A',
         gold: '#FFD700',
         golddim: '#E6C200',
         goldbg: '#2A2500',

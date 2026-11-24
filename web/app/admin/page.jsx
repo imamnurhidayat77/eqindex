@@ -80,7 +80,7 @@ export default async function AdminOverview() {
   const queueBadge = (key) => {
     const n = c[key];
     if (!n) return <span className="text-[11px] text-faint">0</span>;
-    return <span className="bg-redbg text-blood text-[10px] font-bold rounded-full min-w-[20px] h-5 inline-flex items-center justify-center px-1.5">{n}</span>;
+    return <span className="bg-redbg text-blood text-[11px] font-bold rounded-full min-w-[20px] h-5 inline-flex items-center justify-center px-1.5">{n}</span>;
   };
   return (
     <>
@@ -122,7 +122,7 @@ export default async function AdminOverview() {
               <Link key={href} href={href} className="flex items-center gap-3 py-2.5 border-b border-rowline no-underline group">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${c[key] ? 'bg-blood' : 'bg-moss'}`} />
                 <span className="min-w-0">
-                  <span className="block text-[13.5px] font-bold text-white group-hover:text-gold">{t}</span>
+                  <span className="block text-[14px] font-bold text-white group-hover:text-gold">{t}</span>
                   <span className="block text-[12px] text-muted">{sub}</span>
                 </span>
                 <span className="ml-auto">{queueBadge(key)}</span>
@@ -131,7 +131,7 @@ export default async function AdminOverview() {
             <div className="flex items-center gap-3 py-2.5">
               <span className={`w-2 h-2 rounded-full shrink-0 ${!imp ? 'bg-barbg' : impFailed ? 'bg-blood' : 'bg-moss'}`} />
               <span className="min-w-0">
-                <span className="block text-[13.5px] font-bold text-white">Last import</span>
+                <span className="block text-[14px] font-bold text-white">Last import</span>
                 <span className={`block text-[12px] ${impFailed ? 'text-blood font-semibold' : 'text-muted'}`}>
                   {!imp ? 'No imports yet'
                     : `${nzDay(imp.created_at)} · ${imp.rows_ok} ok${impFailed ? ` · ${imp.rows_failed} failed` : ''}`}
@@ -148,12 +148,12 @@ export default async function AdminOverview() {
         <div className="grid md:grid-cols-3 gap-x-8">
           {GROUPS.map(([g, items]) => (
             <div key={g}>
-              <div className="pt-2 pb-1 text-[10px] uppercase tracking-[0.8px] text-faint font-bold">{g}</div>
+              <div className="pt-2 pb-1 text-[11px] uppercase tracking-[0.8px] text-faint font-bold">{g}</div>
               {items.map(([icon, t, s, href, countKey]) => (
                 <Link key={href} href={href} className="flex items-center gap-3 py-2 border-b border-rowline/60 last:border-0 no-underline group">
                   <span className="w-4 text-center text-[13px] text-faint group-hover:text-gold shrink-0">{icon}</span>
                   <span className="min-w-0">
-                    <span className="block text-[13.5px] font-bold text-white group-hover:text-gold leading-tight">{t}</span>
+                    <span className="block text-[14px] font-bold text-white group-hover:text-gold leading-tight">{t}</span>
                     <span className="block text-[12px] text-muted leading-snug">{s}</span>
                   </span>
                   {countKey && <span className="ml-auto shrink-0">{countKey === 'users' ? <span className="text-[11px] text-faint tabular-nums">{c.users}</span> : queueBadge(countKey)}</span>}

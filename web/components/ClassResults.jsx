@@ -165,7 +165,7 @@ export default function ClassResults({ groups }) {
                   ['Best time', bestTime.length ? `${Math.min(...bestTime)}s` : '–'],
                 ].map(([l, v]) => (
                     <div key={l} className="rounded-md bg-card2 px-3 py-2">
-                    <div className="text-[10px] uppercase tracking-wide text-faint">{l}</div>
+                    <div className="text-[11px] uppercase tracking-wide text-faint">{l}</div>
                     <div className="text-[15px] font-extrabold text-white">{v}</div>
                   </div>
                 ))}

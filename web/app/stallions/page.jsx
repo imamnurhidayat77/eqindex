@@ -51,7 +51,7 @@ export default function Stallions() {
         <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Search
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Stallion…"
             className="rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" style={{ width: 200 }} /></label>
-        <span className="ml-auto text-[12px] text-faint">Clear % split by height · % reaching 1.30m+ · best result</span>
+        <span className="ml-auto text-[12px] text-faint">Hover a column header for its definition</span>
       </div>
       <section className={CARD}>
         <div className={`${TABLEWRAP} transition-opacity duration-150 ${loading && rows.length ? 'opacity-50' : ''}`} aria-busy={loading && rows.length > 0}>
@@ -62,10 +62,10 @@ export default function Stallions() {
             <th className={`${TH} ${NUM}`}>Total</th>
             <th className={`${TH} ${NUM}`}>Avg</th>
             <th className={`${TH} ${NUM}`}>Clear %</th>
-            <th className={`${TH} ${NUM}`} title="Clear % under 1.20m">&lt;1.20</th>
-            <th className={`${TH} ${NUM}`} title="Clear % 1.20–1.30m">1.20–</th>
-            <th className={`${TH} ${NUM}`} title="Clear % 1.30m and above">1.30+</th>
-            <th className={`${TH} ${NUM}`} title="% of offspring jumping 1.30m or higher">≥1.30 %</th>
+            <th className={`${TH} ${NUM}`} title="Clear % under 1.20m">Clear &lt;1.20m</th>
+            <th className={`${TH} ${NUM}`} title="Clear % 1.20–1.30m">Clear 1.20–1.30</th>
+            <th className={`${TH} ${NUM}`} title="Clear % 1.30m and above">Clear 1.30m+</th>
+            <th className={`${TH} ${NUM}`} title="% of offspring jumping 1.30m or higher">Offspring at 1.30m+</th>
             <th className={TH}>Best</th>
           </tr></thead>
           <tbody>

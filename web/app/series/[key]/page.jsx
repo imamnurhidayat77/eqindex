@@ -71,7 +71,7 @@ export default async function SeriesPage({ params }) {
       </div>
 
       <h2 className="text-[15px] font-bold">Standings</h2>
-      <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rider totals across all horses — click a row for the per-horse breakdown, then per event.</p>
+      <p className="mb-3 mt-0.5 text-[13px] text-muted">Rider totals across all horses — click a row for the per-horse breakdown, then per event.</p>
       <section className="mb-6 rounded-lg border border-line bg-card p-4">
         <SeriesRiderTable riders={table} seriesKey={key} />
         {!table.length && (

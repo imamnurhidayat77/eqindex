@@ -184,7 +184,7 @@ export default function SeasonTimeline({ history, limit = 20, partnerKey = 'ride
             {rounds.map((r, i) => (
               <td key={r.id || i} className="px-2 py-2 text-center tabular-nums min-w-[64px]">
                 <b>{r.height_cm ? `${(Number(r.height_cm) / 100).toFixed(2)}` : '–'}</b>
-                <span className="block text-[10px] text-faint font-normal">{dayOf(r.class_date) ? `${dayOf(r.class_date)} ${monthOf(r.class_date)}` : ''}</span>
+                <span className="block text-[11px] text-faint font-normal">{dayOf(r.class_date) ? `${dayOf(r.class_date)} ${monthOf(r.class_date)}` : ''}</span>
               </td>
             ))}
           </tr>

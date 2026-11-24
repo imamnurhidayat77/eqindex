@@ -138,7 +138,7 @@ export default function AdminNav({ user }) {
         <span className="w-4 text-center text-[13px]">{icon}</span>
         {label}
         {!!n && (
-          <span className="ml-auto bg-redbg text-blood text-[10px] font-bold rounded-full min-w-[18px] h-[18px] inline-flex items-center justify-center px-1">{n}</span>
+          <span className="ml-auto bg-redbg text-blood text-[11px] font-bold rounded-full min-w-[18px] h-[18px] inline-flex items-center justify-center px-1">{n}</span>
         )}
       </Link>
     );
@@ -156,7 +156,7 @@ export default function AdminNav({ user }) {
         <button onClick={() => setPalOpen(true)}
           className="flex w-full items-center gap-2 rounded border border-line bg-ink px-2.5 py-[7px] text-[12px] text-faint hover:text-muted hover:border-faint cursor-pointer transition-colors">
           <span aria-hidden="true">⌕</span> Jump to…
-          <kbd className="ml-auto hidden lg:inline rounded border border-line bg-card2 px-1.5 py-px text-[10px] text-muted font-sans">⌘K</kbd>
+          <kbd className="ml-auto hidden lg:inline rounded border border-line bg-card2 px-1.5 py-px text-[11px] text-muted font-sans">⌘K</kbd>
         </button>
       </div>
       {/* Phones/tablets: one compact section picker instead of the full
@@ -189,7 +189,7 @@ export default function AdminNav({ user }) {
               <div key={g.title} className="contents lg:block">
                 <button onClick={() => toggle(g.title)} aria-expanded={isOpen}
                   className={`hidden lg:flex w-full items-center gap-1.5 rounded-md px-2.5 pt-2.5 pb-1 text-[12px] font-semibold cursor-pointer transition-colors ${hasActive ? 'text-white' : 'text-faint hover:text-muted'}`}>
-                  <span aria-hidden="true" className="text-[9px] w-3">{isOpen ? '▾' : '▸'}</span>
+                  <span aria-hidden="true" className="text-[10px] w-3">{isOpen ? '▾' : '▸'}</span>
                   {g.title}
                 </button>
                 <div className={`contents ${isOpen ? 'lg:block' : 'lg:hidden'}`}>

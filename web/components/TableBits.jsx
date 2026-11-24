@@ -17,7 +17,7 @@ const TONES = {
 export function RowBtn({ children, onClick, disabled, title, tone = 'sky', className = '' }) {
   return (
     <button onClick={onClick} disabled={disabled} title={title}
-      className={`inline-flex items-center gap-1 rounded-md border bg-none px-2.5 py-1 text-[12.5px] font-semibold cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-wait ${TONES[tone] || TONES.sky} ${className}`}>
+      className={`inline-flex items-center gap-1 rounded-md border bg-none px-2.5 py-1 text-[13px] font-semibold cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-wait ${TONES[tone] || TONES.sky} ${className}`}>
       {children}
     </button>
   );
@@ -58,7 +58,7 @@ export function FilterSelect({ value, onChange, options = [], ariaLabel, classNa
           <option key={String(o.value)} value={o.value}>{o.label}</option>
         ))}
       </select>
-      <span aria-hidden="true" className="pointer-events-none absolute right-2.5 text-[10px] text-gold">▾</span>
+      <span aria-hidden="true" className="pointer-events-none absolute right-2.5 text-[11px] text-gold">▾</span>
     </span>
   );
 }

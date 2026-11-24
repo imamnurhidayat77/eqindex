@@ -88,19 +88,20 @@ export function Pagination({ page, pages, setPage, perPage, setPerPage, total, p
     }`;
   return (
     <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-      <div className="text-[12.5px] text-muted">
+      <div className="text-[13px] text-muted">
         <Count n={total} one="result" /> · Page {page} of {pages}
       </div>
-      <div className="flex items-center gap-1.5">
+      <nav aria-label="Pagination" className="flex flex-wrap items-center gap-1.5">
         <Dropdown ariaLabel="Rows per page" value={String(perPage)}
           options={perPageOptions.map((n) => ({ value: String(n), label: `${n} / page` }))}
           onSelect={(o) => { setPerPage(Number(o.value)); setPage(1); }} />
-        <button disabled={page <= 1} onClick={() => setPage(page - 1)} className={btn(false) + ' disabled:opacity-40'}>‹</button>
+        <button disabled={page <= 1} onClick={() => setPage(page - 1)} aria-label="Previous page" className={btn(false) + ' disabled:opacity-40'}>‹</button>
         {nums.map((n) => (
-          <button key={n} onClick={() => setPage(n)} className={btn(n === page)}>{n}</button>
+          <button key={n} onClick={() => setPage(n)} aria-current={n === page ? 'page' : undefined}
+            className={`${btn(n === page)} ${Math.abs(n - page) > 1 ? 'hidden sm:inline-block' : ''}`}>{n}</button>
         ))}
-        <button disabled={page >= pages} onClick={() => setPage(page + 1)} className={btn(false) + ' disabled:opacity-40'}>›</button>
-      </div>
+        <button disabled={page >= pages} onClick={() => setPage(page + 1)} aria-label="Next page" className={btn(false) + ' disabled:opacity-40'}>›</button>
+      </nav>
     </div>
   );
 }

@@ -58,7 +58,7 @@ export default async function StallionProfile({ params, searchParams }) {
         </table>
         </div>
         {pages > 1 && (
-          <nav aria-label="Offspring pages" className="mt-3 flex items-center justify-between text-[12.5px] text-muted">
+          <nav aria-label="Offspring pages" className="mt-3 flex items-center justify-between text-[13px] text-muted">
             {page > 1
               ? <Link href={pageHref(page - 1)} className="text-sky no-underline hover:underline">← Prev</Link>
               : <span />}

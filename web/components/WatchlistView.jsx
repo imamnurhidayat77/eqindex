@@ -75,8 +75,8 @@ function EventAthleteCard({ a, onUnwatch }) {
   return (
     <div className="rounded bg-card2 border border-rowline px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-        <span className={`text-[10px] font-bold uppercase tracking-wide ${a.kind === 'horse' ? 'text-moss' : 'text-sky'}`}>{a.kind}</span>
-        <Link href={profileHref} className="text-white font-semibold text-[13.5px] no-underline hover:text-gold">{a.name}</Link>
+        <span className={`text-[11px] font-bold uppercase tracking-wide ${a.kind === 'horse' ? 'text-moss' : 'text-sky'}`}>{a.kind}</span>
+        <Link href={profileHref} className="text-white font-semibold text-[14px] no-underline hover:text-gold">{a.name}</Link>
         <span className="text-faint text-[12px]">
           {rounds} round{rounds === 1 ? '' : 's'} · <span className="text-moss font-semibold">{clears} clear{clears === 1 ? '' : 's'}</span>
           {best !== null ? <> · best <span className="text-gold font-bold">#{best}</span></> : null}
@@ -90,8 +90,8 @@ function EventAthleteCard({ a, onUnwatch }) {
       </div>
       {open && (
         <div className="mt-2 border-t border-rowline pt-2 overflow-x-auto">
-          <table className="w-full border-collapse text-[12.5px] min-w-[640px]">
-            <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
+          <table className="w-full border-collapse text-[13px] min-w-[640px]">
+            <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
               <th className="border-b border-line px-2 py-1.5 font-semibold">Date</th>
               <th className="border-b border-line px-2 py-1.5 font-semibold">Class</th>
               <th className="border-b border-line px-2 py-1.5 font-semibold">Height</th>
@@ -143,14 +143,14 @@ function EventPhotoCard({ a, photos, viewAllHref, onUnwatch }) {
   return (
     <div className="rounded bg-card2 border border-rowline px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-        <span className={`text-[10px] font-bold uppercase tracking-wide ${a.kind === 'horse' ? 'text-moss' : 'text-sky'}`}>{a.kind}</span>
-        <Link href={profileHref} className="text-white font-semibold text-[13.5px] no-underline hover:text-gold">{a.name}</Link>
+        <span className={`text-[11px] font-bold uppercase tracking-wide ${a.kind === 'horse' ? 'text-moss' : 'text-sky'}`}>{a.kind}</span>
+        <Link href={profileHref} className="text-white font-semibold text-[14px] no-underline hover:text-gold">{a.name}</Link>
         <span className="text-faint text-[12px]">
           📷 {shots.length}{shots.length >= 4 && (photos || []).length > 4 ? ` of ${(photos || []).length}` : ''} at this event
         </span>
         <span className="flex-1" />
         {viewAllHref && (
-          <a href={viewAllHref} target="_blank" rel="noreferrer" className="text-sky text-[11.5px] no-underline hover:underline">View all →</a>
+          <a href={viewAllHref} target="_blank" rel="noreferrer" className="text-sky text-[12px] no-underline hover:underline">View all →</a>
         )}
         <UnwatchBtn watchId={a.watchId} name={a.name} onUnwatch={onUnwatch} />
       </div>
@@ -321,8 +321,8 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
           </div>
           <div className="flex flex-wrap gap-1.5">
             {watched.map((w) => (
-              <span key={`${w.kind}-${w.watchId}`} className="inline-flex items-center gap-2 rounded-full border border-line bg-card2 pl-2.5 pr-1.5 py-1 text-[12.5px]">
-                <span className={`text-[10px] font-bold uppercase ${w.kind === 'horse' ? 'text-moss' : 'text-sky'}`}>{w.kind}</span>
+              <span key={`${w.kind}-${w.watchId}`} className="inline-flex items-center gap-2 rounded-full border border-line bg-card2 pl-2.5 pr-1.5 py-1 text-[13px]">
+                <span className={`text-[11px] font-bold uppercase ${w.kind === 'horse' ? 'text-moss' : 'text-sky'}`}>{w.kind}</span>
                 <Link
                   href={`/${w.kind === 'horse' ? 'horses' : 'riders'}/${w.slug || w.id}`}
                   className="text-white no-underline hover:text-gold font-semibold"
@@ -361,7 +361,7 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
                   )}
                   <span className="text-[12px] text-faint ml-auto">{g.when || ''}</span>
                 </div>
-                <div className="text-[12.5px] text-muted mb-2.5">
+                <div className="text-[13px] text-muted mb-2.5">
                   {g.entries.length} {g.entries.length === 1 ? 'entry' : 'entries'} ·{' '}
                   <span className="text-moss font-semibold">{g.clears} clear{g.clears === 1 ? '' : 's'}</span>
                   {rate !== null ? <span className="text-faint"> ({rate.toFixed(0)}%)</span> : null}
@@ -412,7 +412,7 @@ export default function WatchlistView({ horses = [], riders = [], pulse = { roun
                         📷 More from this event ({leftover.length})
                       </span>
                       <span className="flex-1" />
-                      <a href={evHrefOf(g)} target="_blank" rel="noreferrer" className="text-sky text-[11.5px] no-underline hover:underline">View all →</a>
+                      <a href={evHrefOf(g)} target="_blank" rel="noreferrer" className="text-sky text-[12px] no-underline hover:underline">View all →</a>
                     </div>
                     <ThumbGrid photos={leftover.slice(0, 4)} />
                   </div>

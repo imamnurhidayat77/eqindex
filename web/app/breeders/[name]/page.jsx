@@ -76,7 +76,7 @@ export default async function BreederProfile({ params, searchParams }) {
       {!!divSummary.length && (
         <>
           <h2 className="text-[15px] font-bold">Division summary</h2>
-          <p className="mb-3 mt-0.5 text-[12.5px] text-muted">Rounds and clears per division across all offspring.</p>
+          <p className="mb-3 mt-0.5 text-[13px] text-muted">Rounds and clears per division across all offspring.</p>
           <section className="mb-6 rounded-lg border border-line bg-card p-4">
             <div className="overflow-x-auto">
             <table className="w-full border-collapse text-[13px]">
@@ -147,7 +147,7 @@ export default async function BreederProfile({ params, searchParams }) {
         </table>
         </div>
         {pages > 1 && (
-          <nav aria-label="Horses pages" className="mt-3 flex items-center justify-between text-[12.5px] text-muted">
+          <nav aria-label="Horses pages" className="mt-3 flex items-center justify-between text-[13px] text-muted">
             {page > 1
               ? <Link href={pageHref(page - 1)} className="text-sky no-underline hover:underline">← Prev</Link>
               : <span />}

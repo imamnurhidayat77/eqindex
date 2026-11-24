@@ -64,7 +64,7 @@ export default function EventCarousel({ events, kind = 'results' }) {
   return (
     <section className={`${CARD} !bg-card2/60`}>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-        <div className="font-display text-[17px] font-bold uppercase tracking-wide">{upcoming ? 'Upcoming Events' : 'Latest Events'}</div>
+        <div className="font-display text-[18px] font-bold uppercase tracking-wide">{upcoming ? 'Upcoming Events' : 'Latest Events'}</div>
         <div className="flex items-center gap-1.5">
           <Link href="/events" className={`${LINK} text-[12px] mr-2`}>View all →</Link>
           <button onClick={() => slide(-1)} disabled={!canL} aria-label="Previous"
@@ -84,15 +84,15 @@ export default function EventCarousel({ events, kind = 'results' }) {
               <span className="text-[11px] font-bold uppercase tracking-[0.8px] text-gold">{fmtRange(e.date_start, e.date_end)}</span>
               {upcoming && <span className={badge(BADGE.goldfill)}>Upcoming</span>}
             </div>
-            <div className="mt-2 font-extrabold text-[17px] leading-[1.2] text-white group-hover:text-gold line-clamp-2 min-h-[41px] transition-colors">{e.name}</div>
+            <div className="mt-2 font-extrabold text-[18px] leading-[1.2] text-white group-hover:text-gold line-clamp-2 min-h-[41px] transition-colors">{e.name}</div>
             <div className="mt-1 text-[12px] text-muted truncate">{e.venue || '—'}{e.region ? ` · ${e.region}` : ''}</div>
             {upcoming ? (
               <div className="mt-3 text-[12px] font-bold text-gold">VIEW DETAILS <span className="inline-block transition-transform group-hover:translate-x-1">→</span></div>
             ) : (
               <>
                 <div className="mt-3 flex gap-5">
-                  <span><span className="block text-[18px] font-extrabold leading-none tabular-nums text-white">{e.class_count ?? '–'}</span><span className="mt-1 block text-[10.5px] uppercase tracking-[0.6px] text-faint">classes</span></span>
-                  <span><span className="block text-[18px] font-extrabold leading-none tabular-nums text-white">{e.combo_count ?? e.round_count ?? '–'}</span><span className="mt-1 block text-[10.5px] uppercase tracking-[0.6px] text-faint">combos</span></span>
+                  <span><span className="block text-[18px] font-extrabold leading-none tabular-nums text-white">{e.class_count ?? '–'}</span><span className="mt-1 block text-[11px] uppercase tracking-[0.6px] text-faint">classes</span></span>
+                  <span><span className="block text-[18px] font-extrabold leading-none tabular-nums text-white">{e.combo_count ?? e.round_count ?? '–'}</span><span className="mt-1 block text-[11px] uppercase tracking-[0.6px] text-faint">combos</span></span>
                 </div>
                 {e.updated_at && <div className="mt-2 text-[11px] text-faint">Updated {fmtUpdated(e.updated_at)}</div>}
                 <div className="mt-auto pt-3 text-[12px] font-bold text-gold">VIEW RESULTS <span className="inline-block transition-transform group-hover:translate-x-1">→</span></div>

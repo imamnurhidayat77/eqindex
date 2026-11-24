@@ -24,7 +24,7 @@ export default function Modal({ title, sub, onClose, children, footer, wide = fa
         <div className="p-5 sm:p-6">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h2 className="text-[17px] font-bold truncate">{title}</h2>
+              <h2 className="text-[18px] font-bold truncate">{title}</h2>
               {sub && <p className="text-muted text-[13px] mt-0.5">{sub}</p>}
             </div>
             <button onClick={onClose} aria-label="Close dialog"

@@ -168,8 +168,8 @@ function RiderRoundsTable({ rider, horses, seriesKey }) {
   if (!visible.length) return <p className="text-[12px] text-faint py-1">No counting classes.</p>;
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-[12.5px] min-w-[640px]">
-        <thead><tr className="text-left text-[10.5px] uppercase tracking-wide text-muted">
+      <table className="w-full border-collapse text-[13px] min-w-[640px]">
+        <thead><tr className="text-left text-[11px] uppercase tracking-wide text-muted">
           <th className="border-b border-line px-2 py-1.5 font-semibold">Class</th>
           <th className="border-b border-line px-2 py-1.5 font-semibold">Event</th>
           <th className="border-b border-line px-2 py-1.5 font-semibold">Height</th>

@@ -176,7 +176,7 @@ export function NavSearch({ mobile = false, onGo = null }) {
                 <span className="block truncate font-semibold text-white">{t.name}</span>
                 {t.sub ? <span className="block truncate text-[11px] text-muted">{t.sub}</span> : null}
               </span>
-              <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${t.kind === 'horse' ? 'bg-goldbg text-gold' : t.kind === 'rider' ? 'bg-bluebg text-sky' : 'bg-green-500/15 text-green-400'}`}>
+              <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold ${t.kind === 'horse' ? 'bg-goldbg text-gold' : t.kind === 'rider' ? 'bg-bluebg text-sky' : 'bg-green-500/15 text-green-400'}`}>
                 {t.kind === 'horse' ? 'HORSE' : t.kind === 'rider' ? 'RIDER' : 'EVENT'}
               </span>
             </button>

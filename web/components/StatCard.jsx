@@ -80,7 +80,7 @@ export function StatCard({
       title={title || labelText}
       className={`rounded-lg border bg-card flex flex-col ${compact ? 'p-3 min-h-[96px]' : 'p-4 min-h-[118px]'} ${highlight ? 'border-gold/60' : 'border-line'}`}
     >
-      <div className={`truncate font-semibold uppercase tracking-[0.4px] text-muted ${compact ? 'text-[9px]' : 'text-[10px]'}`}>{label}</div>
+      <div className={`truncate font-semibold uppercase tracking-[0.4px] text-muted ${compact ? 'text-[10px]' : 'text-[11px]'}`}>{label}</div>
       <div className="mt-2 flex flex-1 items-end justify-between gap-2">
         <span className={`font-extrabold leading-none tabular-nums ${compact ? 'text-[18px]' : 'text-[22px]'} ${valueCls}`}>{value}</span>
         {spark && <StatSpark data={spark} color={sparkColor} w={compact ? 60 : 76} h={compact ? 24 : 30} />}
@@ -99,7 +99,7 @@ export function StatCard({
 }
 
 const GRID_COLS = {
-  7: 'grid-cols-2 sm:grid-cols-4 xl:grid-cols-7',
+  7: 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-7',
   6: 'grid-cols-2 md:grid-cols-3 xl:grid-cols-6',
   5: 'grid-cols-2 md:grid-cols-5',
   4: 'grid-cols-2 lg:grid-cols-4',

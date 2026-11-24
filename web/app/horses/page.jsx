@@ -102,7 +102,7 @@ export default function Horses() {
             </button>
           ))}
         </div>
-        <div className="flex gap-1.5 items-center">
+        <div className="flex flex-wrap gap-1.5 items-center" role="group" aria-label="Filter by age">
           <span className="text-[11px] text-faint">Age:</span>
           {AGE_GROUPS.map(([v, lbl]) => (
             <button key={v || 'all'} onClick={() => { setAgeGroup(v); setPage(1); }}

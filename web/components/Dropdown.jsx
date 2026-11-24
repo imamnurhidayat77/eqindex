@@ -120,7 +120,7 @@ export default function Dropdown({
         className={`flex items-center justify-between gap-2 rounded-lg font-semibold text-body hover:border-gold/50 focus:border-gold/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 ${btnSize} ${variant === 'bare' ? 'hover:bg-line/50' : ''} ${block ? 'w-full' : ''} ${buttonClassName}`}
       >
         <span className="truncate">{current ? current.label : <span className="font-normal text-faint">{placeholder}</span>}</span>
-        <span className={`text-[10px] text-gold transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+        <span className={`text-[11px] text-gold transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
       </button>
       {open && !disabled && (
         <div
