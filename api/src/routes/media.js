@@ -4,7 +4,7 @@ const { asyncH } = require('../lib/async');
 const { EMAIL_RE, needRole } = require('../lib/auth');
 const { throttled } = require('../lib/ratelimit');
 const { audit } = require('../lib/audit');
-const { recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds, cappedSponsorDiscount, SPONSOR_BUDGET_LIVE_SQL } = require('../lib/wallet');
+const { recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds, cappedSponsorDiscount, SPONSOR_BUDGET_LIVE_SQL, notOwnSponsorSql } = require('../lib/wallet');
 const { resolveId } = require('../lib/resolve');
 const { sendMail } = require('../lib/mailer');
 const { APP_URL } = require('../config');
@@ -2036,8 +2036,9 @@ module.exports = function mountMediaRoutes(app) {
            AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
            AND (b.event_id IS NULL OR b.event_id = $2)
            AND b.sponsor_id IN (SELECT sponsor_id FROM sponsor_logos WHERE id = ANY($1::UUID[]))
+           AND ${notOwnSponsorSql('$3')}
          ORDER BY b.discount_cents DESC LIMIT 1`,
-        [logoIds, mediaEventId]);
+        [logoIds, mediaEventId, buyer.id]);
       if (best.rows.length) {
         const bud = best.rows[0];
         discountCents = cappedSponsorDiscount(bud.discount_cents, amount);
@@ -2343,8 +2344,9 @@ module.exports = function mountMediaRoutes(app) {
                 AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
                 AND (b.event_id IS NULL OR b.event_id = $2)
                 AND b.sponsor_id IN (SELECT sponsor_id FROM sponsor_logos WHERE id = ANY($1::UUID[]))
+                AND ${notOwnSponsorSql('$3')}
               ORDER BY b.discount_cents DESC LIMIT 1`,
-            [logoIds, row.event_id || null]
+            [logoIds, row.event_id || null, authUser.id]
           );
           if (best.rows.length) {
             const dc = cappedSponsorDiscount(best.rows[0].discount_cents, amount);

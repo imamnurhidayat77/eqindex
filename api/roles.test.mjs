@@ -200,3 +200,19 @@ test('sponsor budgets are either photo or merch (migration 109)', async () => {
   assert.equal(parseBudgetInput({ agreed_cents: 100, applies_to: 'merch' }).values.applies_to, 'merch');
   assert.ok(parseBudgetInput({ agreed_cents: 100, applies_to: 'both' }).errors.length);
 });
+
+test('a sponsor gets no discount from its own logo (photo, cart, merch, buy box)', async () => {
+  const media = src('src/routes/media.js');
+  assert.equal((media.match(/\$\{notOwnSponsorSql\('\$3'\)\}/g) || []).length, 2, 'both photo checkout paths skip the buyer\'s own sponsor');
+  assert.ok(media.includes('[logoIds, mediaEventId, buyer.id]'), 'single checkout passes the session buyer');
+  assert.ok(media.includes('[logoIds, row.event_id || null, authUser.id]'), 'cart checkout passes the session buyer');
+  const merch = src('src/routes/merch.js');
+  assert.ok(merch.includes("${notOwnSponsorSql('$2')}"), 'merch budgets skip the buyer\'s own sponsor (no hold either)');
+  assert.ok(merch.includes('sponsorDiscounts(client, v.sponsorLogoIds, req.authUser?.id || null)'), 'merch checkout passes the session buyer');
+  const pub = src('src/routes/public.js');
+  assert.ok(pub.includes("[eid, kind, req.authUser?.id || null]"), 'buy box hides the discount from the sponsor itself');
+  const { createRequire } = await import('node:module');
+  const { notOwnSponsorSql } = createRequire(import.meta.url)('./src/lib/wallet.js');
+  assert.equal(notOwnSponsorSql('$9'),
+    'NOT EXISTS (SELECT 1 FROM sponsors own WHERE own.id = b.sponsor_id AND own.user_id = $9::UUID)');
+});

@@ -262,7 +262,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
         .then((r) => r.json())
         .then((j) => setLogos(j?.data || []))
         .catch(() => {});
-      fetch(`${API}/api/sponsor-discounts${dq}`)
+      fetch(`${API}/api/sponsor-discounts${dq}`, { credentials: 'include' })
         .then((r) => r.json())
         .then((j) => setDiscounts(j?.data || []))
         .catch(() => {});

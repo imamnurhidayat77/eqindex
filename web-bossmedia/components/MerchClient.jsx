@@ -388,7 +388,7 @@ export default function MerchClient({ productId: initialProductId = 'jacket', si
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (live) setMyLogos(j ? j.data || [] : false); })
       .catch(() => { if (live) setMyLogos(false); });
-    fetch(`${API}/api/sponsor-discounts?applies_to=merch`).then((r) => (r.ok ? r.json() : null))
+    fetch(`${API}/api/sponsor-discounts?applies_to=merch`, { credentials: 'include' }).then((r) => (r.ok ? r.json() : null))
       .then((j) => {
         if (!live) return;
         const m = {};

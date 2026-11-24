@@ -12,6 +12,7 @@ const { EMAIL_RE, needRole } = require('../lib/auth');
 const { UUID_RE } = require('../lib/resolve');
 const { throttled } = require('../lib/ratelimit');
 const mediaStore = require('../lib/mediaStore');
+const { notOwnSponsorSql } = require('../lib/wallet');
 const { APP_URL } = require('../config');
 
 let merchLib = null;
@@ -160,8 +161,9 @@ const HOLD_DAYS_TO_PAY = 14;
 
 // Funded discount per sponsor logo: the best active merch budget (applies_to
 // merch, migration 109) of its sponsor with enough left for one more item.
-// Photo budgets never discount merch. Unfunded logos discount nothing.
-async function sponsorDiscounts(db, logoIds) {
+// Photo budgets never discount merch. Unfunded logos discount nothing, and
+// neither does a buyer's own sponsor (no discount or hold on its own budget).
+async function sponsorDiscounts(db, logoIds, buyerUserId = null) {
   if (!logoIds.length) return {};
   const { rows } = await db.query(
     `SELECT l.id AS logo_id, s.id AS sponsor_id, s.name AS sponsor_name,
@@ -171,10 +173,11 @@ async function sponsorDiscounts(db, logoIds) {
        SELECT b.id, b.discount_cents, ${MERCH_BUDGET_LEFT_SQL} AS left_cents FROM sponsor_budgets b
        WHERE b.sponsor_id = s.id AND b.status = 'active' AND (b.ends_on IS NULL OR b.ends_on >= CURRENT_DATE)
          AND b.discount_cents > 0 AND b.applies_to = 'merch' AND ${MERCH_BUDGET_LEFT_SQL} >= b.discount_cents
+         AND ${notOwnSponsorSql('$2')}
        ORDER BY b.discount_cents DESC, b.id LIMIT 1
      ) pick ON TRUE
      WHERE l.id = ANY($1::UUID[]) AND l.is_active AND s.is_active AND s.kind = 'official'`,
-    [logoIds]);
+    [logoIds, buyerUserId]);
   return Object.fromEntries(rows.map((r) => [r.logo_id, { ...r, discount_cents: Number(r.discount_cents), left_cents: Number(r.left_cents) }]));
 }
 
@@ -593,7 +596,7 @@ module.exports = function mountMerchRoutes(app) {
           `SELECT b.id FROM sponsor_budgets b JOIN sponsor_logos l ON l.sponsor_id = b.sponsor_id
            WHERE l.id = ANY($1::UUID[]) AND b.applies_to = 'merch' ORDER BY b.id FOR UPDATE OF b`, [v.sponsorLogoIds]);
       }
-      const funded = await sponsorDiscounts(client, v.sponsorLogoIds);
+      const funded = await sponsorDiscounts(client, v.sponsorLogoIds, req.authUser?.id || null);
       if (v.sponsorLogoIds.some((id) => !funded[id])) {
         const e = new Error('a sponsor logo is no longer available, pick another'); e.status = 400; throw e;
       }

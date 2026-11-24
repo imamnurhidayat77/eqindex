@@ -6,7 +6,7 @@ const { roundFiltersVis, visSql } = require('../lib/filters');
 const { EMAIL_RE, needRole, ownOrAdmin } = require('../lib/auth');
 const { throttled } = require('../lib/ratelimit');
 const { audit } = require('../lib/audit');
-const { budgetKindOf } = require('../lib/wallet');
+const { budgetKindOf, notOwnSponsorSql } = require('../lib/wallet');
 const { MERCH_BUDGET_LEFT_SQL } = require('./merch');
 // Budget left for sponsor listings: merch budgets also subtract the
 // discounts live merch orders hold (migration 111).
@@ -127,8 +127,11 @@ module.exports = function mountPublicRoutes(app) {
          AND ${budgetLeftSql(kind)} >= b.discount_cents
          AND ($1::UUID IS NULL OR b.event_id IS NULL OR b.event_id = $1)
          AND b.applies_to = $2
+         AND ${notOwnSponsorSql('$3')}
        ORDER BY b.discount_cents DESC LIMIT 20`,
-      [eid, kind]);
+      [eid, kind, req.authUser?.id || null]);
+    // Varies per viewer now (a sponsor sees no discount on its own logo).
+    res.setHeader('Cache-Control', 'private, no-store');
     res.json({ data: rows });
   }));
 

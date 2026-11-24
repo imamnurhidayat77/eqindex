@@ -267,6 +267,13 @@ function cappedSponsorDiscount(discountCents, priceCents) {
   return Math.max(0, Math.min(d, cap));
 }
 
+// A sponsor never funds a discount on its own purchase: putting its own
+// logo on a photo or item is not exposure it pays a buyer for (Imam,
+// 2026-11-25). SQL for budget alias b, buyerParam is the buyer's user id
+// placeholder (NULL for guests, who then keep the discount).
+const notOwnSponsorSql = (buyerParam) =>
+  `NOT EXISTS (SELECT 1 FROM sponsors own WHERE own.id = b.sponsor_id AND own.user_id = ${buyerParam}::UUID)`;
+
 // SQL guard every "is this budget spendable" query shares (alias b).
 const SPONSOR_BUDGET_LIVE_SQL = "b.status = 'active' AND (b.ends_on IS NULL OR b.ends_on >= CURRENT_DATE)";
 // A budget funds either photo or merchandise discounts (migration 109).
@@ -346,4 +353,4 @@ async function releaseLateOrganizerShares(pool, eventId, { rates } = {}) {
 
 module.exports = { computeSplit, getRates, resolvePurchaseContext, recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds,
   ORGANIZER_CLAIM_DAYS, lateOrganizerShare, releaseLateOrganizerShares,
-  MAX_SPONSOR_DISCOUNT_RATE, cappedSponsorDiscount, SPONSOR_BUDGET_LIVE_SQL, SPONSOR_BUDGET_KINDS, budgetKindOf };
+  MAX_SPONSOR_DISCOUNT_RATE, cappedSponsorDiscount, SPONSOR_BUDGET_LIVE_SQL, SPONSOR_BUDGET_KINDS, budgetKindOf, notOwnSponsorSql };

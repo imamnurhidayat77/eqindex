@@ -48,7 +48,7 @@ export default function CartClient() {
       .then((r) => r.json())
       .then((j) => setLogos(j?.data || []))
       .catch(() => {});
-    fetch(`${API}/api/sponsor-discounts`)
+    fetch(`${API}/api/sponsor-discounts`, { credentials: 'include' })
       .then((r) => r.json())
       .then((j) => setDiscounts(j?.data || []))
       .catch(() => {});
