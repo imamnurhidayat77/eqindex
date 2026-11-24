@@ -48,6 +48,30 @@ export function clearCart() {
   writeCart([]);
 }
 
+// Items stay in the cart until payment is confirmed: a buyer who cancels on
+// Stripe must come back to a full cart. Checkout records which cart keys
+// belong to which purchase ids; the success page settles them once paid.
+const PENDING_KEY = 'bossmedia:cart-pending';
+
+export function markCartPending(purchaseIds, keys) {
+  const ids = (purchaseIds || []).filter(Boolean).map(String);
+  if (!ids.length || !keys?.length) return;
+  try { localStorage.setItem(PENDING_KEY, JSON.stringify({ ids, keys })); } catch { /* storage full or blocked */ }
+}
+
+// Removes the pending items when any of their purchase ids is paid.
+export function settleCartPending(paidIds) {
+  try {
+    const pending = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null');
+    const paid = new Set((paidIds || []).map(String));
+    if (!pending?.ids?.some((id) => paid.has(id))) return false;
+    const drop = new Set(pending.keys);
+    writeCart(readCart().filter((x) => !drop.has(x.key)));
+    localStorage.removeItem(PENDING_KEY);
+    return true;
+  } catch { return false; }
+}
+
 export function useCart() {
   const [items, setItems] = useState([]);
   useEffect(() => {

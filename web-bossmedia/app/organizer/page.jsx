@@ -7,6 +7,8 @@ import { Icon, SiteFooter, SiteHeader } from '../../components/figma';
 import QrPosterModal from '../../components/QrPosterModal';
 
 import { useDocumentTitle } from '../../lib/use-document-title';
+import { fmtRange } from '../../lib/format';
+import formRow from '../../components/FormRow.module.css';
 
 const TABS = [['events', 'My events'], ['balance', 'Balance']];
 
@@ -146,7 +148,7 @@ function EventsTab() {
             <label><span>Venue</span>
               <input type="text" required value={form.venue} onChange={(e) => set('venue')(e.target.value)} placeholder="e.g. Brookby Equestrian" /></label>
           </div>
-          <div className="st-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+          <div className={`st-form-row ${formRow.row3}`}>
             <label><span>Region</span>
               <input type="text" value={form.region} onChange={(e) => set('region')(e.target.value)} placeholder="e.g. Auckland" /></label>
             <label><span>Start date</span>
@@ -166,7 +168,7 @@ function EventsTab() {
           <p>It takes a minute — riders can pre-book as soon as it’s listed.</p>
         </div>
       ) : (
-        <div className="st-card" style={{ padding: '6px 22px' }}>
+        <div className="st-card table-scroll" style={{ padding: '6px 22px' }}>
           <table className="st-table">
             <thead><tr><th>Event</th><th>Dates</th><th>Photos</th><th>Gross</th><th></th></tr></thead>
             <tbody>
@@ -174,7 +176,7 @@ function EventsTab() {
                 <tr key={ev.id}>
                   <td><div style={{ fontWeight: 600 }}>{ev.name}</div>
                     <div style={{ color: '#777', fontSize: 11 }}>{[ev.venue, ev.region].filter(Boolean).join(' · ')}</div></td>
-                  <td style={{ fontSize: 12 }}>{(ev.date_start || '').slice(0, 10)} → {(ev.date_end || '').slice(0, 10)}</td>
+                  <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{fmtRange(ev.date_start, ev.date_end)}</td>
                   <td>{ev.photo_count ?? '—'}</td>
                   <td>{ev.gross_cents != null ? nzdc(ev.gross_cents) : '—'}</td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -204,7 +206,7 @@ function EventsTab() {
               <label><span>Venue</span>
                 <input type="text" required value={editing.venue} onChange={(e) => setEditing({ ...editing, venue: e.target.value })} /></label>
             </div>
-            <div className="st-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+            <div className={`st-form-row ${formRow.row3}`}>
               <label><span>Region</span>
                 <input type="text" value={editing.region} onChange={(e) => setEditing({ ...editing, region: e.target.value })} /></label>
               <label><span>Start date</span>
@@ -241,9 +243,9 @@ function BalanceTab() {
           <div className="st-card" style={{ padding: 18, marginBottom: 16 }}>
             <p className="st-klabel">Available balance</p>
             <strong className="st-kval">{nzdc(data.balance_cents)}</strong>
-            <p><small style={{ color: '#777' }}>10% of every photo sale at your events lands here automatically.</small></p>
+            <p><small style={{ color: '#777' }}>10% of every photo sale at your events lands here automatically. It can’t be cashed out: share it with your event crew on the Volunteers page so they can buy photos.</small></p>
           </div>
-          <div className="st-card" style={{ padding: '6px 22px' }}>
+          <div className="st-card table-scroll" style={{ padding: '6px 22px' }}>
             <table className="st-table">
               <thead><tr><th>Type</th><th>Amount</th><th>Note</th><th>Date</th></tr></thead>
               <tbody>

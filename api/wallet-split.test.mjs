@@ -38,3 +38,36 @@ describe('computeSplit', () => {
     }
   });
 });
+
+describe('late organizer claim', () => {
+  const { lateOrganizerShare, ORGANIZER_CLAIM_DAYS } = wallet;
+  test('moves the organizer share out of the platform fee', () => {
+    // NZ$100 sale, no organizer: platform kept 2000, organizer share is 1000.
+    assert.equal(lateOrganizerShare(10000, 2000, 0.1), 1000);
+  });
+  test('never moves more than the platform actually kept', () => {
+    // Sponsor discount shrank the platform fee to 300.
+    assert.equal(lateOrganizerShare(10000, 300, 0.1), 300);
+    assert.equal(lateOrganizerShare(10000, -50, 0.1), 0);
+  });
+  test('zero rate or bad input moves nothing', () => {
+    assert.equal(lateOrganizerShare(10000, 2000, 0), 0);
+    assert.equal(lateOrganizerShare(null, 2000, 0.1), 0);
+  });
+  test('claim window is 90 days after the event', () => {
+    assert.equal(ORGANIZER_CLAIM_DAYS, 90);
+  });
+});
+
+describe('sponsor discount cap', () => {
+  const { cappedSponsorDiscount } = wallet;
+  test('discount never exceeds half the price', () => {
+    assert.equal(cappedSponsorDiscount(1000, 5000), 1000);
+    assert.equal(cappedSponsorDiscount(4999, 5000), 2500);
+    assert.equal(cappedSponsorDiscount(500, 999), 499);
+  });
+  test('bad input gives no discount', () => {
+    assert.equal(cappedSponsorDiscount(-5, 5000), 0);
+    assert.equal(cappedSponsorDiscount(1000, 0), 0);
+  });
+});

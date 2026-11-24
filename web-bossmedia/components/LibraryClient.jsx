@@ -8,6 +8,7 @@ import SearchSelect from './SearchSelect';
 import TagModal from './TagModal';
 import SmartImage from './SmartImage';
 import { studio } from '../lib/studio';
+import styles from './StudioLibrary.module.css';
 
 const STATUSES = ['', 'draft', 'published', 'archived'];
 const KINDS = ['', 'photo', 'reel'];
@@ -84,11 +85,13 @@ export default function LibraryClient({ events, initial }) {
     if (label === 'delete') load();
   }
 
+  // Select-all covers the page you can see. Selecting hidden pages is an explicit second step,
+  // so a bulk Delete never touches assets the photographer did not look at.
+  const allOnPage = pageItems.length > 0 && pageItems.every((m) => selected.has(m.id));
   const allVisible = visible.length > 0 && visible.every((m) => selected.has(m.id));
   const toggleAll = () => {
     if (busy) return;
-    if (allVisible) setSelected(new Set());
-    else setSelected(new Set(visible.map((m) => m.id)));
+    setSelected(allOnPage ? new Set() : new Set(pageItems.map((m) => m.id)));
   };
 
   return (
@@ -110,17 +113,24 @@ export default function LibraryClient({ events, initial }) {
         </label>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 6 }}>
-        <button className="st-btn-ghost" onClick={toggleAll} disabled={busy}>{busy ? 'Working…' : allVisible ? 'Deselect all' : `Select all (${visible.length})`}</button>
+        <button className="st-btn-ghost" onClick={toggleAll} disabled={busy || !pageItems.length}>{busy ? 'Working…' : allOnPage ? 'Clear selection' : `Select this page (${pageItems.length})`}</button>
+        {allOnPage && !allVisible && visible.length > pageItems.length && (
+          <button className="st-link" style={{ background: 'none', border: 0, padding: 0, color: '#bbb', fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }} onClick={() => setSelected(new Set(visible.map((m) => m.id)))} disabled={busy}>
+            Select all {visible.length} across pages
+          </button>
+        )}
         <button className="st-btn-ghost" disabled={!selected.size || busy} onClick={() => bulk({ status: 'published' }, 'publish')}>Publish ({selected.size})</button>
         <button className="st-btn-ghost" disabled={!selected.size || busy} onClick={() => bulk({ status: 'archived' }, 'archive')}>Archive</button>
         <button className="st-btn-ghost st-btn-danger" disabled={!selected.size || busy} onClick={() => selected.size && setConfirmDelete(true)}>Delete</button>
         <ConfirmModal open={confirmDelete} danger confirmLabel="Delete"
           title={`Delete ${selected.size} asset(s)?`}
-          message="Files are archived and leave the shop. This can’t be undone."
+          message="They leave the shop and the files are deleted. Sold items can’t be deleted, archive those instead. This can’t be undone."
           busy={busy}
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => { setConfirmDelete(false); bulk(null, 'delete'); }} />
-        <span style={{ color: '#777', fontSize: 12 }}>{items === null ? 'Loading…' : `${visible.length} shown`}</span>
+        <span style={{ color: '#9a9a9a', fontSize: 12 }}>{items === null ? 'Loading…' : `${selected.size ? `${selected.size} selected · ` : ''}${visible.length} shown`}</span>
+        {/* shortcut: the list loads the newest 200 only, move search + paging server-side when a studio passes that */}
+        {items?.length === 200 && <span style={{ color: '#e0b96a', fontSize: 12 }}>Showing the newest 200. Use the filters to find older items.</span>}
       </div>
       {items !== null && !visible.length ? (
         <div className="event-media-empty">
@@ -153,20 +163,23 @@ export default function LibraryClient({ events, initial }) {
 }
 
 function ItemCard({ m, checked, disabled, onCheck, onOpen }) {
+  const title = [m.horse, m.rider].filter(Boolean).join(' · ') || m.other_people || 'Untagged';
+  const sold = Number(m.purchase_count) || 0;
   return (
     <article className="st-media-card">
-      <input type="checkbox" className="sel" checked={checked} disabled={disabled} onChange={(e) => onCheck(e.target.checked)} aria-label={`Select ${[m.horse, m.rider].filter(Boolean).join(' · ') || m.id.slice(0, 8)}`} />
-      {m.thumb_url || m.preview_url ? <SmartImage src={m.thumb_url || m.preview_url} alt={`${[m.horse, m.rider].filter(Boolean).join(' ridden by ') || 'Library photo'}${m.event_name ? ` at ${m.event_name}` : ''}`} width={800} height={600} sizes="(max-width: 768px) 50vw, 25vw" /> : <span className="cover-fallback">No preview</span>}
+      <input type="checkbox" className="sel" checked={checked} disabled={disabled} onChange={(e) => onCheck(e.target.checked)} aria-label={`Select ${title}`} />
+      <button type="button" className={styles.thumb} onClick={onOpen} aria-label={`Edit ${title}`}>
+        {m.thumb_url || m.preview_url ? <SmartImage src={m.thumb_url || m.preview_url} alt={`${title}${m.event_name ? ` at ${m.event_name}` : ''}`} width={800} height={600} sizes="(max-width: 768px) 50vw, 25vw" /> : <span className="cover-fallback">No preview</span>}
+        {m.kind === 'reel' && <span className={styles.play} aria-hidden="true">▶ Reel</span>}
+      </button>
       <footer>
-        <span><Chip status={m.status} /> {m.kind === 'reel' && <Chip status="reel" />}</span>
-          <strong>{[m.horse, m.rider].filter(Boolean).join(' · ') || m.other_people || 'Untagged'}</strong>
-        <span>{m.event_name || 'No event'} · 👁 {m.view_count || 0} · 🛒 {m.purchase_count || 0}</span>
+        <span><Chip status={m.status} /></span>
+        <strong>{title}</strong>
+        <span>{m.event_name || 'No event'}{sold ? ` · ${sold} sold` : ''}</span>
         <button className="st-link" style={{ background: 'none', border: 0, borderBottom: '1px solid #555', padding: 0, paddingBottom: 3, cursor: 'pointer', justifySelf: 'start', marginTop: 4, color: '#bbb', fontSize: 12 }} onClick={onOpen}>
-          Tag &amp; publish
+          {m.status === 'published' ? 'Edit details' : 'Tag & publish'}
         </button>
       </footer>
     </article>
   );
 }
-
-

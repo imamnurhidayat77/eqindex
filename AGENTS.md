@@ -17,6 +17,13 @@
   error handling pencegah data loss, security, accessibility, dan apa pun yang
   user minta eksplisit. Lihat bagian Clean Code & Security di bawah.
 
+## Bahasa / Language (WAJIB)
+
+- SEMUA app (`web/`, `web-bossmedia/`) berbahasa Inggris: seluruh string yang
+  terlihat user (halaman, komponen, error message, email, receipt) wajib
+  English. Jangan campur bahasa lain kecuali kutipan/data asli user.
+- Komentar kode & commit message juga English agar konsisten lintas kontributor.
+
 ## Clean code (WAJIB)
 
 - Ikuti struktur & konvensi yang sudah ada di folder yang disentuh (jangan bawa

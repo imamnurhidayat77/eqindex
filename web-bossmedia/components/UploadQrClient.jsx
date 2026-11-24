@@ -6,7 +6,43 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { API } from '../lib/api';
+import ReelPlayer from './ReelPlayer';
+import SmartImage from './SmartImage';
 import styles from './UploadQr.module.css';
+
+// Thumbnail with its own object URL so removal/unmount never leaks memory.
+function PhotoThumb({ file, onRemove }) {
+  const [src, setSrc] = useState(null);
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    setSrc(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  return (
+    <div className={styles.thumb}>
+      {/* blob: SmartImage meneruskannya sebagai tag img mentah (jalur resmi untuk pratinjau lokal) */}
+      {src && <SmartImage src={src} alt={file.name} fill sizes="160px" />}
+      <button type="button" className={styles.removeBtn} onClick={onRemove} aria-label={`Remove ${file.name}`}>×</button>
+      <span className={styles.thumbSize}>{(file.size / 1048576).toFixed(1)}MB</span>
+    </div>
+  );
+}
+
+function VideoPreview({ file, onRemove }) {
+  const [src, setSrc] = useState(null);
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    setSrc(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  return (
+    <div className={styles.videoWrap}>
+      {src && <ReelPlayer src={src} label={file.name} />}
+      <button type="button" className={styles.removeBtn} onClick={onRemove} aria-label={`Remove ${file.name}`}>×</button>
+      <span className={styles.thumbSize}>{file.name} · {(file.size / 1048576).toFixed(0)}MB</span>
+    </div>
+  );
+}
 
 const MAX_PHOTOS = 10;
 const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
@@ -45,8 +81,8 @@ export default function UploadQrClient({ code }) {
   }, [cleanCode]);
 
   function pickPhotos(e) {
-    const list = [...(e.target.files || [])].slice(0, MAX_PHOTOS);
-    setPhotos(list);
+    const fresh = [...(e.target.files || [])].filter((f) => f.type.startsWith('image/'));
+    if (fresh.length) setPhotos((prev) => [...prev, ...fresh].slice(0, MAX_PHOTOS));
     e.target.value = '';
   }
 
@@ -172,13 +208,14 @@ export default function UploadQrClient({ code }) {
               <input ref={photoRef} type="file" accept="image/*" multiple className={styles.hidden} onChange={pickPhotos} aria-label="Add photos" />
               <input ref={videoRef} type="file" accept="video/mp4,video/quicktime,video/webm" className={styles.hidden} onChange={pickVideo} aria-label="Add a video" />
               {!!photos.length && (
-                <ul className={styles.fileList}>
+                <div className={styles.thumbGrid}>
                   {photos.map((f, i) => (
-                    <li key={i}>{f.name} <span>· {(f.size / 1048576).toFixed(1)}MB</span></li>
+                    <PhotoThumb key={`${f.name}-${f.size}-${i}`} file={f}
+                      onRemove={() => setPhotos((prev) => prev.filter((_, j) => j !== i))} />
                   ))}
-                </ul>
+                </div>
               )}
-              {video && <p className={styles.fileList}>🎬 {video.name} <span>· {(video.size / 1048576).toFixed(0)}MB</span></p>}
+              {video && <VideoPreview file={video} onRemove={() => setVideo(null)} />}
               {tooBigPhoto && <p className={styles.error} role="alert">{tooBigPhoto.name} is over 15MB — pick a smaller file.</p>}
               {badVideo && <p className={styles.error} role="alert">That video is over 200MB — trim it or pick another.</p>}
               <label className={styles.field}>

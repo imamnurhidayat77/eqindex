@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import PageShell from '../../components/PageShell';
 
+export const metadata = { title: 'Maintenance', robots: { index: false } };
+
 export default function MaintenancePage() {
   return (
     <PageShell eyebrow="Status" title="We'll be right back."

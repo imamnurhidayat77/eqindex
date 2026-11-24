@@ -1,0 +1,76 @@
+{
+  "collection": "Boss Media Horse & Equestrian Gear Prototype",
+  "coordinate_system": {
+    "up": "Y",
+    "forward": "+X",
+    "units": "metres (approximate)"
+  },
+  "horse_model": "horse-dark-bay.glb",
+  "gear_models": [
+    {
+      "file": "saddle-pad.glb",
+      "type": "saddle_blanket",
+      "attachment_reference": "back_center",
+      "approx_position": [
+        -0.04,
+        1.97,
+        0
+      ]
+    },
+    {
+      "file": "ear-bonnet.glb",
+      "type": "ear_bonnet",
+      "attachment_reference": "head_ears",
+      "approx_position": [
+        1.2,
+        2.83,
+        0
+      ]
+    },
+    {
+      "file": "lightweight-rug.glb",
+      "type": "lightweight_rug",
+      "attachment_reference": "torso",
+      "approx_position": [
+        0,
+        1.65,
+        0
+      ]
+    },
+    {
+      "file": "warm-rug.glb",
+      "type": "warm_rug",
+      "attachment_reference": "torso",
+      "approx_position": [
+        0,
+        1.65,
+        0
+      ]
+    }
+  ],
+  "customization": {
+    "recommended_approach": "Load horse and gear as separate GLB scenes. Apply uploaded logo decals to UV-mapped gear meshes or use decal projection. Replace procedural prototype meshes with manufacturer-approved CAD/high-detail meshes before production.",
+    "logo_zones": {
+      "saddle_blanket": [
+        "left_side",
+        "right_side",
+        "rear_panel"
+      ],
+      "ear_bonnet": [
+        "forehead_panel",
+        "left_ear",
+        "right_ear"
+      ],
+      "lightweight_rug": [
+        "left_side",
+        "right_side",
+        "rear_panel"
+      ],
+      "warm_rug": [
+        "left_side",
+        "right_side",
+        "rear_panel"
+      ]
+    }
+  }
+}

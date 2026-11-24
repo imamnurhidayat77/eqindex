@@ -6,7 +6,8 @@ import EventDetailClient from '../../../components/EventDetailClient';
 
 export const revalidate = 60;
 
-export async function generateMetadata({ params }) {
+export async function generateMetadata(props) {
+  const params = await props.params;
   const { data } = await getJSON('/events?limit=200&include_empty=1').catch(() => ({ data: [] }));
   const raw = (data || []).find((e) => (e.slug || e.id) === params.slug);
   if (!raw) return { title: 'Event not found' };
@@ -16,7 +17,8 @@ export async function generateMetadata({ params }) {
   return { title, description, openGraph: { title, description } };
 }
 
-export default async function EventPage({ params }) {
+export default async function EventPage(props) {
+  const params = await props.params;
   const { data } = await getJSON('/events?limit=200').catch(() => ({ data: [] }));
   const raw = (data || []).find((e) => (e.slug || e.id) === params.slug);
   if (!raw) notFound();

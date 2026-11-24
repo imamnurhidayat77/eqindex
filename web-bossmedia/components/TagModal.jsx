@@ -28,7 +28,6 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
       .then((r) => r.json()).then((j) => setClasses(j.data || [])).catch(() => setClasses([]));
   }, [ev]);
   const [moment, setMoment] = useState(m.moment || '');
-  const [tier, setTier] = useState(m.license_default || '');
   const [busy, setBusy] = useState(false);
   const [suggest, setSuggest] = useState(null);
 
@@ -44,7 +43,7 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
   async function save() {
     setBusy(true);
     try {
-      const body = { event_id: ev || null, rider_id: riderId || undefined, horse_id: horseId || undefined, class_id: classId || null, other_people: others.trim() || null, moment: moment || null, license_default: tier || null };
+      const body = { event_id: ev || null, rider_id: riderId || undefined, horse_id: horseId || undefined, class_id: classId || null, other_people: others.trim() || null, moment: moment || null };
       // Fall back to typed names only when no id picked: backend resolves slugs, not names.
       if (!riderId && rider) { notify('Pick a rider from the suggestions (names alone don’t resolve)', true); setBusy(false); return; }
       if (!horseId && horse) { notify('Pick a horse from the suggestions (names alone don’t resolve)', true); setBusy(false); return; }
@@ -161,15 +160,6 @@ export default function TagModal({ m, events, tiers, notify, onClose, onSaved, o
                 value={moment || ''}
                 onChange={(id) => setMoment(id || '')}
                 placeholder="Moment"
-                clearable={false} />
-            </label>
-            <label>
-              <span>Tier</span>
-              <SearchSelect
-                options={[{ id: '', label: 'Default' }, ...tiers.map((t) => ({ id: t.id, label: t.label }))]}
-                value={tier || ''}
-                onChange={(id) => setTier(id || '')}
-                placeholder="Tier"
                 clearable={false} />
             </label>
           </div>

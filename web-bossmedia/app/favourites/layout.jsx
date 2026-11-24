@@ -1,5 +1,3 @@
-export const metadata = { robots: { index: false } };
+export const metadata = { title: 'Favourites', robots: { index: false } };
 
-export default function FavouritesLayout({ children }) {
-  return children;
-}
+export default function FavouritesLayout({ children }) { return children; }

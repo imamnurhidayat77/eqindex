@@ -4,7 +4,7 @@ const { asyncH } = require('../lib/async');
 const { EMAIL_RE, needRole } = require('../lib/auth');
 const { throttled } = require('../lib/ratelimit');
 const { audit } = require('../lib/audit');
-const { recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds } = require('../lib/wallet');
+const { recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds, cappedSponsorDiscount, SPONSOR_BUDGET_LIVE_SQL } = require('../lib/wallet');
 const { resolveId } = require('../lib/resolve');
 const { sendMail } = require('../lib/mailer');
 const { APP_URL } = require('../config');
@@ -34,6 +34,62 @@ const PHOTO_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
 const REEL_MIMES = ['video/mp4', 'video/quicktime', 'video/webm'];
 
 const escXml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// Brand tile for community moments (free, never for sale): every public
+// upload carries Boss Media branding, so sponsor reposts stay attributable.
+const COMMUNITY_BRAND = '© Boss Media';
+// A draft approved for publish is hidden from the review queue while it is
+// branded. Reel branding can wait ~10 min for transcoding, so a queue mark
+// older than this means the job died (e.g. restart) and the row comes back.
+const BRAND_STALE_INTERVAL = '45 minutes';
+const NOT_BRANDING_SQL =
+  `(m.brand_queued_at IS NULL OR m.brand_queued_at < NOW() - INTERVAL '${BRAND_STALE_INTERVAL}')`;
+const BRAND_ERROR_MAX = 300;
+const BRANDED_RETRY_AFTER_S = 300;
+const COMMUNITY_SOURCES = ['email', 'admin', 'web'];
+const SPONSOR_REPOST_TIER = 'sponsor-repost';
+const SPONSOR_REPOST_ROLES = ['SPONSOR', 'ADMIN'];
+
+// Sponsor repost is the community-only licence and only sponsor accounts
+// pay for it. Returns a user-facing reason to refuse, or null.
+function sponsorRepostRefusal(tierId, row, authUser) {
+  if (tierId !== SPONSOR_REPOST_TIER) return null;
+  if (!COMMUNITY_SOURCES.includes(row.source)) return 'The sponsor repost licence applies to community moments only.';
+  if (!authUser || !SPONSOR_REPOST_ROLES.includes(authUser.role)) {
+    return 'The sponsor repost licence is for sponsor accounts only.';
+  }
+  return null;
+}
+
+// A studio photo or reel can never default to the community-only licence.
+function licenseDefaultRefusal(tierId, source) {
+  if (tierId !== SPONSOR_REPOST_TIER || COMMUNITY_SOURCES.includes(source)) return null;
+  return 'The sponsor repost licence can only be the default for community moments.';
+}
+
+// The public tier list hides the community-only sponsor repost licence so no
+// studio buy box can offer it; community moment pages ask with ?for=community.
+function publicTierFilter(forQuery) {
+  return forQuery === 'community' ? '' : ` AND id <> '${SPONSOR_REPOST_TIER}'`;
+}
+
+// Brand each approved draft, then publish only the ones that branded. A
+// brand that throws or returns false never publishes: unbranded community
+// content must not go public.
+async function brandThenPublish(rows, { brand, publish, fail }) {
+  const published = [];
+  for (const m of rows) {
+    let error = null;
+    try {
+      if (!(await brand(m))) error = 'branding skipped: original or preview missing';
+    } catch (e) {
+      error = e?.message || 'branding failed';
+    }
+    if (error) { await fail(m, error); continue; }
+    const row = await publish(m);
+    if (row) published.push(row);
+  }
+  return published;
+}
 function watermarkSvg(w, h, text) {
   // Proof-gallery standard: diagonal repeat tiles, clearly readable but
   // transparent enough to evaluate the shot — theft-deterrent, not a
@@ -49,6 +105,8 @@ function watermarkSvg(w, h, text) {
 }
 
 const finalizeReel = require('../lib/reelFinalize');
+const { brandCommunityReel } = require('../lib/reelFinalize');
+const { ensureBrandedFile, prewarmBrandedFile } = require('../lib/communityBrand');
 
 // QR upload code for venue posters: short, dialable, always carries digits
 // (TAKAPO26) so it routes on both the email and web doors.
@@ -96,7 +154,15 @@ async function activePhotographer(poolQ, id) {
 // rejected. ADMIN keeps the legacy behavior (explicit id, else first
 // active); anyone else is bound to their own linked profile.
 async function ownPhotographer(poolQ, authUser, requestedId) {
-  if (!authUser || authUser.role === 'ADMIN') return activePhotographer(poolQ, requestedId || null);
+  if (!authUser) return activePhotographer(poolQ, requestedId || null);
+  if (authUser.role === 'ADMIN') {
+    if (requestedId) return activePhotographer(poolQ, requestedId);
+    // An admin who also shoots (Boss Media) acts as their own linked profile,
+    // never "the oldest active photographer", which may be someone else.
+    const mine = await poolQ.query(
+      'SELECT * FROM photographers WHERE user_id = $1 AND is_active ORDER BY created_at LIMIT 1', [authUser.id]);
+    return mine.rows[0] || activePhotographer(poolQ, null);
+  }
   const own = await poolQ.query(
     'SELECT * FROM photographers WHERE user_id = $1 AND is_active', [authUser.id]);
   if (!own.rows.length) {
@@ -244,15 +310,18 @@ module.exports = function mountMediaRoutes(app) {
 
   // NOTE: static sub-paths must be registered BEFORE '/admin/media/:id',
   // otherwise Express matches ":id" first ("stats" is not a UUID).
+  // Library counts for the studio overview; sales numbers live in /admin/sales/summary.
   app.get('/admin/media/stats', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+    const own = await ownPhotographerId(pool, req.authUser);
     const { rows } = await pool.query(
       `SELECT COUNT(*)::INT AS assets,
           COUNT(*) FILTER (WHERE status = 'published')::INT AS published,
-          COALESCE(SUM(view_count), 0)::INT AS views,
-          COALESCE(SUM(purchase_count), 0)::INT AS purchases,
-          (SELECT COUNT(*)::INT FROM purchases WHERE status = 'paid')::INT AS paid_sales,
-          (SELECT COALESCE(SUM(amount_cents), 0)::INT FROM purchases WHERE status = 'paid')::INT AS gross_cents
-        FROM media`
+          COUNT(*) FILTER (WHERE status = 'draft')::INT AS drafts,
+          -- same rule as GET /admin/media?untagged=1 so the overview link matches the list
+          COUNT(*) FILTER (WHERE horse_id IS NULL OR rider_id IS NULL)::INT AS untagged
+        FROM media
+        WHERE COALESCE(source, 'studio') = 'studio' ${own ? 'AND photographer_id = $1' : ''}`,
+      own ? [own] : []
     );
     res.json({ data: rows[0] });
   }));
@@ -293,11 +362,12 @@ module.exports = function mountMediaRoutes(app) {
     res.status(202).json({ data: { media_id: m.id, processing: true } });
   }));
 
-  // Re-render photo previews with the current watermark style (sparse ©
-  // photographer tiles). Baked previews can't restyle themselves: this
-  // endpoint re-renders them from the stored originals. Returns 202 and
-  // works in the background (one event ≈ hundreds of photos). Safe to
-  // retry: overwrites the same preview_key, never touches originals.
+  // Re-render previews with current branding (baked previews can't restyle
+  // themselves — this re-renders from stored originals). Studio photos get
+  // their © photographer tile; community photos/reels get © Boss Media.
+  // This is also the archive rebrand for pre-brand community rows.
+  // Returns 202 and works in the background. Safe to retry: overwrites the
+  // same preview_key, never touches originals.
   app.post('/admin/media/rewatermark', needRole('ADMIN'), asyncH(async (req, res) => {
     const { event_id } = req.body || {};
     const params = [];
@@ -308,7 +378,8 @@ module.exports = function mountMediaRoutes(app) {
     }
     const { rows } = await pool.query(
         `SELECT m.id FROM media m
-        WHERE m.kind = 'photo' AND m.status = 'published' AND m.source = 'studio' AND m.storage_key IS NOT NULL${scope}
+        WHERE m.kind IN ('photo', 'reel') AND m.status = 'published'
+          AND m.source IN ('studio', 'email', 'admin', 'web') AND m.storage_key IS NOT NULL${scope}
         ORDER BY m.created_at`,
       params
     );
@@ -317,6 +388,30 @@ module.exports = function mountMediaRoutes(app) {
       (e) => console.error('[rewatermark] failed:', e.message)));
     res.status(202).json({ data: { queued: ids.length, event_id: event_id || null } });
   }));
+
+  // Brand one published community photo: re-render its preview from the
+  // stored original with the Boss Media tile, overwriting the same
+  // preview_key. Studio rows keep their photographer tile — refused here.
+  // Used at approve time (background) and for the pre-brand archive.
+  async function brandCommunityPhoto(id) {
+    const { rows } = await pool.query(
+      `SELECT m.* FROM media m WHERE m.id = $1`, [id]);
+    const m = rows[0];
+    if (!m || m.kind !== 'photo' || !m.storage_key || !m.preview_key) return false;
+    if (!['email', 'admin', 'web'].includes(m.source)) return false;
+    const s = await mediaStore.getStream(m.storage_key);
+    const chunks = [];
+    for await (const c of s.stream) chunks.push(c);
+    const buf = Buffer.concat(chunks);
+    const meta = await sharp(buf).metadata();
+    const pvW = 1024;
+    const pvH = Math.round(pvW * (meta.height || 1000) / (meta.width || 1600));
+    const wm = watermarkSvg(pvW, pvH, COMMUNITY_BRAND);
+    const preview = await sharp(buf).rotate().resize({ width: pvW, withoutEnlargement: true })
+      .composite([{ input: wm, blend: 'over' }]).jpeg({ quality: 68 }).toBuffer();
+    await mediaStore.putBuffer(m.preview_key, preview, 'image/jpeg');
+    return true;
+  }
 
   async function rewatermarkBatch(ids, eventId) {
     let ok = 0, skipped = 0, failed = 0;
@@ -327,8 +422,20 @@ module.exports = function mountMediaRoutes(app) {
             LEFT JOIN photographers p ON p.id = m.photographer_id WHERE m.id = $1`,
           [id]);
         const m = rows[0];
-        if (!m || m.kind !== 'photo' || m.status !== 'published' || !m.storage_key || !m.preview_key) {
+        if (!m || m.status !== 'published' || !m.storage_key || !m.preview_key) {
           skipped++; continue;
+        }
+        const isCommunity = ['email', 'admin', 'web'].includes(m.source);
+        if (m.kind === 'reel') {
+          // Studio reels were tiled at finalize; only community reels rebrand.
+          if (!isCommunity) { skipped++; continue; }
+          if (await brandCommunityReel(id)) ok++; else skipped++;
+          continue;
+        }
+        if (m.kind !== 'photo') { skipped++; continue; }
+        if (isCommunity) {
+          if (await brandCommunityPhoto(id)) ok++; else skipped++;
+          continue;
         }
         const s = await mediaStore.getStream(m.storage_key);
         const chunks = [];
@@ -408,6 +515,7 @@ module.exports = function mountMediaRoutes(app) {
       }
     }
     const sets = [], vals = [];
+    let brandFirst = false;
     // $1 is the media id (params are [id, ...vals]), so columns start at $2.
     const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length + 1}`); };
     if (b.event_id !== undefined) {
@@ -433,6 +541,11 @@ module.exports = function mountMediaRoutes(app) {
     }
     // Per-photo price overrides are retired (migration 059, tier-only
     // pricing) — silently ignore legacy clients still sending the field.
+    if (b.license_default === SPONSOR_REPOST_TIER) {
+      const src = await pool.query('SELECT source FROM media WHERE id = $1', [req.params.id]);
+      const refusal = licenseDefaultRefusal(b.license_default, src.rows[0]?.source);
+      if (refusal) return res.status(400).json({ error: refusal });
+    }
     if (b.license_default !== undefined) set('license_default', b.license_default || null);
     if (b.moment !== undefined) {
       if (b.moment !== null && !['win', 'clear', 'debut', 'pb'].includes(b.moment)) {
@@ -445,11 +558,20 @@ module.exports = function mountMediaRoutes(app) {
         return res.status(400).json({ error: 'status must be draft|published|archived' });
       }
       if (b.status === 'published') {
-        const cur = await pool.query('SELECT event_id FROM media WHERE id = $1', [req.params.id]);
+        const cur = await pool.query('SELECT event_id, source, status FROM media WHERE id = $1', [req.params.id]);
         const evId = b.event_id !== undefined ? (b.event_id || null) : cur.rows[0]?.event_id;
         if (!evId) return res.status(409).json({ error: 'publish needs an event (publish-gate)' });
+        // Community rows never go live straight from here: they queue for
+        // branding and publishAfterBrand makes them live once branded.
+        brandFirst = COMMUNITY_SOURCES.includes(cur.rows[0]?.source) && cur.rows[0]?.status !== 'published';
       }
-      set('status', b.status);
+      if (brandFirst) {
+        set('status', 'draft');
+        set('brand_queued_at', new Date());
+        set('brand_error', null);
+      } else {
+        set('status', b.status);
+      }
     }
     if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
     const { rows } = await pool.query(
@@ -457,6 +579,10 @@ module.exports = function mountMediaRoutes(app) {
     if (!rows.length) return res.status(404).json({ error: 'media not found' });
     audit(req, 'media.edit', 'media', req.params.id, { fields: sets.map((s) => s.split(' = ')[0]) });
     const final = rows[0];
+    if (brandFirst) {
+      setImmediate(() => publishAfterBrand([final], [final.source_ref]).catch(
+        (e) => console.error('[moments.publish] failed:', e.message)));
+    }
     // Publish side-effects (P1b): auto-packages absorb newly published photos
     // (Sportograf-style post-purchase matching), buyers + watchers get one
     // digested in-app notification each (never one row per photo).
@@ -486,7 +612,7 @@ module.exports = function mountMediaRoutes(app) {
            OR (i.status = 'done' AND EXISTS (
                  SELECT 1 FROM media m
                   WHERE m.source IN ('email', 'web') AND m.source_ref = i.provider_msg_id
-                    AND m.status = 'draft'))
+                    AND m.status = 'draft' AND ${NOT_BRANDING_SQL}))
         ORDER BY i.created_at DESC LIMIT 100`
     );
     for (const it of intakes) {
@@ -494,12 +620,13 @@ module.exports = function mountMediaRoutes(app) {
         `SELECT m.id, m.status, m.kind, m.width, m.height, m.created_at,
                 m.horse_id, m.rider_id, m.class_id,
                 h.name AS horse, r.name AS rider, c.name AS class_name,
-                m.thumb_key, m.preview_key
+                m.thumb_key, m.preview_key, m.brand_error
            FROM media m
            LEFT JOIN horses h ON h.id = m.horse_id
            LEFT JOIN riders r ON r.id = m.rider_id
            LEFT JOIN classes c ON c.id = m.class_id
            WHERE m.source IN ('email', 'web') AND m.source_ref = $1 AND m.status = 'draft'
+             AND ${NOT_BRANDING_SQL}
           ORDER BY m.created_at`,
         [it.provider_msg_id]
       );
@@ -515,7 +642,7 @@ module.exports = function mountMediaRoutes(app) {
       `SELECT m.id, m.status, m.kind, m.width, m.height, m.created_at,
               m.horse_id, m.rider_id, m.class_id, m.source_ref, m.event_id,
               h.name AS horse, r.name AS rider, c.name AS class_name,
-              m.thumb_key, m.preview_key,
+              m.thumb_key, m.preview_key, m.brand_error,
               e.name AS event_name, u.name AS uploader_name, u.email AS uploader_email
          FROM media m
          LEFT JOIN horses h ON h.id = m.horse_id
@@ -523,7 +650,7 @@ module.exports = function mountMediaRoutes(app) {
          LEFT JOIN classes c ON c.id = m.class_id
          LEFT JOIN events e ON e.id = m.event_id
          LEFT JOIN users u ON u.id = m.uploader_user_id
-        WHERE m.source = 'admin' AND m.status = 'draft'
+        WHERE m.source = 'admin' AND m.status = 'draft' AND ${NOT_BRANDING_SQL}
         ORDER BY m.created_at DESC`
     );
     const batches = new Map();
@@ -597,7 +724,8 @@ module.exports = function mountMediaRoutes(app) {
       `SELECT m.*, i.sender_email, m.source_ref AS provider_msg_id, e.name AS event_name
          FROM media m LEFT JOIN upload_intakes i ON i.provider_msg_id = m.source_ref
          LEFT JOIN events e ON e.id = m.event_id
-        WHERE m.id = ANY($1) AND m.source IN ('email', 'admin', 'web') AND m.status = 'draft' AND m.price_cents IS NULL`,
+        WHERE m.id = ANY($1) AND m.source IN ('email', 'admin', 'web') AND m.status = 'draft' AND m.price_cents IS NULL
+          AND ${NOT_BRANDING_SQL}`,
       [media_ids]
     );
     if (rows.length !== media_ids.length) {
@@ -610,15 +738,15 @@ module.exports = function mountMediaRoutes(app) {
     const decided = [];
     for (const m of rows) {
       if (action === 'publish') {
-        const { rows: up } = await pool.query(
+        // Approve = tag + queue for branding. The row stays a draft until
+        // publishAfterBrand has put Boss Media on it, so nothing goes
+        // public unbranded.
+        await pool.query(
           `UPDATE media SET horse_id = COALESCE($2, horse_id), rider_id = COALESCE($3, rider_id),
-             class_id = COALESCE($4, class_id), status = 'published', price_cents = NULL
-             WHERE id = $1 RETURNING *`,
+             class_id = COALESCE($4, class_id), brand_queued_at = NOW(), brand_error = NULL
+             WHERE id = $1`,
           [m.id, horse, rider, cls]
         );
-        // Watchers fire only on tagged photos (notifyPublish no-ops untagged).
-        try { await notifyPublish(pool, up.rows[0]); }
-        catch (e) { console.error('[moments.publish-hook] non-fatal:', e.message); }
       } else {
         await pool.query(`UPDATE media SET status = 'archived' WHERE id = $1`, [m.id]);
       }
@@ -626,15 +754,8 @@ module.exports = function mountMediaRoutes(app) {
       audit(req, `moments.${action}`, 'media', m.id, { reason: cleanReason || undefined });
     }
     const refs = [...new Set(rows.map((r) => r.provider_msg_id))];
+    if (action === 'reject') await closeFinishedIntakes(refs, cleanReason);
     for (const ref of refs) {
-      const left = await pool.query(
-        `SELECT COUNT(*)::INT AS n FROM media
-          WHERE source IN ('email', 'web') AND source_ref = $1 AND status = 'draft'`, [ref]);
-      if (left.rows[0].n === 0) {
-        await pool.query(
-          `UPDATE upload_intakes SET status = 'done', error = $2 WHERE provider_msg_id = $1`,
-          [ref, action === 'reject' ? cleanReason : null]);
-      }
       if (action === 'reject') {
         const r0 = rows.find((r) => r.provider_msg_id === ref);
         // Admin-uploaded batches have no sender to email — the admin is
@@ -650,15 +771,61 @@ module.exports = function mountMediaRoutes(app) {
       }
     }
     if (action === 'publish') {
-      // One batched email per follower for the whole decision (the per-photo
-      // in-app notifications above already collapsed; email must never send
-      // one row per photo). Backgrounded — a slow mail provider must never
-      // hold the admin response.
-      setImmediate(() => emailMomentFollowers(rows).catch(
-        (e) => console.error('[moments.follow-mail] failed:', e.message)));
+      // Backgrounded: reels can take minutes to brand, and a slow mail
+      // provider must never hold the admin response.
+      setImmediate(() => publishAfterBrand(rows, refs).catch(
+        (e) => console.error('[moments.publish] failed:', e.message)));
     }
     res.json({ data: { [action === 'publish' ? 'published' : 'rejected']: decided } });
   }));
+
+  // Intakes whose drafts are all decided are done (reject reason kept).
+  async function closeFinishedIntakes(refs, reason) {
+    for (const ref of refs) {
+      const left = await pool.query(
+        `SELECT COUNT(*)::INT AS n FROM media
+          WHERE source IN ('email', 'web') AND source_ref = $1 AND status = 'draft'`, [ref]);
+      if (left.rows[0].n === 0) {
+        await pool.query(
+          `UPDATE upload_intakes SET status = 'done', error = $2 WHERE provider_msg_id = $1`,
+          [ref, reason || null]);
+      }
+    }
+  }
+
+  function brandCommunityMedia(m) {
+    if (m.kind === 'photo') return brandCommunityPhoto(m.id);
+    if (m.kind === 'reel') return brandCommunityReel(m.id);
+    return false;
+  }
+
+  // Approved drafts: brand, then publish only what branded. Failures go back
+  // to the review queue with brand_error so the admin can retry.
+  async function publishAfterBrand(rows, refs) {
+    const published = await brandThenPublish(rows, {
+      brand: brandCommunityMedia,
+      publish: async (m) => {
+        const { rows: up } = await pool.query(
+          `UPDATE media SET status = 'published', price_cents = NULL, brand_queued_at = NULL
+            WHERE id = $1 AND status = 'draft' RETURNING *`, [m.id]);
+        if (!up.length) return null;
+        prewarmBrandedFile(up[0]);
+        // Watchers fire only on tagged photos (notifyPublish no-ops untagged).
+        try { await notifyPublish(pool, up[0]); }
+        catch (e) { console.error('[moments.publish-hook] non-fatal:', e.message); }
+        return up[0];
+      },
+      fail: async (m, error) => {
+        console.error('[moments.brand] failed, kept as draft:', m.id, error);
+        await pool.query(
+          `UPDATE media SET brand_queued_at = NULL, brand_error = $2 WHERE id = $1`,
+          [m.id, String(error).slice(0, BRAND_ERROR_MAX)]);
+      },
+    });
+    await closeFinishedIntakes(refs, null);
+    // One batched email per follower for the whole decision.
+    if (published.length) await emailMomentFollowers(published);
+  }
 
   // Email followers of the published event/horse/rider: one mail each with a
   // link to the new moments. Best-effort (a failed mail run still leaves the
@@ -930,9 +1097,19 @@ module.exports = function mountMediaRoutes(app) {
       params.push(kind);
       kindFilter = ` AND (applies_to = 'both' OR applies_to = $${params.length})`;
     }
+    // ?media_id= returns the prices of that photo's photographer (own price, else platform default).
+    const mediaId = /^[0-9a-f-]{36}$/i.test(String(req.query.media_id || '')) ? String(req.query.media_id) : null;
+    let ppJoin = '';
+    if (mediaId) {
+      params.push(mediaId);
+      ppJoin = ` LEFT JOIN photographer_prices pp ON pp.tier_id = license_tiers.id
+        AND pp.photographer_id = (SELECT photographer_id FROM media WHERE id = $${params.length})`;
+    }
     const { rows } = await pool.query(
-      `SELECT id, label, price_cents, max_resolution, printable, applies_to FROM license_tiers
-        WHERE NOT COALESCE(is_hidden, FALSE)${kindFilter} ORDER BY price_cents NULLS LAST, id`,
+      `SELECT id, label, ${mediaId ? 'COALESCE(pp.price_cents, license_tiers.price_cents)' : 'price_cents'} AS price_cents,
+          max_resolution, printable, applies_to FROM license_tiers${ppJoin}
+        WHERE NOT COALESCE(is_hidden, FALSE)${kindFilter}${publicTierFilter(String(req.query.for || ''))}
+        ORDER BY 3 NULLS LAST, id`,
       params);
     res.json({ data: rows });
   }));
@@ -987,14 +1164,15 @@ module.exports = function mountMediaRoutes(app) {
     const { rows } = await pool.query(
       `SELECT m.id, m.kind, m.event_id, m.class_id, m.horse_id, m.rider_id,
           m.thumb_key, m.preview_key, m.width, m.height, m.taken_at,
-          t.price_cents AS price_cents, m.license_default, m.moment, m.created_at,
+          COALESCE(pp.price_cents, t.price_cents) AS price_cents, m.license_default, m.moment, m.created_at,
           m.other_people,
           e.name AS event_name, h.name AS horse, r.name AS rider,
           p.name AS photographer
         FROM media m LEFT JOIN events e ON e.id = m.event_id
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
         JOIN photographers p ON p.id = m.photographer_id
-        LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
+        LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, CASE WHEN m.kind = 'reel' THEN 'reel' ELSE 'web' END)
+          LEFT JOIN photographer_prices pp ON pp.photographer_id = m.photographer_id AND pp.tier_id = t.id
         WHERE ${conds.join(' AND ')}
         ORDER BY m.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
@@ -1078,9 +1256,10 @@ module.exports = function mountMediaRoutes(app) {
     const { rows } = await poolQ.query(
       `SELECT COUNT(*)::INT AS items,
           COUNT(*) FILTER (WHERE m.kind = 'reel')::INT AS reels,
-          COALESCE(SUM(COALESCE(t.price_cents, 0)), 0)::INT AS sum,
-          COALESCE(MAX(t.price_cents), 0)::INT AS single_max
-        FROM media m LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
+          COALESCE(SUM(COALESCE(pp.price_cents, t.price_cents, 0)), 0)::INT AS sum,
+          COALESCE(MAX(COALESCE(pp.price_cents, t.price_cents)), 0)::INT AS single_max
+        FROM media m LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, CASE WHEN m.kind = 'reel' THEN 'reel' ELSE 'web' END)
+          LEFT JOIN photographer_prices pp ON pp.photographer_id = m.photographer_id AND pp.tier_id = t.id
         WHERE ${conds.join(' AND ')}`,
       params
     );
@@ -1220,7 +1399,8 @@ module.exports = function mountMediaRoutes(app) {
           c.name AS class_name, h.name AS horse, r.name AS rider,
           p.name AS photographer, t.label AS tier_label
         FROM media m LEFT JOIN events e ON e.id = m.event_id
-        LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
+        LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, CASE WHEN m.kind = 'reel' THEN 'reel' ELSE 'web' END)
+          LEFT JOIN photographer_prices pp ON pp.photographer_id = m.photographer_id AND pp.tier_id = t.id
         LEFT JOIN classes c ON c.id = m.class_id
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
         JOIN photographers p ON p.id = m.photographer_id
@@ -1334,11 +1514,12 @@ module.exports = function mountMediaRoutes(app) {
     }
     const rel = await pool.query(
       `SELECT m.id, m.thumb_key, m.kind, m.moment,
-          t.price_cents AS price_cents, h.name AS horse, r.name AS rider
+          COALESCE(pp.price_cents, t.price_cents) AS price_cents, h.name AS horse, r.name AS rider
         FROM media m
         LEFT JOIN horses h ON h.id = m.horse_id
         LEFT JOIN riders r ON r.id = m.rider_id
-        LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
+        LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, CASE WHEN m.kind = 'reel' THEN 'reel' ELSE 'web' END)
+          LEFT JOIN photographer_prices pp ON pp.photographer_id = m.photographer_id AND pp.tier_id = t.id
         WHERE m.status = 'published' AND ${ORDER_PRIVATE_SQL}
           AND NOT (COALESCE(h.photo_hidden, FALSE) OR COALESCE(r.photo_hidden, FALSE))
           AND m.id <> $1
@@ -1441,8 +1622,19 @@ module.exports = function mountMediaRoutes(app) {
       throw err;
     }
     const found = await pool.query(
-      'SELECT id, email, password_hash FROM users WHERE lower(email) = lower($1)', [clean]);
-    if (found.rows.length) return { id: found.rows[0].id, email: found.rows[0].email, guest: !found.rows[0].password_hash };
+      'SELECT id, email, password_hash, email_verified_at FROM users WHERE lower(email) = lower($1)', [clean]);
+    if (found.rows.length) {
+      const u = found.rows[0];
+      // Anyone can register any address: a guest purchase only joins a
+      // password account whose owner proved the inbox. Otherwise the buyer
+      // signs in (or resets the password, which proves the inbox).
+      if (u.password_hash && !u.email_verified_at) {
+        const err = new Error('this email already has an account — sign in to buy');
+        err.status = 409;
+        throw err;
+      }
+      return { id: u.id, email: u.email, guest: !u.password_hash };
+    }
     const name = clean.split('@')[0].replace(/[^a-zA-Z0-9 _.-]/g, '').trim().slice(0, 100) || 'Guest buyer';
     try {
       const created = await pool.query(
@@ -1524,7 +1716,7 @@ module.exports = function mountMediaRoutes(app) {
       err.status = 400; throw err;
     }
     const found = await pool.query(
-      `SELECT l.id, s.user_id AS owner_id FROM sponsor_logos l JOIN sponsors s ON s.id = l.sponsor_id
+      `SELECT l.id, s.user_id AS owner_id, s.kind FROM sponsor_logos l JOIN sponsors s ON s.id = l.sponsor_id
        WHERE l.id = ANY($1::UUID[]) AND l.is_active AND s.is_active`, [ids]);
     if (found.rows.length !== ids.length) {
       const err = new Error('unknown or inactive sponsor logo');
@@ -1533,7 +1725,7 @@ module.exports = function mountMediaRoutes(app) {
     // Buyer-nominated logos (personal sponsor rows, user_id set) work only
     // for the buyer who uploaded them — no cross-buyer logo use. Shared
     // sponsor rows (user_id NULL) stay usable by everyone.
-    const foreign = found.rows.find((r) => r.owner_id && String(r.owner_id) !== String(buyerId || ''));
+    const foreign = found.rows.find((r) => r.kind === 'personal' && String(r.owner_id || '') !== String(buyerId || ''));
     if (foreign) {
       const err = new Error('logo not available to you');
       err.status = 403; throw err;
@@ -1617,15 +1809,20 @@ module.exports = function mountMediaRoutes(app) {
       return res.status(400).json({ error: 'need a valid {email}' });
     }
     let title, amount, tierId = license_tier || null, mediaId = null, packageId = null, mediaEventId = null;
-    if (media_id) {
+  if (media_id) {
       const m = await pool.query(
-        `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label,
+        `SELECT m.*, COALESCE(pp.price_cents, t.price_cents) AS tier_price, t.label AS tier_label,
             t.applies_to AS tier_applies
-          FROM media m LEFT JOIN license_tiers t ON t.id = $2
-          WHERE m.id = $1 AND m.status = 'published' AND m.source = 'studio'`,
+           FROM media m LEFT JOIN license_tiers t ON t.id = $2
+           LEFT JOIN photographer_prices pp ON pp.photographer_id = m.photographer_id AND pp.tier_id = t.id
+          WHERE m.id = $1 AND m.status = 'published'
+            AND (m.source = 'studio'
+              OR ($2 = 'sponsor-repost' AND m.source IN ('email', 'admin', 'web') AND m.price_cents IS NULL))`,
         [media_id, tierId]
       );
       if (!m.rows.length) return res.status(404).json({ error: 'photo not found or not for sale' });
+      const repostRefusal = sponsorRepostRefusal(tierId, m.rows[0], req.authUser);
+      if (repostRefusal) return res.status(403).json({ error: repostRefusal });
       // Private order reels can't be bought by anyone but their buyer.
       try {
         const buyerUid = await privateOrderBuyer(pool, String(media_id));
@@ -1648,17 +1845,22 @@ module.exports = function mountMediaRoutes(app) {
         }
       }
       if (!tierId) {
-        const dflt = await pool.query('SELECT * FROM license_tiers WHERE id = $1', [row.license_default || 'web']);
+        const kindTier = row.kind === 'reel' ? 'reel' : 'web';
+        const dflt = await pool.query('SELECT * FROM license_tiers WHERE id = $1', [row.license_default || kindTier]);
         const applies = dflt.rows[0]?.applies_to || 'both';
-        if (dflt.rows[0] && (applies === 'both' || applies === row.kind)) {
+        if (dflt.rows[0] && !dflt.rows[0].is_hidden && (applies === 'both' || applies === row.kind)) {
           tierId = dflt.rows[0].id;
           amount = dflt.rows[0].price_cents;
         } else {
-          // Photo/reel default doesn't cover this kind — fall back to 'web'.
-          const web = await pool.query(`SELECT * FROM license_tiers WHERE id = 'web'`);
-          tierId = web.rows[0]?.id || 'web';
-          amount = web.rows[0]?.price_cents;
+          // Default missing, hidden or for the other kind: use this kind's one price ('web' photo, 'reel' reel).
+          const own = await pool.query('SELECT * FROM license_tiers WHERE id = $1', [kindTier]);
+          tierId = own.rows[0]?.id || kindTier;
+          amount = own.rows[0]?.price_cents;
         }
+        // The photographer's own price for this tier wins over the platform default (migration 106).
+        const ownPrice = await pool.query(
+          'SELECT price_cents FROM photographer_prices WHERE photographer_id = $1 AND tier_id = $2', [row.photographer_id, tierId]);
+        if (ownPrice.rows[0]) amount = ownPrice.rows[0].price_cents;
       } else {
         amount = row.tier_price;
       }
@@ -1830,7 +2032,7 @@ module.exports = function mountMediaRoutes(app) {
     if (logoIds.length) {
       const best = await pool.query(
         `SELECT b.id, b.discount_cents FROM sponsor_budgets b
-         WHERE b.status = 'active' AND b.discount_cents > 0
+         WHERE ${SPONSOR_BUDGET_LIVE_SQL} AND b.applies_to = 'photo' AND b.discount_cents > 0
            AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
            AND (b.event_id IS NULL OR b.event_id = $2)
            AND b.sponsor_id IN (SELECT sponsor_id FROM sponsor_logos WHERE id = ANY($1::UUID[]))
@@ -1838,7 +2040,7 @@ module.exports = function mountMediaRoutes(app) {
         [logoIds, mediaEventId]);
       if (best.rows.length) {
         const bud = best.rows[0];
-        discountCents = Number(bud.discount_cents) || 0;
+        discountCents = cappedSponsorDiscount(bud.discount_cents, amount);
         if (discountCents > 0 && discountCents < amount) {
           budgetId = bud.id;
           originalCents = amount;
@@ -2049,13 +2251,18 @@ module.exports = function mountMediaRoutes(app) {
     let originalCents = null, budgetId = null;
     if (media_id) {
       const m = await q.query(
-        `SELECT m.*, t.price_cents AS tier_price, t.label AS tier_label,
+        `SELECT m.*, COALESCE(pp.price_cents, t.price_cents) AS tier_price, t.label AS tier_label,
             t.applies_to AS tier_applies
            FROM media m LEFT JOIN license_tiers t ON t.id = $2
-          WHERE m.id = $1 AND m.status = 'published' AND m.source = 'studio'`,
+           LEFT JOIN photographer_prices pp ON pp.photographer_id = m.photographer_id AND pp.tier_id = t.id
+          WHERE m.id = $1 AND m.status = 'published'
+            AND (m.source = 'studio'
+              OR ($2 = 'sponsor-repost' AND m.source IN ('email', 'admin', 'web') AND m.price_cents IS NULL))`,
         [media_id, tierId]
       );
       if (!m.rows.length) fail(idx, 404, 'photo not found or not for sale');
+      const repostRefusal = sponsorRepostRefusal(tierId, m.rows[0], authUser);
+      if (repostRefusal) fail(idx, 403, repostRefusal);
       try {
         const buyerUid = await privateOrderBuyer(q, String(media_id));
         if (buyerUid && buyerUid !== authUser.id) fail(idx, 404, 'photo not found or not for sale');
@@ -2071,16 +2278,22 @@ module.exports = function mountMediaRoutes(app) {
         }
       }
       if (!tierId) {
-        const dflt = await q.query('SELECT * FROM license_tiers WHERE id = $1', [row.license_default || 'web']);
+        const kindTier = row.kind === 'reel' ? 'reel' : 'web';
+        const dflt = await q.query('SELECT * FROM license_tiers WHERE id = $1', [row.license_default || kindTier]);
         const applies = dflt.rows[0]?.applies_to || 'both';
-        if (dflt.rows[0] && (applies === 'both' || applies === row.kind)) {
+        if (dflt.rows[0] && !dflt.rows[0].is_hidden && (applies === 'both' || applies === row.kind)) {
           tierId = dflt.rows[0].id;
           amount = dflt.rows[0].price_cents;
         } else {
-          const web = await q.query(`SELECT * FROM license_tiers WHERE id = 'web'`);
-          tierId = web.rows[0]?.id || 'web';
-          amount = web.rows[0]?.price_cents;
+          // Default missing, hidden or for the other kind: use this kind's one price.
+          const own = await q.query('SELECT * FROM license_tiers WHERE id = $1', [kindTier]);
+          tierId = own.rows[0]?.id || kindTier;
+          amount = own.rows[0]?.price_cents;
         }
+        // The photographer's own price for this tier wins over the platform default (migration 106).
+        const ownPrice = await q.query(
+          'SELECT price_cents FROM photographer_prices WHERE photographer_id = $1 AND tier_id = $2', [row.photographer_id, tierId]);
+        if (ownPrice.rows[0]) amount = ownPrice.rows[0].price_cents;
       } else {
         amount = row.tier_price;
       }
@@ -2126,7 +2339,7 @@ module.exports = function mountMediaRoutes(app) {
         if (logoIds.length) {
           const best = await q.query(
             `SELECT b.id, b.discount_cents FROM sponsor_budgets b
-              WHERE b.status = 'active' AND b.discount_cents > 0
+              WHERE ${SPONSOR_BUDGET_LIVE_SQL} AND b.applies_to = 'photo' AND b.discount_cents > 0
                 AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
                 AND (b.event_id IS NULL OR b.event_id = $2)
                 AND b.sponsor_id IN (SELECT sponsor_id FROM sponsor_logos WHERE id = ANY($1::UUID[]))
@@ -2134,7 +2347,7 @@ module.exports = function mountMediaRoutes(app) {
             [logoIds, row.event_id || null]
           );
           if (best.rows.length) {
-            const dc = Number(best.rows[0].discount_cents) || 0;
+            const dc = cappedSponsorDiscount(best.rows[0].discount_cents, amount);
             if (dc > 0 && dc < amount) {
               budgetId = best.rows[0].id;
               originalCents = amount;
@@ -2911,6 +3124,19 @@ module.exports = function mountMediaRoutes(app) {
     // to (and stranding the user on) the signed file URL.
     const ext = (String(m.rows[0].storage_key).split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
     const dlName = `boss-media-${String(req.params.id).slice(0, 8)}.${ext}`;
+    // Community moments always download with the Boss Media corner mark at
+    // full resolution: the raw original never leaves for a repost.
+    if (COMMUNITY_SOURCES.includes(m.rows[0].source)) {
+      const brandedKey = await ensureBrandedFile(m.rows[0]);
+      if (!brandedKey) {
+        res.setHeader('Retry-After', String(BRANDED_RETRY_AFTER_S));
+        return res.status(503).type('text/plain').send(
+          'Your Boss Media branded video is being prepared. Please try this download again in a few minutes.');
+      }
+      const brandedExt = brandedKey.split('.').pop();
+      res.redirect(303, await mediaStore.signedDownloadUrl(brandedKey, 900, `boss-media-${String(req.params.id).slice(0, 8)}.${brandedExt}`));
+      return;
+    }
     // Option 1: a paid purchase carrying sponsor logos downloads the baked
     // variant (rendered once, cached as logo_variant_key) so both versions
     // are kept. Plain owners keep the original.
@@ -2978,8 +3204,8 @@ module.exports = function mountMediaRoutes(app) {
               mediaId: req.params.id, storageKey: m.rows[0].storage_key,
               logoVariant: c.logo_variant, logoTemplate: c.logo_template, logoTheme: c.logo_theme,
               links, variantKey,
-              designTags: c.design_class || c.design_subject
-                ? { class_name: c.design_class, subject: c.design_subject } : null,
+              designTags: c.design_class || c.design_subject || c.design_result
+                ? { class_name: c.design_class, subject: c.design_subject, result: c.design_result } : null,
             });
             key = baked.key;
             if (baked.fresh) {
@@ -3003,8 +3229,8 @@ module.exports = function mountMediaRoutes(app) {
       purchaseId: purchase.id, mediaId: req.params.id, storageKey: m.rows[0].storage_key,
       logoVariant: purchase.logo_variant, logoTemplate: purchase.logo_template,
       logoTheme: purchase.logo_theme, logoVariantKey: purchase.logo_variant_key,
-      designTags: purchase.design_class || purchase.design_subject
-        ? { class_name: purchase.design_class, subject: purchase.design_subject } : null,
+      designTags: purchase.design_class || purchase.design_subject || purchase.design_result
+        ? { class_name: purchase.design_class, subject: purchase.design_subject, result: purchase.design_result } : null,
     });
     if (designed?.fresh) {
       audit(req, 'media.logo_bake', 'media', req.params.id, { purchase_id: purchase.id, logos: designed.logos, template: designed.template, theme: designed.theme });
@@ -3179,7 +3405,7 @@ module.exports = function mountMediaRoutes(app) {
   async function bakeContext(mediaId) {
     try {
       const { rows } = await pool.query(
-        `SELECT e.name AS event, c.name AS class_name,
+        `SELECT e.name AS event, c.name AS class_name, m.moment,
            NULLIF(CONCAT_WS(' × ', h.name, r.name), '') AS subject
          FROM media m LEFT JOIN events e ON e.id = m.event_id
          LEFT JOIN classes c ON c.id = m.class_id
@@ -3187,10 +3413,10 @@ module.exports = function mountMediaRoutes(app) {
          WHERE m.id = $1`, [mediaId]);
       return {
         event: rows[0]?.event || '', className: rows[0]?.class_name || '',
-        subject: rows[0]?.subject || '',
+        subject: rows[0]?.subject || '', moment: rows[0]?.moment || '',
       };
     } catch {
-      return { event: '', className: '', subject: '' };
+      return { event: '', className: '', subject: '', moment: '' };
     }
   }
 
@@ -3231,7 +3457,7 @@ module.exports = function mountMediaRoutes(app) {
     const baked = exactVariant
       ? await require('../lib/logoBake').bakeVariant({
           photoBuf: await readKey(storageKey), logoBufs, variant: exactVariant,
-          positions: logoPos, ctx: bakeCtx, theme,
+          positions: logoPos, ctx: bakeCtx, theme, designTags,
         })
       : await bakeLogoTemplate(
           await readKey(storageKey), logoBufs, template,
@@ -3272,7 +3498,7 @@ module.exports = function mountMediaRoutes(app) {
     const { rows } = await pool.query(
       `SELECT l.id, l.label, s.name AS sponsor_name FROM sponsor_logos l
        JOIN sponsors s ON s.id = l.sponsor_id
-       WHERE s.user_id = $1 AND l.is_active AND s.is_active
+       WHERE s.user_id = $1 AND s.kind = 'personal' AND l.is_active AND s.is_active
        ORDER BY l.created_at DESC LIMIT 50`, [req.authUser.id]);
     res.json({ data: rows });
   }));
@@ -3294,11 +3520,11 @@ module.exports = function mountMediaRoutes(app) {
     // One personal sponsor row per brand per buyer; budgets never attach
     // here, so a nomination alone unlocks no discount (see §2.2).
     let sp = await pool.query(
-      'SELECT id FROM sponsors WHERE user_id = $1 AND lower(name) = lower($2)',
+      "SELECT id FROM sponsors WHERE user_id = $1 AND kind = 'personal' AND lower(name) = lower($2)",
       [req.authUser.id, label]);
     if (!sp.rows.length) {
       sp = await pool.query(
-        'INSERT INTO sponsors (user_id, name) VALUES ($1, $2) RETURNING id',
+        "INSERT INTO sponsors (user_id, name, kind) VALUES ($1, $2, 'personal') RETURNING id",
         [req.authUser.id, label]);
     }
     const sponsorId = sp.rows[0].id;
@@ -3332,7 +3558,7 @@ module.exports = function mountMediaRoutes(app) {
     const { rows } = await pool.query(
       `UPDATE sponsor_logos SET is_active = false
         WHERE id = $1 AND is_active AND sponsor_id IN (
-          SELECT id FROM sponsors WHERE user_id = $2)
+          SELECT id FROM sponsors WHERE user_id = $2 AND kind = 'personal')
        RETURNING id, sponsor_id`,
       [String(req.params.id), req.authUser.id]);
     if (!rows.length) return res.status(404).json({ error: 'logo not found' });
@@ -3665,20 +3891,20 @@ module.exports = function mountMediaRoutes(app) {
       return res.status(400).json({ error: 'need {to_user_id} or {to_email}' });
     }
     if (toId === req.authUser.id) return res.status(400).json({ error: 'cannot grant to yourself' });
-    // Event-scoped volunteer grant: event must be yours and the recipient
-    // must be on its roster. The receiver side is marked spend-only
-    // (cashable = FALSE) — volunteer money can never be cashed out later.
-    let grantEventId = null;
-    if (b.event_id !== undefined && b.event_id !== null && b.event_id !== '') {
-      const found = await orgEventOr403(pool, req, res, b.event_id);
-      if (!found) return;
-      grantEventId = found.event.id;
-      const onRoster = await pool.query(
-        'SELECT 1 FROM event_volunteers WHERE event_id = $1 AND user_id = $2',
-        [grantEventId, toId]);
-      if (!onRoster.rows.length) {
-        return res.status(403).json({ error: 'volunteer is not on this event roster' });
-      }
+    // Organizer balance is never cashable: it only goes to rostered crew of
+    // one of your events, and the receiver side is spend-only
+    // (cashable = FALSE) — it buys photos, never cash.
+    if (b.event_id === undefined || b.event_id === null || b.event_id === '') {
+      return res.status(400).json({ error: 'need {event_id}: grants go to a volunteer on one of your event rosters' });
+    }
+    const found = await orgEventOr403(pool, req, res, b.event_id);
+    if (!found) return;
+    const grantEventId = found.event.id;
+    const onRoster = await pool.query(
+      'SELECT 1 FROM event_volunteers WHERE event_id = $1 AND user_id = $2',
+      [grantEventId, toId]);
+    if (!onRoster.rows.length) {
+      return res.status(403).json({ error: 'volunteer is not on this event roster' });
     }
     const reason = String(b.reason || '').trim().slice(0, 200) || null;
     const client = await pool.connect();
@@ -3695,14 +3921,14 @@ module.exports = function mountMediaRoutes(app) {
       await client.query('UPDATE users SET balance_cents = $2 WHERE id = $1', [toId, toAfter]);
       await client.query(
         `INSERT INTO wallet_transactions (user_id, kind, amount_cents, balance_after_cents, counterparty_user_id, reason, created_by, event_id, cashable)
-         VALUES ($1, 'grant', $2, $3, $4, $5, $1, $6, TRUE)`,
+         VALUES ($1, 'grant', $2, $3, $4, $5, $1, $6, FALSE)`,
         [req.authUser.id, -amount, fromAfter, toId, reason, grantEventId]);
       await client.query(
         `INSERT INTO wallet_transactions (user_id, kind, amount_cents, balance_after_cents, counterparty_user_id, reason, created_by, event_id, cashable)
          VALUES ($1, 'grant_received', $2, $3, $4, $5, $6, $7, $8)`,
-        [toId, amount, toAfter, req.authUser.id, reason, req.authUser.id, grantEventId, grantEventId === null]);
+        [toId, amount, toAfter, req.authUser.id, reason, req.authUser.id, grantEventId, false]);
       await client.query('COMMIT');
-      audit(req, 'wallet.grant', 'user', toId, { amount_cents: amount, event_id: grantEventId, spend_only: grantEventId !== null });
+      audit(req, 'wallet.grant', 'user', toId, { amount_cents: amount, event_id: grantEventId, spend_only: true });
       res.status(201).json({ data: { granted_cents: amount, balance_cents: fromAfter } });
     } catch (e) {
       await client.query('ROLLBACK').catch(() => {});
@@ -3784,8 +4010,8 @@ module.exports = function mountMediaRoutes(app) {
           purchaseId: row.purchase_id, mediaId: row.media_id, storageKey,
           logoVariant: row.logo_variant, logoTemplate: row.logo_template,
           logoTheme: row.logo_theme, logoVariantKey: row.logo_variant_key,
-          designTags: row.design_class || row.design_subject
-            ? { class_name: row.design_class, subject: row.design_subject } : null,
+          designTags: row.design_class || row.design_subject || row.design_result
+            ? { class_name: row.design_class, subject: row.design_subject, result: row.design_result } : null,
         });
         if (designed?.key) {
           row.designed_url = await mediaStore.signedDownloadUrl(designed.key);
@@ -3823,8 +4049,13 @@ module.exports = function mountMediaRoutes(app) {
                WHEN pu.reel_order_id IS NOT NULL THEN 'reel'
                ELSE 'credit' END`;
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-  function salesWhere(query, params) {
+  // ownId: non-ADMIN photographers only ever see their own sales (null = ADMIN, unscoped).
+  function salesWhere(query, params, ownId) {
     const conds = [];
+    if (ownId) {
+      params.push(ownId);
+      conds.push(`ph.id = $${params.length}`);
+    }
     if (query.status && ['pending', 'paid', 'refunded'].includes(String(query.status))) {
       params.push(String(query.status));
       conds.push(`pu.status = $${params.length}`);
@@ -3883,7 +4114,7 @@ module.exports = function mountMediaRoutes(app) {
   // file doubles as the monthly settlement + GST record.
   app.get('/admin/sales.csv', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const params = [];
-    const where = salesWhere(req.query, params);
+    const where = salesWhere(req.query, params, await ownPhotographerId(pool, req.authUser));
     const { rows } = await pool.query(
       `SELECT pu.id, pu.created_at, pu.buyer_email, pu.license_tier, pu.amount_cents,
           pu.currency, pu.status, pu.stripe_session_id,
@@ -3961,7 +4192,7 @@ module.exports = function mountMediaRoutes(app) {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     const params = [];
-    const where = salesWhere(req.query, params);
+    const where = salesWhere(req.query, params, await ownPhotographerId(pool, req.authUser));
     const pageParams = [...params, limit, offset];
     const { rows } = await pool.query(
       `SELECT pu.id, pu.created_at, pu.buyer_email, pu.buyer_user_id, pu.media_id, pu.package_id,
@@ -3997,14 +4228,17 @@ module.exports = function mountMediaRoutes(app) {
   // photographer settlement (plan §9: payout = gross − platform fee).
   app.get('/admin/sales/summary', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const params = [];
-    const where = salesWhere(req.query, params);
+    const where = salesWhere(req.query, params, await ownPhotographerId(pool, req.authUser));
     const [kpis, tiers, days, settle] = await Promise.all([
       pool.query(
         `SELECT COUNT(*) FILTER (WHERE pu.status = 'paid')::INT AS paid,
             COUNT(*) FILTER (WHERE pu.status = 'pending')::INT AS pending,
             COUNT(*) FILTER (WHERE pu.status = 'refunded')::INT AS refunded,
             COALESCE(SUM(pu.amount_cents) FILTER (WHERE pu.status = 'paid'), 0)::INT AS gross_cents,
-            COALESCE(SUM(pu.amount_cents) FILTER (WHERE pu.status = 'pending'), 0)::INT AS pending_cents
+            COALESCE(SUM(pu.amount_cents) FILTER (WHERE pu.status = 'pending'), 0)::INT AS pending_cents,
+            -- Stripe Checkout sessions expire after 24h: older pending rows are abandoned, not money owed.
+            COUNT(*) FILTER (WHERE pu.status = 'pending' AND pu.created_at > NOW() - INTERVAL '24 hours')::INT AS open_checkouts,
+            COALESCE(SUM(pu.amount_cents) FILTER (WHERE pu.status = 'pending' AND pu.created_at > NOW() - INTERVAL '24 hours'), 0)::INT AS open_checkout_cents
           ${SALES_JOIN} ${where}`,
         params
       ),
@@ -4018,7 +4252,7 @@ module.exports = function mountMediaRoutes(app) {
         params
       ),
       pool.query(
-        `SELECT to_char(pu.created_at, 'YYYY-MM-DD') AS day,
+        `SELECT to_char(pu.created_at AT TIME ZONE 'Pacific/Auckland', 'YYYY-MM-DD') AS day,
             COUNT(*)::INT AS sales, COALESCE(SUM(pu.amount_cents), 0)::INT AS gross_cents
           ${SALES_JOIN} ${where ? `${where} AND` : 'WHERE'} pu.status = 'paid'
           GROUP BY 1 ORDER BY 1 DESC LIMIT 31`,
@@ -4099,14 +4333,16 @@ module.exports = function mountMediaRoutes(app) {
     const photographer = await ownPhotographer(pool, req.authUser, req.body?.photographer_id);
     const items = who
       ? await pool.query(
-        `SELECT m.id, COALESCE(t.price_cents, 0) AS price_cents FROM media m
-          LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
+        `SELECT m.id, COALESCE(pp.price_cents, t.price_cents, 0) AS price_cents FROM media m
+          LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, CASE WHEN m.kind = 'reel' THEN 'reel' ELSE 'web' END)
+          LEFT JOIN photographer_prices pp ON pp.photographer_id = m.photographer_id AND pp.tier_id = t.id
           WHERE m.status = 'published' AND m.source = 'studio' AND m.event_id = $1 AND m.${who.col} = $2`,
         [event_id, who.id]
       )
       : await pool.query(
-        `SELECT m.id, COALESCE(t.price_cents, 0) AS price_cents FROM media m
-          LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, 'web')
+        `SELECT m.id, COALESCE(pp.price_cents, t.price_cents, 0) AS price_cents FROM media m
+          LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, CASE WHEN m.kind = 'reel' THEN 'reel' ELSE 'web' END)
+          LEFT JOIN photographer_prices pp ON pp.photographer_id = m.photographer_id AND pp.tier_id = t.id
           WHERE m.status = 'published' AND m.source = 'studio' AND m.event_id = $1`,
         [event_id]
       );
@@ -4193,14 +4429,46 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: { key, value: v } });
   }));
 
-  // ---- License tiers (admin CRUD; buyers read prices via GET /api/license-tiers) ----
+  // ---- Own download prices (migration 106): each photographer overrides the
+  // platform price for a photo ('web') and a reel ('reel'). No row = platform price.
+  const OWN_PRICE_TIERS = ['web', 'reel'];
+  app.get('/admin/my-prices', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+    const ph = await ownPhotographer(pool, req.authUser, req.query.photographer_id || null);
+    const { rows } = await pool.query(
+      `SELECT t.id AS tier_id, t.label, t.price_cents AS platform_cents, pp.price_cents AS own_cents
+         FROM license_tiers t
+         LEFT JOIN photographer_prices pp ON pp.tier_id = t.id AND pp.photographer_id = $1
+        WHERE t.id = ANY($2) ORDER BY t.sort_order NULLS LAST, t.id`,
+      [ph.id, OWN_PRICE_TIERS]);
+    res.json({ data: { photographer: { id: ph.id, name: ph.name }, prices: rows } });
+  }));
+
+  app.put('/admin/my-prices/:tier', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+    if (!OWN_PRICE_TIERS.includes(req.params.tier)) return res.status(400).json({ error: 'only the photo and reel price can be set' });
+    const ph = await ownPhotographer(pool, req.authUser, req.body?.photographer_id || null);
+    const raw = req.body?.price_cents;
+    if (raw === null || raw === '' || raw === undefined) {
+      await pool.query('DELETE FROM photographer_prices WHERE photographer_id = $1 AND tier_id = $2', [ph.id, req.params.tier]);
+    } else {
+      const price = parseInt(raw, 10);
+      if (!(price > 0)) return res.status(400).json({ error: 'price must be above zero, or empty to use the platform price' });
+      await pool.query(
+        `INSERT INTO photographer_prices (photographer_id, tier_id, price_cents) VALUES ($1, $2, $3)
+         ON CONFLICT (photographer_id, tier_id) DO UPDATE SET price_cents = EXCLUDED.price_cents, updated_at = NOW()`,
+        [ph.id, req.params.tier, price]);
+    }
+    audit(req, 'price.own', 'photographer', ph.id, { tier: req.params.tier, price_cents: raw ?? null });
+    res.json({ ok: true });
+  }));
+
+  // ---- License tiers (platform prices, admin only to change; buyers read via GET /api/license-tiers) ----
   app.get('/admin/license-tiers', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { rows } = await pool.query(
       'SELECT * FROM license_tiers ORDER BY sort_order NULLS LAST, price_cents NULLS LAST, id');
     res.json({ data: rows });
   }));
 
-  app.post('/admin/license-tiers', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+  app.post('/admin/license-tiers', needRole('ADMIN'), asyncH(async (req, res) => {
     const { id, label, price_cents, max_resolution, printable, sort_order, applies_to } = req.body || {};
     if (!id || !TIER_RE.test(String(id))) return res.status(400).json({ error: 'need {id} (a-z, 0-9, _, -)' });
     const price = price_cents === null || price_cents === undefined || price_cents === ''
@@ -4227,7 +4495,7 @@ module.exports = function mountMediaRoutes(app) {
     }
   }));
 
-  app.patch('/admin/license-tiers/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+  app.patch('/admin/license-tiers/:id', needRole('ADMIN'), asyncH(async (req, res) => {
     const b = req.body || {};
     const sets = [], vals = [];
     const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
@@ -4243,10 +4511,9 @@ module.exports = function mountMediaRoutes(app) {
       if (!['photo', 'reel', 'both'].includes(b.applies_to)) {
         return res.status(400).json({ error: 'applies_to must be photo, reel or both' });
       }
-      // 'web' is the fallback for both photos and reels — narrowing it
-      // would break default pricing on the other kind.
-      if (req.params.id === 'web' && b.applies_to !== 'both') {
-        return res.status(409).json({ error: "'web' applies to photos and reels — it can't be narrowed" });
+      // 'web' is the photo price (reels fall back to 'reel', migration 105), so it can't become reel-only.
+      if (req.params.id === 'web' && b.applies_to === 'reel') {
+        return res.status(409).json({ error: "'web' is the photo price — it can't be reel-only" });
       }
       set('applies_to', b.applies_to);
     }
@@ -4254,8 +4521,8 @@ module.exports = function mountMediaRoutes(app) {
       // 'web' is the pricing fallback — hiding it would silently reprice
       // every photo without an explicit tier. Hidden tiers also can't be a
       // photo default (gallery/checkout always resolve the default tier).
-      if (b.is_hidden && req.params.id === 'web') {
-        return res.status(409).json({ error: "'web' is the system default tier — it can't be hidden" });
+      if (b.is_hidden && ['web', 'reel'].includes(req.params.id)) {
+        return res.status(409).json({ error: `'${req.params.id}' is the ${req.params.id === 'reel' ? 'reel' : 'photo'} price — it can't be hidden` });
       }
       if (b.is_hidden) {
         const used = await pool.query(
@@ -4280,11 +4547,11 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows[0] });
   }));
 
-  app.delete('/admin/license-tiers/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+  app.delete('/admin/license-tiers/:id', needRole('ADMIN'), asyncH(async (req, res) => {
     // 'web' is the hardcoded pricing fallback (checkout + buy box) — removing
     // it silently degrades every photo without an explicit tier.
-    if (req.params.id === 'web') {
-      return res.status(409).json({ error: "'web' is the system default tier — rename/reprice it instead" });
+    if (['web', 'reel'].includes(req.params.id)) {
+      return res.status(409).json({ error: `'${req.params.id}' is the ${req.params.id === 'reel' ? 'reel' : 'photo'} price — reprice it instead` });
     }
     const used = await pool.query(
       `SELECT (SELECT COUNT(*)::INT FROM media WHERE license_default = $1)
@@ -4551,7 +4818,9 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // ---- Admin: reel product catalog (prices set here, per event, no deploy) ----
-  app.get('/admin/reel-products', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+  // Pre-book reels are Boss Media only (Imam, 2026-11-24). Other photographers
+  // sell photos and finished reels, but take no pre-book orders. Boss Media is the ADMIN's linked profile.
+  app.get('/admin/reel-products', needRole('ADMIN'), asyncH(async (req, res) => {
     const params = [];
     let where = '';
     if (req.query.event_id) {
@@ -4569,7 +4838,7 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows });
   }));
 
-  app.post('/admin/reel-products', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+  app.post('/admin/reel-products', needRole('ADMIN'), asyncH(async (req, res) => {
     const b = req.body || {};
     const name = String(b.name || '').trim().slice(0, 120);
     if (!name) return res.status(400).json({ error: 'need {name}' });
@@ -4601,7 +4870,7 @@ module.exports = function mountMediaRoutes(app) {
     res.status(201).json({ data: rows[0] });
   }));
 
-  app.patch('/admin/reel-products/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+  app.patch('/admin/reel-products/:id', needRole('ADMIN'), asyncH(async (req, res) => {
     const b = req.body || {};
     const sets = [], vals = [];
     const set = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
@@ -4645,7 +4914,7 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows[0] });
   }));
 
-  app.delete('/admin/reel-products/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+  app.delete('/admin/reel-products/:id', needRole('ADMIN'), asyncH(async (req, res) => {
     const live = await pool.query(
       `SELECT COUNT(*)::INT AS n FROM reel_orders WHERE product_id = $1 AND status <> 'cancelled'`,
       [req.params.id]);
@@ -4660,7 +4929,7 @@ module.exports = function mountMediaRoutes(app) {
   }));
 
   // ---- Admin: reel order fulfillment queue ----
-  app.get('/admin/reel-orders', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+  app.get('/admin/reel-orders', needRole('ADMIN'), asyncH(async (req, res) => {
     const conds = [], params = [];
     const ownRo = await ownPhotographerId(pool, req.authUser);
     if (ownRo) { params.push(ownRo); conds.push(`rp.photographer_id = $${params.length}`); }
@@ -4685,7 +4954,7 @@ module.exports = function mountMediaRoutes(app) {
     res.json({ data: rows });
   }));
 
-  app.patch('/admin/reel-orders/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+  app.patch('/admin/reel-orders/:id', needRole('ADMIN'), asyncH(async (req, res) => {
     const cur = await pool.query(
       `SELECT ro.*, rp.photographer_id FROM reel_orders ro JOIN reel_products rp ON rp.id = ro.product_id WHERE ro.id = $1`,
       [req.params.id]);
@@ -5409,6 +5678,11 @@ module.exports = function mountMediaRoutes(app) {
   }));
 };
 module.exports.watermarkSvg = watermarkSvg;
+module.exports.COMMUNITY_BRAND = COMMUNITY_BRAND;
+module.exports.brandThenPublish = brandThenPublish;
+module.exports.sponsorRepostRefusal = sponsorRepostRefusal;
+module.exports.publicTierFilter = publicTierFilter;
+module.exports.licenseDefaultRefusal = licenseDefaultRefusal;
 // watermarkSvgLight moved to lib/reelFinalize.js (shared with QR web
 // finalize); re-exported here so existing importers keep working.
 module.exports.buildUploadCodeBase = buildUploadCodeBase;

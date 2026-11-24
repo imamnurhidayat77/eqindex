@@ -1,0 +1,284 @@
+/* Merch studio — dark premium theme, scoped (globals.css frozen).
+   Near-black surfaces, gold accent, white type.
+   Motion: transform/opacity/border-color only, <=200ms, no transition:all. */
+.studio { padding: 0; color: #fff; }
+.wrap { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; align-items: start; max-width: 1560px; margin: 0 auto; }
+/* Top guided progress: the single stage navigation. */
+.topbar { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: center; }
+.progress { display: flex; align-items: center; gap: 0; margin: 0; padding: 8px 12px; list-style: none; background: #101010; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; }
+/* Connectors stretch between the steps so the three read as one track. */
+.pStep { flex: 1; display: flex; align-items: center; min-width: 0; }
+.pStep:first-child { flex: none; }
+.pStep button { display: flex; gap: 10px; align-items: center; flex: none; background: none; border: 0; border-radius: 10px; color: #A0A0A0; padding: 8px 12px; cursor: pointer; text-align: left; transition: background 150ms ease-out, color 150ms ease-out; }
+.pStep button:hover { color: #fff; background: #171717; }
+.pStep button:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+.pStep[data-state='active'] button { background: #1c1a12; }
+.pStep + .pStep::before { content: ""; flex: 1; min-width: 24px; height: 1px; background: #252525; margin: 0 8px; }
+.pStep[data-state='done'] + .pStep::before { background: rgba(255,196,0,.45); }
+.pStep[data-state='active'] button { color: #fff; }
+.pStep[data-state='done'] button { color: #ccc; }
+.pN { display: inline-grid; place-items: center; width: 26px; height: 26px; flex: none; font-size: 12px; font-weight: 800; color: #A0A0A0; background: #171717; border: 1px solid #252525; border-radius: 50%; }
+.pStep[data-state='active'] .pN { color: #080808; background: #FFC400; border-color: #FFC400; }
+.pStep[data-state='done'] .pN { color: #FFC400; background: transparent; border-color: rgba(255,196,0,.6); }
+.pLabel { display: grid; gap: 1px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.pLabel small { font-size: 11px; font-weight: 400; color: #999; white-space: nowrap; }
+.pStep[data-state='idle'] .pLabel small { color: #666; }
+.stageHead { display: grid; gap: 4px; }
+/* Right inspector: one charcoal panel, sections split by hairlines. */
+.inspector { display: grid; gap: 0; align-content: start; min-width: 0; background: #171717; border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 16px 18px 10px; scroll-padding-bottom: 100px; }
+/* Clearance so the page can scroll the last inspector control above the
+   sticky order bar (about 76px tall plus its 12px offset). */
+.studio { padding-bottom: 24px; }
+.wrap { margin-bottom: 8px; }
+/* Compact product info: replaces the removed header duplicate card. */
+.infoCard { display: grid; gap: 6px; padding: 14px 2px; border-bottom: 1px solid rgba(255,255,255,0.09); }
+.infoCard > div { display: grid; gap: 2px; }
+.infoCard strong { font-size: 14px; color: #fff; }
+.infoCard small { font-size: 11px; color: #999; line-height: 1.5; }
+.infoCard p { margin: 0; }
+/* Size guide disclosure: generic fit advice only, no invented measurements. */
+.sizeGuide { border: 1px solid #252525; border-radius: 10px; background: #101010; padding: 0 12px; }
+.sizeGuide summary { cursor: pointer; font-size: 12px; font-weight: 700; color: #ccc; padding: 10px 0; }
+.sizeGuide summary:hover { color: #fff; }
+.exact[open] { display: grid; gap: 12px; padding-bottom: 12px; }
+.sizeGuide summary::marker { color: #FFC400; }
+.sizeGuide p { margin: 0 0 10px; }
+.stepCols { grid-template-columns: 1fr; }
+.notes { width: 100%; min-height: 76px; background: #0b0b0b; border: 1px solid #333; color: #fff; padding: 10px 12px; font-size: 13px; font-family: inherit; resize: vertical; }
+/* Sticky bottom order bar: thumb, configuration, totals, review CTA. */
+.orderBar { position: sticky; bottom: 12px; z-index: 5; display: flex; align-items: center; gap: 18px; background: #0d0d0d; border: 1px solid rgba(255,255,255,0.09); border-radius: 14px; border-top: 1px solid rgba(255,196,0,0.45); padding: 12px 18px; margin-top: 20px; box-shadow: 0 12px 32px rgba(0,0,0,0.55); }
+.orderThumb { width: 52px; flex: none; }
+.orderThumb .photo, .orderThumb .thumb { height: 48px !important; }
+.orderMeta { display: grid; gap: 2px; min-width: 0; }
+.orderMeta strong { font-size: 14px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.orderMeta small { font-size: 12px; color: #999; }
+.orderTotal { margin-left: auto; display: grid; justify-items: end; gap: 2px; flex: none; padding-right: 18px; border-right: 1px solid rgba(255,255,255,0.09); }
+.orderTotal span { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #999; }
+.orderTotal strong { font-size: 20px; line-height: 1.1; color: #FFC400; }
+.orderTotal small { font-size: 11px; color: #999; }
+.orderCta { display: flex; align-items: center; gap: 10px; flex: none; }
+.orderCta .cta { min-height: 48px; min-width: 200px; padding: 0 22px; }
+.orderCta .backBtn { display: inline-flex; align-items: center; gap: 8px; }
+.backBtn { min-height: 48px; padding: 0 18px; background: transparent; border: 1px solid #3a3a3a; color: #fff; font-size: 14px; font-weight: 800; cursor: pointer; transition: border-color 150ms ease-out, background 150ms ease-out, transform 150ms ease-out; }
+.backBtn:hover { border-color: #888; background: #161616; }
+.backBtn:active { transform: scale(.97); }
+.backBtn:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+@media (max-width: 1199px) {
+  .wrap { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .previewCard { grid-row: auto; }
+}
+@media (max-width: 900px) {
+  .wrap { grid-template-columns: 1fr; }
+  .progress { overflow-x: auto; }
+  .pStep { flex: 1 0 auto; }
+  .pStep + .pStep::before { width: 24px; }
+  .orderBar { flex-wrap: wrap; }
+  .orderTotal { padding-right: 0; border-right: 0; }
+  .orderCta { width: 100%; }
+  .orderCta .cta { flex: 1; }
+}
+/* Phone: stepper shows labels only, order bar is one compact row
+   (total, back arrow, primary). Product name and thumb are on screen above. */
+@media (max-width: 640px) {
+  .progress { padding: 4px; overflow: visible; }
+  .pStep { flex: 1 1 auto; }
+  .pStep:first-child { flex: none; }
+  .pStep button { gap: 6px; padding: 6px 8px; }
+  .pLabel small { display: none; }
+  .pStep + .pStep::before { min-width: 8px; margin: 0 4px; }
+  .orderBar { flex-wrap: nowrap; gap: 10px; padding: 8px 8px 8px 12px; bottom: 8px; }
+  .orderThumb, .orderMeta, .orderTotal small { display: none; }
+  .orderTotal { margin-left: 0; justify-items: start; }
+  .orderTotal strong { font-size: 17px; }
+  .orderCta { width: auto; flex: 1; justify-content: flex-end; gap: 8px; }
+  .orderCta .cta { min-width: 0; padding: 0 14px; }
+  .orderCta .backBtn { padding: 0 14px; }
+  .backText { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+
+/* ---- Preview ---- */
+.previewCard { background: #101010; border: 1px solid #2c2c2c; padding: 16px; display: grid; gap: 12px; align-content: start; }
+@media (min-width: 901px) { .previewCard { position: sticky; top: 96px; } }
+.stage { position: relative; width: 100%; height: clamp(340px, calc(100vh - 420px), 600px); overflow: hidden; border: 1px solid #2c2c2c; background: radial-gradient(120% 100% at 50% 30%, #8e8d89 0%, #6a6965 50%, #45443f 100%); }
+.stage:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+/* Supported-area hover tooltip: follows the pointer, DOM-written only. */
+.hoverTip { position: absolute; left: 0; top: 0; z-index: 5; display: grid; gap: 1px; max-width: 220px; background: rgba(8,8,8,.92); border: 1px solid rgba(255,255,255,0.14); border-radius: 8px; padding: 6px 10px; pointer-events: none; opacity: 0; transition: opacity 150ms ease-out; will-change: transform; }
+.hoverTip strong { font-size: 12px; color: #fff; white-space: nowrap; }
+.hoverTip small { font-size: 10px; color: #999; white-space: nowrap; }
+/* Right column. Phone/tablet: contents only, so the order bar sticks to
+   the viewport bottom across the full width. Two columns: one sticky panel
+   below the site header (78px); the inspector scrolls inside it and the
+   order bar is its footer, so the bar never covers the form. */
+.side { display: contents; }
+.side > .orderBar { grid-column: 1 / -1; }
+@media (min-width: 901px) {
+  .side { display: flex; flex-direction: column; gap: 10px; min-width: 0; position: sticky; top: 96px; max-height: calc(100vh - 112px); }
+  .side > .inspector { flex: 1 1 auto; min-height: 0; overflow-y: auto; scroll-padding-bottom: 16px; }
+  .side > .orderBar { position: static; margin: 0; flex: none; gap: 10px; padding: 10px; box-shadow: none; }
+  .side .orderThumb, .side .orderMeta { display: none; }
+  .side .orderTotal { margin-left: 0; margin-right: auto; justify-items: start; padding: 0 0 0 6px; border-right: 0; }
+  .side .orderTotal { flex: 0 1 auto; min-width: 0; }
+  .side .orderTotal small { line-height: 1.35; }
+  .side .orderCta { flex: 0 0 auto; }
+  .side .orderCta .cta { min-width: 170px; padding: 0 18px; white-space: nowrap; }
+}
+.stage:fullscreen { aspect-ratio: auto; height: 100%; }
+/* Light paper studio for the horse viewer: the bay coat and dark rugs
+   both read against it (the old charcoal made the horse look muddy). */
+.stageDark { background: radial-gradient(110% 90% at 50% 32%, #f3f1ec 0%, #dedad2 55%, #c4bfb5 100%); border-color: #3a382f; }
+
+.gl { position: absolute; inset: 0; }
+.gl canvas { display: block; width: 100% !important; height: 100% !important; touch-action: none; }
+.stageHint { position: absolute; left: 50%; top: 54px; transform: translateX(-50%); z-index: 3; display: grid; gap: 2px; justify-items: center; text-align: center; background: rgba(14,14,14,.88); border: 1px dashed #6b655a; border-radius: 10px; padding: 10px 14px; font-size: 12px; color: #ccc; pointer-events: none; max-width: 90%; }
+.stageHint strong { color: #fff; font-size: 13px; }
+
+.viewBar { position: absolute; top: 10px; left: 12px; right: 12px; z-index: 2; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+/* No backdrop blur over the WebGL canvas: blur recomposites on every scroll frame. */
+.viewBtn { border: 1px solid rgba(255,255,255,0.12); background: rgba(10,10,10,0.86); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 7px 10px; border-radius: 8px; cursor: pointer; transition: border-color 150ms ease-out, background 150ms ease-out, transform 150ms ease-out; }
+.viewBtn:hover { border-color: #888; background: #161616; }
+.viewBtn:active { transform: scale(.97); }
+.viewBtn[aria-pressed='true'] { border-color: #FFC400; background: #FFC400; color: #101010; }
+.viewBtn:focus-visible, .dockBtn:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+
+.switchBadge { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: #101010; background: #FFC400; border-radius: 20px; padding: 4px 10px; }
+.dock { position: absolute; right: 12px; bottom: 12px; z-index: 2; display: grid; gap: 6px; }
+.dockBtn { width: 34px; height: 34px; border: 1px solid rgba(255,255,255,0.12); background: rgba(10,10,10,0.86); color: #fff; font-size: 15px; font-weight: 700; border-radius: 8px; cursor: pointer; transition: border-color 150ms ease-out, transform 150ms ease-out; }
+.dockBtn:hover { border-color: #FFC400; }
+.dockBtn:active { transform: scale(.97); }
+.dockBtn:disabled { opacity: .35; cursor: default; }
+.loadVeil { position: absolute; inset: 0; z-index: 4; display: grid; place-content: center; gap: 10px; justify-items: center; background: rgba(13,13,13,.88); color: #999; font-size: 13px; }
+.spinner { width: 26px; height: 26px; border: 3px solid #3a3a3a; border-top-color: #FFC400; border-radius: 50%; animation: spin 900ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- Inspector ---- */
+.step { background: none; border: 0; border-bottom: 1px solid rgba(255,255,255,0.09); padding: 18px 2px; display: grid; gap: 12px; }
+.step:first-child { padding-top: 2px; }
+.step:last-child { border-bottom: 0; }
+.stepTitle { margin: 0; font-size: 15px; font-weight: 800; color: #fff; display: flex; gap: 10px; align-items: center; }
+.stepTitle em { font-style: normal; font-weight: 400; color: #999; font-size: 13px; }
+.stepCols { display: grid; grid-template-columns: 1fr; gap: 14px; }
+.groupLabel { margin: 0 0 8px; color: #999; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+
+.cardGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 560px) { .cardGrid { grid-template-columns: repeat(2, 1fr); } }
+.card { display: grid; gap: 6px; justify-items: center; text-align: center; background: #141414; border: 1px solid #3a3a3a; padding: 10px 6px; cursor: pointer; transition: border-color 150ms ease-out, background 150ms ease-out, transform 150ms ease-out; }
+.card:hover { border-color: #888; background: #161616; }
+.card:active { transform: scale(.97); }
+.card[aria-pressed='true'] { border-color: #FFC400; background: #1c1a12; box-shadow: inset 0 0 0 1px #FFC400; }
+.cardText { display: grid; gap: 2px; }
+.cardText strong { font-size: 12px; color: #fff; }
+.cardText small { font-size: 11px; color: #999; }
+.thumb { width: 100%; height: 148px; }
+.photo { width: 100%; height: 148px; object-fit: cover; object-position: center 12%; background: #2a2926; border: 1px solid #2c2c2c; filter: brightness(1.9) contrast(1.1); }
+/* Position dot over photo thumbs (vectors draw their own): same gold/grey
+   states, sized in px so it reads at any tile width. */
+.photoWrap { position: relative; display: block; }
+.photoDot { position: absolute; width: 14px; height: 14px; border-radius: 50%; transform: translate(-50%, -50%); border: 2px solid #b98a1f; background: transparent; pointer-events: none; }
+.photoDot[data-state='filled'] { background: #b98a1f; }
+.photoDot[data-state='active'] { background: #FFC400; border-color: #FFC400; width: 18px; height: 18px; }
+.photoDot[data-state='empty'] { border-color: #8a8474; border-style: dashed; }
+
+.pickGrid { display: flex; flex-wrap: wrap; gap: 10px; }
+.swatch { width: 52px; height: 52px; border: 2px solid #3a3a3a; border-radius: 10px; cursor: pointer; padding: 0; transition: border-color 150ms ease-out, transform 150ms ease-out; }
+.swatch:hover { border-color: #888; }
+.swatch:active { transform: scale(.97); }
+.swatch[aria-pressed='true'] { border-color: #fff; box-shadow: 0 0 0 2px #171717, 0 0 0 4px #FFC400; }
+.swatch:focus-visible, .sizeBtn:focus-visible, .card:focus-visible, .slotRow:focus-visible, .removeBtn:focus-visible, .chip:focus-visible, .select:focus-visible, .field:focus-visible, .cta:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+.sizeBtn { min-width: 56px; min-height: 52px; padding: 0 14px; border: 1px solid #3a3a3a; border-radius: 10px; background: transparent; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; transition: border-color 150ms ease-out, background 150ms ease-out, transform 150ms ease-out; }
+.sizeBtn:hover { border-color: #888; background: #161616; }
+.sizeBtn:active { transform: scale(.97); }
+.sizeBtn[aria-pressed='true'] { background: #f3ecd9; border-color: #f3ecd9; color: #101010; }
+
+.logoBox { display: grid; gap: 10px; }
+.groupTitle { margin: 4px 0 0; font-size: 14px; font-weight: 800; color: #fff; }
+/* Three balanced artwork options: no logo, sponsor, club upload. */
+.artGrid { display: grid; gap: 10px; }
+.artCard { display: grid; gap: 8px; background: #141414; border: 1px solid #3a3a3a; border-radius: 12px; padding: 10px; transition: border-color 150ms ease-out, background 150ms ease-out; }
+.artCard[data-active='true'] { border-color: #FFC400; background: #1c1a12; box-shadow: inset 0 0 0 1px #FFC400; }
+.artHead { display: flex; gap: 10px; align-items: center; margin: 0; }
+.artHead > span:last-child { display: grid; gap: 2px; min-width: 0; }
+.artHead strong { font-size: 13px; color: #fff; }
+.artHead small { font-size: 11px; color: #999; }
+.artIcon { flex: none; display: inline-grid; place-items: center; width: 36px; height: 36px; font-size: 16px; font-weight: 800; color: #FFC400; background: #0b0b0b; border: 1px solid #3a3a3a; border-radius: 50%; }
+.artCard .chipGrid { grid-template-columns: 1fr; }
+.chipGrid { display: grid; gap: 8px; grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 560px) { .chipGrid { grid-template-columns: 1fr; } }
+.chip { display: flex; gap: 10px; align-items: center; text-align: left; background: #141414; border: 1px solid #3a3a3a; padding: 8px; cursor: pointer; transition: border-color 150ms ease-out, background 150ms ease-out; }
+.chip:hover { border-color: #888; background: #161616; }
+.chip[aria-pressed='true'] { border-color: #FFC400; background: #1c1a12; box-shadow: inset 0 0 0 1px #FFC400; }
+.chipThumb { width: 84px; height: 40px; flex: none; background: #fff; border: 1px solid #3a3a3a; overflow: hidden; display: grid; place-items: center; padding: 3px; }
+.chip span:last-child { display: grid; gap: 2px; min-width: 0; }
+.chip strong { font-size: 13px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip small { font-size: 11px; color: #999; }
+.linkBtn { background: none; border: 0; border-bottom: 1px solid #555; padding: 0 0 2px; color: #999; font-size: 12px; cursor: pointer; transition: color 150ms ease-out, border-color 150ms ease-out; }
+.linkBtn:hover { color: #fff; border-color: #999; }
+.zoomRow { display: grid; gap: 6px; font-size: 12px; color: #999; }
+.zoomRow input[type='range'] { width: 100%; accent-color: #FFC400; }
+/* Advanced logo controls sit two-up so the whole group fits above the fold. */
+@media (min-width: 560px) {
+  .adv .zoomRow { grid-template-columns: 1fr 1fr; gap: 10px 14px; align-items: end; }
+  .adv .zoomRow > span:first-child { grid-column: 1 / -1; }
+  .adv .zoomRow > .linkBtn { grid-column: 1 / -1; justify-self: start; }
+}
+
+.priceBox { display: grid; gap: 6px; font-size: 13px; color: #ccc; }
+.priceBox .row { display: flex; justify-content: space-between; gap: 8px; }
+.priceBox .total { font-size: 20px; color: #FFC400; font-weight: 800; border-top: 1px solid #2c2c2c; padding-top: 8px; }
+.priceBox .gold { color: #FFC400; }
+/* Expandable advanced logo controls (brief §5): sliders only, no motion. */
+.adv { border: 1px solid #2c2c2c; background: #0c0c0c; }
+.adv > summary { cursor: pointer; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #999; padding: 10px 12px; }
+.adv > summary:hover { color: #fff; }
+.adv > summary::marker { color: #FFC400; }
+.est { margin: 0; color: #999; font-size: 11px; line-height: 1.6; }
+.submit { display: grid; gap: 8px; }
+.select, .field { width: 100%; min-height: 44px; background: #0b0b0b; border: 1px solid #333; color: #fff; padding: 0 12px; font-size: 13px; transition: border-color 150ms ease-out; }
+.select:hover, .field:hover { border-color: #555; }
+.cta { min-height: 52px; background: #f3ecd9; color: #101010; font-weight: 800; font-size: 14px; letter-spacing: .02em; border: 0; cursor: pointer; transition: background 150ms ease-out, transform 150ms ease-out; }
+.cta:hover { background: #fff; }
+.cta:active { transform: scale(.98); }
+.cta:disabled { opacity: .55; cursor: default; }
+.ok { margin: 0; padding: 10px 12px; background: #14210f; border-left: 2px solid #7fae5c; color: #cfe3bd; font-size: 13px; line-height: 1.6; }
+
+/* ---- Slot list: one compact row per slot (status, logo, price effect) ---- */
+.clubNote { margin: 12px 0 0; padding: 10px 12px; font-size: 12px; line-height: 1.5; color: #ddd; background: #1c1a12; border-left: 2px solid #FFC400; border-radius: 6px; }
+.clubNote strong { color: #fff; }
+.slotList { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.slotRow { width: 100%; display: grid; grid-template-columns: 12px minmax(0, 1.2fr) minmax(0, 1fr) auto; gap: 10px; align-items: center; text-align: left; min-height: 48px; padding: 8px 12px; background: #141414; border: 1px solid #2c2c2c; border-radius: 10px; color: #fff; cursor: pointer; transition: border-color 150ms ease-out, background 150ms ease-out; }
+.slotRow:hover { border-color: #666; background: #181818; }
+.slotRow[aria-pressed='true'] { border-color: #FFC400; background: #1c1a12; }
+.slotDot { width: 10px; height: 10px; border-radius: 50%; border: 2px dashed #777; }
+.slotRow[data-filled='true'] .slotDot { border: 0; background: #FFC400; }
+.slotName { display: grid; gap: 1px; min-width: 0; }
+.slotName strong { font-size: 13px; }
+.slotName small { font-size: 11px; color: #999; }
+.slotLogo { font-size: 12px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slotRow[data-filled='false'] .slotLogo { color: #777; }
+.slotPrice { font-size: 12px; font-weight: 700; color: #999; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.slotPrice[data-sign='minus'] { color: #FFC400; }
+.removeBtn { justify-self: start; min-height: 40px; padding: 0 14px; background: transparent; border: 1px solid #5a3a3a; border-radius: 8px; color: #f0b4b4; font-size: 12px; font-weight: 700; cursor: pointer; transition: border-color 150ms ease-out, background 150ms ease-out; }
+.removeBtn:hover { border-color: #c06060; background: #1e1414; }
+.uploadRow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.err { margin: 0; color: #e08a8a; font-size: 12px; }
+.adjGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; align-items: end; }
+.adjGrid input[type='range']:disabled { opacity: .35; }
+.adjBtns { display: flex; gap: 8px; }
+@media (max-width: 560px) { .adjGrid { grid-template-columns: 1fr; } .slotRow { grid-template-columns: 12px minmax(0, 1fr) auto; } .slotLogo { display: none; } }
+/* On-canvas quick edit for the selected logo (bottom-left, clear of the
+   camera dock on the right). */
+.quickBar { position: absolute; left: 12px; bottom: 12px; z-index: 3; display: flex; gap: 6px; align-items: center; padding: 6px; background: rgba(10,10,10,0.9); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; max-width: calc(100% - 70px); flex-wrap: wrap; }
+.quickLabel { font-size: 11px; font-weight: 700; color: #ccc; padding: 0 6px; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pStep button, .slotRow, .removeBtn, .swatch, .sizeBtn, .card, .chip, .select, .field, .cta, .backBtn, .viewBtn, .dockBtn, .hoverTip { transition: none; }
+  .spinner { animation: none; }
+}
+
+/* Saved account logo: pick (chip) + delete, two taps to delete. */
+.savedRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: stretch; }
+.savedDel { min-width: 76px; padding: 0 12px; background: transparent; border: 1px solid #3a3a3a; color: #bbb; font-size: 12px; font-weight: 700; cursor: pointer; transition: border-color 150ms ease-out, color 150ms ease-out, background 150ms ease-out; }
+.savedDel:hover { border-color: #e08a8a; color: #f0c4c4; }
+.savedDel[data-confirm] { border-color: #e08a8a; background: #2a1414; color: #fff; }
+.savedDel:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+.savedDel:disabled { opacity: .55; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .savedDel { transition: none; } }

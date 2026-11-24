@@ -17,7 +17,7 @@ globalThis.window = {
   removeEventListener: () => {},
 };
 
-const { readCart, addToCart, removeFromCart, clearCart, cartCount } =
+const { readCart, addToCart, removeFromCart, clearCart, cartCount, markCartPending, settleCartPending } =
   await import('../lib/cart.js');
 
 const media = (over = {}) => ({
@@ -62,5 +62,22 @@ test('reel payload rows keep kind=reel for the payAll split', () => {
   assert.ok(row.reelPayload && row.reelPayload.product_id === 'p1');
   const photoItems = readCart().filter((it) => it.kind !== 'reel' && it.mediaId && it.tierId);
   assert.equal(photoItems.length, 0);
+  clearCart();
+});
+
+test('cart keeps items through Stripe until the purchase is paid', () => {
+  clearCart();
+  addToCart(media());
+  addToCart(media({ key: 'media:m2:t1', mediaId: 'm2' }));
+  markCartPending(['p1'], ['media:m1:t1']);
+  // Cancelled on Stripe: nothing settles, cart is still full.
+  assert.equal(readCart().length, 2);
+  // An unrelated paid purchase must not empty this cart.
+  assert.equal(settleCartPending(['other']), false);
+  assert.equal(readCart().length, 2);
+  // Paid: only the items of that checkout leave.
+  assert.equal(settleCartPending(['p1']), true);
+  assert.deepEqual(readCart().map((x) => x.key), ['media:m2:t1']);
+  assert.equal(settleCartPending(['p1']), false);
   clearCart();
 });

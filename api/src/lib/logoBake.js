@@ -22,6 +22,17 @@ const MANROPE = {
   800: opentype.parse(fread.readFileSync(fpath.join(__dirname, 'fonts', 'Manrope-ExtraBold.ttf'))),
 };
 const manrope = (weight) => MANROPE[weight >= 800 ? 800 : weight >= 700 ? 700 : 400];
+// T-series fonts: same files as web-bossmedia/components/sponsor-fonts
+// (preview loads them with next/font/local). The Dockerfile installs every
+// TTF in ./fonts for pango, so the SVG family names below resolve.
+const ttf = (name) => opentype.parse(fread.readFileSync(fpath.join(__dirname, 'fonts', name)));
+const T_FONTS = {
+  sans: { 400: MANROPE[400], 700: MANROPE[700], 800: MANROPE[800] },
+  cond: { 600: ttf('BarlowCondensed-SemiBold.ttf'), 800: ttf('BarlowCondensed-ExtraBold.ttf'), '800i': ttf('BarlowCondensed-ExtraBoldItalic.ttf') },
+  serif: { 400: ttf('DMSerifDisplay-Regular.ttf') },
+};
+const T_FAMILY = { sans: 'Manrope', cond: 'Barlow Condensed', serif: 'DM Serif Display' };
+const tFont = (t) => T_FONTS[t.f][t.i ? `${t.w}i` : t.w];
 // Exact text width (px): glyph advances + kerning + letter-spacing after
 // every char (browsers count the trailing space too).
 function tw(str, fs, lsEm = 0, upper = false, weight = 800) {
@@ -75,8 +86,11 @@ const LOGO_VARIANTS = [
   'banner-wave', 'portrait-swoosh', 'square-bar', 'left-panel',
   'top-banner', 'corner-badge', 'portrait-drape', 'round-badge',
   'gold-frame', 'minimal-corner', 'class-spotlight',
+  'fade-footer', 'mat-frame', 'logo-plate', 'sponsor-bar', 'poster-panel',
   'winner-banner', 'winner-arch', 'winner-portrait', 'winner-side',
   'winner-top', 'winner-bottom', 'winner-corner', 'winner-minimal',
+  'header-bar', 'side-column', 'ribbon-tag', 'split-footer',
+  'broadcast', 'keyline', 'result-card', 'rosette', 'angle',
 ];
 // Mirrors templateOf() in SponsorTemplates.jsx — keep both in sync
 // (web-bossmedia/tests/sponsor-templates.test.mjs guards the drift).
@@ -85,12 +99,20 @@ const VARIANT_TO_TEMPLATE = {
   'left-panel': 'winner', 'top-banner': 'top', 'corner-badge': 'corner',
   'portrait-drape': 'corner', 'round-badge': 'corner', 'gold-frame': 'minimal',
   'minimal-corner': 'minimal', 'class-spotlight': 'banner',
+  'fade-footer': 'banner', 'mat-frame': 'bottombar', 'logo-plate': 'minimal',
+  'sponsor-bar': 'bottombar', 'poster-panel': 'winner',
+  'header-bar': 'top', 'side-column': 'corner', 'ribbon-tag': 'winner', 'split-footer': 'bottombar',
+  'broadcast': 'banner', 'keyline': 'minimal', 'result-card': 'bottombar', 'rosette': 'winner', 'angle': 'banner',
   'winner-banner': 'winner', 'winner-arch': 'winner', 'winner-portrait': 'winner',
   'winner-side': 'winner', 'winner-top': 'winner', 'winner-bottom': 'winner',
   'winner-corner': 'winner', 'winner-minimal': 'winner',
 };
 // Theme toggle only exists for these three (preview: THEMED_VARIANTS).
-const THEMED_VARIANTS = ['banner-wave', 'square-bar', 'top-banner'];
+// Light/dark: every picker template, plus the three retired strips.
+const PICKER_VARIANTS = ['fade-footer', 'sponsor-bar', 'mat-frame', 'poster-panel', 'logo-plate',
+  'header-bar', 'side-column', 'ribbon-tag', 'split-footer',
+  'broadcast', 'keyline', 'result-card', 'rosette', 'angle'];
+const THEMED_VARIANTS = [...PICKER_VARIANTS, 'banner-wave', 'square-bar', 'top-banner'];
 const OVERLAY_POS = ['bottom-left', 'bottom-right', 'top-right', 'top-left'];
 
 const templateOf = (v) => VARIANT_TO_TEMPLATE[v] || 'corner';
@@ -781,6 +803,686 @@ Object.assign(painters, {
   },
 });
 
+// — KIT: current templates (fade-footer, sponsor-bar, mat-frame,
+// poster-panel, logo-plate). Twin of the layout kit in SponsorTemplates.jsx
+// (+ .module.css): s = min(W, H) / 100, the preview's --s unit. Text is one
+// line each with an ellipsis on overflow, logos sit in balanced rows. —
+const KIT = { gapX: 2, gapY: 1.4, label: 1.4, labelGap: 0.9, cardPadV: 1.4, cardPadH: 2.2, infoGap: 0.8 };
+const INFO_SIZES = {
+  base: { event: 1.7, moment: 4.2, cls: 2.4 },
+  hero: { event: 1.9, moment: 5, cls: 2.6 },
+  tag: { event: 1.4, moment: 2.8, cls: 1.9 },
+};
+function kitRow(count) {
+  if (count > 4) return { h: 3.6, w: 12 };
+  if (count > 2) return { h: 4.5, w: 16 };
+  if (count > 1) return { h: 5.5, w: 22 };
+  return { h: 6.5, w: 28 };
+}
+const r1 = (n) => Math.round(n * 10) / 10;
+function kitRows(count, mw) {
+  const { w } = kitRow(count);
+  const perRow = Math.max(1, Math.floor((mw + KIT.gapX) / (w + KIT.gapX)));
+  return Math.ceil(count / perRow);
+}
+function kitSponsorH(count, mw) {
+  if (!count) return 0;
+  const { h } = kitRow(count);
+  const rows = kitRows(count, mw);
+  return KIT.label + KIT.labelGap + rows * h + (rows - 1) * KIT.gapY;
+}
+function kitInfoH(info, size = 'base') {
+  const z = INFO_SIZES[size];
+  const parts = [];
+  if (info.event) parts.push(z.event * 1.2);
+  if (info.moment) parts.push(z.moment * 1.05);
+  if (info.cls) parts.push(z.cls * 1.2);
+  return parts.reduce((a, b) => a + b, 0) + Math.max(0, parts.length - 1) * KIT.infoGap;
+}
+const hasInfo = (info) => Boolean(info.event || info.moment || info.cls);
+function kitLayout(variant, ar, count, info, theme = 'light') {
+  // Dark surfaces put the logos on a white card (logos are drawn for white).
+  const card = theme === 'dark';
+  const cardW = card ? 2 * KIT.cardPadH : 0, cardH = card ? 2 * KIT.cardPadV : 0;
+  const Ws = ar >= 1 ? 100 * ar : 100;
+  const Hs = ar >= 1 ? 100 : 100 / ar;
+  if (variant === 'fade-footer') {
+    const mw = r1(0.4 * Ws - 4.4);
+    const plateH = 2 * KIT.cardPadV + kitSponsorH(count, mw);
+    return { mw, fadeH: r1(Math.max(34, Math.max(kitInfoH(info), plateH) + 18)) };
+  }
+  if (variant === 'sponsor-bar' || variant === 'header-bar') {
+    const mw = r1((hasInfo(info) ? 0.55 * Ws - 4 : Ws - 8) - cardW);
+    return { mw, card, barH: r1(0.5 + 4.8 + Math.max(kitInfoH(info), kitSponsorH(count, mw) + cardH)) };
+  }
+  if (variant === 'mat-frame') {
+    const mw = r1(0.5 * Ws - 3 - cardW);
+    return { mw, card, bandH: r1(6 + Math.max(kitInfoH(info), kitSponsorH(count, mw) + cardH, 8)) };
+  }
+  if (variant === 'side-column') {
+    const { w } = kitRow(count);
+    const mw = count > 4 ? w * 2 + KIT.gapX : w;
+    return { mw, tagMax: r1(Ws - 10.5 - mw - 2 * KIT.cardPadH) };
+  }
+  if (variant === 'ribbon-tag') return { mw: r1(0.5 * Ws - 2 * KIT.cardPadH), ribMax: r1(0.62 * Ws) };
+  if (variant === 'split-footer') {
+    const mw = r1(hasInfo(info) ? 0.5 * Ws - 8 : Ws - 8);
+    return { mw, F: r1(8 + Math.max(kitInfoH(info), kitSponsorH(count, mw))) };
+  }
+  if (variant === 'poster-panel') {
+    if (ar >= 1) {
+      const P = r1(0.34 * Ws);
+      return { side: 'left', P, mw: r1(P - 8 - 2 * KIT.cardPadH) };
+    }
+    // Portrait: panel only as tall as its content needs (min 24% of height).
+    const mw = r1(0.45 * Ws - 2 * KIT.cardPadH);
+    const need = Math.max(kitInfoH(info, 'hero'), 2 * KIT.cardPadV + kitSponsorH(count, mw)) + 8.6;
+    return { side: 'bottom', P: r1(Math.max(0.24 * Hs, need)), mw };
+  }
+  if (variant === 'logo-plate') return { mw: r1(0.6 * Ws - 2 * KIT.cardPadH), tagMax: r1(0.45 * Ws) };
+  return kitLayoutT(variant, ar, count, info, theme);
+}
+// — T-series templates (broadcast, keyline, result-card, rosette, angle).
+// Typography per text role: f = sans (Manrope) | cond (Barlow Condensed) |
+// serif (DM Serif Display), w = weight, i = italic, z = size in s, ls = em,
+// lh = line height, up = uppercase. Everything from here to the end of
+// kitLayoutT is copied verbatim into logoBake.js (drift test compares). —
+const TYPE = {
+  bcEvent: { f: 'cond', w: 600, z: 2.3, ls: 0.18, lh: 1.2, up: true },
+  bcMoment: { f: 'cond', w: 800, i: true, z: 9.5, ls: 0, lh: 0.95, up: true },
+  bcClass: { f: 'cond', w: 800, z: 2.8, ls: 0.06, lh: 1, up: true },
+  bcLabel: { f: 'cond', w: 800, z: 1.9, ls: 0.16, lh: 1.1, up: true },
+  klEvent: { f: 'sans', w: 700, z: 1.8, ls: 0.22, lh: 1.2, up: true },
+  klClass: { f: 'sans', w: 700, z: 2.2, ls: 0.12, lh: 1.2, up: true },
+  klMoment: { f: 'serif', w: 400, z: 8.5, ls: 0, lh: 1.05, up: false },
+  rcKey: { f: 'sans', w: 800, z: 1.4, ls: 0.16, lh: 1, up: true },
+  rcValue: { f: 'cond', w: 800, z: 4.4, ls: 0.01, lh: 1, up: true },
+  roEvent: { f: 'sans', w: 800, z: 1.5, ls: 0.14, lh: 1.2, up: true },
+  roMoment: { f: 'serif', w: 400, z: 4.8, ls: 0, lh: 1.1, up: false },
+  roClass: { f: 'sans', w: 700, z: 2.1, ls: 0, lh: 1.2, up: false },
+  agEvent: { f: 'cond', w: 600, z: 2.2, ls: 0.2, lh: 1.2, up: true },
+  agMoment: { f: 'cond', w: 800, z: 10.5, ls: 0, lh: 0.9, up: true },
+  agClass: { f: 'cond', w: 600, z: 3.1, ls: 0.04, lh: 1.2, up: false },
+};
+// Solid colours only (plus the few listed opacities) so both renderers agree.
+const T_COLORS = {
+  broadcast: {
+    light: { slab: '#0e2233', event: '#ffffff', eventOp: 0.75, moment: '#ffffff', tick: '#ffffff', label: '#0e2233' },
+    dark: { slab: '#080e16', event: '#f2cd6b', eventOp: 1, moment: '#ffffff', tick: '#0e2233', label: '#ffffff' },
+  },
+  keyline: {
+    light: { line: '#ffffff', event: '#ffffff', cls: '#ffffff', moment: '#ffffff', fade: 0.6 },
+    dark: { line: '#d4a017', event: '#ffffff', cls: '#ffffff', moment: '#f2cd6b', fade: 0.78 },
+  },
+  'result-card': {
+    light: { cell: '#ffffff', sep: '#e3e6ea', key: '#7a838b', value: '#0e2233', gold: '#9a6f00', rule: '#0e2233', sp: '#f3f4f6', spLabel: '#7a838b' },
+    dark: { cell: '#0e2233', sep: '#2a3f52', key: '#9fb0c0', value: '#ffffff', gold: '#f2cd6b', rule: '#d4a017', sp: '#ffffff', spLabel: '#5a6470' },
+  },
+  rosette: {
+    light: { plate: '#ffffff', plateOp: 0.95, event: '#5a6470', moment: '#0e2233', cls: '#0e2233' },
+    dark: { plate: '#0e2233', plateOp: 0.95, event: '#9fb0c0', moment: '#ffffff', cls: '#f2cd6b' },
+  },
+  angle: {
+    light: { slash: '#ffffff', stripe: '#d4a017', event: '#9a6f00', moment: '#0e2233', cls: '#0e2233' },
+    dark: { slash: '#0e2233', stripe: '#d4a017', event: '#f2cd6b', moment: '#ffffff', cls: '#ffffff' },
+  },
+};
+const ANGLE_T = 0.3249; // tan(18deg): the Angle slash lean
+// Logo rows without the "Supported by" label.
+function kitLogosH(count, mw) {
+  if (!count) return 0;
+  const rows = kitRows(count, mw);
+  return rows * kitRow(count).h + (rows - 1) * KIT.gapY;
+}
+// Height (s) of a stack of [text, TYPE] lines; empty lines are skipped.
+function typeH(pairs, gap) {
+  const on = pairs.filter(([t]) => t);
+  return on.reduce((a, [, t]) => a + t.z * t.lh, 0) + Math.max(0, on.length - 1) * gap;
+}
+// Placing from the moment text: 1-6, 0 = not a placing (clear round, debut).
+const PLACE_WORDS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth'];
+function placingOf(text) {
+  const t = String(text || '').toLowerCase();
+  if (/\breserve\b/.test(t)) return 2;
+  if (/\b(winner|champion|won)\b/.test(t)) return 1;
+  const d = t.match(/\b([1-6])(st|nd|rd|th)\b/);
+  if (d) return Number(d[1]);
+  const w = PLACE_WORDS.findIndex((x) => new RegExp(`\\b${x}\\b`).test(t));
+  return w >= 0 ? w + 1 : 0;
+}
+const PLACE_LABEL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th'];
+// [main, pleat] per placing: red, blue, yellow, green, pink, purple.
+// Index 0 (not a placing) is navy and gold.
+const ROSETTE_COLORS = [['#0e2233', '#d4a017'], ['#c62828', '#8e1c1c'], ['#1f4fa8', '#163a7d'],
+  ['#e3b505', '#a98700'], ['#2e7d32', '#1f5a23'], ['#d63384', '#a1225f'], ['#6a3fa0', '#4d2c76']];
+const STAR = 'M60 43l5.3 10.8 11.9 1.7-8.6 8.4 2 11.9L60 70.2l-10.6 5.6 2-11.9-8.6-8.4 11.9-1.7Z';
+// Rosette art in a 120 x 150 box. Constant markup only (no user text).
+function rosetteSvg(place, serif) {
+  const [main, pleat] = ROSETTE_COLORS[place] || ROSETTE_COLORS[0];
+  const center = place
+    ? `<text x="60" y="68.5" text-anchor="middle" font-family="${serif}" font-size="25" fill="#0e2233">${PLACE_LABEL[place]}</text>`
+    : `<path d="${STAR}" fill="#d4a017"/>`;
+  return `<path d="M46 80 32 146l14-9 10 13 6-66Z" fill="${main}"/>`
+    + `<path d="M74 80 88 146l-14-9-10 13-6-66Z" fill="${pleat}"/>`
+    + `<circle cx="60" cy="60" r="56" fill="${main}"/>`
+    + `<circle cx="60" cy="60" r="49" fill="none" stroke="${pleat}" stroke-width="10" stroke-dasharray="3 2.2"/>`
+    + `<circle cx="60" cy="60" r="38" fill="#ffffff" stroke="${pleat}" stroke-width="2"/>`
+    + center;
+}
+// Result card cells: one row, or on portrait the event alone on top.
+function resultCells(info, ar) {
+  const all = [['Event', info.event, 1.3, false], ['Class', info.cls, 1, false], ['Result', info.moment, 1.2, true]]
+    .filter((c) => c[1]).map(([key, text, wt, gold]) => ({ key, text, wt, gold }));
+  if (!all.length) return [];
+  if (ar < 1 && info.event && all.length > 1) return [all.slice(0, 1), all.slice(1)];
+  return [all];
+}
+function kitLayoutT(variant, ar, count, info, theme = 'light') {
+  const dark = theme === 'dark';
+  const Ws = ar >= 1 ? 100 * ar : 100;
+  const cardW = 2 * KIT.cardPadH, cardH = 2 * KIT.cardPadV;
+  if (variant === 'broadcast') {
+    const lab = 11;
+    const mw = r1(Ws - 8 - lab - 3 - (dark ? cardW : 0));
+    const tickH = r1(Math.max(9, 0.6 + 3.6 + kitLogosH(count, mw) + (dark ? cardH : 0)));
+    const tabH = info.cls ? r1(TYPE.bcClass.z * TYPE.bcClass.lh + 1.6) : 0;
+    return { mw, lab, card: dark, tickH, tabH, slabBottom: r1(tickH + 1.4 + (tabH ? tabH + 1 : 0)), textMax: r1(0.62 * Ws - 10) };
+  }
+  if (variant === 'keyline') {
+    const avail = Ws - 11;
+    return { eventMax: r1(avail), textMax: r1(0.55 * avail), mw: r1(0.45 * avail - cardW) };
+  }
+  if (variant === 'result-card') {
+    const lab = 13;
+    const mw = r1(Ws - 6 - lab - 2);
+    const rows = resultCells(info, ar).length;
+    const cellH = r1(3.6 + TYPE.rcKey.z * TYPE.rcKey.lh + 0.8 + TYPE.rcValue.z * TYPE.rcValue.lh);
+    const spH = r1(3.2 + Math.max(TYPE.rcKey.z, kitLogosH(count, mw)));
+    return { mw, lab, Ws, rows, cellH, spH, F: r1(0.6 + rows * cellH + spH) };
+  }
+  if (variant === 'rosette') {
+    const half = (Ws - 11) / 2;
+    return { size: 24, textMax: r1(half - 4.8), mw: r1(half - cardW) };
+  }
+  if (variant === 'angle') {
+    const top = ar < 1;
+    const h = r1(typeH([[info.event, TYPE.agEvent], [info.moment, TYPE.agMoment], [info.cls, TYPE.agClass]], 0.8) + 8.5);
+    return { top, h, ht: r1(h * ANGLE_T), textMax: r1(top ? Ws - 14 : 0.48 * Ws - 7), mw: r1((top ? 0.6 : 0.38) * Ws - cardW) };
+  }
+  return {};
+}
+const PLATE_MAX_CORNERS = 3;
+const MOMENT_LABELS = { win: 'Winner', clear: 'Clear round', debut: 'Debut', pb: 'Personal best' };
+const CORNERS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+// Manrope ascender 1.065 / descender 0.3: baseline inside a CSS line box.
+const baseline = (lh) => (lh - 1.365) / 2 + 1.065;
+const SUPPORTED = 'SUPPORTED BY';
+const INFO_COLORS = {
+  dark: { event: '#ffffff', eventOpacity: 0.78, moment: GOLD_LT, cls: '#ffffff' },
+  light: { event: '#5a6470', eventOpacity: 1, moment: '#9a6f00', cls: NAVY },
+};
+// Info lines (px) for a given max width: [{text, fs, lh, weight, ls, color, opacity, upper}]
+function infoLines(info, s, maxW, size, tone) {
+  const z = INFO_SIZES[size], c = INFO_COLORS[tone];
+  const fit = (t, fs, weight, ls, upper) => {
+    const txt = upper ? t.toUpperCase() : t;
+    return tw(txt, fs, ls, false, weight) <= maxW ? txt : ellipsize(txt, maxW, fs, weight, ls);
+  };
+  const out = [];
+  if (info.event) out.push({ fs: z.event * s, lh: 1.2, weight: 800, ls: 0.14, color: c.event, opacity: c.eventOpacity, raw: info.event, upper: true });
+  if (info.moment) out.push({ fs: z.moment * s, lh: 1.05, weight: 800, ls: 0.02, color: c.moment, opacity: 1, raw: info.moment, upper: true });
+  if (info.cls) out.push({ fs: z.cls * s, lh: 1.2, weight: 700, ls: 0, color: c.cls, opacity: 1, raw: info.cls, upper: false });
+  for (const l of out) l.text = fit(l.raw, l.fs, l.weight, l.ls, l.upper);
+  return out;
+}
+// Natural width (px) of the info block, capped at maxW.
+function infoWidth(lines, maxW) {
+  return Math.min(maxW, Math.max(0, ...lines.map((l) => tw(l.text, l.fs, l.ls, false, l.weight))));
+}
+// Draw info lines with the block's top-left at (x, y); align 'start'|'end'
+// relative to blockW.
+function drawInfo(lines, s, x, y, blockW = 0, align = 'start') {
+  let svg = '', cy = y;
+  for (const l of lines) {
+    const w = tw(l.text, l.fs, l.ls, false, l.weight);
+    const lx = align === 'end' ? x + blockW - w : x;
+    svg += `<text x="${r(lx)}" y="${r(cy + baseline(l.lh) * l.fs)}" font-family="${FONT}" font-size="${r(l.fs)}" font-weight="${l.weight}" letter-spacing="${r(l.ls * l.fs)}" fill="${l.color}"${l.opacity < 1 ? ` fill-opacity="${l.opacity}"` : ''}>${esc(l.text)}</text>`;
+    cy += l.fs * l.lh + KIT.infoGap * s;
+  }
+  return svg;
+}
+// Sponsor block: label + greedily wrapped rows. Returns size + a painter.
+async function sponsorBlock(bufs, s, mwS, align, label = true) {
+  const { h, w } = kitRow(bufs.length);
+  const boxH = Math.round(h * s), gapX = KIT.gapX * s, gapY = KIT.gapY * s;
+  const fitted = [];
+  for (const b of bufs) fitted.push(await fitLogo(b, boxH, w * s));
+  // Balanced rows (kitLines in the preview): 8 logos in 2 rows = 4 + 4.
+  const per = Math.ceil(fitted.length / kitRows(fitted.length, mwS));
+  const lines = [];
+  for (let i = 0; i < fitted.length; i += per) lines.push(fitted.slice(i, i + per));
+  const widthOf = (line) => line.reduce((sum, f, i) => sum + f.w + (i ? gapX : 0), 0);
+  const rowsW = Math.max(...lines.map(widthOf));
+  const labelFs = KIT.label * s;
+  const labelW = label ? tw(SUPPORTED, labelFs, 0.16, true) : 0;
+  const head = label ? labelFs + KIT.labelGap * s : 0;
+  const blockW = Math.max(labelW, rowsW);
+  const blockH = head + lines.length * boxH + (lines.length - 1) * gapY;
+  const offset = (inner, outer) => (align === 'center' ? (outer - inner) / 2 : align === 'end' ? outer - inner : 0);
+  const paint = (x, y) => {
+    const svg = label ? `<text x="${r(x + offset(labelW, blockW))}" y="${r(y + baseline(1) * labelFs)}" font-family="${FONT}" font-size="${r(labelFs)}" font-weight="800" letter-spacing="${r(0.16 * labelFs)}" fill="${NAVY}" fill-opacity="0.7">${SUPPORTED}</text>` : '';
+    const arts = [];
+    const rowsX = x + offset(rowsW, blockW);
+    let ly = y + head;
+    for (const line of lines) {
+      let lx = rowsX + offset(widthOf(line), rowsW);
+      for (const f of line) {
+        arts.push({ input: f.data, top: Math.round(ly + (boxH - f.h) / 2), left: Math.round(lx) });
+        lx += f.w + gapX;
+      }
+      ly += boxH + gapY;
+    }
+    return { svg, arts };
+  };
+  return { w: blockW, h: blockH, paint };
+}
+// White card around a sponsor block (.st-card). innerW overrides the width
+// when the card is stretched (poster side panel).
+function cardAround(block, s, x, y, innerW = null) {
+  const padV = KIT.cardPadV * s, padH = KIT.cardPadH * s;
+  const iw = innerW ?? block.w;
+  const w = iw + 2 * padH, h = block.h + 2 * padV;
+  const rect = `<rect x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}" rx="${r(1.4 * s)}" fill="#ffffff" stroke="${NAVY}" stroke-opacity="0.12" stroke-width="1"/>`;
+  const inner = block.paint(x + padH + (iw - block.w) / 2, y + padV);
+  return { w, h, svg: rect + inner.svg, arts: inner.arts };
+}
+const cardSize = (block, s) => ({ w: block.w + 2 * KIT.cardPadH * s, h: block.h + 2 * KIT.cardPadV * s });
+const kitInfo = (b) => ({ event: b.ctx.event || '', moment: b.moment || '', cls: b.ctx.className || '' });
+
+// Footer layout shared by sponsor-bar, header-bar and the gallery-mat band: info left,
+// sponsors right (or centred alone), vertically centred in [top, top+h].
+async function footerRow(b, L, x0, x1, top, h, tone) {
+  const { s, bufs } = b;
+  const info = kitInfo(b);
+  const solo = !hasInfo(info);
+  const block = await sponsorBlock(bufs, s, L.mw, solo ? 'center' : 'end');
+  let svg = '';
+  const arts = [];
+  // Dark surfaces: the sponsor block sits on a white card (L.card).
+  const size = L.card ? cardSize(block, s) : { w: block.w, h: block.h };
+  const sx = solo ? (x0 + x1 - size.w) / 2 : x1 - size.w;
+  const sy = top + (h - size.h) / 2;
+  const sp = L.card ? cardAround(block, s, sx, sy) : block.paint(sx, sy);
+  svg += sp.svg; arts.push(...sp.arts);
+  if (!solo) {
+    const lines = infoLines(info, s, Math.max(0, sx - 3 * s - x0), 'base', tone);
+    svg += drawInfo(lines, s, x0, top + (h - kitInfoH(info) * s) / 2);
+  }
+  return { svg, arts };
+}
+const toneOf = (b) => (b.dark ? 'dark' : 'light');
+const surfOf = (b) => (b.dark ? NAVY : '#ffffff');
+// Tag box (logo-plate, side-column): info on a translucent plate.
+function tagBox(b, info, size, maxW, at) {
+  const { s } = b;
+  const padV = 1.2 * s, padH = 1.8 * s;
+  const lines = infoLines(info, s, maxW - 2 * padH, size, toneOf(b));
+  const w = infoWidth(lines, maxW - 2 * padH) + 2 * padH;
+  const h = kitInfoH(info, size) * s + 2 * padV;
+  const { x, y } = at(w, h);
+  const fill = b.dark ? '<rect fill="#080e16" fill-opacity="0.72"' : '<rect fill="#ffffff" fill-opacity="0.92"';
+  return `${fill} x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}" rx="${r(1.2 * s)}"/>` + drawInfo(lines, s, x + padH, y + padV);
+}
+
+Object.assign(painters, {
+  async 'fade-footer'(b) {
+    const { W, H, s, bufs } = b;
+    const info = kitInfo(b);
+    const L = kitLayout('fade-footer', W / H, bufs.length, info, toneOf(b));
+    const fadeH = L.fadeH * s, inset = 4 * s;
+    const c = b.dark ? '#080e16' : '#ffffff';
+    const [o1, o2] = b.dark ? [0.55, 0.82] : [0.6, 0.9];
+    let svg = `<defs><linearGradient id="ff" x1="0" y1="0" x2="0" y2="1">` +
+      `<stop offset="0" stop-color="${c}" stop-opacity="0"/><stop offset="0.55" stop-color="${c}" stop-opacity="${o1}"/>` +
+      `<stop offset="1" stop-color="${c}" stop-opacity="${o2}"/></linearGradient></defs>` +
+      `<rect x="0" y="${r(H - fadeH)}" width="${W}" height="${r(fadeH)}" fill="url(#ff)"/>`;
+    const block = await sponsorBlock(bufs, s, L.mw, 'center');
+    const size = cardSize(block, s);
+    const card = cardAround(block, s, W - inset - size.w, H - inset - size.h);
+    svg += card.svg;
+    if (hasInfo(info)) {
+      const lines = infoLines(info, s, Math.max(0, W - 2 * inset - size.w - 3 * s), 'base', toneOf(b));
+      svg += drawInfo(lines, s, inset, H - inset - kitInfoH(info) * s);
+    }
+    return { svg, arts: card.arts };
+  },
+  async 'sponsor-bar'(b) {
+    const { W, H, s, bufs } = b;
+    const L = kitLayout('sponsor-bar', W / H, bufs.length, kitInfo(b), toneOf(b));
+    const barH = L.barH * s, top = H - barH;
+    let svg = `<rect x="0" y="${r(top)}" width="${W}" height="${r(barH)}" fill="${surfOf(b)}"/>` +
+      `<rect x="0" y="${r(top)}" width="${W}" height="${r(0.5 * s)}" fill="${GOLD}"/>`;
+    const row = await footerRow(b, L, 4 * s, W - 4 * s, top + 0.5 * s + 2.4 * s, barH - 5.3 * s, toneOf(b));
+    svg += row.svg;
+    return { svg, arts: row.arts };
+  },
+  async 'header-bar'(b) {
+    const { W, H, s, bufs } = b;
+    const L = kitLayout('header-bar', W / H, bufs.length, kitInfo(b), toneOf(b));
+    const barH = L.barH * s;
+    let svg = `<rect x="0" y="0" width="${W}" height="${r(barH)}" fill="${surfOf(b)}"/>` +
+      `<rect x="0" y="${r(barH - 0.5 * s)}" width="${W}" height="${r(0.5 * s)}" fill="${GOLD}"/>`;
+    const row = await footerRow(b, L, 4 * s, W - 4 * s, 2.4 * s, barH - 5.3 * s, toneOf(b));
+    svg += row.svg;
+    return { svg, arts: row.arts };
+  },
+  async 'mat-frame'(b) {
+    const { W, H, s, bufs } = b;
+    const L = kitLayout('mat-frame', W / H, bufs.length, kitInfo(b), toneOf(b));
+    const m = 3 * s, bandH = L.bandH * s;
+    const photoRect = { left: Math.round(m), top: Math.round(m), width: Math.round(W - 2 * m), height: Math.round(H - m - bandH) };
+    const row = await footerRow(b, L, m, W - m, H - bandH + 3 * s, bandH - 6 * s, toneOf(b));
+    return { svg: row.svg, arts: row.arts, photoRect, background: surfOf(b) };
+  },
+  async 'poster-panel'(b) {
+    const { W, H, s, bufs } = b;
+    const info = kitInfo(b);
+    const L = kitLayout('poster-panel', W / H, bufs.length, info, toneOf(b));
+    const P = L.P * s, pad = 4 * s;
+    const bg = surfOf(b);
+    const block = await sponsorBlock(bufs, s, L.mw, 'center');
+    let svg = '';
+    let arts = [];
+    let photoRect;
+    if (L.side === 'left') {
+      photoRect = { left: Math.round(P), top: 0, width: Math.round(W - P), height: H };
+      svg += `<rect x="0" y="0" width="${r(P)}" height="${H}" fill="${bg}"/><rect x="${r(P - 0.6 * s)}" y="0" width="${r(0.6 * s)}" height="${H}" fill="${GOLD}"/>`;
+      const innerW = P - 2 * pad - 2 * KIT.cardPadH * s;
+      const cardH = block.h + 2 * KIT.cardPadV * s;
+      const card = cardAround(block, s, pad, H - pad - cardH, innerW);
+      svg += card.svg; arts = card.arts;
+      if (hasInfo(info)) svg += drawInfo(infoLines(info, s, P - 2 * pad, 'hero', toneOf(b)), s, pad, pad);
+    } else {
+      photoRect = { left: 0, top: 0, width: W, height: Math.round(H - P) };
+      svg += `<rect x="0" y="${r(H - P)}" width="${W}" height="${r(P)}" fill="${bg}"/><rect x="0" y="${r(H - P)}" width="${W}" height="${r(0.6 * s)}" fill="${GOLD}"/>`;
+      const size = cardSize(block, s);
+      const solo = !hasInfo(info);
+      const top = H - P + pad, h = P - 2 * pad;
+      const cx = solo ? (W - size.w) / 2 : W - pad - size.w;
+      const card = cardAround(block, s, cx, top + (h - size.h) / 2);
+      svg += card.svg; arts = card.arts;
+      if (!solo) {
+        const lines = infoLines(info, s, Math.max(0, cx - 3 * s - pad), 'hero', toneOf(b));
+        svg += drawInfo(lines, s, pad, top + (h - kitInfoH(info, 'hero') * s) / 2);
+      }
+    }
+    return { svg, arts, photoRect, background: bg };
+  },
+  async 'logo-plate'(b) {
+    const { W, H, s, bufs, positionsAll } = b;
+    const L = kitLayout('logo-plate', W / H, bufs.length, kitInfo(b), toneOf(b));
+    const o = 3.5 * s;
+    const groups = bufs.length > PLATE_MAX_CORNERS
+      ? [{ pos: positionsAll[0], list: bufs }]
+      : bufs.map((buf, i) => ({ pos: positionsAll[i], list: [buf] }));
+    const place = (pos, w, h) => ({
+      x: pos === 'top-left' || pos === 'bottom-left' ? o : W - o - w,
+      y: pos === 'top-left' || pos === 'top-right' ? o : H - o - h,
+    });
+    let svg = '';
+    const arts = [];
+    for (const g of groups) {
+      const block = await sponsorBlock(g.list, s, L.mw, 'center');
+      const size = cardSize(block, s);
+      const at = place(g.pos, size.w, size.h);
+      const card = cardAround(block, s, at.x, at.y);
+      svg += card.svg; arts.push(...card.arts);
+    }
+    const tagInfo = { event: '', moment: b.moment || '', cls: b.ctx.className || '' };
+    const free = CORNERS.find((c) => !groups.some((g) => g.pos === c));
+    if (free && hasInfo(tagInfo)) svg += tagBox(b, tagInfo, 'tag', L.tagMax * s, (w, h) => place(free, w, h));
+    return { svg, arts };
+  },
+  async 'side-column'(b) {
+    const { W, H, s, bufs } = b;
+    const info = kitInfo(b);
+    const L = kitLayout('side-column', W / H, bufs.length, info, toneOf(b));
+    const o = 3.5 * s;
+    const block = await sponsorBlock(bufs, s, L.mw, 'center');
+    const size = cardSize(block, s);
+    const card = cardAround(block, s, W - o - size.w, (H - size.h) / 2);
+    let svg = card.svg;
+    if (hasInfo(info)) svg += tagBox(b, info, 'base', L.tagMax * s, (w, h) => ({ x: o, y: H - o - h }));
+    return { svg, arts: card.arts };
+  },
+  async 'ribbon-tag'(b) {
+    const { W, H, s, bufs } = b;
+    const info = kitInfo(b);
+    const L = kitLayout('ribbon-tag', W / H, bufs.length, info, toneOf(b));
+    let svg = '';
+    if (hasInfo(info)) {
+      const edge = 1 * s, padL = 3 * s, padR = 5 * s, padV = 1.8 * s, notch = 2.5 * s, top = 4 * s;
+      const maxInner = L.ribMax * s - edge - padL - padR;
+      const lines = infoLines(info, s, maxInner, 'base', toneOf(b));
+      const w = edge + padL + infoWidth(lines, maxInner) + padR;
+      const h = kitInfoH(info) * s + 2 * padV;
+      svg += `<polygon points="0,${r(top)} ${r(w)},${r(top)} ${r(w - notch)},${r(top + h / 2)} ${r(w)},${r(top + h)} 0,${r(top + h)}" fill="${surfOf(b)}"/>` +
+        `<rect x="0" y="${r(top)}" width="${r(edge)}" height="${r(h)}" fill="${GOLD}"/>` +
+        drawInfo(lines, s, edge + padL, top + padV);
+    }
+    const o = 3.5 * s;
+    const block = await sponsorBlock(bufs, s, L.mw, 'center');
+    const size = cardSize(block, s);
+    const card = cardAround(block, s, W - o - size.w, H - o - size.h);
+    svg += card.svg;
+    return { svg, arts: card.arts };
+  },
+  async 'split-footer'(b) {
+    const { W, H, s, bufs } = b;
+    const info = kitInfo(b);
+    const L = kitLayout('split-footer', W / H, bufs.length, info, toneOf(b));
+    const F = L.F * s, top = H - F, pad = 4 * s;
+    const solo = !hasInfo(info);
+    const infoBg = b.dark ? NAVY : '#ffffff';
+    const spBg = b.dark ? '#ffffff' : '#f4f5f7';
+    const half = solo ? 0 : W / 2;
+    const photoRect = { left: 0, top: 0, width: W, height: Math.round(top) };
+    let svg = '';
+    if (!solo) svg += `<rect x="0" y="${r(top)}" width="${r(half)}" height="${r(F)}" fill="${infoBg}"/>`;
+    svg += `<rect x="${r(half)}" y="${r(top)}" width="${r(W - half)}" height="${r(F)}" fill="${spBg}"/>`;
+    if (!solo) {
+      svg += `<rect x="${r(half - 0.3 * s)}" y="${r(top)}" width="${r(0.6 * s)}" height="${r(F)}" fill="${GOLD}"/>`;
+      const lines = infoLines(info, s, half - 2 * pad, 'base', toneOf(b));
+      svg += drawInfo(lines, s, pad, top + (F - kitInfoH(info) * s) / 2);
+    }
+    const block = await sponsorBlock(bufs, s, L.mw, 'center');
+    const sp = block.paint(half + (W - half - block.w) / 2, top + (F - block.h) / 2);
+    svg += sp.svg;
+    return { svg, arts: sp.arts, photoRect, background: infoBg };
+  },
+});
+
+// ── T-series text: one line in TYPE style t, top of its CSS line box at y.
+// Width = glyph advances + kerning + letter-spacing after every char, plus
+// the 0.1em italic pad the preview adds (.st-t paddingRight).
+function tWidth(t, str, fs) {
+  const font = tFont(t);
+  const scale = fs / font.unitsPerEm;
+  let w = 0, prev = null;
+  for (const ch of str) {
+    const g = font.charToGlyph(ch);
+    if (prev) w += font.getKerningValue(prev, g) * scale;
+    w += g.advanceWidth * scale;
+    prev = g;
+  }
+  return w + str.length * t.ls * fs;
+}
+function tFit(t, text, fs, maxPx) {
+  const str = t.up ? String(text).toUpperCase() : String(text);
+  if (maxPx == null || tWidth(t, str, fs) <= maxPx) return str;
+  let cut = str;
+  while (cut.length > 1 && tWidth(t, cut + '…', fs) > maxPx) cut = cut.slice(0, -1);
+  return cut.length > 1 ? cut + '…' : '…';
+}
+// Returns { svg, w, h } (px). maxS in s units or null.
+function tLine(t, text, s, x, y, maxS, color, op = 1, anchor = 'start') {
+  if (!text) return { svg: '', w: 0, h: 0 };
+  const fs = t.z * s;
+  const str = tFit(t, text, fs, maxS == null ? null : maxS * s);
+  const w = tWidth(t, str, fs) + (t.i ? 0.1 * fs : 0);
+  const font = tFont(t);
+  const asc = font.tables.hhea.ascender / font.unitsPerEm, desc = -font.tables.hhea.descender / font.unitsPerEm;
+  const by = y + ((t.lh - asc - desc) / 2 + asc) * fs;
+  const tx = anchor === 'end' ? x - w : x;
+  const svg = `<text x="${r(tx)}" y="${r(by)}" font-family="${T_FAMILY[t.f]}" font-size="${r(fs)}" font-weight="${t.w}"`
+    + `${t.i ? ' font-style="italic"' : ''} letter-spacing="${r(t.ls * fs)}" fill="${color}"${op < 1 ? ` fill-opacity="${op}"` : ''}>${esc(str)}</text>`;
+  return { svg, w, h: t.lh * fs };
+}
+// Vertical stack of lines (empty ones skipped), gap in s. Returns { svg, w, h }.
+function tStack(items, s, x, y, gap) {
+  let svg = '', cy = y, w = 0, n = 0;
+  for (const [t, text, maxS, color, op] of items) {
+    if (!text) continue;
+    if (n++) cy += gap * s;
+    const l = tLine(t, text, s, x, cy, maxS, color, op);
+    svg += l.svg; w = Math.max(w, l.w); cy += l.h;
+  }
+  return { svg, w, h: cy - y };
+}
+const tStackW = (items, s) => tStack(items, s, 0, 0, 0).w;
+
+Object.assign(painters, {
+  async 'broadcast'(b) {
+    const { W, H, s, bufs } = b;
+    const info = kitInfo(b);
+    const L = kitLayout('broadcast', W / H, bufs.length, info, toneOf(b));
+    const c = T_COLORS.broadcast[toneOf(b)];
+    const tickH = L.tickH * s, top = H - tickH, rule = 0.6 * s;
+    const inTop = top + rule, inH = tickH - rule;
+    let svg = `<rect x="0" y="${r(top)}" width="${W}" height="${r(tickH)}" fill="${c.tick}"/>`
+      + `<rect x="0" y="${r(top)}" width="${W}" height="${r(rule)}" fill="${GOLD}"/>`;
+    const lab = TYPE.bcLabel;
+    const labH = 2 * lab.z * lab.lh * s;
+    svg += tStack([[lab, 'Official', null, c.label], [lab, 'Partners', null, c.label]], s, 4 * s, inTop + (inH - labH) / 2, 0).svg;
+    const block = await sponsorBlock(bufs, s, L.mw, 'start', false);
+    const size = L.card ? cardSize(block, s) : { w: block.w, h: block.h };
+    const sx = (4 + L.lab + 3) * s, sy = inTop + (inH - size.h) / 2;
+    const sp = L.card ? cardAround(block, s, sx, sy) : block.paint(sx, sy);
+    svg += sp.svg;
+    if (info.cls) {
+      const tabH = L.tabH * s, ty = H - (L.tickH + 1.4) * s - tabH;
+      const t = tLine(TYPE.bcClass, info.cls, s, 5.6 * s, ty + 0.8 * s, L.textMax, NAVY);
+      svg += `<rect x="${r(4 * s)}" y="${r(ty)}" width="${r(t.w + 3.2 * s)}" height="${r(tabH)}" fill="${GOLD}"/>` + t.svg;
+    }
+    if (info.event || info.moment) {
+      const items = [[TYPE.bcEvent, info.event, L.textMax, c.event, c.eventOp], [TYPE.bcMoment, info.moment, L.textMax, c.moment]];
+      const bottom = H - L.slabBottom * s;
+      const contentH = typeH([[info.event, TYPE.bcEvent], [info.moment, TYPE.bcMoment]], 0.6) * s;
+      const slabTop = bottom - contentH - 3.8 * s;
+      const w = 4 * s + tStackW(items, s) + 6 * s;
+      svg += `<polygon points="0,${r(slabTop)} ${r(w)},${r(slabTop)} ${r(w - 3 * s)},${r(bottom)} 0,${r(bottom)}" fill="${c.slab}"/>`
+        + tStack(items, s, 4 * s, slabTop + 1.8 * s, 0.6).svg;
+    }
+    return { svg, arts: sp.arts };
+  },
+  async 'keyline'(b) {
+    const { W, H, s, bufs } = b;
+    const info = kitInfo(b);
+    const L = kitLayout('keyline', W / H, bufs.length, info, toneOf(b));
+    const c = T_COLORS.keyline[toneOf(b)];
+    const topH = 22 * s, botH = 45 * s, lw = 0.3 * s;
+    let svg = `<defs><linearGradient id="klt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0.4"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>`
+      + `<linearGradient id="klb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="${c.fade}"/></linearGradient></defs>`
+      + `<rect x="0" y="0" width="${W}" height="${r(topH)}" fill="url(#klt)"/>`
+      + `<rect x="0" y="${r(H - botH)}" width="${W}" height="${r(botH)}" fill="url(#klb)"/>`
+      + `<rect x="${r(3 * s + lw / 2)}" y="${r(3 * s + lw / 2)}" width="${r(W - 6 * s - lw)}" height="${r(H - 6 * s - lw)}" fill="none" stroke="${c.line}" stroke-width="${r(lw)}"/>`;
+    svg += tLine(TYPE.klEvent, info.event, s, 5.5 * s, 5.5 * s, L.eventMax, c.event).svg;
+    const items = [[TYPE.klClass, info.cls, L.textMax, c.cls], [TYPE.klMoment, info.moment, L.textMax, c.moment]];
+    const h = typeH([[info.cls, TYPE.klClass], [info.moment, TYPE.klMoment]], 1) * s;
+    svg += tStack(items, s, 5.5 * s, H - 5.5 * s - h, 1).svg;
+    const block = await sponsorBlock(bufs, s, L.mw, 'center');
+    const size = cardSize(block, s);
+    const card = cardAround(block, s, W - 5.5 * s - size.w, H - 5.5 * s - size.h);
+    svg += card.svg;
+    return { svg, arts: card.arts };
+  },
+  async 'result-card'(b) {
+    const { W, H, s, bufs } = b;
+    const info = kitInfo(b);
+    const L = kitLayout('result-card', W / H, bufs.length, info, toneOf(b));
+    const c = T_COLORS['result-card'][toneOf(b)];
+    const F = L.F * s, top = H - F;
+    const photoRect = { left: 0, top: 0, width: W, height: Math.round(top) };
+    let svg = `<rect x="0" y="${r(top)}" width="${W}" height="${r(0.6 * s)}" fill="${c.rule}"/>`;
+    let y = top + 0.6 * s;
+    const cellH = L.cellH * s;
+    resultCells(info, W / H).forEach((row, ri) => {
+      svg += `<rect x="0" y="${r(y)}" width="${W}" height="${r(cellH)}" fill="${c.cell}"/>`;
+      if (ri) svg += `<rect x="0" y="${r(y)}" width="${W}" height="1" fill="${c.sep}"/>`;
+      const sum = row.reduce((a, x) => a + x.wt, 0);
+      let x = 0;
+      row.forEach((cell, ci) => {
+        const cw = (W * cell.wt) / sum;
+        if (ci) svg += `<rect x="${r(x)}" y="${r(y)}" width="1" height="${r(cellH)}" fill="${c.sep}"/>`;
+        svg += tStack([[TYPE.rcKey, cell.key, null, c.key],
+          [TYPE.rcValue, cell.text, r1((L.Ws * cell.wt) / sum - 6), cell.gold ? c.gold : c.value]], s, x + 3 * s, y + 1.8 * s, 0.8).svg;
+        x += cw;
+      });
+      y += cellH;
+    });
+    const spH = L.spH * s;
+    svg += `<rect x="0" y="${r(y)}" width="${W}" height="${r(spH)}" fill="${c.sp}"/>`;
+    svg += tLine(TYPE.rcKey, 'Supported by', s, 3 * s, y + (spH - TYPE.rcKey.z * TYPE.rcKey.lh * s) / 2, null, c.spLabel).svg;
+    const block = await sponsorBlock(bufs, s, L.mw, 'end', false);
+    const sp = block.paint(W - 3 * s - block.w, y + (spH - block.h) / 2);
+    svg += sp.svg;
+    return { svg, arts: sp.arts, photoRect, background: c.cell };
+  },
+  async 'rosette'(b) {
+    const { W, H, s, bufs } = b;
+    const info = kitInfo(b);
+    const L = kitLayout('rosette', W / H, bufs.length, info, toneOf(b));
+    const c = T_COLORS.rosette[toneOf(b)];
+    const size = L.size * s;
+    let svg = `<g transform="translate(${r(W - 4 * s - size)} ${r(4 * s)}) scale(${size / 120})">${rosetteSvg(placingOf(info.moment), T_FAMILY.serif)}</g>`;
+    if (hasInfo(info)) {
+      const items = [[TYPE.roEvent, info.event, L.textMax, c.event], [TYPE.roMoment, info.moment, L.textMax, c.moment], [TYPE.roClass, info.cls, L.textMax, c.cls]];
+      const th = typeH([[info.event, TYPE.roEvent], [info.moment, TYPE.roMoment], [info.cls, TYPE.roClass]], 0.5) * s;
+      const w = tStackW(items, s) + 4.8 * s, h = th + 3.6 * s;
+      const x = 4 * s, y = H - 4 * s - h;
+      svg += `<rect x="${r(x)}" y="${r(y)}" width="${r(w)}" height="${r(h)}" rx="${r(0.8 * s)}" fill="${c.plate}" fill-opacity="${c.plateOp}"/>`
+        + tStack(items, s, x + 2.4 * s, y + 1.8 * s, 0.5).svg;
+    }
+    const block = await sponsorBlock(bufs, s, L.mw, 'center');
+    const cs = cardSize(block, s);
+    const card = cardAround(block, s, W - 4 * s - cs.w, H - 4 * s - cs.h);
+    svg += card.svg;
+    return { svg, arts: card.arts };
+  },
+  async 'angle'(b) {
+    const { W, H, s, bufs } = b;
+    const info = kitInfo(b);
+    const L = kitLayout('angle', W / H, bufs.length, info, toneOf(b));
+    const c = T_COLORS.angle[toneOf(b)];
+    let svg = '';
+    if (hasInfo(info)) {
+      const items = [[TYPE.agEvent, info.event, L.textMax, c.event], [TYPE.agMoment, info.moment, L.textMax, c.moment], [TYPE.agClass, info.cls, L.textMax, c.cls]];
+      const h = L.h * s, ht = L.ht * s, y0 = H - h;
+      const w = Math.max(40 * s, 8 * s + tStackW(items, s));
+      const th = typeH([[info.event, TYPE.agEvent], [info.moment, TYPE.agMoment], [info.cls, TYPE.agClass]], 0.8) * s;
+      svg += `<polygon points="0,${r(y0)} ${r(w + ht)},${r(y0)} ${r(w)},${H} 0,${H}" fill="${c.slash}"/>`
+        + `<polygon points="${r(w + ht + 1.2 * s)},${r(y0)} ${r(w + ht + 2.6 * s)},${r(y0)} ${r(w + 2.6 * s)},${H} ${r(w + 1.2 * s)},${H}" fill="${c.stripe}"/>`
+        + tStack(items, s, 4 * s, H - 4.5 * s - th, 0.8).svg;
+    }
+    const o = 3.5 * s;
+    const block = await sponsorBlock(bufs, s, L.mw, 'center');
+    const cs = cardSize(block, s);
+    const card = cardAround(block, s, W - o - cs.w, L.top ? o : H - o - cs.h);
+    svg += card.svg;
+    return { svg, arts: card.arts };
+  },
+});
+
 // Overlay variants paint one badge per logo — each at its own position,
 // exactly like the buyer preview. All other layouts keep one lockup:
 // the logos are pre-composed into a single row (shrunk by count, like
@@ -820,9 +1522,13 @@ async function bakeVariant({ photoBuf, logoBufs, variant, positions, ctx, theme,
   const meta = await sharp(photoBuf).metadata();
   const W = meta.width || 1600, H = meta.height || 1000;
   const u = W / 100;
+  const sUnit = Math.min(W, H) / 100;
   const dark = theme === 'dark' && THEMED_VARIANTS.includes(variant);
   const bufs = (logoBufs || []).slice(0, 8);
   const bakeCtx = { event: ctx?.event || '', className: ctx?.className || '', subject: ctx?.subject || '' };
+  // Current templates show the buyer's moment text, else the photo's
+  // canonical moment (same rule as momentText() in SponsorTemplates.jsx).
+  const moment = String(designTags?.result || '').trim() || MOMENT_LABELS[ctx?.moment] || '';
   // Buyer result text (migration 097) or the default laurel word.
   const resultText = designTags?.result || 'WINNER';
   const posAt = (i) => OVERLAY_POS.includes(positions?.[i]) ? positions[i] : OVERLAY_POS[i % OVERLAY_POS.length];
@@ -832,7 +1538,7 @@ async function bakeVariant({ photoBuf, logoBufs, variant, positions, ctx, theme,
   if (OVERLAY_MULTI.includes(variant) && bufs.length > 4) {
     const row = await composeRow(bufs, u);
     const out = await paint({
-      W, H, u, logo: { data: row.data, w: row.w, h: row.h, raw: row.data }, pos: posAt(0), ctx: bakeCtx, dark,
+      W, H, u, s: sUnit, bufs, logo: { data: row.data, w: row.w, h: row.h, raw: row.data }, pos: posAt(0), ctx: bakeCtx, dark,
       result: resultText, wide: true,
       refit: (h, maxW) => fitLogo(row.data, h, maxW),
     });
@@ -849,7 +1555,7 @@ async function bakeVariant({ photoBuf, logoBufs, variant, positions, ctx, theme,
     for (let i = 0; i < bufs.length; i++) {
       const fit = await fitLogo(bufs[i], 5.4 * u, 27 * u);
       const out = await paint({
-        W, H, u, logo: { data: fit.data, w: fit.w, h: fit.h, raw: bufs[i] }, pos: posAt(i), ctx: bakeCtx, dark,
+        W, H, u, s: sUnit, bufs: [bufs[i]], logo: { data: fit.data, w: fit.w, h: fit.h, raw: bufs[i] }, pos: posAt(i), ctx: bakeCtx, dark,
         result: resultText,
         refit: (h, maxW) => fitLogo(bufs[i], h, maxW),
       });
@@ -875,16 +1581,27 @@ async function bakeVariant({ photoBuf, logoBufs, variant, positions, ctx, theme,
     logo = { data: row.data, w: row.w, h: row.h, raw: row.data };
   }
   const out = await paint({
-    W, H, u, logo, pos: posAt(0), ctx: bakeCtx, dark,
+    W, H, u, s: sUnit, bufs, logo, pos: posAt(0), ctx: bakeCtx, dark, moment,
+    positionsAll: bufs.map((_, i) => posAt(i)),
     result: resultText,
     refit: (h, maxW) => fitLogo(rowSrc, h, maxW),
   });
   const overlay = Buffer.from(
     `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${out.svg}</svg>`
   );
-  return sharp(photoBuf)
+  return (await baseFor(photoBuf, W, H, out))
     .composite([{ input: overlay, top: 0, left: 0 }, ...out.arts])
     .jpeg({ quality: 90 }).toBuffer();
+}
+// Matted layouts shrink the photo into photoRect (object-fit: cover,
+// centred — same crop as the preview window) on a solid canvas.
+async function baseFor(photoBuf, W, H, out) {
+  if (!out.photoRect) return sharp(photoBuf);
+  const { left, top, width, height } = out.photoRect;
+  const inner = await sharp(photoBuf).resize({ width, height, fit: 'cover', position: 'centre' }).toBuffer();
+  const canvas = await sharp({ create: { width: W, height: H, channels: 3, background: out.background || '#ffffff' } })
+    .composite([{ input: inner, left, top }]).png().toBuffer();
+  return sharp(canvas);
 }
 
 module.exports = { LOGO_VARIANTS, VARIANT_TO_TEMPLATE, THEMED_VARIANTS, templateOf, isVariant, bakeVariant };

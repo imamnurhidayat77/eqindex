@@ -13,7 +13,8 @@ export const metadata = {
   description: 'Browse every Boss Media photo and reel: search by horse, rider or event.',
 };
 
-export default async function PhotosPage({ searchParams }) {
+export default async function PhotosPage(props) {
+  const searchParams = await props.searchParams;
   const sp = searchParams || {};
   const LIMIT = 48;
   const page = Math.max(1, parseInt(sp.page, 10) || 1);

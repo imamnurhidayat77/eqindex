@@ -5,7 +5,8 @@ export const dynamic = 'force-dynamic';
 
 export const metadata = { title: 'Library', robots: { index: false } };
 
-export default async function LibraryPage({ searchParams }) {
+export default async function LibraryPage(props) {
+  const searchParams = await props.searchParams;
   const { data } = await getJSON('/events?limit=200').catch(() => ({ data: [] }));
   return (
     <LibraryClient

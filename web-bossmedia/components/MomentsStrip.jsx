@@ -25,7 +25,7 @@ export default function MomentsStrip({ eventId }) {
           <p className="eyebrow">Community</p>
           <h2>Moments from the crowd.</h2>
         </div>
-        <p>Shared by spectators — free to view, never for sale. <Link href={`/moments?event_id=${eventId}`} className="text-link">View all →</Link></p>
+        <p>Shared by spectators — free to view. Sponsors can license them for reposting. <Link href={`/moments?event_id=${eventId}`} className="text-link">View all →</Link></p>
       </div>
       <div className="event-media-grid">
         {moments.map((m) => (

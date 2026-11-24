@@ -9,18 +9,38 @@ const jsx = readFileSync(join(root, 'components', 'SponsorTemplates.jsx'), 'utf8
 const css = readFileSync(join(root, 'components', 'SponsorTemplates.module.css'), 'utf8');
 const page = readFileSync(join(root, 'app', 'sponsor', 'templates', 'page.jsx'), 'utf8');
 
-test('19 template variants across Sponsor + Winner groups', () => {
+test('14 picker templates, 19 retired ones still render for owned designs', () => {
   const ids = [...jsx.matchAll(/\{ id: '([a-z-]+)'/g)].map((m) => m[1]);
-  assert.equal(ids.length, 19, `want 19 variants, got ${ids.length}`);
-  assert.equal(new Set(ids).size, 19, 'variant ids unique');
-  assert.ok(!ids.includes('dual-bar'), 'dual-bar removed (row layout covers multi)');
-  for (const must of ['banner-wave', 'portrait-swoosh', 'square-bar', 'left-panel',
-    'top-banner', 'corner-badge', 'portrait-drape', 'round-badge', 'gold-frame',
-    'minimal-corner', 'class-spotlight',
-    'winner-banner', 'winner-arch', 'winner-portrait', 'winner-side', 'winner-top',
-    'winner-bottom', 'winner-corner', 'winner-minimal']) {
-    assert.ok(ids.includes(must), `missing variant ${must}`);
+  assert.equal(ids.length, 33, `want 33 variants, got ${ids.length}`);
+  assert.equal(new Set(ids).size, 33, 'variant ids unique');
+  const picker = jsx.slice(jsx.indexOf('export const TEMPLATE_VARIANTS'), jsx.indexOf('export const LEGACY_VARIANTS'));
+  assert.deepEqual([...picker.matchAll(/\{ id: '([a-z-]+)'/g)].map((m) => m[1]),
+    ['broadcast', 'keyline', 'result-card', 'rosette', 'angle',
+      'fade-footer', 'sponsor-bar', 'mat-frame', 'poster-panel', 'logo-plate',
+      'header-bar', 'side-column', 'ribbon-tag', 'split-footer']);
+  assert.ok(jsx.includes('THEMED_VARIANTS = [...TEMPLATE_VARIANTS.map'), 'every picker template has light + dark');
+  const modal = readFileSync(join(root, 'components', 'LogoModal.jsx'), 'utf8');
+  assert.ok(modal.includes('aria-label="Style"'), 'light/dark switch sits with the template rail');
+  assert.ok(modal.includes('className={m.tplGrid}'), 'templates get their own tab, first');
+  assert.ok(modal.includes('className={m.corners}'), 'logo corners picked on a 2x2 map, not a row of words');
+  for (const old of ['banner-wave', 'corner-badge', 'winner-banner', 'winner-minimal', 'class-spotlight']) {
+    assert.ok(ids.includes(old), `retired ${old} must keep rendering bought files`);
   }
+  assert.ok(jsx.includes('export const isPickerVariant'), 'picker hides retired templates');
+  const bake = readFileSync(join(root, '..', 'api', 'src', 'lib', 'logoBake.js'), 'utf8');
+  for (const id of ids) assert.ok(bake.includes(`'${id}'`), `bake knows ${id}`);
+});
+
+test('short-edge templates size by the photo short side in preview and bake', () => {
+  assert.ok(css.includes('--s: calc(var(--k, 1) * 1cqw)'), 'preview defines the short-edge unit');
+  assert.ok(jsx.includes("'--k': shortK"), 'frame passes its short-edge factor');
+  const bake = readFileSync(join(root, '..', 'api', 'src', 'lib', 'logoBake.js'), 'utf8');
+  assert.ok(bake.includes('Math.min(W, H) / 100'), 'bake uses the same short-edge unit');
+  const row = (src) => src.slice(src.indexOf('function kitRow'), src.indexOf('function kitRow') + 220)
+    .match(/\{ h: [\d.]+, w: \d+ \}/g);
+  assert.equal(row(jsx)?.length, 4, 'kitRow has 4 size steps');
+  assert.deepEqual(row(jsx), row(bake), 'logo sizes per count match between preview and bake');
+  assert.ok(!jsx.includes('YOUR LOGO</strong>'), 'no fake brand placeholder');
 });
 
 test('every st-* class used in JSX exists in the CSS module', () => {
@@ -101,7 +121,7 @@ test('every variant maps to a backend template id the server accepts', () => {
   assert.ok(purchase.includes('Edit design (${pickedLogos.length})'), 'panel is a read-only summary + one button');
   assert.ok(jsx.includes('THEMED_VARIANTS'), 'strip variants declare theme support');
   assert.ok(css.includes('.st-strip.st-dark'), 'dark strip style exists');
-  assert.ok(modal.includes('Strip theme'), 'modal has Light/Dark toggle');
+  assert.ok(modal.includes('aria-label="Style"'), 'modal has Light/Dark toggle');
   assert.ok(modal.includes('draftPositions'), 'thumbnails reflect draft position');
   assert.ok(purchase.includes('templateVisible'), 'saved design always shows once picked');
   assert.ok(!modal.includes("t.group === 'Winner' || templateOf(t.id)"), 'no winner filtering — all 19 templates listed');
@@ -149,7 +169,8 @@ test('buyer tag edits apply instantly to their design only, never the canonical 
   const tag = readFileSync(join(root, 'components', 'TagEditor.jsx'), 'utf8');
   assert.ok(!tag.includes('/corrections'), 'no review queue — direct and instant');
   assert.ok(!tag.includes('Won it'), 'no checkbox — the result text itself gates winners');
-  assert.ok(tag.includes('Result'), 'buyer writes result text (Clear, 1st)');
+  assert.ok(tag.includes('Moment'), 'buyer writes their own moment (Winner, Clear round, 2nd place)');
+  assert.ok(tag.includes('MOMENT_PRESETS'), 'one-tap moment chips');
   assert.ok(!tag.includes('Horse'), 'horse/rider locked — class + win + result only');
   assert.ok(!tag.includes('fetch('), 'editor only reports upward; parent persists the draft');
   const modal = readFileSync(join(root, 'components', 'LogoModal.jsx'), 'utf8');
@@ -159,7 +180,8 @@ test('buyer tag edits apply instantly to their design only, never the canonical 
   assert.ok(modal.includes('Add new sponsor'), 'upload form hides behind one button — list first');
   assert.ok(modal.includes('/api/my/sponsor-logos'), 'upload + picker hit the buyer-scoped endpoints');
   assert.ok(modal.includes('/api/my/sponsor-logos'), 'upload + picker hit the buyer-scoped endpoints');
-  assert.ok(modal.includes('isWinningResult(draftTags.result)'), 'winner list follows the typed result live');
+  assert.ok(modal.includes('momentText(draftTags.result'), 'typed moment wins, photo moment is the fallback');
+  assert.ok(!modal.includes('isWinningResult'), 'no winner-only templates: every template shows class + moment');
   const purchase = readFileSync(join(root, 'components', 'MediaPurchase.jsx'), 'utf8');
   assert.ok(!purchase.includes('<TagEditor'), 'panel stays a summary — no editor outside modal');
   assert.ok(!purchase.includes('<TagSuggest'), 'suggestion flow removed');
@@ -179,11 +201,16 @@ test('buyer tag edits apply instantly to their design only, never the canonical 
   assert.ok(!modal.includes('upFileRef'), 'no programmatic click anywhere in the upload path');
   assert.ok(!mod.includes('.fileHidden'), 'hidden-input pattern fully removed');
   assert.ok(mod.includes('.currentPill'), 'picked template carries an unmistakable Current mark');
-  assert.ok(modal.includes('scroll for more'), 'long template list advertises its scroll');
+  assert.ok(modal.includes('m.tplCard'), 'equal-size template cards');
   assert.ok(!modal.includes('Sponsor overlay'), 'carousel sublabels drop the repeated group words');
-  assert.ok(modal.includes('ResizeObserver'), 'preview frame is contain-fit measured, never squished');
+  assert.ok(modal.includes('min(100cqw, calc(100cqh *'), 'preview frame is contain-fit in CSS, never squished or cropped');
+  assert.ok(!modal.includes('ResizeObserver'), 'no measured sizes that can go stale');
+  assert.ok(readFileSync(join(root, 'components', 'LogoModal.module.css'), 'utf8').includes('container-type: size'), 'preview cell is a size container');
   assert.ok(modal.includes("width: 'min(1400px, 96vw)'"), 'modal goes wide — preview gets the room');
-  assert.ok(modal.includes('position: \'sticky\''), 'sponsor tabs stick while a long list scrolls');
+  assert.ok(modal.includes('aria-label="Design steps"'), 'one option tab at a time: Template, Sponsors, Text');
+  assert.ok(modal.includes("setTab(startLogos.length ? 'template' : 'sponsor')"), 'opens on Sponsors when Save would be blocked');
+  assert.ok(modal.includes("onClick={() => setTab('sponsor')}"), 'empty preview hint jumps to the sponsor tab');
+  assert.ok(readFileSync(join(root, 'components', 'LogoModal.module.css'), 'utf8').includes('grid-template-columns: minmax(0, 1fr) 380px'), 'desktop: preview takes all space but one 380px panel');
   assert.ok(modal.includes('menempel di atas') || modal.includes('draftLogos.includes(b.id)'), 'picked logos pin to the top of long lists');
   assert.ok(!modal.includes('Bakes as '), 'no backend ids in buyer-facing carousel copy');
   assert.ok(!modal.includes('#1d7a34'), 'owned badge back on palette (no off-system green)');
@@ -254,4 +281,47 @@ test('per-version ownership: buy page shows owned versions, still sells the rest
   assert.ok(modal.includes('✓ Owned'), 'owned templates carry a clear badge');
   assert.ok(modal.includes('disabled={isOwned}'), 'owned templates cannot be picked');
   assert.ok(modal.includes('o.variant && o.variant === variantId'), 'owned = exact variant only (legacy never blocks)');
+});
+
+test('T-series typography + kit are one copy in preview and bake', () => {
+  const bake = readFileSync(join(root, '..', 'api', 'src', 'lib', 'logoBake.js'), 'utf8');
+  const blk = (src) => {
+    const i = src.indexOf('// — T-series templates');
+    const j = src.indexOf('\n}\n', src.indexOf('function kitLayoutT')) + 3;
+    return src.slice(i, j).replaceAll('export ', '');
+  };
+  assert.ok(blk(jsx).length > 2000, 'T-series kit block found');
+  assert.equal(blk(jsx), blk(bake), 'TYPE, colours, rosette art and kitLayoutT match the bake');
+  for (const f of ['BarlowCondensed-SemiBold.ttf', 'BarlowCondensed-ExtraBold.ttf', 'BarlowCondensed-ExtraBoldItalic.ttf', 'DMSerifDisplay-Regular.ttf']) {
+    const a = readFileSync(join(root, 'components', 'sponsor-fonts', f));
+    const b = readFileSync(join(root, '..', 'api', 'src', 'lib', 'fonts', f));
+    assert.ok(a.equals(b), `${f} identical for preview and bake`);
+  }
+  assert.ok(jsx.includes("next/font/local"), 'preview loads the same TTFs');
+});
+
+test('rosette colour follows the placing in the moment text', () => {
+  const src = jsx.slice(jsx.indexOf('const PLACE_WORDS'), jsx.indexOf('export const PLACE_LABEL'));
+  const placingOf = new Function(src.replace('export function placingOf', 'function placingOf') + '; return placingOf;')();
+  assert.equal(placingOf('Winner'), 1);
+  assert.equal(placingOf('2nd place'), 2);
+  assert.equal(placingOf('Reserve champion'), 2);
+  assert.equal(placingOf('Third'), 3);
+  assert.equal(placingOf('Clear round'), 0);
+  assert.equal(placingOf(''), 0);
+});
+
+test('photo page quick picks: best three styles, one tap applies, Customize opens the editor', () => {
+  const quick = readFileSync(join(root, 'components', 'QuickStyles.jsx'), 'utf8');
+  const purchase = readFileSync(join(root, 'components', 'MediaPurchase.jsx'), 'utf8');
+  const modal = readFileSync(join(root, 'components', 'LogoModal.jsx'), 'utf8');
+  assert.ok(jsx.includes('export const RECOMMENDED_BY_ASPECT'), 'one ranking for modal and page');
+  assert.ok(modal.includes('RECOMMENDED_BY_ASPECT[aspectKey]'), 'modal uses the shared ranking');
+  assert.ok(quick.includes('.slice(0, 3)'), 'three quick styles');
+  assert.ok(quick.includes('filter((id) => !owned(id))'), 'owned designs are not offered again');
+  assert.ok(purchase.includes('<QuickStyles'), 'quick picks sit in the sponsor design panel');
+  assert.ok(purchase.includes('saveDesign(media.id, { template: variant'), 'a quick pick is saved like a modal Save');
+  assert.ok(purchase.includes('onCustomize={() => setLogoOpen(true)}'), 'Customize opens the full editor');
+  assert.ok(purchase.includes('discountFor(l.id)?.discount_cents'), 'discount only from server-funded budgets');
+  assert.ok(purchase.includes('{pickedLogos.length} sponsors'), 'several sponsors: one row with the single best discount, never per-logo amounts that look additive');
 });

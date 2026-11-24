@@ -4,14 +4,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { Icon } from './figma';
-import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
+import { isValidEmail, normalizeEmail, safeNext } from '../lib/validation.mjs';
 import SmartImage from './SmartImage';
-
-function safeNext(v) {
-  return v && v.startsWith('/') && !v.startsWith('//') && v !== '/login' && v !== '/register'
-    ? v
-    : '/media';
-}
 
 function passwordScore(pw) {
   if (!pw) return 0;

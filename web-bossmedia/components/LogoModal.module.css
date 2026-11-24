@@ -29,6 +29,8 @@
 }
 .pick:hover { border-color: #888; background: #161616; }
 .pick[aria-checked='true'], .pick[aria-selected='true'] { background: #2a2a2a; border-color: #fff; }
+.chip[aria-checked='true'] { border-color: #e3b341; background: rgba(227,179,65,.1); }
+.chip[aria-checked='true']:hover { border-color: #e3b341; background: rgba(227,179,65,.16); }
 .pick[aria-checked='true']:hover, .pick[aria-selected='true']:hover { background: #333; border-color: #fff; }
 .chip { width: 100%; padding-left: 6px; text-align: left; }
 .chipThumb {
@@ -160,4 +162,97 @@
   height: 100%;
   opacity: 0;
   cursor: pointer;
+}
+
+/* Step headings: numbered in reading order (template under the preview first). */
+.step { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; color: #fff; font-size: 13px; font-weight: 800; }
+.stepNote { color: #999; font-size: 11px; font-weight: 400; font-style: normal; }
+.step span { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #e3b341; color: #101010; font-size: 11px; font-weight: 900; }
+
+/* Sponsor chip: explicit Add / Added state + discount on its own line. */
+.chip { min-height: 48px; }
+.chipLabel { display: flex; flex-direction: column; gap: 2px; }
+.chipDeal { color: #e3b341; font-size: 11px; font-weight: 700; }
+.chipState { flex: none; padding: 4px 8px; border: 1px solid #555; border-radius: 999px; color: #ccc; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.chip[aria-checked='true'] .chipState { border-color: #e3b341; background: #e3b341; color: #101010; }
+
+/* Template grid: two columns of small thumbs instead of one long list. */
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.grid .thumb { padding: 6px; }
+.thumbName { margin-top: 6px; display: flex; align-items: baseline; justify-content: space-between; gap: 6px; min-height: 18px; }
+.thumbName strong { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thumbName small { flex: none; color: #e3b341; font-size: 10px; font-weight: 800; }
+
+/* Empty preview hint (no sponsor picked yet). */
+.emptyHint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3; margin: 0; padding: 8px 14px; border-radius: 999px; background: rgba(16,16,16,.85); border: 1px solid #e3b341; color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+/* Layout: the preview is the biggest thing on screen. Desktop: preview
+   left, one option tab right. Phones: preview on top (height follows the
+   photo, capped), the tab tray under it. Save stays visible either way. */
+.body { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; overflow: hidden; }
+.stage { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.stageBar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.stageName { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; font-size: 14px; font-weight: 800; }
+.cell { position: relative; flex: 1 1 0; min-width: 0; min-height: 0; display: grid; place-items: center; overflow: hidden; container-type: size; }
+.seg { flex: none; display: grid; grid-template-columns: 1fr 1fr; width: 140px; border: 1px solid #3a3a3a; border-radius: 999px; padding: 2px; }
+.segBtn { min-height: 32px; padding: 0 14px; border: 0; border-radius: 999px; background: transparent; color: #bbb; font-size: 12px; font-weight: 800; cursor: pointer; transition: background .15s ease, color .15s ease; }
+.segBtn:hover { color: #fff; }
+.segBtn[aria-checked='true'] { background: #fff; color: #101010; }
+
+.panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid #2a2a2a; background: #0d0d0d; }
+.tabs { flex: none; display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid #2a2a2a; }
+.tab { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; padding: 0 8px;
+  border: 0; background: transparent; color: #999; font-size: 13px; font-weight: 800; cursor: pointer; transition: color .15s ease, background .15s ease; }
+.tab:hover { color: #fff; background: #151515; }
+.tab[aria-selected='true'] { color: #fff; box-shadow: inset 0 -3px 0 #e3b341; }
+.tabCount { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #e3b341; color: #101010; font-size: 11px; font-weight: 900; }
+.panelBody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px; display: grid; gap: 14px; align-content: start; }
+.panelNote { margin: 0 0 10px; color: #999; font-size: 12px; line-height: 1.5; }
+
+.tplGrid { --tb: 136px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tplCard { padding: 5px; min-width: 0; }
+.tplCard .thumbName { margin-top: 5px; min-height: 0; }
+.thumbBox { display: grid; place-items: center; height: var(--tb); background: #0b0b0b; overflow: hidden; }
+.bestPill { position: absolute; top: 9px; left: 9px; z-index: 2; padding: 2px 7px; border-radius: 999px; background: rgba(16,16,16,.85); border: 1px solid #e3b341; color: #e3b341; font-size: 10px; font-weight: 800; }
+
+.emptyHint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3; margin: 0; padding: 8px 14px; border-radius: 999px; background: rgba(16,16,16,.85); border: 1px solid #e3b341; color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; transition: background .15s ease; }
+.emptyHint:hover { background: rgba(40,40,40,.92); }
+.foot { margin-top: 10px; padding-top: 12px; display: flex; justify-content: flex-end; align-items: center; gap: 14px; min-height: 60px; }
+
+/* Corner picker: a tiny photo with four tappable corners. */
+.cornerList { display: grid; gap: 8px; }
+.cornerRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cornerLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; font-size: 12px; font-weight: 700; }
+.corners { flex: none; display: grid; grid-template-columns: 1fr 1fr; width: 72px; height: 50px; border: 1px solid #555; background: #1c1c1c; }
+.corner { position: relative; border: 0; padding: 0; background: transparent; cursor: pointer; transition: background .15s ease; }
+.corner:hover { background: #262626; }
+.corner i { position: absolute; width: 14px; height: 9px; border-radius: 2px; background: #555; transition: background .15s ease; }
+.c-top-left i { top: 4px; left: 4px; }
+.c-top-right i { top: 4px; right: 4px; }
+.c-bottom-left i { bottom: 4px; left: 4px; }
+.c-bottom-right i { bottom: 4px; right: 4px; }
+.corner[aria-checked='true'] i { background: #e3b341; }
+
+@media (max-width: 900px) {
+  .body { display: flex; flex-direction: column; gap: 10px; }
+  /* The preview takes whatever the tray leaves (contain-fit, never cropped);
+     the tray keeps its own height and scrolls inside. */
+  .stage { flex: 1 1 auto; min-height: 140px; gap: 8px; }
+  .panel { flex: none; }
+  .tab { min-height: 44px; }
+  .panelBody { padding: 10px; max-height: 38dvh; }
+  .currentPill { display: none; }
+  .head { margin-bottom: 4px; }
+  .head :global(.eyebrow) { display: none; }
+  .head h3 { font-size: 20px; }
+  /* Template tray: one swipeable row. */
+  .tplGrid { --tb: 92px; display: flex; overflow-x: auto; padding-bottom: 4px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
+  .tplCard { flex: 0 0 104px; scroll-snap-align: start; }
+  .foot { flex: none; flex-wrap: wrap; height: auto; gap: 10px; margin-top: 8px; padding-top: 8px; }
+  .foot .linkBtn { flex-basis: 100%; text-align: left; }
+  footer.foot :global(.st-btn), footer.foot :global(.st-btn-ghost) { flex: 1 1 0; min-width: 0; }
+  .emptyHint { white-space: normal; text-align: center; width: max-content; max-width: 90%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab, .segBtn, .emptyHint, .thumb, .pick { transition: none; }
 }

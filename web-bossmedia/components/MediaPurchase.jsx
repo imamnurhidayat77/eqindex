@@ -9,7 +9,8 @@ import { checkoutBase, newIdempotencyKey, nzd, stripeCheckoutUrl } from '../lib/
 import { useAuthed } from '../lib/use-authed';
 import SmartImage from './SmartImage';
 import LogoModal from './LogoModal';
-import SponsorPhoto, { isVariant, isTheme, clearDesign, loadDesign, saveDesign, templateOf, variantShort } from './SponsorTemplates';
+import QuickStyles from './QuickStyles';
+import SponsorPhoto, { isVariant, isTheme, clearDesign, loadDesign, saveDesign, templateOf, variantShort, momentText } from './SponsorTemplates';
 import FollowButton from './FollowButton';
 import { safeError } from '../lib/errors';
 import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
@@ -18,13 +19,15 @@ import { Icon } from './figma';
 import { useToast } from './Toaster';
 import ReelPlayer from './ReelPlayer';
 import accent from './PayAccent.module.css';
+import pm from './PurchaseMobile.module.css';
 
 // Honest per-tier subline when the DB has no custom description. Never
 // promises "full resolution" for small/medium renditions.
 function licenseSubline(t) {
   const res = String(t?.max_resolution || '').toLowerCase();
-  const isOriginal = !res || res.includes('original');
-  if (isOriginal) return t?.printable === false ? 'Original file · best quality' : 'Original file · best quality · print-ready';
+  // A screen-only tier with no size set is not "the original" (Web tier).
+  if (!res && t?.printable === false) return 'Digital file · for screen & sharing';
+  if (!res || res.includes('original')) return t?.printable === false ? 'Original file · best quality' : 'Original file · best quality · print-ready';
   const size = t?.max_resolution || 'Digital file';
   return t?.printable ? `${size} · print-ready` : `${size} · for screen & sharing`;
 }
@@ -220,7 +223,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   const effResult = tagResult;
 
   useEffect(() => {
-    fetch(`${API}/api/license-tiers?kind=${media.kind === 'reel' ? 'reel' : 'photo'}`)
+    fetch(`${API}/api/license-tiers?kind=${media.kind === 'reel' ? 'reel' : 'photo'}&media_id=${encodeURIComponent(media.id)}`)
       .then((r) => r.json())
       .then((j) => {
         const list = j.data || [];
@@ -285,6 +288,17 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
   // Before the tiers fetch settles, tier is undefined and price is a guess —
   // show a neutral loading state instead of flashing the wrong number.
   const priceLabel = tiersReady ? price : 'Loading…';
+  // Same gate as the buy block below (not owned, or a new design to buy).
+  const canBuy = (!owned?.owned || versions.length > 0) && (!ownsPlain || logoIds.length > 0) && !draftOwnedVersion;
+  const addBtnRef = useRef(null);
+  const [addBtnSeen, setAddBtnSeen] = useState(false);
+  useEffect(() => {
+    const el = addBtnRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([e]) => setAddBtnSeen(e.isIntersecting || e.boundingClientRect.top < 0));
+    io.observe(el);
+    return () => io.disconnect();
+  });
   const [cartList] = useCart();
   // Still in cart after navigating back: local `added` resets on remount,
   // cart membership does not. Matched on media + selected tier.
@@ -486,7 +500,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
       )}
       <div className="media-purchase-layout">
         <div className="media-preview-column">
-          <figure className="purchase-preview">
+          <figure className={`purchase-preview ${pm.preview}`}>
             {isReel ? (
               <span className="rp-wrap"><ReelPlayer src={media.preview_url} poster={media.thumb_url || undefined}
                 label={`${subject} reel`} autoPlay /></span>
@@ -501,7 +515,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                   return { id, label: l?.label, src: `${API}/api/sponsor-logos/${id}/file` };
                 })}
                 positions={Object.fromEntries(appliedLive.logoIds.map((id, i) => [id, posOf(id, i)]))}
-                event={eventName} className={effClass} subject={effSubject} />
+                event={eventName} className={effClass} subject={effSubject} result={momentText(effResult, media.moment)} />
             ) : heroOwned ? (
               // Owned design matching the draft — the owner verifies what
               // they own instead of reading an id like `banner`.
@@ -510,7 +524,8 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                 frameStyle={{ height: 'min(68vh, 720px)', width: 'auto', maxWidth: '100%' }}
                 sponsors={(heroOwned.logos || []).map((l) => ({ id: l.id, label: l.label, src: `${API}/api/sponsor-logos/${l.id}/file` }))}
                 positions={Object.fromEntries((heroOwned.logos || []).map((l) => [l.id, l.position || 'bottom-left']))}
-                event={eventName} className={effClass} subject={effSubject} />
+                event={eventName} className={heroOwned.design_class || effClass} subject={effSubject}
+                result={momentText(heroOwned.design_result, media.moment)} />
             ) : (
               <SmartImage src={media.preview_url || media.thumb_url} alt={subject} width={1200} height={800} priority />
             )}
@@ -550,6 +565,14 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
           </div>
         </div>
         <aside className="purchase-panel">
+          {canBuy && tiersReady && tier && !showAdded && !addBtnSeen && (
+            <div className={pm.bar}>
+              <strong>{price}</strong>
+              <button type="button" disabled={working} onClick={() => addBtnRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+                Buy this {isReel ? 'reel' : 'photo'}
+              </button>
+            </div>
+          )}
           <section className="license-panel">
             <h2 className="purchase-label">Choose your license</h2>
             {versions.length > 0 && (
@@ -570,7 +593,8 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                         variant={v.logo_variant} ratio="16 / 10" theme={v.logo_theme || 'light'}
                         sponsors={(v.logos || []).map((l) => ({ id: l.id, label: l.label, src: `${API}/api/sponsor-logos/${l.id}/file` }))}
                         positions={Object.fromEntries((v.logos || []).map((l) => [l.id, l.position || 'bottom-left']))}
-                        event={eventName} className={effClass} subject={effSubject} />
+                        event={eventName} className={v.design_class || effClass} subject={effSubject}
+                        result={momentText(v.design_result, media.moment)} />
                     ) : (
                       <div className="license-option selected">
                         <div><strong>✓ Your sponsor design</strong><span>Baked into your download.</span></div>
@@ -619,10 +643,50 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                   ))}
                   </div>
                 ))}
-            {!isReel && logos.length > 0 && (
+            {!isReel && logos.length > 0 && (() => {
+              // Quick picks (P1): the buyer's picked sponsors, else the event
+              // sponsor with the biggest funded discount (else the first one).
+              // Nothing is applied until a style is tapped, so no silent opt-in.
+              const eventOnly = logos.filter((l) => !l.mine);
+              const bestFunded = eventOnly.map((l) => ({ l, d: discountFor(l.id) })).filter((x) => x.d)
+                .sort((x, y) => Number(y.d.discount_cents) - Number(x.d.discount_cents))[0]?.l;
+              const quickLogos = pickedLogos.length ? pickedLogos : [bestFunded || eventOnly[0]].filter(Boolean);
+              const quickDiscount = quickLogos.map((l) => Number(discountFor(l.id)?.discount_cents || 0))
+                .reduce((a, b) => Math.max(a, b), 0);
+              const quickIds = quickLogos.map((l) => l.id);
+              const quickOwned = (variant) => ownedDesigns.some((o) => o.variant === variant
+                && (o.theme || 'light') === logoTheme
+                && (o.logoIds || []).map(String).sort().join() === quickIds.map(String).sort().join());
+              const applyQuick = (variant) => {
+                const pos = Object.fromEntries(quickIds.map((id, i) => [id, posOf(id, i)]));
+                setLogoIds(quickIds);
+                setLogoTemplate(variant);
+                setLogoPos((v) => ({ ...v, ...pos }));
+                setApplied({ template: variant, logoIds: quickIds, theme: logoTheme });
+                saveDesign(media.id, { template: variant, logoIds: quickIds, logoPos: pos, theme: logoTheme, tags: tagDraft });
+                setAdded(false);
+              };
+              return (
               <div style={{ margin: '12px 0' }} role="group" aria-label="Sponsor design">
                 <p className="purchase-label">Sponsor design <em className="auth-opt">(optional · baked in)</em></p>
-                {pickedLogos.length > 0 && (
+                {pickedLogos.length > 1 && (
+                  // Several sponsors: one summary row. Only the single best
+                  // funded discount applies (server rule), so per-logo
+                  // amounts would read as if they add up.
+                  <div className="license-option selected" style={{ cursor: 'default', marginBottom: 10 }}>
+                    <span style={{ flex: 'none', display: 'flex', gap: 4 }}>
+                      {pickedLogos.slice(0, 3).map((l) => (
+                        <span key={l.id} style={{ width: 44, height: 28, background: '#fff', borderRadius: 4, overflow: 'hidden' }}>
+                          <SmartImage src={`${API}/api/sponsor-logos/${l.id}/file`} alt={`${l.label} logo`} width={44} height={28}
+                            unoptimized style={{ objectFit: 'contain', width: '100%', height: '100%' }} />
+                        </span>
+                      ))}
+                    </span>
+                    <div><strong>{pickedLogos.length} sponsors</strong><span> · {variantShort(logoTemplate)}{tagClass ? ` · ${tagClass}` : ''}</span></div>
+                    <b>{discount ? `−${nzd(discount.discount_cents)}` : 'Free'}</b>
+                  </div>
+                )}
+                {pickedLogos.length === 1 && (
                   <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
                     {pickedLogos.map((l) => {
                       const d = l ? discountFor(l.id) : null;
@@ -639,10 +703,31 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                     })}
                   </div>
                 )}
+                {quickLogos.length > 0 && (
+                  <QuickStyles photo={media.preview_url || media.thumb_url}
+                    sponsors={quickLogos.map((l) => ({ id: l.id, label: l.label, src: `${API}/api/sponsor-logos/${l.id}/file` }))}
+                    discountCents={quickDiscount} current={appliedLive} theme={logoTheme} owned={quickOwned}
+                    meta={{ event: eventName, className: effClass, subject: effSubject, result: momentText(effResult, media.moment) }}
+                    onPick={applyQuick} onCustomize={() => setLogoOpen(true)} />
+                )}
+                {quickLogos.length === 0 && pickedLogos.length === 0 && (() => {
+                  // Only funded discounts the server reported — no promise beyond that.
+                  const best = logos.filter((l) => !l.mine)
+                    .map((l) => ({ l, d: discountFor(l.id) })).filter((x) => x.d)
+                    .sort((x, y) => Number(y.d.discount_cents) - Number(x.d.discount_cents))[0];
+                  return (
+                    <p style={{ margin: '0 0 10px', color: '#bbb', fontSize: 12, lineHeight: 1.5 }}>
+                      Add a sponsor logo and a frame to your photo.
+                      {best ? <> <b style={{ color: '#e3b341' }}>{best.l.label} takes {nzd(best.d.discount_cents)} off</b> when their logo is on it.</> : null}
+                    </p>
+                  );
+                })()}
+                {quickLogos.length === 0 && (
                 <button type="button" onClick={() => setLogoOpen(true)}
                   style={{ width: '100%', background: 'transparent', border: '1px solid #555', color: 'white', minHeight: 46, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                   {pickedLogos.length > 0 ? `Edit design (${pickedLogos.length}) →` : 'Add sponsors & design →'}
                 </button>
+                )}
                 {pickedLogos.length > 0 && (
                   <button type="button" onClick={removeDesign}
                     style={{ marginTop: 8, background: 'none', border: 0, padding: '0 0 2px', color: '#999', fontSize: 12, borderBottom: '1px solid #444', cursor: 'pointer' }}>
@@ -650,7 +735,8 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
                   </button>
                 )}
               </div>
-            )}
+              );
+            })()}
             <LogoModal open={logoOpen} onClose={() => setLogoOpen(false)}
               logos={logos} logoIds={logoIds} logoPos={logoPos} signedIn={!!meUser}
               template={logoTemplate} setTemplate={setLogoTemplate}
@@ -702,7 +788,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
               </p>
             )}
             {err && <p className="auth-error" role="alert">{safeError(err)}{' '}<Link href="/contact" style={{ color: '#fff', borderBottom: '1px solid #555' }}>Need help? Contact support</Link></p>}
-            <button className={showAdded ? 'added' : accent.pay} disabled={working || !tier}
+            <button ref={addBtnRef} className={showAdded ? 'added' : accent.pay} disabled={working || !tier}
               onClick={() => tier && addItem(tier)} aria-label={showAdded ? 'Added to cart — view cart to check out' : tiersReady ? `Add this ${isReel ? 'reel' : 'photo'} to cart for ${price}` : 'Loading price'}>
               {!tiersReady ? 'Loading…' : showAdded ? 'Added to cart' : `Add to cart · ${price}`}
               <Icon name="cart" size={17} />

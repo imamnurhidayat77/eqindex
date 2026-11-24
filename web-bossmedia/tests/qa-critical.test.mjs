@@ -17,11 +17,8 @@ const nzd = (cents) =>
   `NZ$${(Number(cents || 0) / 100).toFixed(2).replace(/\.00$/, '')}`;
 // Mirrors the email gate used by CartClient/LoginClient/RegisterClient.
 const validEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || '').trim());
-// Mirrors safeNext() in LoginClient/RegisterClient.
-const safeNext = (v, fallback = '/media') =>
-  v && v.startsWith('/') && !v.startsWith('//') && v !== '/login' && v !== '/register'
-    ? v
-    : fallback;
+// The real helper Login/Register share (lib/validation.mjs).
+const { safeNext } = await import('../lib/validation.mjs');
 // Mirrors POST /api/checkout/combined count guard in api/src/routes/media.js.
 const combinedCountOk = (items, reels) => {
   const count = items.length + reels.length;
@@ -161,7 +158,8 @@ describe('login', () => {
     assert.equal(safeNext('/login'), '/media');
     assert.equal(safeNext('/register'), '/media');
     assert.equal(safeNext(null), '/media');
-    assert.match(loginSrc(), /startsWith\('\/'\) && !v\.startsWith\('\/\/'\)/);
+    assert.equal(safeNext('/\\evil.example'), '/media');
+    assert.match(loginSrc(), /safeNext\(rawNext\)/);
   });
 
   it('validates email + password before hitting /auth/login', () => {
@@ -178,9 +176,8 @@ describe('login', () => {
     assert.match(s, /Enter the 6-digit code/);
   });
 
-  it('staff without deep link land in /studio, buyers keep `next`', () => {
-    const s = loginSrc();
-    assert.match(s, /role === 'ADMIN' \|\| role === 'PHOTOGRAPHER'\) \? '\/studio' : next/);
+  it('without a deep link each role lands home, deep links keep `next`', () => {
+    assert.match(loginSrc(), /rawNext \? next : homeForRole\(role\)/);
   });
 });
 
@@ -210,7 +207,7 @@ describe('register', () => {
   it('safeNext fallback keeps post-register landing inside the app', () => {
     assert.equal(safeNext('/media'), '/media');
     assert.equal(safeNext('https://evil.example'), '/media');
-    assert.match(registerSrc(), /!v\.startsWith\('\/\/'\)/);
+    assert.match(registerSrc(), /safeNext\(sp\.get\('next'\)\)/);
   });
 });
 

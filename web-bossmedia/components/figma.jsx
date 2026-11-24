@@ -7,6 +7,10 @@ import { cartCount, onCartChange } from '../lib/cart';
 import { favCount, onFavChange } from '../lib/favourites';
 import SearchSelect from './SearchSelect';
 import SmartImage from './SmartImage';
+import NotificationBell from './NotificationBell';
+import footer from './SiteFooter.module.css';
+import hdr from './SiteHeader.module.css';
+import { fetchMe, peekMe, resetMe, wasSignedIn } from '../lib/use-authed';
 
 export function Icon({ name, size = 18 }) {
   const paths = {
@@ -56,15 +60,17 @@ const NAV = [
   ['/pre-book', 'Pre-book', 'pre-book'],
   ['/reels', 'Reels', 'reels'],
   ['/watchlist', 'Watchlist', 'watchlist'],
+  ['/merch', 'Merchandise', 'merch'],
 ];
 
 export function SiteHeader({ transparent = false }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [count, setCount] = useState(0);
-  // Default to logged-OUT so "Sign in" (SSR + first paint) never flashes
-  // invisible. The session check below swaps in the avatar when logged in.
-  const [me, setMe] = useState(null);
+  // undefined = not known yet. A browser that was signed out last time gets
+  // "Sign in" right after hydration; a signed-in one keeps a neutral avatar
+  // placeholder until the session answers (no "Sign in" flash).
+  const [me, setMe] = useState(() => peekMe());
   const [acctOpen, setAcctOpen] = useState(false);
   // My Studio tetap untuk PHOTOGRAPHER + ADMIN (ada tab khusus admin di
   // dalamnya). My events murni ORGANIZER, Sponsor dashboard murni SPONSOR —
@@ -76,23 +82,23 @@ export function SiteHeader({ transparent = false }) {
   const active = pathname.startsWith('/events') ? 'events'
     : pathname === '/pre-book' ? 'pre-book'
     : pathname === '/reels' ? 'reels'
-    : pathname === '/watchlist' ? 'watchlist' : null;
+    : pathname === '/watchlist' ? 'watchlist'
+    : pathname === '/merch' ? 'merch' : null;
 
   useEffect(() => { setCount(cartCount()); return onCartChange(() => setCount(cartCount())); }, [pathname]);
   const [favs, setFavs] = useState(0);
   useEffect(() => { setFavs(favCount()); return onFavChange(() => setFavs(favCount())); }, [pathname]);
   useEffect(() => {
     setAcctOpen(false);
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 8000);
-    fetch('/api/auth/me', { credentials: 'include', signal: ctl.signal }).then((r) => (r.ok ? r.json() : null))
-      .then((j) => setMe(j?.data || null))
-      .catch(() => setMe(null))
-      .finally(() => clearTimeout(timer));
-    return () => { clearTimeout(timer); ctl.abort(); };
+    let live = true;
+    if (peekMe() === undefined && !wasSignedIn()) setMe(null);
+    fetchMe().then((m) => { if (live) setMe(m); });
+    return () => { live = false; };
   }, [pathname]);
   async function signOut() {
     try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch { /* offline — still clear local state */ }
+    resetMe(null);
+    try { localStorage.removeItem('bossmedia:authed'); } catch { /* storage blocked */ }
     setMe(null); setAcctOpen(false); setMenuOpen(false);
     window.location.href = '/';
   }
@@ -140,14 +146,17 @@ export function SiteHeader({ transparent = false }) {
         </nav>
         <div className="header-actions">
           {me && (
-            <Link href="/favourites" className="icon-button" aria-label="View favourites">
+            <Link href="/favourites" className={`icon-button ${hdr.hideOnPhone}`} aria-label="View favourites">
               <Icon name="heart" /><span>{favs}</span>
             </Link>
           )}
+          {me && <NotificationBell />}
           <Link href="/cart" className="icon-button cart" aria-label="View cart">
             <Icon name="cart" /><span>{count}</span>
           </Link>
-          {me ? (
+          {me === undefined ? (
+            <span className="acct-avatar" aria-hidden="true" style={{ opacity: 0.2 }} />
+          ) : me ? (
             <div className="acct">
               <button type="button" className="acct-btn" aria-label={`Account — ${me.name || me.email}`} aria-expanded={acctOpen} aria-haspopup="menu" aria-controls="acct-menu" onClick={() => setAcctOpen((v) => !v)}>
                 <span className="acct-avatar" aria-hidden="true">{initial}</span>
@@ -190,7 +199,7 @@ export function SiteHeader({ transparent = false }) {
               ...(studio ? [{ href: '/studio', label: `My Studio · ${(me?.name || '').split(' ')[0] || 'photo'}` }] : []),
               ...(organizer ? [{ href: '/organizer', label: 'My events' }] : []),
               ...(sponsor ? [{ href: '/sponsor', label: 'Sponsor dashboard' }] : []),
-              ...(me ? [{ href: '/account', label: 'My account' }, { href: '/media', label: 'My media' }] : [{ href: '/login', label: 'Sign in' }]),
+              ...(me ? [{ href: '/account', label: 'My account' }, { href: '/media', label: 'My media' }, { href: '/favourites', label: `Favourites${favs ? ` (${favs})` : ''}` }] : [{ href: '/login', label: 'Sign in' }]),
               { href: '/cart', label: 'Cart' },
             ].map((l, i) => (
               <Link key={l.href} href={l.href} onClick={() => setMenuOpen(false)}>
@@ -220,18 +229,27 @@ export function SiteFooter() {
           <a href="https://www.facebook.com/BossMediaNZ/" target="_blank" rel="noreferrer" aria-label="Boss Media on Facebook"><Icon name="facebook" size={18} /></a>
         </div>
       </div>
-      <div className="footer-links">
+      <div className={`footer-links ${footer.links}`}>
         <div>
           <p>Explore</p>
           <Link href="/events">Event galleries</Link>
           <Link href="/pre-book">Pre-book</Link>
           <Link href="/reels">Reels</Link>
+          <Link href="/moments">Community moments</Link>
+          <Link href="/merch">Merchandise</Link>
         </div>
         <div>
           <p>Information</p>
           <Link href="/faq">Help &amp; delivery</Link>
           <Link href="/licensing">Licensing</Link>
+          <Link href="/sell">Sell your work</Link>
+        </div>
+        <div>
+          <p>Legal</p>
+          <Link href="/terms">Terms</Link>
+          <Link href="/refunds">Refunds</Link>
           <Link href="/privacy">Privacy</Link>
+          <Link href="/takedown">Request a takedown</Link>
         </div>
         <div>
           <p>Contact</p>

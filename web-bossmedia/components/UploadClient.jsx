@@ -9,13 +9,37 @@ import { searchSubjects } from '../lib/search-subjects';
 import { Icon } from './figma';
 import SmartImage from './SmartImage';
 import { API } from '../lib/api';
-import { studio } from '../lib/studio';
+import { studio, useStudioUser } from '../lib/studio';
+import { fmtDay } from '../lib/studio-format.mjs';
 
 const PHOTO_OK = ['image/jpeg', 'image/png', 'image/webp'];
 const REEL_OK = ['video/mp4', 'video/quicktime', 'video/webm'];
 const MAX_PHOTO = 15 * 1024 * 1024;
 const MAX_REEL = 200 * 1024 * 1024;
-const MAX_FILES = 20;
+// Each file is its own request (the server caps one request at 20), so a batch can be a full show day.
+const MAX_FILES = 200;
+
+// Default to the event that started most recently, so the common path needs no extra click.
+function latestStartedEvent(events, now = new Date()) {
+  const today = now.toISOString().slice(0, 10);
+  return events
+    .filter((e) => e.date_start && String(e.date_start).slice(0, 10) <= today)
+    .sort((a, b) => String(b.date_start).localeCompare(String(a.date_start)))[0]?.id || '';
+}
+
+// XHR instead of fetch so the bar shows real bytes sent, not a guess.
+function sendWithProgress(method, url, body, { headers = {}, withCredentials = false, onProgress } = {}) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url);
+    xhr.withCredentials = withCredentials;
+    Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, text: xhr.responseText });
+    xhr.onerror = () => reject(new Error('Network error — check your connection and retry'));
+    xhr.send(body);
+  });
+}
 
 const mb = (n) => `${(n / 1048576).toFixed(n >= 10485760 ? 0 : 1)} MB`;
 
@@ -63,7 +87,7 @@ function EventPicker({ events, value, onChange }) {
                 <button type="button" aria-selected={e.id === value} onClick={() => { onChange(e.id); setOpen(false); }}>
                   <strong>{e.name}</strong>
                   {(e.date_start || e.venue) && (
-                    <small>{e.date_start ? String(e.date_start).slice(0, 10) : ''}{e.date_start && e.venue ? ' · ' : ''}{e.venue || ''}</small>
+                    <small>{e.date_start ? fmtDay(e.date_start) : ''}{e.date_start && e.venue ? ' · ' : ''}{e.venue || ''}</small>
                   )}
                 </button>
               </li>
@@ -78,7 +102,7 @@ function EventPicker({ events, value, onChange }) {
 
 export default function UploadClient({ events }) {
   const notify = useNotify();
-  const [eventId, setEventId] = useState('');
+  const [eventId, setEventId] = useState(() => latestStartedEvent(events));
   const [files, setFiles] = useState([]); // {file, kind, status, progress, id, error, preview}
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -88,11 +112,29 @@ export default function UploadClient({ events }) {
   const working = busy || publishing;
   const [tagged, setTagged] = useState([]); // full media rows for uploaded files
   const [tiers, setTiers] = useState([]);
+  // Pre-book orders are Boss Media only (ADMIN), so only admins see that hint.
+  const { user } = useStudioUser();
+  const isAdmin = user?.role === 'ADMIN';
   const [tagId, setTagId] = useState(null);
   const [sel, setSel] = useState([]); // bulk-tag selection (media ids)
   const inputRef = useRef(null);
 
   useEffect(() => { studio.get('/admin/license-tiers').then((r) => setTiers(r || [])).catch(() => {}); }, []);
+
+  // Leaving mid-batch silently drops the rest of the queue: warn on reload/close and on in-app links.
+  useEffect(() => {
+    if (!busy) return undefined;
+    const onUnload = (e) => { e.preventDefault(); e.returnValue = ''; };
+    const onClick = (e) => {
+      const a = e.target.closest?.('a[href]');
+      if (a && !a.hasAttribute('download') && !window.confirm('Uploads are still running. Leave this page and stop the rest of the batch?')) {
+        e.preventDefault(); e.stopPropagation();
+      }
+    };
+    window.addEventListener('beforeunload', onUnload);
+    document.addEventListener('click', onClick, true);
+    return () => { window.removeEventListener('beforeunload', onUnload); document.removeEventListener('click', onClick, true); };
+  }, [busy]);
 
   useEffect(() => () => {
     setFiles((fs) => { fs.forEach((f) => f.preview && URL.revokeObjectURL(f.preview)); return fs; });
@@ -112,7 +154,7 @@ export default function UploadClient({ events }) {
         status: kind === 'bad' || tooBig ? 'rejected' : 'queued',
         progress: 0, id: null,
         preview: kind === 'photo' ? URL.createObjectURL(file) : null,
-        error: kind === 'bad' ? `Unsupported type — use JPEG, PNG, WebP, MP4, MOV or WebM`
+        error: kind === 'bad' ? 'Unsupported type — use JPEG, PNG, WebP, MP4, MOV or WebM'
           : tooBig ? `Too big — ${kind === 'photo' ? 'photos max 15MB' : 'reels max 200MB'}` : null,
       };
     });
@@ -145,8 +187,13 @@ export default function UploadClient({ events }) {
     const form = new FormData();
     form.append('files', item.file);
     if (eventId) form.append('event_id', eventId);
-    const res = await fetch('/api/admin/media/upload', { method: 'POST', credentials: 'include', body: form });
-    const j = await res.json().catch(() => ({}));
+    const res = await sendWithProgress('POST', '/api/admin/media/upload', form, {
+      withCredentials: true,
+      // Last 5% is server-side processing (renditions), shown once the request returns.
+      onProgress: (f) => setOne({ progress: Math.round(f * 95) }),
+    });
+    let j = {};
+    try { j = JSON.parse(res.text); } catch {}
     if (!res.ok) throw new Error(j.error || `Upload failed (${res.status})`);
     const r = (j.data || [])[0];
     if (!r?.ok) throw new Error(r?.error || 'Upload failed');
@@ -160,8 +207,10 @@ export default function UploadClient({ events }) {
       mimetype: item.file.type, size_bytes: item.file.size, filename: item.file.name, ...(eventId ? { event_id: eventId } : {}),
     });
     const { media_id, upload_url } = init.data || init;
-    setOne({ progress: 30 });
-    const put = await fetch(upload_url, { method: 'PUT', headers: { 'Content-Type': item.file.type }, body: item.file });
+    const put = await sendWithProgress('PUT', upload_url, item.file, {
+      headers: { 'Content-Type': item.file.type },
+      onProgress: (f) => setOne({ progress: Math.round(f * 70) }),
+    });
     if (!put.ok) throw new Error('Transfer to storage failed — retry');
     setOne({ progress: 70, id: media_id });
     const fin = await studio.post(`/admin/media/${media_id}/finalize`, {});
@@ -191,7 +240,7 @@ export default function UploadClient({ events }) {
     const setOne = (i, patch) => setFiles((fs) => fs.map((f, j) => (j === i ? { ...f, ...patch } : f)));
     const newIds = [];
     for (const q of queued) {
-      setOne(q.i, { status: 'uploading', progress: 5, error: null });
+      setOne(q.i, { status: 'uploading', progress: 0, error: null });
       try {
         const id = q.kind === 'photo'
           ? await uploadPhoto(q, (p) => setOne(q.i, p))
@@ -257,7 +306,7 @@ export default function UploadClient({ events }) {
               <span className="st-step-n">01</span>
               <div>
                 <h3>Pick an event</h3>
-                <p>One event per batch — everything uploads tagged and ready to publish. Or skip and tag later.</p>
+                <p>One event per batch. We picked the most recent one, change it if this batch is from another show.</p>
               </div>
             </header>
             <EventPicker events={events} value={eventId} onChange={setEventId} />
@@ -271,7 +320,7 @@ export default function UploadClient({ events }) {
               <span className="st-step-n">02</span>
               <div>
                 <h3>Add photos &amp; reels</h3>
-                <p>JPEG, PNG or WebP ≤ 15 MB · MP4, MOV or WebM ≤ 200 MB · {MAX_FILES} per batch. General library uploads — fulfilling a paid reel order? <Link href="/studio/reels">Link the finished file from Pre-book orders instead →</Link></p>
+                <p>JPEG, PNG or WebP ≤ 15 MB · MP4, MOV or WebM ≤ 200 MB · {MAX_FILES} per batch.{isAdmin && <> General library uploads — fulfilling a paid reel order? <Link href="/studio/reels">Link the finished file from Pre-book orders instead →</Link></>}</p>
               </div>
             </header>
             <div className={`st-drop${drag ? ' over' : ''}`}
@@ -324,7 +373,7 @@ export default function UploadClient({ events }) {
                 <span className="st-step-n">04</span>
                 <div>
                   <h3>Tag &amp; publish — right here</h3>
-                  <p>Horse, rider, moment and tier per file — or tick several and tag them together. Live the second you hit publish.</p>
+                  <p>Horse, rider and moment per file — or tick several and tag them together. Live the second you hit publish.</p>
                 </div>
               </header>
               <BulkBar tiers={tiers} eventId={eventId} ids={sel.filter((id) => tagged.some((t) => t.id === id && t.status !== 'published'))}
@@ -392,7 +441,8 @@ export default function UploadClient({ events }) {
           {(busy || overall > 0) && (
             <span className="st-progress st-overall"><i style={{ width: `${overall}%` }} /></span>
           )}
-          {active.length > 0 && <small className="st-ksub">Working… reels keep rendering after upload — safe to leave.</small>}
+          {busy && <small className="st-ksub">Keep this page open until every file is uploaded. Reels keep rendering on the server after that.</small>}
+          {!busy && active.length > 0 && <small className="st-ksub">Reels are rendering on the server. Safe to leave.</small>}
           <div className="st-summary-actions">
             {busy ? (
               <button className="st-btn" disabled>Uploading…</button>
@@ -448,7 +498,6 @@ function BulkBar({ tiers, eventId, ids, notify, onEach, onFinished }) {
   const [cls, setCls] = useState('');
   const [classes, setClasses] = useState([]);
   const [moment, setMoment] = useState('');
-  const [tier, setTier] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -466,7 +515,6 @@ function BulkBar({ tiers, eventId, ids, notify, onEach, onFinished }) {
     if (horseId) body.horse_id = horseId;
     if (classId) body.class_id = classId;
     if (moment) body.moment = moment;
-    if (tier) body.license_default = tier;
     if (!Object.keys(body).length) { notify('Fill at least one field to apply.', true); return; }
     setBusy(true);
     let ok = 0;
@@ -515,10 +563,6 @@ function BulkBar({ tiers, eventId, ids, notify, onEach, onFinished }) {
         <label style={fld}><span style={lbl}>Moment</span>
           <SearchSelect options={['win', 'clear', 'debut', 'pb'].map((v) => ({ id: v, label: v[0].toUpperCase() + v.slice(1) }))}
             value={moment || null} onChange={(id) => setMoment(id || '')} placeholder="Same moment…" />
-        </label>
-        <label style={fld}><span style={lbl}>Tier</span>
-          <SearchSelect options={(tiers || []).map((t) => ({ id: t.id, label: t.label }))}
-            value={tier || null} onChange={(id) => setTier(id || '')} placeholder="Same tier…" />
         </label>
         <button className="st-btn" disabled={busy} onClick={apply} style={{ alignSelf: 'end' }}>
           {busy ? 'Applying…' : `Apply to ${ids.length}`}

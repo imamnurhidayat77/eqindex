@@ -1,0 +1,33 @@
+/* 2D print-area editor (one slot, drawn to scale). */
+.wrap { display: grid; justify-items: center; padding: 26px 0 6px; }
+.area {
+  position: relative; touch-action: none; user-select: none;
+  background:
+    linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px) 0 0 / 10% 10%,
+    linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px) 0 0 / 10% 10%,
+    #121212;
+  border: 1px dashed rgba(255,196,0,.45); border-radius: 6px;
+}
+.area:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+
+.guideV, .guideH { position: absolute; background: rgba(255,255,255,.08); pointer-events: none; transition: background-color 120ms ease-out; }
+.guideV { left: 50%; top: 0; bottom: 0; width: 1px; }
+.guideH { top: 50%; left: 0; right: 0; height: 1px; }
+.guideOn { background: #FFC400; }
+
+.logo { position: absolute; outline: 1px solid rgba(255,196,0,.9); }
+.logo img { display: block; width: 100%; height: 100%; object-fit: contain; cursor: grab; touch-action: none; }
+.logo img:active { cursor: grabbing; }
+
+/* Handles: 10px visual, 24px hit area via the pseudo-element. */
+.handle, .knob { position: absolute; width: 10px; height: 10px; background: #FFC400; border: 1px solid #101010; touch-action: none; }
+.handle::after, .knob::after { content: ''; position: absolute; inset: -7px; }
+.handle { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.knob { left: 50%; top: -22px; margin-left: -5px; border-radius: 50%; cursor: grab; }
+.knob::before { content: ''; position: absolute; left: 4px; top: 10px; width: 1px; height: 12px; background: rgba(255,196,0,.9); }
+
+.dims { position: absolute; right: 6px; bottom: 4px; font-size: 10px; letter-spacing: .04em; color: #888; pointer-events: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .guideV, .guideH { transition: none; }
+}

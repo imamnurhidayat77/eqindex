@@ -9,6 +9,12 @@ import { checkoutBase, nzd, stripeCheckoutUrl } from '../lib/figma-data';
 import { Icon, SiteFooter, SiteHeader } from './figma';
 import { useToast } from './Toaster';
 import accent from './PayAccent.module.css';
+import { useAuthed } from '../lib/use-authed';
+import { safeError } from '../lib/errors';
+
+// reel_products.coverage is 'ring' | 'full' (migration 060).
+const COVERAGE_LABEL = { ring: 'In the ring', full: 'Warm-up, ring and behind the scenes' };
+const coverageText = (p) => [COVERAGE_LABEL[p.coverage], p.includes_raw ? 'Raw footage included' : null].filter(Boolean).join(' · ');
 
 const MUSIC = [
   ['choose_for_me', 'Choose for me', 'Our editor selects a licensed track that fits.'],
@@ -18,6 +24,7 @@ const MUSIC = [
 
 export default function PreBookClient({ events, products }) {
   const toast = useToast();
+  const { user } = useAuthed();
   const [eventId, setEventId] = useState(null);
   const [productId, setProductId] = useState(products[0]?.id || '');
   const [music, setMusic] = useState('choose_for_me');
@@ -53,7 +60,7 @@ export default function PreBookClient({ events, products }) {
       eventName: event.name,
       eventMeta: `${d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long', year: 'numeric' }) : ''} · ${event.venue || ''}`.trim(),
       coverage: product.name,
-      delivery: [product.coverage, product.includes_raw ? 'Raw footage included' : null].filter(Boolean).join(' · ') || product.description || '',
+      delivery: coverageText(product) || product.description || '',
       total: nzd(product.price_cents),
     };
   }, [event, product]);
@@ -69,7 +76,8 @@ export default function PreBookClient({ events, products }) {
       back_number: String(fd.get('backNumber') || ''),
       shooting_date: String(fd.get('date') || ''),
       phone: String(fd.get('phone') || ''),
-      // No email field — receipt and timing confirmation go to the account email (see /api/reel-orders fallback).
+      // Signed in: receipt goes to the account email. Guests must give one.
+      email: user ? undefined : String(fd.get('email') || '').trim() || undefined,
       music_mode: music,
       music_title: music === 'title' ? String(fd.get('musicTitle') || '') : undefined,
       notes: notes || undefined,
@@ -182,8 +190,8 @@ export default function PreBookClient({ events, products }) {
                     onClick={() => { setProductId(p.id); setAdded(false); }}>
                     <span className="coverage-check" />
                     <strong>{p.name}</strong>
-                    <p>{p.description || p.coverage || ''}</p>
-                    <small>{[p.coverage, p.includes_raw ? 'Raw footage' : null].filter(Boolean).join(' · ')}</small>
+                    <p>{p.description || ''}</p>
+                    <small>{coverageText(p)}</small>
                     <b>{nzd(p.price_cents)}</b>
                   </button>
                 ))}
@@ -201,6 +209,7 @@ export default function PreBookClient({ events, products }) {
                 <label className="booking-field"><span>Back number</span><input name="backNumber" placeholder="e.g. 214" /></label>
                 <label className="booking-field"><span>Competition date</span><DateField name="date" key={event?.id || 'none'} defaultValue={(event?.date_start || '').slice(0, 10)} /></label>
                 <label className="booking-field"><span>Phone</span><input name="phone" required type="tel" placeholder="+64" /></label>
+                {!user && <label className="booking-field"><span>Email for receipt</span><input name="email" required type="email" autoComplete="email" placeholder="you@example.nz" /></label>}
               </div>
             </section>
             <section>
@@ -264,7 +273,7 @@ export default function PreBookClient({ events, products }) {
               <Icon name="cart" size={15} />
             </button>
             {needEvent && <p role="alert" style={{ marginTop: 10, color: '#ff9d9d', fontSize: 12 }}>Pick an event from the list first — coverage needs a date and venue.</p>}
-            {buyErr && <p role="alert" style={{ marginTop: 10, color: '#ff9d9d', fontSize: 12 }}>{buyErr === 'login required' ? <Link href="/login?next=/pre-book" style={{ color: '#fff', borderBottom: '1px solid #555' }}>Sign in to book</Link> : buyErr}</p>}
+            {buyErr && <p role="alert" style={{ marginTop: 10, color: '#ff9d9d', fontSize: 12 }}>{buyErr === 'login required' ? <Link href="/login?next=/pre-book" style={{ color: '#fff', borderBottom: '1px solid #555' }}>Sign in to book</Link> : safeError(buyErr)}</p>}
             <p className="summary-note">Full payment secures your coverage. We’ll confirm timing by email before the event.</p>
             {added && (
               <Link href="/cart" className="summary-cart-link">Continue to cart <Icon name="arrow" size={15} /></Link>

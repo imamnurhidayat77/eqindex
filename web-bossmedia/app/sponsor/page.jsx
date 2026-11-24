@@ -111,9 +111,10 @@ function GiftForm({ budgets, onSent, flash }) {
     setPack(null);
     if (!effEvent || !subject) return;
     fetch(`${API}/api/credit-packs?event_id=${effEvent}&${scope}_id=${subject.id}`)
-      .then((r) => (r.ok ? r.json() : null)).then((j) => setPack(j?.data || null)).catch(() => {});
+      .then((r) => (r.ok ? r.json() : null)).then((j) => setPack((j?.data || [])[0] || null)).catch(() => {});
   }, [effEvent, subject, scope]);
-  const cost = pack && budget ? Number(pack.slots) * Number(budget.discount_cents || 0) : 0;
+  // Mirrors the server: a gift costs the pack's list price.
+  const cost = pack ? Number(pack.price_cents) || 0 : 0;
   const remaining = budget ? Number(budget.agreed_cents) - Number(budget.spent_cents) : 0;
   const ready = budget && pack && subject && /.+@.+\..+/.test(email.trim()) && cost > 0 && remaining >= cost;
 
@@ -144,9 +145,9 @@ function GiftForm({ budgets, onSent, flash }) {
         <label><span>Budget</span>
           <select value={budgetId} onChange={(e) => setBudgetId(e.target.value)}>
             <option value="">Choose a budget…</option>
-            {(budgets || []).filter((b) => b.status === 'active').map((b) => (
+            {(budgets || []).filter((b) => b.status === 'active' && b.applies_to !== 'merch').map((b) => (
               <option key={b.id} value={b.id}>
-                {b.event_name || 'Any event'} · {nzd(Number(b.agreed_cents) - Number(b.spent_cents))} left · {nzd(b.discount_cents)}/slot
+                {b.event_name || 'Any event'} · {nzd(Number(b.agreed_cents) - Number(b.spent_cents))} left
               </option>
             ))}
           </select>
@@ -376,12 +377,12 @@ export default function SponsorHub() {
                     <div><span>Left</span><strong>{nzd(agreed - spent)}</strong></div>
                   </div>
                   <h2>Event budgets &amp; discounts</h2>
-                  <p style={{ color: '#888', fontSize: 13, margin: '8px 0 16px' }}>Set how much each rider saves per photo — the photographer is still paid in full.</p>
+                  <p style={{ color: '#888', fontSize: 13, margin: '8px 0 16px' }}>Set how much each rider saves per photo (up to half the photo price). The photographer is still paid in full, and Boss Media bills your usage after the event.</p>
                   {!data.budgets.length ? (
                     <p className="empty-note">No budgets yet — contact us to fund your first event.</p>
                   ) : (
                     <div className="table-scroll"><table className="st-table">
-                      <thead><tr><th>Event</th><th>Agreed</th><th>Spent</th><th>Left</th><th>Discount / photo</th><th>Status</th></tr></thead>
+                      <thead><tr><th>For</th><th>Event</th><th>Agreed</th><th>Spent</th><th>Left</th><th>Discount each</th><th>Status</th></tr></thead>
                       <tbody>
                         {data.budgets.map((b) => {
                           const live = currentDollars(b);
@@ -389,6 +390,7 @@ export default function SponsorHub() {
                           const dirty = draft !== live;
                           return (
                           <tr key={b.id}>
+                            <td>{b.applies_to === 'merch' ? 'Merchandise' : 'Photos'}</td>
                             <td>{b.event_name || 'Any event'}</td>
                             <td>{nzd(b.agreed_cents)}</td>
                             <td>{nzd(b.spent_cents)}</td>
@@ -400,7 +402,7 @@ export default function SponsorHub() {
                                   <input type="text" inputMode="decimal" autoComplete="off" value={draft}
                                     onChange={(e) => setDiscounts({ ...discounts, [b.id]: e.target.value })}
                                     style={{ width: 88, background: '#0b0b0b', border: '1px solid #333', color: '#fff', padding: '8px 10px', fontSize: 13, borderRadius: 4 }}
-                                    aria-label={`Discount per photo for ${b.event_name || 'any event'}`} />
+                                    aria-label={`Discount per ${b.applies_to === 'merch' ? 'item' : 'photo'} for ${b.event_name || 'any event'}`} />
                                 </label>
                             <button type="button" className="st-btn-ghost" disabled={saving === b.id || !dirty} onClick={() => saveDiscount(b.id)}>
                               {savedFlash === b.id ? 'Saved ✓' : saving === b.id ? 'Saving…' : 'Save'}

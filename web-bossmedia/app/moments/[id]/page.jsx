@@ -5,17 +5,21 @@ import { SiteFooter, SiteHeader } from '../../../components/figma';
 import SmartImage from '../../../components/SmartImage';
 import ReelPlayer from '../../../components/ReelPlayer';
 import MomentsActions from '../../../components/MomentsActions';
+import { momentTitle } from '../../../lib/moment-share.mjs';
+import { fmtDay } from '../../../lib/format';
+import s from './moment.module.css';
 
 export const revalidate = 30;
 
-export async function generateMetadata({ params }) {
+export async function generateMetadata(props) {
+  const params = await props.params;
   const res = await getJSON(`/api/moments/${params.id}`).catch(() => null);
   const d = res?.data;
   if (!d) return { title: 'Moment not found' };
-  const who = [d.horse, d.rider].filter(Boolean).join(' × ') || 'Community moment';
+  const who = momentTitle(d);
   return {
     title: `${who} — ${d.event_name || 'a New Zealand show'}`,
-    description: `A spectator-shared community moment${d.event_name ? ` from ${d.event_name}` : ''} — free to view, never for sale.`,
+    description: `A spectator-shared community moment${d.event_name ? ` from ${d.event_name}` : ''} — free to view. Sponsors can license it for reposting.`,
     openGraph: {
       title: who,
       description: 'Shared by a spectator on Boss Media.',
@@ -27,11 +31,13 @@ export async function generateMetadata({ params }) {
 // Same editorial skeleton as the buy page (breadcrumb → title → preview +
 // sticky rail), minus commerce: the rail carries context + follows instead
 // of licenses + cart. Kinship without confusion.
-export default async function MomentDetail({ params }) {
+export default async function MomentDetail(props) {
+  const params = await props.params;
   const res = await getJSON(`/api/moments/${params.id}`).catch(() => null);
   const d = res?.data;
   if (!d) notFound();
-  const who = [d.horse, d.rider].filter(Boolean).join(' × ') || 'Untagged moment';
+  const who = momentTitle(d);
+  const date = d.created_at ? fmtDay(d.created_at) : null;
   // Siblings for prev/next browsing (same event, oldest first like the shop).
   // One extra fetch, no new endpoint: moment volumes per event stay small.
   let prev = null, next = null, index = 0, total = 1;
@@ -61,59 +67,49 @@ export default async function MomentDetail({ params }) {
           <div>
             <p className="eyebrow">Community moment</p>
             <h1>{who}</h1>
-            <p>{d.event_name || 'A spectator-shared snapshot'} · Free to view, never for sale</p>
+            <p className={s.sub}>{[d.event_name || 'A spectator-shared snapshot', date].filter(Boolean).join(' · ')}</p>
+            <p className={s.note}>Free to view. Sponsors can license it for reposting.</p>
           </div>
         </div>
         {(prev || next) && (
           <nav className="media-neighbors" aria-label="Browse this event's moments">
             {prev
-              ? <Link href={`/moments/${prev}`} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 44, color: '#aaa', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textDecoration: 'none' }}><span aria-hidden="true">←</span> Prev</Link>
+              ? <Link href={`/moments/${prev}`} className={s.neighbor}><span aria-hidden="true">←</span> Prev</Link>
               : <span />}
             <span>{index} of {total}</span>
             {next
-              ? <Link href={`/moments/${next}`} style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 44, color: '#aaa', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', textDecoration: 'none' }}>Next <span aria-hidden="true">→</span></Link>
+              ? <Link href={`/moments/${next}`} className={s.neighbor}>Next <span aria-hidden="true">→</span></Link>
               : <span />}
           </nav>
         )}
         <div className="media-purchase-layout">
-          <div className="media-preview-column">
+          <div className={`media-preview-column ${s.column}`}>
             {d.kind === 'reel' && d.preview_url ? (
               <ReelPlayer src={d.preview_url} poster={d.thumb_url || null} label="Community moment" />
             ) : (d.preview_url || d.thumb_url) ? (
-              <figure className="purchase-preview">
-                <SmartImage src={d.preview_url || d.thumb_url} alt={[d.horse, d.rider].filter(Boolean).join(' and ') || 'Community moment photo'}
-                  width={d.width || 1600} height={d.height || 1000} sizes="(max-width: 1100px) 100vw, 60vw" />
-                <figcaption style={{
-                  background: 'linear-gradient(transparent, rgba(0,0,0,.55))',
-                  padding: '34px 17px 13px', left: 0, right: 0, bottom: 0,
-                }}>
-                  <span>Community moment</span><span>{d.event_name || ''}</span>
-                </figcaption>
+              <figure className={s.stage}>
+                <SmartImage src={d.preview_url || d.thumb_url} alt={who}
+                  width={d.width || 1600} height={d.height || 1000} sizes="(max-width: 1100px) 100vw, 60vw" priority />
               </figure>
             ) : null}
           </div>
           <aside className="purchase-panel" aria-label="About this moment">
-            <h2 className="purchase-label">About this moment</h2>
-            <div style={{ display: 'grid', gap: 10, fontSize: 13, color: '#bbb' }}>
-              <div>
-                <span style={{ color: '#777', display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em', marginBottom: 4 }}>Event</span>
-                {d.event_slug
-                  ? <Link href={`/events/${d.event_slug}`} style={{ color: '#fff', fontSize: 14, lineHeight: 1.5, overflowWrap: 'anywhere', textDecoration: 'none', borderBottom: '1px solid #444', paddingBottom: 1 }}>{d.event_name}</Link>
-                  : (d.event_name || '—')}
-              </div>
-              {d.class_name && (
+            <MomentsActions id={d.id} horseId={d.horse_id} riderId={d.rider_id} horse={d.horse} rider={d.rider} eventId={d.event_id} eventName={d.event_name} kind={d.kind} thumb={d.preview_url || d.thumb_url || null}>
+              <h2 className="purchase-label">Details</h2>
+              <dl className={s.details}>
                 <div>
-                  <span style={{ color: '#777', display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' }}>Class</span>
-                  <span className="st-chip">{d.class_name}</span>
+                  <dt>Event</dt>
+                  <dd>{d.event_slug
+                    ? <Link href={`/events/${d.event_slug}`} className={s.eventLink}>{d.event_name}</Link>
+                    : (d.event_name || '—')}</dd>
                 </div>
-              )}
-              <div>
-                <span style={{ color: '#777', display: 'block', fontSize: 11, textTransform: 'uppercase', letterSpacing: '.09em' }}>Shared by</span>
-                A spectator · <span className="st-chip">Community</span>
-              </div>
-            </div>
-            <h2 className="purchase-label" style={{ marginTop: 22 }}>Follow the story</h2>
-            <MomentsActions id={d.id} horseId={d.horse_id} riderId={d.rider_id} horse={d.horse} rider={d.rider} eventId={d.event_id} eventName={d.event_name} />
+                {d.rider && <div><dt>Rider</dt><dd>{d.rider}</dd></div>}
+                {d.horse && <div><dt>Horse</dt><dd>{d.horse}</dd></div>}
+                {d.class_name && <div><dt>Class</dt><dd>{d.class_name}</dd></div>}
+                {date && <div><dt>Shared</dt><dd>{date}</dd></div>}
+                <div><dt>Shared by</dt><dd>A spectator · <span className="st-chip">Community</span></dd></div>
+              </dl>
+            </MomentsActions>
           </aside>
         </div>
         <p style={{ marginTop: 26 }}>

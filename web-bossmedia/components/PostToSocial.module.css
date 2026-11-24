@@ -1,0 +1,114 @@
+/* Post-to-social modal. Scoped here because globals.css is frozen.
+   z-index 250 keeps it above the watchlist lightbox (200), which can open it. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, .72);
+  animation: fadeIn 160ms ease-out;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: #101010;
+  border: 1px solid #2c2c2c;
+  border-radius: 14px;
+  animation: rise 200ms cubic-bezier(.23, 1, .32, 1);
+}
+
+/* Fixed-height stage: portrait shots letterbox instead of pushing the form
+   below the fold. */
+.hero {
+  position: relative;
+  height: clamp(180px, 36vh, 320px);
+  background: #000;
+  border-bottom: 1px solid #2c2c2c;
+}
+.heroImg { object-fit: contain; }
+
+.close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .25);
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+.close:hover { background: rgba(0, 0, 0, .8); }
+
+.body { padding: 18px 22px 22px; }
+.title { margin: 0; font-size: 20px; color: #fff; }
+.meta { margin: 6px 0 0; color: #bbb; font-size: 13px; line-height: 1.6; }
+.meta strong { color: #fff; }
+.gap { margin-top: 14px; }
+
+.providers { display: flex; gap: 8px; margin-top: 14px; }
+.providers > button { flex: 1; min-width: 0; }
+
+.field { display: grid; gap: 6px; margin-top: 12px; }
+.label { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: .09em; }
+.input {
+  color: #fff;
+  background: #0b0b0b;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  transition: border-color 150ms ease-out;
+}
+.input:focus-visible { outline: none; border-color: #e3b341; }
+.single { resize: none; }
+
+.wide {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 46px;
+  margin-top: 14px;
+  text-decoration: none;
+}
+
+.done { padding: 30px 26px 26px; text-align: center; }
+.check {
+  display: inline-grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #8fd694;
+  color: #101010;
+  font-size: 24px;
+  font-weight: 700;
+}
+.doneTitle { margin: 6px 0 0; font-size: 24px; color: #fff; }
+.doneActions { display: grid; gap: 10px; margin-top: 20px; }
+.doneActions .wide { margin-top: 0; }
+
+@media (max-width: 480px) {
+  .backdrop { padding: 12px; }
+  .dialog { max-height: calc(100dvh - 24px); }
+  .body { padding: 16px; }
+}
+
+@keyframes fadeIn { from { opacity: 0; } }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop, .dialog { animation: none; }
+}

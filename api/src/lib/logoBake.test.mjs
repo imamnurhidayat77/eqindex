@@ -10,9 +10,9 @@ import { LOGO_VARIANTS, VARIANT_TO_TEMPLATE, templateOf, isVariant, bakeVariant 
 const here = dirname(fileURLToPath(import.meta.url));
 const jsx = readFileSync(join(here, '..', '..', '..', 'web-bossmedia', 'components', 'SponsorTemplates.jsx'), 'utf8');
 
-test('19 variants, unique ids', () => {
-  assert.equal(LOGO_VARIANTS.length, 19);
-  assert.equal(new Set(LOGO_VARIANTS).size, 19);
+test('33 variants, unique ids', () => {
+  assert.equal(LOGO_VARIANTS.length, 33);
+  assert.equal(new Set(LOGO_VARIANTS).size, 33);
 });
 
 test('backend variant list + mapping mirror the frontend (drift guard)', () => {

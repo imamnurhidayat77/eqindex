@@ -8,6 +8,7 @@ import MomentsStrip from './MomentsStrip';
 import FollowButton from './FollowButton';
 import SaveButton from './SaveButton';
 import SearchSelect from './SearchSelect';
+import d from './EventDetail.module.css';
 
 const LIMIT = 24;
 
@@ -50,8 +51,8 @@ export default function EventDetailClient({ event, media }) {
           <div className="event-media-header">
             <div>
               <Link href="/events" className="event-collection-back">← Event galleries</Link>
-              <p className="eyebrow">{event.name} / {event.year}</p>
-              <h2>Photos &amp; reels.</h2>
+              <p className="eyebrow">Photos &amp; reels{event.year ? ` / ${event.year}` : ''}</p>
+              <h1 className={d.title}>{event.name}</h1>
             </div>
             <p>Select an image to preview. High-resolution downloads are available after purchase.</p>
             <p style={{ marginTop: 10 }}>

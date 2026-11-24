@@ -1517,7 +1517,7 @@ module.exports = function mountAdminRoutes(app) {
       if (!u.rows.length) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'applicant has no account yet — ask them to register first' }); }
       const user = u.rows[0];
       const existing = await client.query(
-        'SELECT id, is_active FROM sponsors WHERE user_id = $1 ORDER BY is_active DESC LIMIT 1', [user.id]);
+        "SELECT id, is_active FROM sponsors WHERE user_id = $1 AND kind = 'official' ORDER BY is_active DESC LIMIT 1", [user.id]);
       let sponsor;
       if (existing.rows.length && existing.rows[0].is_active) {
         await client.query('ROLLBACK'); return res.status(409).json({ error: 'user is already an active sponsor' });
@@ -1557,6 +1557,7 @@ module.exports = function mountAdminRoutes(app) {
       `SELECT s.*, u.email AS user_email,
         (SELECT COUNT(*)::INT FROM sponsor_budgets b WHERE b.sponsor_id = s.id) AS budgets
        FROM sponsors s LEFT JOIN users u ON u.id = s.user_id
+       WHERE s.kind = 'official'
        ORDER BY s.created_at DESC LIMIT 100`);
     res.json({ data: rows });
   }));
@@ -1587,8 +1588,16 @@ module.exports = function mountAdminRoutes(app) {
     const { rows } = await pool.query(
       'UPDATE events SET organizer_id = $2 WHERE id = $1 RETURNING id, name, organizer_id',
       [req.params.id, organizer_id || null]);
-    audit(req, 'event.link_organizer', 'event', req.params.id, { organizer_id: organizer_id || null });
-    res.json({ data: rows[0] });
+    // Sales made before this link: pay the organizer share now if we're
+    // still inside the claim window (see wallet.releaseLateOrganizerShares).
+    let lateShare = null;
+    if (organizer_id) {
+      try {
+        lateShare = await require('../lib/wallet').releaseLateOrganizerShares(pool, req.params.id);
+      } catch (e) { console.error('[organizer] late share release failed:', e.message); }
+    }
+    audit(req, 'event.link_organizer', 'event', req.params.id, { organizer_id: organizer_id || null, late_share: lateShare });
+    res.json({ data: { ...rows[0], late_share: lateShare } });
   }));
 
   // Mint a venue-QR upload code for any event (idempotent — an event that

@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import StudioShell, { Chip, Pager } from '../../../components/studio';
 import { useNotify } from '../../../components/Toaster';
 import { useConfirm } from '../../../components/ConfirmModal';
-import { dayOf, nzdc, studio } from '../../../lib/studio';
+import { studio } from '../../../lib/studio';
+import { fmtDay, statusLabel } from '../../../lib/studio-format.mjs';
 import { useDocumentTitle } from '../../../lib/use-document-title';
 
 const LIMIT = 20;
@@ -21,7 +22,7 @@ const ORDER = ['awaiting_payment', 'pending', 'in_production', 'ready', 'deliver
 
 // Human verbs for the state machine — the raw status names are for the API.
 const ACTION = {
-  pending: 'Confirm payment',
+  pending: 'Accept order',
   in_production: 'Start work',
   ready: 'Mark ready',
   delivered: 'Deliver to buyer',
@@ -70,7 +71,7 @@ export default function ReelsPage() {
         <button className="st-btn-ghost" style={!filter ? { borderColor: '#fff' } : undefined} onClick={() => setFilter('')}>All ({(orders || []).length})</button>
         {ORDER.filter((s) => counts[s]).map((s) => (
           <button key={s} className="st-btn-ghost" style={filter === s ? { borderColor: '#fff' } : undefined} onClick={() => setFilter(filter === s ? '' : s)}>
-            {actionLabel(s)} ({counts[s]})
+            {statusLabel(s)} ({counts[s]})
           </button>
         ))}
       </div>
@@ -83,7 +84,7 @@ export default function ReelsPage() {
       ) : (
         <div className="st-card" style={{ padding: '6px 22px' }}>
           <div className="table-scroll"><table className="st-table">
-            <thead><tr><th>Order</th><th>Rider / horse</th><th>Event</th><th>Status</th><th>Payment</th><th></th></tr></thead>
+            <thead><tr><th>Order</th><th>Rider / horse</th><th>Event</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {pageOrders.map((o) => (
                 <OrderRow key={o.id} o={o} busy={busyId === o.id} onAdvance={advance} onMediaLinked={setOrderMedia} />
@@ -135,34 +136,40 @@ function OrderRow({ o, busy, onAdvance, onMediaLinked }) {
     <tr>
       <td>
         <div style={{ fontWeight: 600 }}>{o.product_name}</div>
-        <div style={{ color: '#777', fontSize: 11 }}>{o.horse_name || ''}{o.class_name ? ` · ${o.class_name}` : ''} · {dayOf(o.created_at)}</div>
+        <div style={{ color: '#9a9a9a', fontSize: 11 }}>{o.class_name ? `${o.class_name} · ` : ''}ordered {fmtDay(o.created_at)}</div>
       </td>
       <td>{[o.rider_name, o.horse_name].filter(Boolean).join(' / ') || '—'}</td>
       <td>{o.event_name || '—'}</td>
-      <td><Chip status={o.status} /></td>
-      <td><Chip status={o.payment_status || 'unknown'} /></td>
+      <td>
+        <Chip status={o.status} />
+        {o.payment_status === 'refunded' && <> <Chip status="refunded" /></>}
+      </td>
       <td style={{ whiteSpace: 'nowrap' }}>
-        {nexts.filter((s) => s !== 'cancelled').map((s) => (
+        {/* Payment is confirmed by Stripe, never by hand: the API refuses until the purchase is paid. */}
+        {o.status === 'awaiting_payment' && o.payment_status !== 'paid' && (
+          <span style={{ color: '#9a9a9a', fontSize: 12, marginRight: 12 }}>Waiting for the buyer to pay</span>
+        )}
+        {nexts.filter((s) => s !== 'cancelled' && !(s === 'pending' && o.payment_status !== 'paid')).map((s, i) => (
           s === 'ready' && !o.media_id && !linking ? (
-            <button key={s} className="st-btn-ghost" style={{ minHeight: 36, marginRight: 8 }} disabled={busy} onClick={() => startLinking('link')}>Link reel…</button>
+            <button key={s} className={i === 0 ? 'st-btn' : 'st-btn-ghost'} style={{ minHeight: 36, marginRight: 8 }} disabled={busy} onClick={() => startLinking('link')}>Link finished reel…</button>
           ) : (
-            <button key={s} className="st-btn-ghost" style={{ minHeight: 36, marginRight: 8 }} disabled={busy}
+            <button key={s} className={i === 0 ? 'st-btn' : 'st-btn-ghost'} style={{ minHeight: 36, marginRight: 8 }} disabled={busy}
               onClick={() => onAdvance(o, s, s === 'ready' && mediaId ? { media_id: mediaId } : {})}>
               {busy ? '…' : actionLabel(s)}
             </button>
           )
         ))}
+        {o.media_id && o.status !== 'delivered' && (
+          <button className="st-btn-ghost" style={{ minHeight: 36, marginRight: 8 }} disabled={busy} onClick={() => startLinking('change')}>Replace reel</button>
+        )}
         {nexts.includes('cancelled') && (
           <>
-            <button className="st-btn-ghost st-btn-danger" style={{ minHeight: 36 }} disabled={busy} onClick={async () => {
+            <button type="button" style={{ minHeight: 36, padding: 0, background: 'none', border: 0, color: '#e08a8a', fontSize: 12, fontWeight: 600, cursor: 'pointer' }} disabled={busy} onClick={async () => {
               const ok = await dialog.confirm({ title: 'Cancel this order?', message: 'The buyer is not refunded automatically — handle the refund in Stripe if needed.', confirmLabel: 'Cancel order', danger: true });
               if (ok) onAdvance(o, 'cancelled');
             }}>Cancel order</button>
             {confirmUI}
           </>
-        )}
-        {o.media_id && o.status !== 'delivered' && (
-          <button className="st-btn-ghost" style={{ minHeight: 36, marginRight: 8 }} disabled={busy} onClick={() => startLinking('change')}>Change…</button>
         )}
         {linking && (
           <div className="st-modal" role="dialog" aria-modal="true" aria-label="Choose the finished reel"

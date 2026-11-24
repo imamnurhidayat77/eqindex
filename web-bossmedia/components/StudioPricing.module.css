@@ -1,0 +1,71 @@
+/* Pricing page: section jump links, switches, unsaved-row cue. */
+.jump { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 22px; font-size: 12px; font-weight: 600; }
+.jump a { color: #bbb; padding-bottom: 3px; border-bottom: 1px solid #444; }
+@media (hover: hover) and (pointer: fine) { .jump a:hover { color: #fff; } }
+.section { scroll-margin-top: 96px; }
+
+.rowNote { margin-top: 4px; color: #9a9a9a; font-size: 11px; line-height: 1.5; }
+.inlineLink { padding: 0; border: 0; background: none; color: #fff; font-size: 11px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.deleteLink { margin-left: 14px; padding: 0; border: 0; background: none; color: #e08a8a; font-size: 12px; font-weight: 600; cursor: pointer; }
+
+.unsaved { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #6b5836; color: #e0b96a; font-size: 12px; }
+.dirtyRow td:first-child { box-shadow: inset 2px 0 0 #e0b96a; }
+
+.toggle { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: #9a9a9a; font-size: 12px; cursor: pointer; }
+.toggle .knob { position: relative; width: 30px; height: 18px; border-radius: 9px; background: #333; transition: background-color 160ms ease-out; }
+.toggle .knob::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #999; transition: transform 160ms ease-out, background-color 160ms ease-out; }
+.toggle[aria-checked='true'] { color: #fff; }
+.toggle[aria-checked='true'] .knob { background: #fff; }
+.toggle[aria-checked='true'] .knob::after { transform: translateX(12px); background: #101010; }
+.toggle:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.toggleText { min-width: 22px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .toggle .knob, .toggle .knob::after { transition: none; }
+}
+
+/* Compact controls on this page only: 40px selects and inputs. */
+.page :global(.ss-btn) { min-height: 40px; padding: 0 12px; font-size: 13px; background: #101010; }
+.page :global(.ss-clear) { right: 30px; }
+
+/* Download price cards: photo and reel side by side, stacked on phones. */
+.priceGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.priceCard { display: flex; flex-direction: column; gap: 16px; padding: 18px; border: 1px solid #2a2a2a; background: #0c0c0c; }
+.priceCardCompact { grid-column: 1 / -1; }
+.priceHead h4 { margin: 0; font-size: 15px; font-weight: 700; }
+.priceHead small { display: block; margin-top: 4px; color: #9a9a9a; font-size: 12px; line-height: 1.5; }
+.priceFields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+.priceFields > button { margin-left: auto; min-height: 40px; }
+.legacy { margin-top: 12px; color: #9a9a9a; font-size: 12px; line-height: 1.5; }
+
+/* Labelled field: small caps label above the control. */
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field > span:first-child { color: #9a9a9a; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.field input { width: 100%; height: 40px; padding: 0 12px; color: #fff; background: #101010; border: 1px solid #333; outline: 0; font-size: 13px; }
+.field input:focus-visible { border-color: #777; }
+.priceFields .field { width: 150px; }
+.priceFields .field:nth-child(2) { width: 190px; }
+
+.money { display: flex; align-items: stretch; height: 40px; border: 1px solid #333; background: #101010; }
+.money:focus-within { border-color: #777; }
+.money i { display: grid; place-items: center; padding: 0 10px; color: #9a9a9a; font-size: 12px; font-style: normal; border-right: 1px solid #2a2a2a; }
+.money input { height: 100%; border: 0; font-variant-numeric: tabular-nums; }
+.money input:focus-visible { border: 0; }
+
+/* Add forms: one panel, labelled fields on a grid. */
+.formTitle { margin: 26px 0 10px; color: #9a9a9a; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.form { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; align-items: end; padding: 16px; border: 1px solid #262626; background: #0c0c0c; }
+.fieldWide { grid-column: span 2; }
+.form > button { min-height: 40px; }
+
+.status { width: 140px; }
+.rowActions { display: inline-flex; align-items: center; white-space: nowrap; }
+.rowActions :global(.st-btn-ghost) { min-height: 34px; padding: 0 14px; font-size: 12px; }
+
+@media (max-width: 720px) {
+  .priceGrid { grid-template-columns: 1fr; }
+  .priceFields .field, .priceFields .field:nth-child(2) { width: 100%; }
+  .priceFields > button { width: 100%; margin-left: 0; }
+  .form { grid-template-columns: 1fr; padding: 14px; }
+  .fieldWide { grid-column: auto; }
+}

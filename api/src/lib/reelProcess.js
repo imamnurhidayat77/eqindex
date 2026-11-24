@@ -112,4 +112,33 @@ async function renderPoster(previewBuffer, atSeconds = 1) {
   return buffer;
 }
 
-module.exports = { probeDims, renderPreview, renderPoster, PREVIEW_WIDTH };
+const BRANDED_TIMEOUT_MS = 30 * 60 * 1000;
+const BRANDED_CRF = '18'; // visually lossless: this is the file a sponsor reposts
+
+// Full-resolution copy with the Boss Media corner badge (community sponsor
+// repost download). Renders to a temp file and returns its path; the caller
+// uploads it as a stream and deletes it. Dimensions are rounded to even for
+// yuv420p; the badge sits bottom-right, `pad` px from the edges.
+async function renderBranded(inputStream, badgePngPath, pad) {
+  const os = require('node:os');
+  const path = require('node:path');
+  const fs = require('node:fs');
+  const outPath = path.join(os.tmpdir(), `eqindex-branded-${process.pid}-${Date.now()}.mp4`);
+  try {
+    await runFfmpeg([
+      '-hide_banner', '-i', 'pipe:0', '-i', badgePngPath, '-filter_complex',
+      '[0:v]scale=trunc(iw/2)*2:trunc(ih/2)*2[base];' +
+      `[base][1:v]overlay=main_w-overlay_w-${pad}:main_h-overlay_h-${pad}:format=auto,format=yuv420p[v]`,
+      '-map', '[v]', '-map', '0:a?',
+      '-c:v', 'libx264', '-preset', 'medium', '-crf', BRANDED_CRF,
+      '-c:a', 'aac', '-b:a', '192k',
+      '-movflags', '+faststart', '-f', 'mp4', outPath,
+    ], inputStream, { timeoutMs: BRANDED_TIMEOUT_MS });
+    return outPath;
+  } catch (e) {
+    await fs.promises.unlink(outPath).catch(() => {});
+    throw e;
+  }
+}
+
+module.exports = { probeDims, renderPreview, renderPoster, renderBranded, PREVIEW_WIDTH };

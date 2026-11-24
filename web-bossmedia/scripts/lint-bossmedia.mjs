@@ -41,7 +41,7 @@ if (!/unoptimized\s*:\s*false/.test(nextConfig)) {
 // 3. engines.node >= 18
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 const engines = pkg.engines?.node ?? '';
-const min = Math.min(...[...engines.matchAll(/(\d+)/g)].map((m) => Number(m[1])));
+const min = Math.min(...[...engines.matchAll(/(?<![.\d])(\d+)/g)].map((m) => Number(m[1])));
 if (!engines || Number.isNaN(min) || min < 18) {
   fail(`package.json engines.node "${engines}" harus >=18`);
 }

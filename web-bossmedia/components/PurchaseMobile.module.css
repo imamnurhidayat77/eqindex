@@ -1,0 +1,14 @@
+/* Phone layout for the photo page: the preview hugs the photo instead of a
+   tall letterbox, and a sticky bar keeps the price + buy action in reach
+   until the real button scrolls into view. */
+@media (max-width: 900px) {
+  .preview { min-height: 0; }
+  .preview > img { height: auto; min-height: 0; max-height: 70vh; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; align-items: center; gap: 12px; padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: rgba(11, 11, 11, .96); border-top: 1px solid #2a2a2a; animation: rise 200ms cubic-bezier(.23, 1, .32, 1); }
+  .bar strong { flex: 1; color: #fff; font-size: 15px; }
+  .bar button { min-height: 46px; padding: 0 18px; border: 0; background: #e8b547; color: #0b0b0b; font-size: 14px; font-weight: 700; cursor: pointer; }
+  .bar button:active { transform: scale(.97); }
+}
+@media (min-width: 901px) { .bar { display: none; } }
+@keyframes rise { from { transform: translateY(100%); } }
+@media (prefers-reduced-motion: reduce) { .bar { animation: none; } }

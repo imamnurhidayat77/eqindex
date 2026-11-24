@@ -33,3 +33,20 @@ export function isValidEmail(v) {
 }
 
 export const EMAIL_ERROR = 'Enter a valid email address.';
+
+// Post-login redirect target: same-site paths only. Browsers read "/\" like
+// "//" (protocol-relative), so backslashes and control characters are out.
+export function safeNext(v, fallback = '/media') {
+  const s = String(v || '');
+  if (!s.startsWith('/') || s.startsWith('//') || /[\\\u0000-\u001f]/.test(s)) return fallback;
+  if (s === '/login' || s === '/register') return fallback;
+  return s;
+}
+
+// Where each role lands after signing in when no deep link asked otherwise.
+export function homeForRole(role) {
+  if (role === 'ADMIN' || role === 'PHOTOGRAPHER') return '/studio';
+  if (role === 'ORGANIZER') return '/organizer';
+  if (role === 'SPONSOR') return '/sponsor';
+  return '/media';
+}

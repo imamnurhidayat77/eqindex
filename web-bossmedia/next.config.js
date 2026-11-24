@@ -2,6 +2,9 @@
 const API_URL = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 module.exports = {
+  // The project root AGENTS.md governs agents; keep `next dev` from writing
+  // its own copy into this folder.
+  agentRules: false,
   async rewrites() {
     // Same-origin API proxy (same pattern as EQIndex web): browser calls
     // /api/* first-party, server forwards to Cloud Run. Session cookies stay
@@ -27,11 +30,16 @@ module.exports = {
       "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
-      'img-src \'self\' data: https:',
+      // blob: is required by the 3D merch preview: GLTFLoader unpacks the
+      // textures embedded in every .glb into blob: URLs and fetches them,
+      // and buyer-uploaded club logos are local blob: URLs. Without it the
+      // production build renders every model untextured and club uploads
+      // fail to load (dev has no CSP, so it only shows in prod).
+      "img-src 'self' data: https: blob:",
       "media-src 'self' https: blob:",
       // https: extra allows the browser's direct-to-R2 video PUTs (venue-QR
       // and studio reel flows both use presigned URLs, never the API proxy).
-      "connect-src 'self' https:",
+      "connect-src 'self' https: blob:",
       "frame-ancestors 'none'",
     ].join('; ');
     return [{
@@ -45,13 +53,5 @@ module.exports = {
         { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
       ],
     }];
-  },
-  // Dev-only: no persistent webpack cache. The shared .next cache folder
-  // kept getting poisoned when switching between `next start` and
-  // `next dev` (stale chunks -> `__webpack_modules__ is not a function`
-  // and 500s on CSS). Production builds are unaffected.
-  webpack(config, { dev }) {
-    if (dev) config.cache = false;
-    return config;
   },
 };

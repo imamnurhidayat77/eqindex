@@ -3,7 +3,7 @@
    Semua ukuran overlay memakai cqw (container query units): 1cqw = 1% dari
    lebar bingkai, jadi template membesar/mengecil proporsional ikut foto —
    thumbnail 118px maupun preview 700px selalu proporsional. */
-.st-frame { position: relative; overflow: hidden; border-radius: min(10px, 8%); background: #20242a; isolation: isolate; width: 100%; container-type: inline-size; }
+.st-frame { --s: calc(var(--k, 1) * 1cqw); position: relative; overflow: hidden; border-radius: min(10px, 8%); background: #20242a; isolation: isolate; width: 100%; container-type: inline-size; }
 .st-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .st-photo-ph { display: grid; place-items: center; background: linear-gradient(135deg, #7a6a4a 0%, #3d4a2a 45%, #1d2a3a 100%); }
 .st-photo-ph span { color: rgba(255,255,255,.5); letter-spacing: .35em; font-size: 2.2cqw; font-weight: 700; }
@@ -17,11 +17,6 @@
 .st-logos { display: inline-flex; align-items: center; gap: 1.4cqw; flex-wrap: nowrap; }
 .st-logos > * { min-width: 0; flex-shrink: 1; }
 .st-logo-img { height: 4.6cqw; width: auto; max-width: 20cqw; object-fit: contain; }
-.st-logo-default { display: inline-flex; align-items: center; gap: 1.4cqw; color: #0e2233; }
-.st-logo-default > svg { width: 6cqw; height: auto; }
-.st-logo-words { display: inline-flex; flex-direction: column; line-height: 1; }
-.st-logo-words strong { font-size: 3cqw; font-weight: 900; letter-spacing: -.01em; }
-.st-logo-words small { font-size: 1.4cqw; letter-spacing: .42em; color: #0e2233; margin-top: 0.35cqw; }
 .st-logo-cell { position: relative; display: inline-flex; margin-right: 4.6cqw; }
 .st-logo-cell:last-child { margin-right: 0; }
 
@@ -152,7 +147,6 @@
 .st-compact .st-event, .st-compact .st-class, .st-compact .st-subject,
 .st-compact .st-side-event, .st-compact .st-side-class, .st-compact .st-eventline,
 .st-compact .st-minclass, .st-compact .st-swoosh-lockup small, .st-compact .st-drape-lockup small,
-.st-compact .st-logo-words small { display: none; }
 .st-compact .st-side, .st-compact .st-wside { width: 36%; }
 .st-compact .st-wpanel { width: 34%; }
 .st-compact .st-badge { width: 54%; }
@@ -192,5 +186,131 @@
 .st-badge.pos-br { top: auto; left: auto; right: 0; bottom: 0; border-radius: 4.2cqw 0 0 1.8cqw; border-right: 0; border-bottom: 0; border-top: 3px solid #d4a017; border-left: 3px solid #d4a017; }
 .st-minimal.pos-bl { top: auto; right: auto; left: 2.2cqw; bottom: 2.2cqw; }
 .st-minimal.pos-br { top: auto; right: 2.2cqw; bottom: 2.2cqw; }
-.st-logo-default.light { color: #fff; }
-.st-logo-default.light .st-logo-words small { color: #fff; }
+
+/* — empty slot: shown until a sponsor is picked (never baked) — */
+.st-logo-default { display: inline-flex; align-items: center; justify-content: center; padding: 0.8cqw 1.8cqw; border: 1.5px dashed rgba(14,34,51,.55); border-radius: 0.8cqw; color: #0e2233; font-size: 1.5cqw; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; opacity: .75; }
+.st-logo-default.light { color: #fff; border-color: rgba(255,255,255,.7); }
+.st-row .st-logo-default { height: calc(var(--s) * var(--lh)); font-size: calc(var(--s) * 1.5); padding: 0 calc(var(--s) * 2); border-radius: calc(var(--s) * 0.8); }
+
+/* — current templates (layout kit) —
+   --s = 1% of the photo's SHORT edge, so portrait and landscape photos
+   carry the same weight. Every size here has a twin in the KIT section of
+   api/src/lib/logoBake.js. Container sizes come from kitLayout() in JS. */
+.st-info { display: flex; flex-direction: column; gap: calc(var(--s) * 0.8); min-width: 0; max-width: 100%; }
+.st-info > * { display: block; max-width: 100%; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-info-event { font-size: calc(var(--s) * var(--ie)); font-weight: 800; letter-spacing: .14em; text-transform: uppercase; line-height: 1.2; }
+.st-info-moment { font-size: calc(var(--s) * var(--im)); font-weight: 800; letter-spacing: .02em; text-transform: uppercase; line-height: 1.05; }
+.st-info-class { font-size: calc(var(--s) * var(--ic)); font-weight: 700; line-height: 1.2; }
+.on-dark .st-info-event { color: rgba(255,255,255,.78); }
+.on-dark .st-info-moment { color: #f2cd6b; }
+.on-dark .st-info-class { color: #fff; }
+.on-light .st-info-event { color: #5a6470; }
+.on-light .st-info-moment { color: #9a6f00; }
+.on-light .st-info-class { color: #0e2233; }
+
+.st-sp { display: flex; flex-direction: column; align-items: var(--jc); gap: calc(var(--s) * 0.9); flex: none; min-width: 0; }
+.st-sp small { font-size: calc(var(--s) * 1.4); font-weight: 800; letter-spacing: .16em; text-transform: uppercase; line-height: 1; white-space: nowrap; color: #0e2233; opacity: .7; }
+.st-row { display: flex; flex-direction: column; align-items: var(--jc); gap: calc(var(--s) * 1.4); }
+.st-line { display: flex; align-items: center; gap: calc(var(--s) * 2); }
+.st-line .st-logo-img { flex: none; height: calc(var(--s) * var(--lh)); width: auto; max-width: calc(var(--s) * var(--lw)); object-fit: contain; }
+.st-card { padding: calc(var(--s) * 1.4) calc(var(--s) * 2.2); background: #fff; border-radius: calc(var(--s) * 1.4); box-shadow: 0 0 0 1px rgba(14,34,51,.12); }
+
+/* Lower third */
+.st-fade { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; background: linear-gradient(180deg, rgba(8,14,22,0) 0%, rgba(8,14,22,.55) 55%, rgba(8,14,22,.82) 100%); pointer-events: none; }
+.st-lower { position: absolute; z-index: 2; left: calc(var(--s) * 4); right: calc(var(--s) * 4); bottom: calc(var(--s) * 4); display: flex; align-items: flex-end; gap: calc(var(--s) * 3); }
+.st-lower > .st-sp { margin-left: auto; }
+
+/* Sponsor bar + gallery mat band share one footer layout */
+.st-bar, .st-band { position: absolute; z-index: 2; bottom: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: calc(var(--s) * 3); }
+.st-bar { left: 0; right: 0; padding: calc(var(--s) * 2.4) calc(var(--s) * 4); background: #fff; border-top: calc(var(--s) * 0.5) solid #d4a017; }
+.st-band { left: calc(var(--s) * 3); right: calc(var(--s) * 3); padding: calc(var(--s) * 3) 0; }
+.st-solo { justify-content: center; }
+.st-matted { background: #fff; }
+.st-window { position: absolute; overflow: hidden; background: #20242a; }
+
+/* Poster */
+.st-postered { background: #0e2233; }
+.st-panel { position: absolute; z-index: 2; box-sizing: border-box; padding: calc(var(--s) * 4); background: #0e2233; display: flex; gap: calc(var(--s) * 3); }
+.st-panel-side { left: 0; top: 0; bottom: 0; flex-direction: column; justify-content: space-between; }
+.st-panel-side > .st-sp { align-self: stretch; margin-top: auto; }
+.st-panel-foot { left: 0; right: 0; bottom: 0; align-items: center; justify-content: space-between; }
+.st-panel-foot > .st-sp { margin-left: auto; }
+.st-panel-foot.st-solo > .st-sp { margin-right: auto; }
+.st-panel-rule { position: absolute; z-index: 3; background: #d4a017; }
+
+/* Logo plate */
+.st-corner-at { position: absolute; z-index: 2; }
+.st-corner-at.pos-tl { top: calc(var(--s) * 3.5); left: calc(var(--s) * 3.5); }
+.st-corner-at.pos-tr { top: calc(var(--s) * 3.5); right: calc(var(--s) * 3.5); }
+.st-corner-at.pos-bl { bottom: calc(var(--s) * 3.5); left: calc(var(--s) * 3.5); }
+.st-corner-at.pos-br { bottom: calc(var(--s) * 3.5); right: calc(var(--s) * 3.5); }
+.st-tag { box-sizing: border-box; padding: calc(var(--s) * 1.2) calc(var(--s) * 1.8); background: rgba(8,14,22,.72); border-radius: calc(var(--s) * 1.2); }
+.st-tag .st-info-moment { color: #f2cd6b; }
+
+/* Light / dark styles for the picker templates (bake mirrors each colour). */
+.st-fade-light { background: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.6) 55%, rgba(255,255,255,.9) 100%); }
+.st-bar.st-surf-dark { background: #0e2233; }
+.st-bar-top { top: 0; bottom: auto; border-top: 0; border-bottom: calc(var(--s) * 0.5) solid #d4a017; }
+.st-panel-light { background: #fff; }
+.st-tag-light { background: rgba(255,255,255,.92); }
+.st-tag-light .st-info-moment { color: #9a6f00; }
+
+/* Side column: sponsors stacked on a card, centred on the right edge. */
+.st-col { position: absolute; z-index: 2; right: calc(var(--s) * 3.5); top: 50%; transform: translateY(-50%); }
+
+/* Ribbon: flush with the left edge, notched end, gold leading edge. */
+.st-ribbon { position: absolute; z-index: 2; left: 0; top: calc(var(--s) * 4); box-sizing: border-box;
+  padding: calc(var(--s) * 1.8) calc(var(--s) * 5) calc(var(--s) * 1.8) calc(var(--s) * 3);
+  border-left: calc(var(--s) * 1) solid #d4a017; background: #fff;
+  clip-path: polygon(0 0, 100% 0, calc(100% - var(--s) * 2.5) 50%, 100% 100%, 0 100%); }
+.st-ribbon.st-surf-dark { background: #0e2233; }
+
+/* Split: two-tone band under the photo window. */
+.st-split { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr 1fr; }
+.st-split > div { box-sizing: border-box; min-width: 0; display: flex; align-items: center; padding: 0 calc(var(--s) * 4); }
+.st-split-info { background: #fff; }
+.st-split-sp { justify-content: center; background: #f4f5f7; }
+.st-split-dark .st-split-info { background: #0e2233; }
+.st-split-dark .st-split-sp { background: #fff; }
+.st-split::after { content: ''; position: absolute; top: 0; bottom: 0; left: calc(50% - var(--s) * 0.3); width: calc(var(--s) * 0.6); background: #d4a017; }
+.st-split.st-solo { grid-template-columns: 1fr; }
+.st-split.st-solo::after { display: none; }
+
+/* ── T-series (broadcast, keyline, result-card, rosette, angle). Sizes are
+   in --s; type comes inline from TYPE in SponsorTemplates.jsx. ── */
+.st-t { display: block; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.st-bc-slab { position: absolute; z-index: 2; left: 0; display: flex; flex-direction: column; gap: calc(var(--s) * 0.6);
+  padding: calc(var(--s) * 1.8) calc(var(--s) * 6) calc(var(--s) * 2) calc(var(--s) * 4);
+  clip-path: polygon(0 0, 100% 0, calc(100% - var(--s) * 3) 100%, 0 100%); }
+.st-bc-tab { position: absolute; z-index: 2; left: calc(var(--s) * 4); padding: calc(var(--s) * 0.8) calc(var(--s) * 1.6); background: #d4a017; }
+.st-bc-tick { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; box-sizing: border-box; display: flex; align-items: center;
+  gap: calc(var(--s) * 3); padding: 0 calc(var(--s) * 4); border-top: calc(var(--s) * 0.6) solid #d4a017; }
+.st-bc-label { display: flex; flex-direction: column; flex: none; }
+
+.st-kl-top, .st-kl-bottom { position: absolute; z-index: 1; left: 0; right: 0; pointer-events: none; }
+.st-kl-top { top: 0; height: calc(var(--s) * 22); background: linear-gradient(rgba(0,0,0,.4), rgba(0,0,0,0)); }
+.st-kl-bottom { bottom: 0; height: calc(var(--s) * 45); background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,var(--fo))); }
+/* Box-shadow, not border: fractional borders snap to whole pixels. */
+.st-kl-line { position: absolute; z-index: 2; inset: calc(var(--s) * 3); box-shadow: inset 0 0 0 calc(var(--s) * 0.3) var(--lc); pointer-events: none; }
+.st-kl-event { position: absolute; z-index: 2; left: calc(var(--s) * 5.5); top: calc(var(--s) * 5.5); }
+.st-kl-text { position: absolute; z-index: 2; left: calc(var(--s) * 5.5); bottom: calc(var(--s) * 5.5); display: flex; flex-direction: column; gap: calc(var(--s) * 1); }
+.st-kl-sp { position: absolute; z-index: 2; right: calc(var(--s) * 5.5); bottom: calc(var(--s) * 5.5); }
+
+.st-rc { position: absolute; z-index: 2; left: 0; right: 0; bottom: 0; box-sizing: border-box; display: flex; flex-direction: column;
+  border-top: calc(var(--s) * 0.6) solid; }
+.st-rc-row { display: grid; flex: none; }
+.st-rc-cell { box-sizing: border-box; min-width: 0; display: flex; flex-direction: column; gap: calc(var(--s) * 0.8); padding: calc(var(--s) * 1.8) calc(var(--s) * 3); }
+.st-rc-sp { flex: none; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 calc(var(--s) * 3); }
+.st-rc-label { flex: none; }
+
+.st-ro { position: absolute; z-index: 2; top: calc(var(--s) * 4); right: calc(var(--s) * 4); height: auto; overflow: visible; }
+.st-ro-plate { position: absolute; z-index: 2; left: calc(var(--s) * 4); bottom: calc(var(--s) * 4); display: flex; flex-direction: column;
+  gap: calc(var(--s) * 0.5); padding: calc(var(--s) * 1.8) calc(var(--s) * 2.4); border-radius: calc(var(--s) * 0.8); }
+.st-ro-sp { position: absolute; z-index: 2; right: calc(var(--s) * 4); bottom: calc(var(--s) * 4); }
+
+.st-ag { position: absolute; z-index: 2; left: 0; bottom: 0; box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-end;
+  gap: calc(var(--s) * 0.8); padding-left: calc(var(--s) * 4); padding-bottom: calc(var(--s) * 4.5); }
+.st-ag-bg { position: absolute; inset: 0; z-index: -1; clip-path: polygon(0 0, 100% 0, calc(100% - var(--s) * var(--ht)) 100%, 0 100%); }
+.st-ag-stripe { position: absolute; z-index: -1; top: 0; bottom: 0; left: calc(100% - var(--s) * var(--ht)); width: calc(var(--s) * (var(--ht) + 2.6));
+  clip-path: polygon(calc(var(--s) * (var(--ht) + 1.2)) 0, 100% 0, calc(var(--s) * 2.6) 100%, calc(var(--s) * 1.2) 100%); }

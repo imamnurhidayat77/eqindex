@@ -10,7 +10,8 @@ export const metadata = { title: 'Community moments' };
 
 const LIMIT = 24;
 
-export default async function MomentsFeed({ searchParams }) {
+export default async function MomentsFeed(props) {
+  const searchParams = await props.searchParams;
   const page = Math.max(1, parseInt(searchParams?.page, 10) || 1);
   const eventId = String(searchParams?.event_id || '');
   const q = new URLSearchParams({ limit: String(LIMIT + 1), offset: String((page - 1) * LIMIT) });
@@ -29,7 +30,7 @@ export default async function MomentsFeed({ searchParams }) {
   };
   return (
     <PageShell eyebrow="Community" title={eventName ? `${eventName} moments.` : 'Moments.'} wide
-      intro="Snapshots shared by spectators — free to view, never for sale. Official photos live in the event galleries.">
+      intro="Snapshots shared by spectators — free to view. Sponsors can license them for reposting. Official photos live in the event galleries.">
       {!items.length ? (
         <div className="event-media-empty">
           <p className="eyebrow">{page > 1 ? 'End of moments' : 'Nothing yet'}</p>

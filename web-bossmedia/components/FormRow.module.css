@@ -1,0 +1,5 @@
+/* Three-field form row (globals.css .st-form-row is two columns and frozen).
+   Inline grid styles used to beat the mobile rule and push inputs off screen. */
+.row3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.row3 > *, .row3 input { min-width: 0; }
+@media (max-width: 900px) { .row3 { grid-template-columns: minmax(0, 1fr); } }

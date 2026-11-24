@@ -6,18 +6,19 @@ const { audit } = require('../lib/audit');
 const { resolveId, UUID_RE } = require('../lib/resolve');
 const multer = require('multer');
 const mediaStore = require('../lib/mediaStore');
+const { recordPurchaseSplit, SPONSOR_BUDGET_LIVE_SQL } = require('../lib/wallet');
 
 const logoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024, files: 1 },
 });
 
-// Ownership guard: a sponsor only touches their own profile (ADMIN exempt
-// for support). Missing/inactive profile is 403, like ownPhotographerId.
+// Ownership guard: a sponsor (or admin) only touches their own profile.
+// Missing/inactive profile is 403, like ownPhotographerId. No ADMIN null
+// shortcut: every caller reads sponsor.id, so null crashed them with a 500.
 async function ownSponsor(poolQ, authUser) {
-  if (!authUser || authUser.role === 'ADMIN') return null;
   const { rows } = await poolQ.query(
-    'SELECT id, name FROM sponsors WHERE user_id = $1 AND is_active', [authUser.id]);
+    "SELECT id, name FROM sponsors WHERE user_id = $1 AND kind = 'official' AND is_active ORDER BY created_at LIMIT 1", [authUser?.id]);
   if (!rows.length) {
     const err = new Error('no sponsor profile — ask an admin to approve your application');
     err.status = 403; throw err;
@@ -25,7 +26,28 @@ async function ownSponsor(poolQ, authUser) {
   return rows[0];
 }
 
+// Sponsor gift price: the pack's list price in cents, or 0 when the pack
+// has no usable price/slots (caller refuses the gift). Early-bird prices are
+// a buyer promo and do not apply to sponsor-funded gifts.
+function giftCostCents(pack) {
+  const price = Number(pack?.price_cents);
+  const slots = Number(pack?.slots);
+  if (!Number.isInteger(price) || price <= 0 || !Number.isInteger(slots) || slots <= 0) return 0;
+  return price;
+}
+
 module.exports = function mountUserRoutes(app) {
+  // Self-service display name (receipts, orders). Email changes stay with
+  // support: a new address would need its own inbox proof.
+  app.patch('/api/my/profile', asyncH(async (req, res) => {
+    const uid = needUser(req, res); if (!uid) return;
+    const name = String(req.body?.name ?? '').replace(/\s+/g, ' ').trim();
+    if (!name || name.length > 100) return res.status(400).json({ error: 'name must be 1 to 100 characters' });
+    const { rows } = await pool.query('UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name, email, role', [name, uid]);
+    audit(req, 'user.profile.name', 'user', uid, {});
+    res.json({ data: rows[0] });
+  }));
+
   // Watchlist (entity_type: horse | rider | combination | event)
   app.get('/watchlist', asyncH(async (req, res) => {
     const uid = needUser(req, res); if (!uid) return;
@@ -315,13 +337,13 @@ module.exports = function mountUserRoutes(app) {
   // ---- Sponsor overview (own sponsor only — IDOR guard by session user) ----
   app.get('/sponsor/overview', needRole('SPONSOR'), asyncH(async (req, res) => {
     const s = await pool.query(
-      'SELECT id, name, contact_email, website, is_active, created_at FROM sponsors WHERE user_id = $1 AND is_active ORDER BY created_at DESC LIMIT 1',
+      "SELECT id, name, contact_email, website, is_active, created_at FROM sponsors WHERE user_id = $1 AND kind = 'official' AND is_active ORDER BY created_at LIMIT 1",
       [req.authUser.id]);
     if (!s.rows.length) return res.status(404).json({ error: 'no active sponsor profile — awaiting admin approval' });
     const sponsor = s.rows[0];
     const budgets = await pool.query(
-      `SELECT b.id, b.event_id, b.agreed_cents, b.spent_cents, b.discount_cents, b.status, b.created_at,
-        e.name AS event_name
+      `SELECT b.id, b.event_id, b.agreed_cents, b.spent_cents, b.discount_cents, b.status, b.applies_to,
+        b.ends_on, b.created_at, e.name AS event_name
        FROM sponsor_budgets b LEFT JOIN events e ON e.id = b.event_id
        WHERE b.sponsor_id = $1 ORDER BY b.created_at DESC LIMIT 50`, [sponsor.id]);
     const logos = await pool.query(
@@ -432,9 +454,10 @@ module.exports = function mountUserRoutes(app) {
     res.status(201).json({ data: ins.rows[0] });
   }));
 
-  // ---- PLUS 2: gift winner credits funded by a budget. One discount unit
-  // per gifted slot comes off the budget immediately (same unit the
-  // checkout ledger uses), so the fund can never overspend.
+  // ---- PLUS 2: gift winner credits funded by a budget. The sponsor pays
+  // the pack's list price (never a sponsor-chosen number), recorded as a
+  // paid purchase so the photographer and organizer get their normal split.
+  // The cost comes off the budget immediately, so the fund never overspends.
   const EMAIL_RE_SPONSOR = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   app.post('/sponsor/gifts', needRole('SPONSOR'), asyncH(async (req, res) => {
     const sponsor = await ownSponsor(pool, req.authUser);
@@ -447,8 +470,9 @@ module.exports = function mountUserRoutes(app) {
     try {
       await client.query('BEGIN');
       const b = await client.query(
-        `SELECT * FROM sponsor_budgets WHERE id = $1 AND sponsor_id = $2 FOR UPDATE`, [String(budget_id), sponsor.id]);
-      if (!b.rows.length || b.rows[0].status !== 'active') {
+        `SELECT * FROM sponsor_budgets b WHERE id = $1 AND sponsor_id = $2 AND ${SPONSOR_BUDGET_LIVE_SQL} AND b.applies_to = 'photo' FOR UPDATE`,
+        [String(budget_id), sponsor.id]);
+      if (!b.rows.length) {
         await client.query('ROLLBACK'); return res.status(404).json({ error: 'budget not available' });
       }
       const bud = b.rows[0];
@@ -460,9 +484,10 @@ module.exports = function mountUserRoutes(app) {
       }
       const slots = Number(pack.slots) || 0;
       if (slots <= 0) { await client.query('ROLLBACK'); return res.status(400).json({ error: 'pack has no slots' }); }
-      const cost = slots * (Number(bud.discount_cents) || 0);
+      const cost = giftCostCents(pack);
+      if (!cost) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'pack has no valid price' }); }
       const remaining = Number(bud.agreed_cents) - Number(bud.spent_cents);
-      if (cost <= 0 || remaining < cost) {
+      if (remaining < cost) {
         await client.query('ROLLBACK'); return res.status(409).json({ error: 'budget cannot cover this gift' });
       }
       // Subject must match the pack scope, and the event falls back from
@@ -504,13 +529,21 @@ module.exports = function mountUserRoutes(app) {
          pack.scope_type === 'rider' ? subjectId : null,
          pack.scope_type === 'horse' ? subjectId : null,
          recipientId, email, slots])).rows[0];
+      const purchaseId = (await client.query(
+        `INSERT INTO purchases (credit_bundle_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status)
+         VALUES ($1, $2, $3, NULL, $4, 'NZD', 'paid') RETURNING id`,
+        [bundle.id, email, recipientId, cost])).rows[0].id;
+      await client.query('UPDATE credit_bundles SET purchase_id = $2 WHERE id = $1', [bundle.id, purchaseId]);
       await client.query('UPDATE sponsor_budgets SET spent_cents = spent_cents + $2 WHERE id = $1', [bud.id, cost]);
       const gift = (await client.query(
         `INSERT INTO sponsor_gifts (budget_id, bundle_id, recipient_email, slots, cost_cents)
          VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
         [bud.id, bundle.id, email, slots, cost])).rows[0];
       await client.query('COMMIT');
-      audit(req, 'sponsor.gift', 'sponsor', sponsor.id, { gift_id: gift.id, bundle_id: bundle.id, cost_cents: cost });
+      // Same split as a card purchase (80/10/10). Never fail the gift over
+      // it: log loudly so a missed payout can be backfilled.
+      try { await recordPurchaseSplit(pool, purchaseId); } catch (e) { console.error('[gift] split failed:', e.message); }
+      audit(req, 'sponsor.gift', 'sponsor', sponsor.id, { gift_id: gift.id, bundle_id: bundle.id, purchase_id: purchaseId, cost_cents: cost });
       // Best-effort winner email (never fail the gift over mail): names the
       // sponsor, the prize scope, and how to sign in. New accounts also get
       // the same password-set claim link guest buyers receive.
@@ -582,3 +615,4 @@ module.exports = function mountUserRoutes(app) {
     res.status(201).json({ data: done });
   }));
 };
+module.exports.giftCostCents = giftCostCents;

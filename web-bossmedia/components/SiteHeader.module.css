@@ -1,0 +1,3 @@
+/* Phone header has room for four actions: favourites moves into the menu
+   so the bell fits without pushing the menu button off screen. */
+@media (max-width: 900px) { .hideOnPhone { display: none !important; } }

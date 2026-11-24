@@ -54,6 +54,19 @@
   display: none;
 }
 
+/* Full target name next to the verb, truncated so long event names never
+   blow out the rail; the button's title attribute carries the full name. */
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.pill:has(.name) {
+  max-width: 100%;
+  gap: 6px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pill {
     transition: none;

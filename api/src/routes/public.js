@@ -6,6 +6,7 @@ const { roundFiltersVis, visSql } = require('../lib/filters');
 const { EMAIL_RE, needRole, ownOrAdmin } = require('../lib/auth');
 const { throttled } = require('../lib/ratelimit');
 const { audit } = require('../lib/audit');
+const { budgetKindOf } = require('../lib/wallet');
 const { resolveId } = require('../lib/resolve');
 const { canonCategoryKey, masterCategoryKeys } = require('../lib/categories');
 const { seriesCountFor } = require('./scoring');
@@ -71,21 +72,25 @@ module.exports = function mountPublicRoutes(app) {
   // surprise discount from a half-configured budget. Public so guests can
   // preview the option. ?event_id scopes to that event (any-event budgets
   // always qualify); without it, any qualifying budget counts.
+  // ?applies_to=merch lists merchandise sponsors; default is photo.
   app.get('/api/sponsor-logos', asyncH(async (req, res) => {
     const raw = String(req.query.event_id || '');
     const eid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw : null;
+    const kind = budgetKindOf(req.query.applies_to);
     const { rows } = await pool.query(
       `SELECT l.id, l.label, s.name AS sponsor_name
        FROM sponsor_logos l JOIN sponsors s ON s.id = l.sponsor_id
-       WHERE l.is_active AND s.is_active
+       WHERE l.is_active AND s.is_active AND s.kind = 'official'
          AND EXISTS (
            SELECT 1 FROM sponsor_budgets b
-           WHERE b.sponsor_id = s.id AND b.status = 'active' AND b.discount_cents > 0
+           WHERE b.sponsor_id = s.id AND b.status = 'active' AND (b.ends_on IS NULL OR b.ends_on >= CURRENT_DATE)
+             AND b.discount_cents > 0
              AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
              AND ($1::UUID IS NULL OR b.event_id IS NULL OR b.event_id = $1)
+             AND b.applies_to = $2
          )
        ORDER BY s.name, l.label LIMIT 100`,
-      [eid]);
+      [eid, kind]);
     res.json({ data: rows });
   }));
 
@@ -107,16 +112,19 @@ module.exports = function mountPublicRoutes(app) {
   app.get('/api/sponsor-discounts', asyncH(async (req, res) => {
     const raw = String(req.query.event_id || '');
     const eid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw : null;
+    const kind = budgetKindOf(req.query.applies_to);
     const { rows } = await pool.query(
-      `SELECT b.id, b.discount_cents, (b.agreed_cents - b.spent_cents) AS remaining_cents,
+      `SELECT b.id, b.discount_cents,
         s.name AS sponsor_name, e.name AS event_name
        FROM sponsor_budgets b JOIN sponsors s ON s.id = b.sponsor_id
        LEFT JOIN events e ON e.id = b.event_id
-       WHERE b.status = 'active' AND s.is_active AND b.discount_cents > 0
+       WHERE b.status = 'active' AND (b.ends_on IS NULL OR b.ends_on >= CURRENT_DATE)
+         AND s.is_active AND b.discount_cents > 0
          AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
          AND ($1::UUID IS NULL OR b.event_id IS NULL OR b.event_id = $1)
+         AND b.applies_to = $2
        ORDER BY b.discount_cents DESC LIMIT 20`,
-      [eid]);
+      [eid, kind]);
     res.json({ data: rows });
   }));
 

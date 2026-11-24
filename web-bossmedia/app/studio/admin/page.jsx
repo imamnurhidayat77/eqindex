@@ -5,10 +5,13 @@ import { useNotify } from '../../../components/Toaster';
 import { useConfirm } from '../../../components/ConfirmModal';
 import SearchSelect from '../../../components/SearchSelect';
 import QrPosterModal from '../../../components/QrPosterModal';
-import { dayOf, nzdc, studio, useStudioUser } from '../../../lib/studio';
+import AdminSponsors from '../../../components/AdminSponsors';
+import { nzdc, studio, studioFetch, useStudioUser } from '../../../lib/studio';
+import { fmtDay, payoutBreakdown } from '../../../lib/studio-format.mjs';
 import { useDocumentTitle } from '../../../lib/use-document-title';
+import formRow from '../../../components/FormRow.module.css';
 
-const SECTIONS = [['commission', 'Commission'], ['users', 'Users'], ['applications', 'Applications'], ['events', 'Events']];
+const SECTIONS = [['commission', 'Commission'], ['merch', 'Merch orders'], ['users', 'Users'], ['applications', 'Requests'], ['events', 'Events'], ['sponsors', 'Sponsors']];
 // Pickable roles (mirrors the API allowlist — PHOTOGRAPHER and ORGANIZER are
 // granted only by approving an application, never picked here).
 const ROLES = ['PUBLIC', 'RIDER', 'COACH', 'OWNER', 'BREEDER', 'ADMIN'];
@@ -63,9 +66,11 @@ function AdminBody() {
         ))}
       </div>
       {section === 'commission' && <Commission />}
+      {section === 'merch' && <MerchSettings />}
       {section === 'users' && <Users selfId={user.id} />}
       {section === 'applications' && <Applications />}
       {section === 'events' && <Events />}
+      {section === 'sponsors' && <AdminSponsors />}
     </>
   );
 }
@@ -122,7 +127,7 @@ function Commission() {
     <>
       <div className="st-card" style={{ padding: 18, marginBottom: 16 }}>
         <div className="st-form">
-          <div className="st-form-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+          <div className={`st-form-row ${formRow.row3}`}>
             <label><span>Platform cut (%)</span>
               <input type="text" inputMode="decimal" value={form.platform} onChange={(e) => set('platform')(e.target.value)} placeholder="e.g. 10" /></label>
             <label><span>Organizer share (%)</span>
@@ -135,17 +140,22 @@ function Commission() {
       </div>
       <div className="st-card" style={{ padding: '6px 22px' }}>
         <div className="table-scroll"><table className="st-table">
-          <thead><tr><th>Photographer</th><th>Sales</th><th>Gross</th><th>Platform fee</th><th>Payout</th></tr></thead>
+          <thead><tr><th>Photographer</th><th>Sales</th><th>Gross</th><th>Platform</th><th>Organizer</th><th>Card fees</th><th>Payout</th></tr></thead>
           <tbody>
-            {(settle || []).slice(settleSafe, settleSafe + SETTLE_PAGE).map((s) => (
-              <tr key={s.photographer_id}>
-                <td>{s.photographer}</td>
-                <td>{s.sales}</td>
-                <td>{nzdc(s.gross_cents)}</td>
-                <td>{nzdc(s.fee_cents)}</td>
-                <td>{nzdc(s.payout_cents)}</td>
-              </tr>
-            ))}
+            {(settle || []).slice(settleSafe, settleSafe + SETTLE_PAGE).map((s) => {
+              const b = payoutBreakdown(s);
+              return (
+                <tr key={s.photographer_id}>
+                  <td>{s.photographer}</td>
+                  <td>{s.sales}</td>
+                  <td>{nzdc(b.gross)}</td>
+                  <td>{nzdc(b.fee)}</td>
+                  <td>{nzdc(b.organizer)}</td>
+                  <td>{nzdc(b.cardFees)}</td>
+                  <td><b>{nzdc(b.payout)}</b></td>
+                </tr>
+              );
+            })}
           </tbody>
           </table></div>
           {settle && !settle.length && <p className="empty-note">No paid sales yet.</p>}
@@ -153,6 +163,70 @@ function Commission() {
         </div>
       {confirmUI}
     </>
+  );
+}
+
+// Admins work on this week's shows: upcoming events nearest first, then past events newest first.
+function sortEventsForAdmin(events, today = new Date().toISOString().slice(0, 10)) {
+  const day = (e) => String(e.date_start || '').slice(0, 10);
+  const upcoming = events.filter((e) => day(e) >= today).sort((a, b) => day(a).localeCompare(day(b)));
+  const past = events.filter((e) => day(e) < today).sort((a, b) => day(b).localeCompare(day(a)));
+  return [...upcoming, ...past];
+}
+
+/* ---------- merch orders: delivery prices, pickup, sponsor cap ---------- */
+const MERCH_FIELDS = [
+  ['courierCents', 'Courier, flat (NZ$)', 'NZ-wide flat rate'],
+  ['freeOverCents', 'Free courier from (NZ$)', '0 = never free'],
+  ['sponsorCapCents', 'Sponsor discount cap per order (NZ$)', 'Max sponsor discount on one order'],
+];
+function MerchSettings() {
+  const notify = useNotify();
+  const [form, setForm] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    studio.get('/api/merch/settings').then((d) => setForm({
+      ...Object.fromEntries(MERCH_FIELDS.map(([k]) => [k, String(Number(d[k]) / 100)])),
+      pickupEnabled: !!d.pickupEnabled,
+    })).catch((e) => notify(e.message, true));
+  }, [notify]);
+
+  async function save(e) {
+    e.preventDefault();
+    const body = { pickupEnabled: form.pickupEnabled };
+    for (const [k, label] of MERCH_FIELDS) {
+      const c = Math.round(Number(form[k]) * 100);
+      if (form[k].trim() === '' || !Number.isInteger(c) || c < 0 || c > 1000000) return notify(`${label}: enter 0 to 10000.`, true);
+      body[k] = c;
+    }
+    setBusy(true);
+    try {
+      await studioFetch('/admin/merch/settings', { method: 'PUT', body });
+      notify('Merch order settings saved');
+    } catch (err) { notify(err.message, true); }
+    setBusy(false);
+  }
+
+  if (!form) return <p className="empty-note">Loading…</p>;
+  return (
+    <div className="st-card" style={{ padding: 18 }}>
+      <form className="st-form" onSubmit={save}>
+        <div className={`st-form-row ${formRow.row3}`}>
+          {MERCH_FIELDS.map(([k, label, hint]) => (
+            <label key={k}><span>{label}</span>
+              <input type="text" inputMode="decimal" value={form[k]} title={hint} placeholder={hint}
+                onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} /></label>
+          ))}
+        </div>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="checkbox" checked={form.pickupEnabled} style={{ width: 'auto' }}
+            onChange={(e) => setForm((f) => ({ ...f, pickupEnabled: e.target.checked }))} />
+          <span>Offer free club pickup</span>
+        </label>
+        <p style={{ margin: 0, color: "#999", fontSize: 12 }}>Prices include GST. New orders use these right away, orders already sent keep their quote.</p>
+        <div><button className="st-btn" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save merch settings'}</button></div>
+      </form>
+    </div>
   );
 }
 
@@ -241,7 +315,7 @@ function UserTable({ rows, selfId, setRole, revoke }) {
                     {u.id === selfId && <div style={{ color: '#777', fontSize: 11, marginTop: 4 }}>That’s you</div>}
                   </td>
                   <td>{u.active_sessions}</td>
-                  <td>{dayOf(u.created_at)}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{fmtDay(u.created_at)}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button className="st-btn-ghost" style={{ minHeight: 36 }} disabled={u.id === selfId || !u.active_sessions}
                       onClick={() => revoke(u)}>Sign out</button>
@@ -262,7 +336,7 @@ function UserTable({ rows, selfId, setRole, revoke }) {
 /* ---------- applications: photographer queue (corrections entity_type 'other') ---------- */
 // Photographer applications follow a fixed template (see PhotographerRegisterClient);
 // parse it into labeled fields, fall back to raw lines for anything else.
-const APP_LABELS = ['portfolio', 'region', 'social', 'gear', 'events covered', 'organization', 'events', 'contact'];
+const APP_LABELS = ['portfolio', 'region', 'social', 'gear', 'events covered', 'organization', 'events', 'contact', 'brand', 'website', 'interested in'];
 function parseApplication(message) {
   const fields = [];
   let cur = null;
@@ -270,7 +344,7 @@ function parseApplication(message) {
     const line = raw.trim();
     // Header line ("…application from Name <email>") repeats the modal
     // header — skip it so it doesn't render as a redundant Notes row.
-    if (!line || /^(photographer|organizer) application from/i.test(line)) continue;
+    if (!line || /^(photographer|organizer|sponsor) application from/i.test(line)) continue;
     const m = line.match(/^([^:]{2,30}):\s*(.*)$/);
     if (m && APP_LABELS.includes(m[1].toLowerCase())) {
       cur = { label: m[1], value: m[2] };
@@ -283,14 +357,24 @@ function parseApplication(message) {
   return fields.filter((f) => f.value && f.value.trim());
 }
 
+const APPLICATION_KIND = { other: 'Photographer application', organizer: 'Organizer application', sponsor: 'Sponsor application' };
+const APPROVE_PATH = { other: '/admin/photographers/approve', organizer: '/admin/organizers/approve', sponsor: '/admin/sponsors/approve' };
+const ROLE_NOUN = { other: 'a photographer', organizer: 'an organizer', sponsor: 'a sponsor' };
+const APPROVE_NOTE = {
+  other: 'Creates a photographer profile and grants upload access.',
+  organizer: 'Creates an organizer profile: event dashboard, revenue share, volunteer grants.',
+  sponsor: 'Creates a sponsor profile. Add their pre-agreed budget under Sponsors next.',
+};
+const isApplication = (c) => !!APPLICATION_KIND[c.entity_type];
+const requestKind = (c) => APPLICATION_KIND[c.entity_type] || 'Correction report';
+
 function AppDetail({ c }) {
-  const kindLabel = c.entity_type === 'organizer' ? 'Organizer application'
-    : c.entity_type === 'other' ? 'Photographer application' : 'Correction report';
-  const fields = c.entity_type === 'other' || c.entity_type === 'organizer'
+  const kindLabel = requestKind(c);
+  const fields = isApplication(c)
     ? parseApplication(c.message) : [{ label: '', value: c.message }];
   return (
     <>
-            <p className="eyebrow">{kindLabel} · {dayOf(c.created_at)}</p>
+            <p className="eyebrow">{kindLabel} · {fmtDay(c.created_at)}</p>
       <h3>{c.name || '—'}</h3>
       <p style={{ color: '#999', fontSize: 13 }}>{c.email}</p>
       <dl style={{ display: 'grid', gap: 0, margin: '16px 0 4px', borderTop: '1px solid #2c2c2c', fontSize: 13 }}>
@@ -316,7 +400,10 @@ function Applications() {
   const notify = useNotify();
   const [confirmUI, dialog] = useConfirm();
   const [status, setStatus] = useState('open');
-  const [rows, setRows] = useState(null);
+  const [kind, setKind] = useState('apps'); // applications grant access, so they come first
+  const [allRows, setRows] = useState(null);
+  const rows = allRows && allRows.filter((c) => (kind === 'apps' ? isApplication(c) : !isApplication(c)));
+  const appCount = (allRows || []).filter(isApplication).length;
   const [viewing, setViewing] = useState(null);
   const [offset, setOffset] = useState(0);
   const PAGE = 10;
@@ -344,21 +431,18 @@ function Applications() {
   }
 
   async function approve(c) {
-    const isOrg = c.entity_type === 'organizer';
+    const k = c.entity_type;
     if (!await dialog.confirm({
-      title: `Approve ${c.name || c.email} as ${isOrg ? 'organizer' : 'photographer'}?`,
-      message: isOrg
-        ? 'Creates an organizer profile: event dashboard, revenue share, volunteer grants.'
-        : 'Creates a photographer profile and grants upload access.',
+      title: `Approve ${c.name || c.email} as ${ROLE_NOUN[k]}?`,
+      message: APPROVE_NOTE[k],
     })) return;
     try {
-      const path = isOrg ? '/admin/organizers/approve' : '/admin/photographers/approve';
-      const r = await studio.post(path, { correction_id: c.id });
+      const r = await studio.post(APPROVE_PATH[k], { correction_id: c.id });
       setRows((xs) => (xs || []).filter((x) => x.id !== c.id));
       setViewing(null);
       // studio.post returns the raw body ({ data }) — unlike studio.get.
       const approved = (r.data || r).user || {};
-      notify(`Approved — ${approved.email || c.email} is now a${isOrg ? 'n organizer' : ' photographer'}`);
+      notify(`Approved: ${approved.email || c.email} is now ${ROLE_NOUN[k]}`);
     } catch (e) { notify(e.message, true); }
   }
 
@@ -369,20 +453,26 @@ function Applications() {
           <button key={s} className="st-btn-ghost" style={status === s ? { borderColor: '#fff' } : undefined}
             onClick={() => setStatus(s)}>{s === 'open' ? 'Open' : 'In review'}</button>
         ))}
+        <span aria-hidden="true" style={{ width: 1, background: '#333', margin: '6px 4px' }} />
+        {[['apps', 'Applications', appCount], ['corrections', 'Correction reports', (allRows || []).length - appCount]].map(([k, label, n]) => (
+          <button key={k} className="st-btn-ghost" style={kind === k ? { borderColor: '#fff' } : undefined}
+            onClick={() => { setKind(k); setOffset(0); }}>{label} ({n})</button>
+        ))}
       </div>
       {rows === null ? <p className="empty-note">Loading…</p> : !rows.length ? (
-        <p className="empty-note">Nothing here.</p>
+        <p className="empty-note">{kind === 'apps' ? 'No applications waiting.' : 'No correction reports waiting.'}</p>
       ) : (
         <div className="st-card" style={{ padding: '6px 22px' }}>
           <div className="table-scroll"><table className="st-table">
-            <thead><tr><th>Applicant</th><th>Subject</th><th>Date</th><th></th></tr></thead>
+            <thead><tr><th>From</th><th>Type</th><th>Subject</th><th>Date</th><th></th></tr></thead>
             <tbody>
               {rows.slice(safe, safe + PAGE).map((c) => (
                 <tr key={c.id}>
                   <td><div style={{ fontWeight: 600 }}>{c.name || '—'}</div>
-                    <div style={{ color: '#777', fontSize: 11 }}>{c.email}</div></td>
+                    <div style={{ color: '#9a9a9a', fontSize: 11 }}>{c.email}</div></td>
+                  <td style={{ fontSize: 13 }}>{requestKind(c)}</td>
                   <td style={{ fontSize: 13 }}>{c.subject || '—'}</td>
-                  <td>{dayOf(c.created_at)}</td>
+                  <td>{fmtDay(c.created_at)}</td>
                   <td style={{ textAlign: 'right' }}>
                     <button className="st-btn-ghost" style={{ minHeight: 36 }} onClick={() => setViewing(c)}>Details</button>
                   </td>
@@ -406,7 +496,7 @@ function Applications() {
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <button className="st-btn-ghost st-btn-danger" onClick={() => decide(viewing, 'rejected')}>Reject</button>
-                {(viewing.entity_type === 'other' || viewing.entity_type === 'organizer') && status === 'open' && (
+                {isApplication(viewing) && status === 'open' && (
                   <button className="st-btn" onClick={() => approve(viewing)}>Approve</button>
                 )}
               </div>
@@ -432,7 +522,7 @@ function Events() {
 
   const search = useCallback((term) => {
     studio.get(`/admin/events${term.trim() ? `?q=${encodeURIComponent(term.trim())}` : ''}`)
-      .then(setRows).catch((e) => notify(e.message, true));
+      .then((r) => setRows(sortEventsForAdmin(r || []))).catch((e) => notify(e.message, true));
   }, [notify]);
   useEffect(() => {
     search('');
@@ -503,9 +593,9 @@ function Events() {
                 <tr key={ev.id}>
                   <td><div style={{ fontWeight: 600 }}>{ev.name}</div>
                     <div style={{ color: '#777', fontSize: 11 }}>{[ev.venue, ev.region].filter(Boolean).join(' · ')}</div></td>
-                  <td style={{ fontSize: 12 }}>{(ev.date_start || '').slice(0, 10)}</td>
-                  <td style={{ fontSize: 12, color: '#888' }}>
-                    {ev.class_count ? `${ev.class_count} classes` : 'no results'}
+                  <td style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{fmtDay(ev.date_start)}</td>
+                  <td style={{ fontSize: 12, color: '#9a9a9a' }}>
+                    {ev.class_count ? `${ev.class_count} classes` : 'No results yet'}
                   </td>
                   <td style={{ minWidth: 130 }}>
                     <SearchSelect value={pbVal(ev)} clearable={false} placeholder="Pre-book"
@@ -520,7 +610,7 @@ function Events() {
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <button className="st-btn-ghost" style={{ minHeight: 36 }} onClick={() => showQr(ev)} disabled={qrBusy}
                       title="Venue QR poster for spectator uploads">
-                      {ev.upload_code ? 'QR ✓' : 'QR'}
+                      {ev.upload_code ? 'Show QR' : 'Create QR'}
                     </button>
                   </td>
                 </tr>

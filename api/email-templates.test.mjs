@@ -10,6 +10,7 @@ const t = require('./src/lib/emailTemplates.js');
 const samples = {
   claimAccount: [{ name: 'Jessie', link: 'http://x/reset?token=a' }],
   resetPassword: [{ name: 'Jessie', link: 'http://x/reset?token=a' }],
+  verifyEmail: [{ name: 'Jessie', link: 'http://x/verify-email?token=a' }],
   unknownEvent: [{ uploadEmail: 'u@x.nz', hint: 'TAKAPO26 — Takapoto' }],
   noAttachments: [{ uploadEmail: 'u@x.nz', eventName: 'E', maxFiles: 5 }],
   overLimits: [{ eventName: 'E', maxFiles: 5 }],

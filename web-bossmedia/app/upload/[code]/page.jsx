@@ -6,6 +6,7 @@ export const metadata = {
   robots: { index: false },
 };
 
-export default function UploadByQrPage({ params }) {
+export default async function UploadByQrPage(props) {
+  const params = await props.params;
   return <UploadQrClient code={params.code} />;
 }

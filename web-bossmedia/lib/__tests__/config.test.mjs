@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url);
 const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
 
 function majorFloor(range) {
-  const majors = [...range.matchAll(/(\d+)/g)].map((m) => Number(m[1]));
+  const majors = [...range.matchAll(/(?<![.\d])(\d+)/g)].map((m) => Number(m[1]));
   return Math.min(...majors);
 }
 
@@ -34,4 +34,14 @@ test('next.config: headers prod pasang CSP + HSTS', async () => {
   const keys = headers[0].headers.map((h) => h.key);
   assert.ok(keys.includes('Content-Security-Policy'), 'CSP wajib di prod');
   assert.ok(keys.includes('Strict-Transport-Security'), 'HSTS wajib di prod');
+});
+
+test('next.config: CSP lets the 3D merch preview load blob: textures', async () => {
+  process.env.NODE_ENV = 'production';
+  const config = require('../../next.config.js');
+  const headers = await config.headers();
+  const csp = headers[0].headers.find((h) => h.key === 'Content-Security-Policy').value;
+  const directive = (name) => csp.split(';').map((d) => d.trim()).find((d) => d.startsWith(`${name} `)) || '';
+  assert.match(directive('img-src'), /\bblob:/, 'img-src needs blob: (uploaded club logos)');
+  assert.match(directive('connect-src'), /\bblob:/, 'connect-src needs blob: (GLB embedded textures)');
 });

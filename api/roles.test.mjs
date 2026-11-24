@@ -129,3 +129,74 @@ test('logo theme: light white-wave bake by default, legacy dark strip on demand'
   assert.ok(media.includes("theme !== 'dark'"), 'light renders the white wave strip');
   assert.ok(media.includes('preserveAspectRatio="none"'), 'wave scales to any photo width');
 });
+
+test('sponsor gift costs the pack list price, never a sponsor-set number', async () => {
+  const { createRequire } = await import('node:module');
+  const { giftCostCents } = createRequire(import.meta.url)('./src/routes/user.js');
+  assert.equal(giftCostCents({ price_cents: 10000, slots: 10 }), 10000);
+  assert.equal(giftCostCents({ price_cents: 10000, slots: 10, early_price_cents: 1 }), 10000, 'early bird is a buyer promo');
+  assert.equal(giftCostCents({ price_cents: 0, slots: 10 }), 0);
+  assert.equal(giftCostCents({ price_cents: 5000, slots: 0 }), 0);
+  assert.equal(giftCostCents(null), 0);
+  const user = src('src/routes/user.js');
+  assert.ok(!user.includes('slots * (Number(bud.discount_cents)'), 'gift cost no longer uses the sponsor discount');
+  assert.ok(user.includes("VALUES ($1, $2, $3, NULL, $4, 'NZD', 'paid')"), 'gift is recorded as a paid purchase');
+  assert.ok(user.includes('recordPurchaseSplit(pool, purchaseId)'), 'photographer + organizer get the normal split');
+});
+
+test('organizer grants: event roster only, always spend-only', () => {
+  const media = src('src/routes/media.js');
+  const start = media.indexOf("app.post('/api/wallet/grant'");
+  const body = media.slice(start, media.indexOf('app.get(', start));
+  assert.ok(body.includes('need {event_id}'), 'grant without an event is refused');
+  assert.ok(body.includes('volunteer is not on this event roster'), 'roster check always runs');
+  assert.ok(!body.includes('grantEventId === null'), 'no cashable path left');
+  assert.ok(!/'grant', \$2, \$3, \$4, \$5, \$1, \$6, TRUE/.test(body), 'sender row is not cashable');
+});
+
+test('official sponsors vs buyer-nominated logos (migration 107)', () => {
+  const mig = src('../db/migrations/107_sponsor_billing.sql');
+  assert.ok(mig.includes("CHECK (kind IN ('official', 'personal'))"), 'sponsor kind exists');
+  const media = src('src/routes/media.js');
+  assert.ok(media.includes("r.kind === 'personal' && String(r.owner_id"), 'only personal logos are owner-locked at checkout');
+  assert.ok(media.includes("INSERT INTO sponsors (user_id, name, kind) VALUES ($1, $2, 'personal')"), 'buyer logos are personal rows');
+  const user = src('src/routes/user.js');
+  assert.ok(/ownSponsor[\s\S]{0,200}kind = 'official'/.test(user), 'sponsor dashboard ignores personal rows');
+});
+
+test('sponsor budget input validation', async () => {
+  const { createRequire } = await import('node:module');
+  const { parseBudgetInput } = createRequire(import.meta.url)('./src/routes/sponsorBilling.js');
+  assert.deepEqual(parseBudgetInput({ agreed_cents: 200000 }).errors, []);
+  assert.ok(parseBudgetInput({ agreed_cents: 0 }).errors.length, 'zero refused');
+  assert.ok(parseBudgetInput({ agreed_cents: 12.5 }).errors.length, 'fractional cents refused');
+  assert.ok(parseBudgetInput({ agreed_cents: 100, event_id: 'nope' }).errors.length, 'bad event refused');
+  assert.ok(parseBudgetInput({ agreed_cents: 100, ends_on: '24/11/2026' }).errors.length, 'bad date refused');
+  assert.deepEqual(parseBudgetInput({ status: 'paused' }, { partial: true }).values, { status: 'paused' });
+  assert.ok(parseBudgetInput({ status: 'deleted' }, { partial: true }).errors.length, 'unknown status refused');
+  assert.ok(parseBudgetInput({}, { partial: true }).errors.length, 'empty patch refused');
+});
+
+test('sponsor discount is capped at half the price', () => {
+  const media = src('src/routes/media.js');
+  assert.equal((media.match(/cappedSponsorDiscount\(/g) || []).length, 2, 'both checkout paths cap the discount');
+  assert.equal((media.match(/\$\{SPONSOR_BUDGET_LIVE_SQL\}/g) || []).length, 2, 'both checkout paths skip paused/ended budgets');
+});
+
+test('sponsor budgets are either photo or merch (migration 109)', async () => {
+  const mig = src('../db/migrations/109_sponsor_budget_kind.sql');
+  assert.ok(mig.includes("CHECK (applies_to IN ('photo', 'merch'))"));
+  const media = src('src/routes/media.js');
+  assert.equal((media.match(/b\.applies_to = 'photo' AND b\.discount_cents > 0/g) || []).length, 2, 'photo checkout only uses photo budgets');
+  assert.ok(src('src/routes/user.js').includes("b.applies_to = 'photo' FOR UPDATE"), 'gifts only from photo budgets');
+  const { createRequire } = await import('node:module');
+  const req = createRequire(import.meta.url);
+  const { budgetKindOf } = req('./src/lib/wallet.js');
+  assert.equal(budgetKindOf('merch'), 'merch');
+  assert.equal(budgetKindOf(undefined), 'photo');
+  assert.equal(budgetKindOf('anything'), 'photo');
+  const { parseBudgetInput } = req('./src/routes/sponsorBilling.js');
+  assert.equal(parseBudgetInput({ agreed_cents: 100 }).values.applies_to, 'photo');
+  assert.equal(parseBudgetInput({ agreed_cents: 100, applies_to: 'merch' }).values.applies_to, 'merch');
+  assert.ok(parseBudgetInput({ agreed_cents: 100, applies_to: 'both' }).errors.length);
+});

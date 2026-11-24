@@ -24,6 +24,9 @@ export default function SearchSelect({ options, value, onChange, placeholder = '
   const listId = useId();
   const seq = useRef(0);
 
+  // A search box on a three-option list is noise: only long or remote lists get one.
+  const searchable = Boolean(loadOptions || onRequestCustom || options.length > 8);
+
   const selected = (remote || options).find((o) => String(o.id) === String(value))
     || options.find((o) => String(o.id) === String(value))
     || (value != null && selectedOption && String(selectedOption.id) === String(value) ? selectedOption : null);
@@ -56,11 +59,13 @@ export default function SearchSelect({ options, value, onChange, placeholder = '
   const measure = (btn) => {
     if (!btn) return null;
     const r = btn.getBoundingClientRect();
-    const fitsBelow = r.bottom + PANEL_H <= window.innerHeight - 12;
+    // Short lists need far less room than the cap: don't flip a 1-row list.
+    const need = Math.min(PANEL_H, 70 + 48 * Math.max(1, filtered.length));
+    const fitsBelow = r.bottom + need <= window.innerHeight - 12;
     return {
       left: Math.max(8, Math.min(r.left, window.innerWidth - 8)),
       width: Math.min(r.width, window.innerWidth - 16),
-      ...(fitsBelow || r.top < PANEL_H
+      ...(fitsBelow || r.top < need
         ? { top: r.bottom + 6, bottom: undefined }
         : { top: undefined, bottom: window.innerHeight - r.top + 6 }),
     };
@@ -86,7 +91,13 @@ export default function SearchSelect({ options, value, onChange, placeholder = '
       window.removeEventListener('scroll', place, true);
     };
   }, [open ]);
-  useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 0); }, [open ]);
+  useEffect(() => {
+    if (!open) return;
+    setTimeout(() => (searchable ? inputRef.current : panelRef.current)?.focus(), 0);
+    // Start the highlight on the current value so Enter keeps it.
+    const cur = filtered.findIndex((o) => String(o.id) === String(value));
+    if (cur >= 0) setHi(cur);
+  }, [open ]);
 
   const pick = (opt) => { onChange(opt ? opt.id : null, opt || null); setOpen(false); setQ(''); };
 
@@ -132,12 +143,15 @@ export default function SearchSelect({ options, value, onChange, placeholder = '
       )}
       {open && !disabled && pos && createPortal(
         <div ref={panelRef} className={`ss-panel${panelClassName ? ` ${panelClassName}` : ''}`} role="listbox" id={listId} aria-label={placeholder}
-          style={{ position: 'fixed', zIndex: 90, left: pos.left ?? undefined, width: pos.width, top: pos.top, bottom: pos.bottom }}>
-          <div className="ss-search">
-            <Icon name="search" size={15} />
-            <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey}
-              placeholder="Type to search…" aria-label="Search options" />
-          </div>
+          tabIndex={searchable ? undefined : -1} onKeyDown={searchable ? undefined : onKey}
+          style={{ position: 'fixed', zIndex: 90, left: pos.left ?? undefined, width: pos.width, top: pos.top ?? 'auto', bottom: pos.bottom ?? 'auto', outline: 'none' }}>
+          {searchable && (
+            <div className="ss-search">
+              <Icon name="search" size={15} />
+              <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey}
+                placeholder="Type to search…" aria-label="Search options" />
+            </div>
+          )}
           <div className="ss-list">
             {loading && <div className="ss-empty">Searching…</div>}
             {!loading && (filtered.length ? filtered.map((o, i) => (

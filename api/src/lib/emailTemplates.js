@@ -59,6 +59,22 @@ function claimAccount({ name, link }) {
   };
 }
 
+function verifyEmail({ name, link }) {
+  return {
+    subject: 'Confirm your Boss Media email',
+    text: `Hi ${name || 'there'},\n\nConfirm this is your email address:\n${link}\n\nThis link expires in 24 hours. Didn't create an account? Ignore this email.`,
+    html: layout({
+      preheader: 'Confirm your email to keep your purchases safe.',
+      eyebrow: 'ACCOUNT SECURITY',
+      title: `Kia ora, ${firstName(name)} — confirm your email.`,
+      body: p(`Confirm this is your email address. Photos bought with it as a guest only join an account once the email is confirmed.`) +
+        btn(link, 'Confirm my email') +
+        p(`<span style="color:#8a8a85;">This link expires in 24 hours. Didn't create an account? Ignore this email.</span>`) +
+        fallbackLink(link),
+    }),
+  };
+}
+
 function resetPassword({ name, link }) {
   return {
     subject: 'Reset your Boss Media password',
@@ -244,8 +260,26 @@ function sponsorGift({ sponsor, slots, scope, claimLink }) {
   };
 }
 
+// Merch order received (pay after the proof is approved, so no charge yet).
+function merchOrderReceived({ name, ref, productLabel, units, totalText, link }) {
+  return {
+    subject: `Order ${ref} received — artwork check next`,
+    text: `Hi ${name || 'there'},\n\nThanks for your ${productLabel} order (${units} item${units === 1 ? '' : 's'}, estimated ${totalText} incl. GST).\n\nWhat happens next: we check your artwork and send a proof. You pay only after you approve the proof.\n\nTrack your order: ${link}\n\nReference: ${ref}`,
+    html: layout({
+      preheader: 'We check your artwork, then send a proof to approve.',
+      eyebrow: `ORDER ${escHtml(ref)}`,
+      title: `Kia ora, ${escHtml(firstName(name))} — order received.`,
+      body: p(`Thanks for your ${escHtml(productLabel)} order: ${units} item${units === 1 ? '' : 's'}, estimated ${escHtml(totalText)} incl. GST.`) +
+        p('Next we check your artwork and send a proof. <strong>You pay only after you approve it.</strong>') +
+        btn(link, 'Track my order') +
+        fallbackLink(link),
+    }),
+  };
+}
+
 module.exports = {
+  verifyEmail,
   claimAccount, resetPassword, unknownEvent, noAttachments, overLimits,
   verifySender, acceptedIntake, momentsReject, momentsLive, purchaseClaim,
-  sponsorGift,
+  sponsorGift, merchOrderReceived,
 };

@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation';
 import { getJSON } from '../../../lib/api';
 import { SiteFooter, SiteHeader } from '../../../components/figma';
 import MediaPurchase from '../../../components/MediaPurchase';
-import { PostCta } from '../../../components/PostToSocial';
 import ProductJsonLd from '../../../components/ProductJsonLd';
 
 export const revalidate = 30;
@@ -10,15 +9,16 @@ export const revalidate = 30;
 async function photoWithPrice(id) {
   const [res, tiers] = await Promise.all([
     getJSON(`/photos/${id}`).catch(() => null),
-    getJSON('/api/license-tiers').catch(() => ({ data: [] })),
+    getJSON(`/api/license-tiers?media_id=${encodeURIComponent(id)}`).catch(() => ({ data: [] })),
   ]);
   const d = res?.data;
   if (!d) return {};
-  const tier = (tiers?.data || []).find((t) => String(t.id) === String(d.license_default || 'web'));
+  const tier = (tiers?.data || []).find((t) => String(t.id) === String(d.license_default || (d.kind === 'reel' ? 'reel' : 'web')));
   return { d, priceCents: tier ? Number(tier.price_cents) : undefined };
 }
 
-export async function generateMetadata({ params }) {
+export async function generateMetadata(props) {
+  const params = await props.params;
   const res = await getJSON(`/photos/${params.id}`).catch(() => null);
   const d = res?.data;
   if (!d) return { title: 'Photo not found' };
@@ -29,7 +29,8 @@ export async function generateMetadata({ params }) {
   return { title, description, openGraph: { title, description, images } };
 }
 
-export default async function PhotoDetail({ params }) {
+export default async function PhotoDetail(props) {
+  const params = await props.params;
   const { d, priceCents } = await photoWithPrice(params.id);
   if (!d) notFound();
   return (
@@ -44,17 +45,6 @@ export default async function PhotoDetail({ params }) {
         backHref="/photos"
         backLabel="Back to collection"
       />
-      {d.kind !== 'reel' && (
-        <main className="section-gutter" style={{ maxWidth: 1100, margin: '0 auto', paddingBottom: 8 }}>
-          <PostCta label="Post to Instagram / Facebook" media={{
-            media_id: params.id,
-            thumb: d.thumb_url || d.preview_url || null,
-            title: [d.horse, d.rider].filter(Boolean).join(' · ') || 'Your photo',
-            sub: d.event_name || null,
-            caption: `${[d.horse, d.rider].filter(Boolean).join(' × ')}${d.event_name ? ` at ${d.event_name}` : ''} via BossMedia`,
-          }} />
-        </main>
-      )}
       <SiteFooter />
     </div>
   );

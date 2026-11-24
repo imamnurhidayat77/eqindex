@@ -1,0 +1,50 @@
+/* Studio console polish, scoped here because globals.css is frozen (AGENTS.md). */
+
+/* Secondary text: #777 on #121212 is ~4.2:1, below WCAG AA for 12px. */
+.page :global(.st-card > small.st-ksub),
+.page :global(.st-card > p.st-csub),
+.page :global(.st-attn small),
+.page :global(.st-hero .eyebrow),
+.page :global(.st-card > p.st-klabel) { color: #9a9a9a; }
+
+.page :global(.st-bar-row > span:last-child) { font-variant-numeric: tabular-nums; }
+.page :global(.st-kval) { font-variant-numeric: tabular-nums; }
+
+/* Compact header for every tab except Overview. */
+.compact { padding-top: 36px; }
+.compact h1 { margin: 10px 0 0; font-size: 32px; line-height: 1; font-weight: 600; letter-spacing: -.04em; }
+
+.primaryAction {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px;
+  background: #fff; color: #101010; font-size: 13px; font-weight: 700; white-space: nowrap;
+  transition: transform 160ms ease-out, background-color 160ms ease-out;
+}
+.primaryAction:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) { .primaryAction:hover { background: #e6e6e6; } }
+.secondaryAction { color: #bbb; font-size: 13px; font-weight: 600; padding-bottom: 4px; border-bottom: 1px solid #555; }
+@media (hover: hover) and (pointer: fine) { .secondaryAction:hover { color: #fff; } }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; }
+
+/* Platform-admin tabs sit after a divider so they don't read as studio work. */
+.tabDivider { flex: none; align-self: stretch; width: 1px; margin-bottom: 12px; background: #333; }
+.tabGroup { flex: none; align-self: center; padding-bottom: 14px; color: #666; font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+
+/* Scroll hint on narrow screens where the tab bar overflows. */
+@media (max-width: 760px) {
+  .tabsWrap { position: relative; }
+  .tabsWrap::after { content: ''; position: absolute; top: 0; right: 0; bottom: 1px; width: 36px; pointer-events: none; background: linear-gradient(to right, rgba(8, 8, 8, 0), #080808); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primaryAction { transition: none; }
+}
+
+/* Two KPI columns on phones so the actionable cards stay near the top. */
+@media (max-width: 560px) {
+  .page :global(.st-kpis) { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .page :global(.st-kpis .st-card) { padding: 16px; }
+}
+
+/* Sales: the payout table has six columns, so it gets the wider column. */
+.salesGrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+@media (max-width: 1100px) { .salesGrid { grid-template-columns: 1fr; } }

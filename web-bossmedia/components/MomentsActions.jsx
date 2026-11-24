@@ -1,14 +1,17 @@
 'use client';
-// Follow + report actions for a community moment. No cart, no price, no
-// download — viewing and notifying are the whole product here.
+// Actions for a community moment: share (sponsors pay first), follow,
+// report. Free to view; only sponsors pay.
 import Link from 'next/link';
 import { useState } from 'react';
 import { API } from '../lib/api';
 import { useToast } from './Toaster';
 import FollowButton from './FollowButton';
+import MomentShareActions from './MomentShareActions';
+import { momentTitle } from '../lib/moment-share.mjs';
 import m from './MomentsActions.module.css';
 
-export default function MomentsActions({ id, horseId, riderId, horse, rider, eventId, eventName }) {
+export default function MomentsActions({ id, horseId, riderId, horse, rider, eventId, eventName, kind, thumb, children }) {
+  const who = momentTitle({ rider, horse });
   const toast = useToast();
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -30,20 +33,36 @@ export default function MomentsActions({ id, horseId, riderId, horse, rider, eve
     } catch (e2) { toast(e2.message, { type: 'error' }); } finally { setBusy(false); }
   }
 
+  // Sidebar groups: Share, Get notified, details (children), then Report as
+  // a quiet link at the very bottom.
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {eventId && <FollowButton kind="event" id={eventId} name={eventName} />}
-        {riderId && <FollowButton kind="rider" id={riderId} name={rider} />}
-        {horseId && <FollowButton kind="horse" id={horseId} name={horse} />}
+    <div className={m.groups}>
+      <section className={m.group} aria-labelledby="moment-share">
+        <h2 id="moment-share" className="purchase-label">Share</h2>
+        <MomentShareActions kind={kind} media={{
+          media_id: id,
+          thumb: thumb || null,
+          title: who,
+          sub: eventName || '',
+          caption: `${who}${eventName ? ` at ${eventName}` : ''} via BossMedia`,
+        }} />
+      </section>
+      <section className={m.group} aria-labelledby="moment-follow">
+        <h2 id="moment-follow" className="purchase-label">Get notified</h2>
+        <div className={m.follows}>
+          {eventId && <FollowButton kind="event" id={eventId} name={eventName} showName />}
+          {riderId && <FollowButton kind="rider" id={riderId} name={rider} showName />}
+          {horseId && <FollowButton kind="horse" id={horseId} name={horse} showName />}
+        </div>
         {!riderId && !horseId && (
-          <small style={{ color: '#888' }}>Follow riders and horses from tagged moments to get notified.</small>
+          <small className={m.hint}>Follow riders and horses from tagged moments to get notified.</small>
         )}
-      </div>
+      </section>
+      {children && <div className={m.group}>{children}</div>}
       {reported ? (
         <p className="empty-note">Reported — thanks for keeping the gallery safe.</p>
       ) : (
-        <details>
+        <details className={m.report}>
           <summary className={m.toggle}>Report this moment</summary>
           <form onSubmit={report} className={m.form}>
             <label>What’s wrong?

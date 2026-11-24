@@ -70,5 +70,44 @@ async function finalizeReel(mediaId) {
   }
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Brand a published community reel: re-render its teaser preview with the
+// Boss Media tile and overwrite the same preview_key. Studio reels keep
+// their own photographer tile — this function refuses them.
+async function brandCommunityReel(mediaId) {
+  const { rows } = await pool.query('SELECT * FROM media WHERE id = $1', [mediaId]);
+  const m = rows[0];
+  if (!m || m.kind !== 'reel') return false;
+  if (!['email', 'admin', 'web'].includes(m.source)) return false;
+  if (!m.storage_key) throw new Error('no original stored yet');
+  // Approve can land while finalize still transcodes — wait for its preview
+  // (review usually takes hours, so this loop rarely spins).
+  let previewKey = m.preview_key;
+  for (let i = 0; i < 40 && !previewKey; i++) {
+    await sleep(15000);
+    const r = await pool.query('SELECT preview_key FROM media WHERE id = $1', [mediaId]);
+    previewKey = r.rows[0]?.preview_key;
+  }
+  if (!previewKey) throw new Error('preview not ready — re-run rewatermark later');
+  const s1 = await mediaStore.getStream(m.storage_key);
+  const dims = await probeDims(s1.stream);
+  const pvH = Math.max(2, Math.round((640 * dims.height) / Math.max(1, dims.width)));
+  const wmPath = path.join(os.tmpdir(), `eqindex-brand-${mediaId}.png`);
+  try {
+    const wmPng = await sharp(watermarkSvgLight(640, pvH, '© Boss Media')).png().toBuffer();
+    await fs.promises.writeFile(wmPath, wmPng);
+    const s2 = await mediaStore.getStream(m.storage_key);
+    const preview = await renderPreview(s2.stream, wmPath);
+    await mediaStore.putBuffer(previewKey, preview.buffer, 'video/mp4');
+    await pool.query(`UPDATE media SET width = $2, height = $3 WHERE id = $1`,
+      [mediaId, dims.width, dims.height]);
+    return true;
+  } finally {
+    await fs.promises.unlink(wmPath).catch(() => {});
+  }
+}
+
 module.exports = finalizeReel;
 module.exports.watermarkSvgLight = watermarkSvgLight;
+module.exports.brandCommunityReel = brandCommunityReel;

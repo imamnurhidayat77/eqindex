@@ -1,23 +1,68 @@
 'use client';
 import SmartImage from '../../components/SmartImage';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { API } from '../../lib/api';
 import { useAuthed } from '../../lib/use-authed';
 import { useDocumentTitle } from '../../lib/use-document-title';
 import { useToast } from '../../components/Toaster';
-import { Icon } from '../../components/figma';
 import PageShell from '../../components/PageShell';
 import ReelPlayer from '../../components/ReelPlayer';
+import MomentShareActions from '../../components/MomentShareActions';
+import { uniqueById } from '../../lib/unique-by-id.mjs';
+import { fmtDay } from '../../lib/format';
+import {
+  sortSections, countNew, cardCaption, readSeen, writeSeen, TYPE_LABEL,
+} from '../../lib/watchlist-view.mjs';
+import s from './watchlist.module.css';
 
-// Who you follow: riders, horses, and events. New published photos of them
-// trigger a notification (see the publish hook) — the photos themselves
-// live in the galleries and the shop, moments in the moments feed.
+const PHOTOS_PER_SECTION = 8;
+const MOMENTS_PER_EVENT = 3;
+const ALL = 'all';
+
+const safeStorage = () => { try { return window.localStorage; } catch { return null; } };
+const nzd = (cents) => `NZ$${(Number(cents) / 100).toFixed(cents % 100 ? 2 : 0)}`;
+
+// Latest photos of one followed subject: shop photos, plus community
+// moments for events (the near-live use case: grandparents following a show).
+async function loadSection(w) {
+  const p = new URLSearchParams({ limit: String(PHOTOS_PER_SECTION) });
+  if (w.entity_type === 'horse') p.set('horse_id', w.entity_id);
+  else if (w.entity_type === 'rider') p.set('rider_id', w.entity_id);
+  else if (w.entity_type === 'event') p.set('event_id', w.entity_id);
+  else {
+    if (w.horse_id) p.set('horse_id', w.horse_id);
+    if (w.rider_id) p.set('rider_id', w.rider_id);
+  }
+  try {
+    const r = await fetch(`${API}/photos?${p}`, { credentials: 'include' });
+    const j = await r.json().catch(() => ({}));
+    const shop = Array.isArray(j?.data) ? j.data : [];
+    if (w.entity_type !== 'event') return shop.slice(0, PHOTOS_PER_SECTION);
+    const q = new URLSearchParams({ limit: String(MOMENTS_PER_EVENT), event_id: w.entity_id });
+    const mr = await fetch(`${API}/api/moments?${q}`, { credentials: 'include' });
+    const mj = await mr.json().catch(() => ({}));
+    // Flag name must NOT collide with the media.moment column (win/clear/…)
+    // that shop rows already carry — that collision once marked every
+    // tagged shop photo as community.
+    const moments = Array.isArray(mj?.data) ? mj.data.map((m) => ({ ...m, isCommunity: true })) : [];
+    return [...moments, ...shop]
+      .sort((a, b) => Date.parse(b.created_at || 0) - Date.parse(a.created_at || 0))
+      .slice(0, PHOTOS_PER_SECTION);
+  } catch { return []; }
+}
+
+// Followed riders, horses and events, one scroll row each, newest first.
+// New published photos also trigger a notification (see the publish hook).
 export default function WatchlistPage() {
   useDocumentTitle('Watchlist');
   const toast = useToast();
   const { user, loading } = useAuthed();
   const [rows, setRows] = useState(null);
+  const [shots, setShots] = useState(null);
+  const [seen, setSeen] = useState({}); // last-visit snapshot, read once per load
+  const [filter, setFilter] = useState(ALL);
+  const [light, setLight] = useState(null); // index into flat, null = closed
 
   useEffect(() => {
     if (!user) return;
@@ -26,39 +71,18 @@ export default function WatchlistPage() {
       .then((j) => setRows(Array.isArray(j?.data) ? j.data : []));
   }, [user]);
 
-  const [shots, setShots] = useState({});
-
   useEffect(() => {
     if (!rows?.length) return;
     let live = true;
-    Promise.all(rows.map(async (w) => {
-      const p = new URLSearchParams({ limit: '6' });
-      if (w.entity_type === 'horse') p.set('horse_id', w.entity_id);
-      else if (w.entity_type === 'rider') p.set('rider_id', w.entity_id);
-      else if (w.entity_type === 'event') p.set('event_id', w.entity_id);
-      else {
-        if (w.horse_id) p.set('horse_id', w.horse_id);
-        if (w.rider_id) p.set('rider_id', w.rider_id);
-      }
-      try {
-        const r = await fetch(`${API}/photos?${p}`, { credentials: 'include' });
-        const j = await r.json().catch(() => ({}));
-        const shop = Array.isArray(j?.data) ? j.data.slice(0, 6) : [];
-        // Event rows also surface community moments (the near-live use case:
-        // grandparents following a show). Moments link to their own pages.
-        if (w.entity_type === 'event') {
-          const q = new URLSearchParams({ limit: '6', event_id: w.entity_id });
-          const mr = await fetch(`${API}/api/moments?${q}`, { credentials: 'include' });
-          const mj = await mr.json().catch(() => ({}));
-          // Flag name must NOT collide with the media.moment column
-          // (win/clear/…) that shop rows already carry — that collision once
-          // marked every tagged shop photo as community.
-          const moments = Array.isArray(mj?.data) ? mj.data.map((m) => ({ ...m, isCommunity: true })) : [];
-          return [w.id, [...moments.slice(0, 3), ...shop].slice(0, 6)];
-        }
-        return [w.id, shop];
-      } catch { return [w.id, []]; }
-    })).then((pairs) => { if (live) setShots(Object.fromEntries(pairs)); });
+    Promise.all(rows.map(async (w) => [w.id, await loadSection(w)])).then((pairs) => {
+      if (!live) return;
+      // Badges compare against the previous visit; then this visit becomes
+      // the new baseline.
+      const storage = safeStorage();
+      setSeen(readSeen(storage));
+      writeSeen(storage, rows.map((w) => w.id), Date.now());
+      setShots(Object.fromEntries(pairs));
+    });
     return () => { live = false; };
   }, [rows]);
 
@@ -67,13 +91,16 @@ export default function WatchlistPage() {
       await fetch(`${API}/watchlist/${w.id}`, { method: 'DELETE', credentials: 'include' });
     } catch { /* removed locally regardless */ }
     setRows((xs) => (xs || []).filter((x) => x.id !== w.id));
-    toast(`Unfollowed ${w.name || 'stable'}`, { type: 'info' });
+    if (filter === w.id) setFilter(ALL);
+    toast(`Unfollowed ${w.name || 'this subject'}`, { type: 'info' });
   };
 
-  // Flat browsing order across every followed subject, in display order.
-  // The lightbox walks this list so one viewer covers shop + moments.
-  const flat = (rows || []).flatMap((w) => (shots[w.id] || []).map((x) => ({ ...x, rowName: w.name })));
-  const [light, setLight] = useState(null); // index into flat, null = closed
+  const sorted = rows && shots ? sortSections(rows, shots) : rows || [];
+  const visible = filter === ALL ? sorted : sorted.filter((w) => w.id === filter);
+  // Flat browsing order across the visible sections, in display order. The
+  // lightbox walks this list so one viewer covers shop + moments. A photo
+  // shown under several subjects (event + rider) appears once, first wins.
+  const flat = uniqueById(visible.flatMap((w) => (shots?.[w.id] || []).map((x) => ({ ...x, rowName: w.name }))));
   const openLight = (id) => {
     const i = flat.findIndex((x) => x.id === id);
     if (i >= 0) setLight(i);
@@ -81,7 +108,7 @@ export default function WatchlistPage() {
 
   return (
     <PageShell eyebrow="Follow / Stable" title="Watchlist." wide
-      intro="Riders and horses you follow. We notify you when their new photos publish.">
+      intro="Events, riders and horses you follow. New photos are marked as they land.">
       {loading ? (
         <div className="event-media-empty"><p className="eyebrow">Loading…</p></div>
       ) : !user ? (
@@ -93,65 +120,35 @@ export default function WatchlistPage() {
             <Link href="/login?next=/watchlist" className="primary-link">Sign in</Link>
           </p>
         </div>
-      ) : rows === null ? (
+      ) : rows === null || (rows.length > 0 && shots === null) ? (
         <div className="event-media-empty"><p className="eyebrow">Loading…</p></div>
       ) : !rows.length ? (
         <div className="event-media-empty">
-          <p className="eyebrow">Nobody followed yet</p>
+          <p className="eyebrow">Nothing followed yet</p>
           <h3>Build your stable.</h3>
-          <p>Hit Follow on any rider or horse photo page.</p>
+          <p>Hit Follow on any event, rider or horse page.</p>
           <p style={{ marginTop: 18 }}>
             <Link href="/events" className="primary-link">Browse galleries</Link>
           </p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gap: 44 }}>
-          {rows.map((w) => {
-            const pics = shots[w.id] || [];
-            return (
-              <section key={w.id} aria-label={`${w.name || 'Stable'} photos`}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap', marginBottom: 14 }}>
-                  <p className="eyebrow" style={{ textTransform: 'capitalize', margin: 0 }}>{w.entity_type}</p>
-                  <h3 style={{ margin: 0, fontSize: 22 }}>{w.name || 'Unnamed'}</h3>
-                  {pics.length > 1 && <small style={{ color: '#666', fontSize: 12 }}>{pics.length} photos</small>}
-                  <span style={{ display: 'flex', gap: 16, marginLeft: 'auto' }}>
-                    {w.entity_type === 'event' ? (
-                      <Link href={`/moments?event_id=${w.entity_id}`} className="text-link">View all</Link>
-                    ) : (
-                      <Link href={`/photos?q=${encodeURIComponent(w.name || '')}`} className="text-link">View all</Link>
-                    )}
-                    <button type="button" onClick={() => unwatch(w)} className="text-link">Unfollow</button>
-                  </span>
-                </div>
-                {pics.length ? (
-                  <div className="event-media-grid">
-                    {pics.map((x) => (
-                      <Link className="event-media-card" key={x.id} href={x.isCommunity ? `/moments/${x.id}` : `/p/${x.id}`}
-                        onClick={(e) => { e.preventDefault(); openLight(x.id); }}
-                        aria-label={`${x.horse || ''} ${x.rider || ''}`.trim() || 'Photo'}>
-                        {x.thumb_url || x.preview_url
-                          ? <SmartImage src={x.thumb_url || x.preview_url} alt={[x.horse, x.rider].filter(Boolean).join(' · ') || x.event_name || 'Watchlist photo'} width={800} height={600} sizes="(max-width: 768px) 100vw, 50vw" />
-                          : <span className="cover-fallback">Boss Media</span>}
-                        <span className="media-card-footer">
-                          <small title={x.event_name || ''}>
-                            {x.isCommunity && <span className="st-chip" style={{ marginRight: 6 }}>Community</span>}
-                            {x.event_name || '—'}
-                          </small>
-                          <span className="media-card-title">
-                            <strong>{x.isCommunity ? 'View moment' : 'View photo'}</strong>
-                            <Icon name="arrow" size={15} />
-                          </span>
-                        </span>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="empty-note">No published photos yet — we notify you the moment they drop.</p>
-                )}
-              </section>
-            );
-          })}
-        </div>
+        <>
+          <div className={s.chips} role="group" aria-label="Filter by followed subject">
+            <button type="button" className={s.chip} aria-pressed={filter === ALL} onClick={() => setFilter(ALL)}>All</button>
+            {sorted.map((w) => (
+              <button key={w.id} type="button" className={s.chip} aria-pressed={filter === w.id} onClick={() => setFilter(w.id)}>
+                <span className={s.chipType}>{TYPE_LABEL[w.entity_type] || w.entity_type}</span>
+                {w.name || 'Unnamed'}
+              </button>
+            ))}
+          </div>
+          <div className={s.sections}>
+            {visible.map((w) => (
+              <Section key={w.id} w={w} photos={shots[w.id] || []} lastSeen={seen[w.id]}
+                onOpen={openLight} onUnfollow={() => unwatch(w)} />
+            ))}
+          </div>
+        </>
       )}
       {light !== null && flat.length > 0 && (
         <Lightbox item={flat[Math.min(light, flat.length - 1)]} index={Math.min(light, flat.length - 1)} total={flat.length}
@@ -162,6 +159,110 @@ export default function WatchlistPage() {
           onClose={() => setLight(null)} />
       )}
     </PageShell>
+  );
+}
+
+function Section({ w, photos, lastSeen, onOpen, onUnfollow }) {
+  const name = w.name || 'Unnamed';
+  const fresh = countNew(photos, lastSeen);
+  const viewAll = w.entity_type === 'event'
+    ? `/moments?event_id=${w.entity_id}`
+    : `/photos?q=${encodeURIComponent(w.name || '')}`;
+  return (
+    <section aria-label={`${name} photos`}>
+      <div className={s.head}>
+        <p className={s.type}>{TYPE_LABEL[w.entity_type] || w.entity_type}</p>
+        <h3 className={s.name}>{name}</h3>
+        {fresh > 0 && <span className={s.badge}>{fresh} new</span>}
+        <span className={s.actions}>
+          <Link href={viewAll} className="text-link">View all</Link>
+          <OverflowMenu name={name} onUnfollow={onUnfollow} />
+        </span>
+      </div>
+      {photos.length ? (
+        <ul className={s.row} tabIndex={0} aria-label={`Latest photos of ${name}, scroll sideways`}>
+          {photos.map((x) => (
+            <li key={x.id}><PhotoCard x={x} onOpen={onOpen} /></li>
+          ))}
+        </ul>
+      ) : (
+        <p className={s.empty}>No published photos yet. We notify you the moment they drop.</p>
+      )}
+    </section>
+  );
+}
+
+function PhotoCard({ x, onOpen }) {
+  const caption = cardCaption(x);
+  const date = x.taken_at || x.created_at;
+  const meta = [x.class_name, date ? fmtDay(date) : null].filter(Boolean).join(' · ');
+  const src = x.thumb_url || x.preview_url;
+  return (
+    <Link className={s.card} href={x.isCommunity ? `/moments/${x.id}` : `/p/${x.id}`}
+      onClick={(e) => { e.preventDefault(); onOpen(x.id); }}>
+      <span className={s.media}>
+        {src
+          ? <SmartImage src={src} alt={caption} width={520} height={390} sizes="260px" />
+          : <span className={s.fallback}>Boss Media</span>}
+        {x.kind === 'reel' && <i className={s.reel}>▶ Reel</i>}
+      </span>
+      <span className={s.body}>
+        <span className={s.caption} title={caption}>{caption}</span>
+        <span className={s.meta}>
+          {x.isCommunity && <span className="st-chip">Community</span>}
+          {meta && <span className={s.metaText}>{meta}</span>}
+          {!x.isCommunity && Number(x.price_cents) > 0 && <span className={s.price}>From {nzd(x.price_cents)}</span>}
+        </span>
+      </span>
+    </Link>
+  );
+}
+
+// Three-dot menu holding Unfollow behind a confirm step, so a stray tap
+// never drops a subject.
+function OverflowMenu({ name, onUnfollow }) {
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const box = useRef(null);
+  const button = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    box.current?.querySelector('[role="menuitem"]')?.focus();
+    const close = () => { setOpen(false); setConfirming(false); };
+    const onDown = (e) => { if (!box.current?.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === 'Escape') { close(); button.current?.focus(); } };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, confirming]);
+
+  return (
+    <span ref={box}>
+      <button ref={button} type="button" className={s.menuButton} aria-haspopup="menu" aria-expanded={open}
+        aria-label={`More options for ${name}`} onClick={() => { setOpen((o) => !o); setConfirming(false); }}>⋯</button>
+      {open && (
+        <div className={s.menu} role="menu" aria-label={`Options for ${name}`}>
+          {confirming ? (
+            <>
+              <p className={s.confirmText}>Stop following {name}? You will no longer be notified of new photos.</p>
+              <div className={s.confirmRow}>
+                <button type="button" role="menuitem" className={`${s.menuItem} ${s.danger}`}
+                  onClick={() => { setOpen(false); onUnfollow(); }}>Unfollow</button>
+                <button type="button" role="menuitem" className={s.menuItem}
+                  onClick={() => { setOpen(false); setConfirming(false); button.current?.focus(); }}>Cancel</button>
+              </div>
+            </>
+          ) : (
+            <button type="button" role="menuitem" className={`${s.menuItem} ${s.danger}`}
+              onClick={() => setConfirming(true)}>Unfollow…</button>
+          )}
+        </div>
+      )}
+    </span>
   );
 }
 
@@ -188,7 +289,7 @@ function Lightbox({ item, index, total, flatList, onJump, onPrev, onNext, onClos
     };
   }, [onPrev, onNext, onClose]);
   if (!item) return null;
-  const caption = [item.horse, item.rider].filter(Boolean).join(' × ') || item.event_name || 'Untitled';
+  const caption = cardCaption(item);
   const href = item.isCommunity ? `/moments/${item.id}` : `/p/${item.id}`;
   return (
     <div role="dialog" aria-modal="true" aria-label={caption}
@@ -235,6 +336,17 @@ function Lightbox({ item, index, total, flatList, onJump, onPrev, onNext, onClos
           <strong style={{ color: '#fff', fontWeight: 600 }}>{caption}</strong>
           <Link href={href} className="text-link">{item.isCommunity ? 'View moment →' : 'View & buy →'}</Link>
         </figcaption>
+        {item.isCommunity && (
+          <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <MomentShareActions kind={item.kind} media={{
+              media_id: item.id,
+              thumb: item.preview_url || item.thumb_url || null,
+              title: caption,
+              sub: item.event_name || '',
+              caption: `${caption}${item.event_name ? ` at ${item.event_name}` : ''} via BossMedia`,
+            }} />
+          </div>
+        )}
       </figure>
     </div>
   );

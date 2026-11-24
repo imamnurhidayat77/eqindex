@@ -5,20 +5,22 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { API } from '../lib/api';
 import { nzd } from '../lib/figma-data';
-import { MAX_SPONSOR_LOGOS, isWinningResult, normalizeTagDraft, toggleLogoIds } from '../lib/sponsor-logos.mjs';
+import { MAX_SPONSOR_LOGOS, normalizeTagDraft, toggleLogoIds } from '../lib/sponsor-logos.mjs';
 import { useFocusTrap } from '../lib/focus-trap';
 import { useToast } from './Toaster';
 import SmartImage from './SmartImage';
 import TagEditor from './TagEditor';
 import m from './LogoModal.module.css';
-import SponsorPhoto, { TEMPLATE_VARIANTS, OVERLAY_VARIANTS, THEMED_VARIANTS, templateOf, clearDesign, saveDesign, loadDesign } from './SponsorTemplates';
+import SponsorPhoto, { TEMPLATE_VARIANTS, THEMED_VARIANTS, PLATE_MAX_CORNERS, templateOf, clearDesign, saveDesign, loadDesign, isPickerVariant, momentText, variantName, RECOMMENDED_BY_ASPECT, aspectKeyOf } from './SponsorTemplates';
 
 const toSponsors = (list) => (list || []).map((l) => ({
   id: l.id, label: l.label, src: `${API}/api/sponsor-logos/${l.id}/file`,
 }));
 
-// Satu layar tanpa scroll: preview rasio asli (fit), carousel thumbnail
-// ikut rasio foto, tombol Save. Semua pilihan desain ada di sini: 1–8 logo
+// Editor layout: the photo preview is the biggest thing on screen, one
+// tab of options at a time (Template, Sponsors, Text) beside it on
+// desktop and under it on phones, Save always visible. Every tap changes
+// the preview live. Semua pilihan desain ada di sini: 1–8 logo
 // (posisi per logo sampai 4 sudut, tabrakan bertukar tempat otomatis;
 // logo ke-5+ ikut baris yang sama di posisi pertama) + tag kelas/menang.
 // Browsing tidak mengubah halaman sampai Save diklik. Portal ke body agar
@@ -34,6 +36,8 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
   // Sponsor tabs: event logos (discount-backed, shared) vs the buyer's own
   // uploads (saved to their account, visible only to them).
   const [spTab, setSpTab] = useState('event');
+  // Option tab beside / under the preview: one decision at a time.
+  const [tab, setTab] = useState('template');
   const pathname = usePathname();
   // Uploading a personal sponsor needs an account to attach it to —
   // guests get a sign-in prompt instead of the upload form.
@@ -85,6 +89,8 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
     } catch (e) { setUpErr(e.message); } finally { setUpBusy(false); }
   };
   const [draft, setDraft] = useState(template);
+  // True while the template is our suggestion, false once the buyer picks.
+  const autoPick = useRef(false);
   const [draftTheme, setDraftTheme] = useState(theme === 'dark' ? 'dark' : 'light');
   // Posisi logo draft per logo ({logoId: pos}) — hanya varian overlay
   // yang menghormatinya. Strip/panel punya layout tetap.
@@ -93,7 +99,7 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
   const setDraftPosFor = (id, pos) => setDraftPos((v) => {
     const next = { ...v, [id]: pos };
     for (const other of Object.keys(next)) {
-      if (other !== String(id) && next[other] === pos) next[other] = v[id] || 'bottom-left';
+      if (other !== String(id) && next[other] === pos) next[other] = v[id] || defaultPos(id);
     }
     return next;
   });
@@ -109,29 +115,14 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
     o.variant && o.variant === variantId
     && logoSetOf(o.logoIds) === logoSetOf(draftLogos)
     && themeOk(o, themeValue, variantId));
-  // Tag draft mengendalikan daftar template langsung: centang "Won it"
-  // membuka grup Winner, isi kelas membuka Class spotlight — sebelum Save.
+  // Class + moment drive every template live, before Save.
   const draftClass = draftTags.class.trim() || meta?.className || '';
-  const draftWon = isWinningResult(draftTags.result) || previewMeta.moment === 'win';
-  const draftResult = draftTags.result.trim() || previewMeta.result || '';
-  // Semua 19 template selalu tampil — win/class hanya menaikkan ranking,
-  // bukan menyembunyikan. Pilihan buyer, desain buyer.
-  const showWinners = draftWon;
-  const hasClass = Boolean(draftClass);
-  const aspectKey = !photoAr ? 'wide' : photoAr.h > photoAr.w * 1.15 ? 'tall' : Math.abs(photoAr.w / photoAr.h - 1) < 0.2 ? 'square' : 'wide';
-  const RECOMMENDED = {
-    tall: ['portrait-swoosh', 'portrait-drape', 'minimal-corner'],
-    wide: ['banner-wave', 'square-bar', 'top-banner'],
-    square: ['square-bar', 'minimal-corner', 'gold-frame'],
-  }[aspectKey];
-  const rank = (t) => {
-    if (hasClass && t.id === 'class-spotlight') return -3;
-    if (showWinners && t.group === 'Winner') return -2;
-    if (t.group === 'Winner') return 98;
-    const i = RECOMMENDED.indexOf(t.id);
-    return i === -1 ? 99 : i;
-  };
-  const ordered = [...TEMPLATE_VARIANTS].sort((a, b) => rank(a) - rank(b));
+  const draftResult = momentText(draftTags.result || previewMeta.result, previewMeta.moment);
+  const aspectKey = aspectKeyOf(photoAr?.w, photoAr?.h);
+  // Every current template fits every photo; the order puts the best fit first.
+  const RECOMMENDED = RECOMMENDED_BY_ASPECT[aspectKey];
+  const BEST_FIT = RECOMMENDED.slice(0, 2);
+  const ordered = [...TEMPLATE_VARIANTS].sort((a, b) => RECOMMENDED.indexOf(a.id) - RECOMMENDED.indexOf(b.id));
   const ownedHit = (variantId, themeValue) => exactHit(variantId, themeValue);
   const draftOwned = ownedHit(draft, draftTheme);
   const toggleDraftLogo = (id) => {
@@ -147,17 +138,23 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
     const th = theme === 'dark' ? 'dark' : 'light';
     setDraft(template);
     setDraftTheme(th);
-    setDraftLogos([...logoIds]);
+    const onlyEvent = logos.filter((l) => !l.mine);
+    const fresh = !logoIds.length && !loadDesign(mediaId);
+    const startLogos = fresh && onlyEvent.length === 1 ? [String(onlyEvent[0].id)] : [...logoIds];
+    setDraftLogos(startLogos);
+    // Nothing picked yet: open on Sponsors, the one step Save needs.
+    setTab(startLogos.length ? 'template' : 'sponsor');
     setDraftTags(normalizeTagDraft(tags));
     setSpTab('event');
     setShowUpload(false);
     setDraftPos(Object.fromEntries(logoIds.map((id, i) => [id, logoPos[id] || LOGO_POSITIONS[i % LOGO_POSITIONS.length]])));
-    // Tanpa desain tersimpan: foto win dapat layout winner, foto bertag
-    // kelas dapat spotlight kelas, sisanya rekomendasi aspek foto.
-    // Desain yang sudah dibeli tidak pernah jadi pilihan awal.
+    // No saved design, or a retired one: start on the best fit for this
+    // photo (re-applied once the photo's aspect is measured, see below).
+    // An owned design is never the starting pick.
     let next = template;
-    if (!loadDesign(mediaId)) {
-      next = showWinners ? 'winner-banner' : hasClass ? 'class-spotlight' : RECOMMENDED[0];
+    autoPick.current = !loadDesign(mediaId) || !isPickerVariant(template);
+    if (autoPick.current) {
+      next = RECOMMENDED[0];
       setDraft(next);
     }
     if (ownedHit(next, th)) {
@@ -165,25 +162,23 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
       if (alt) setDraft(alt.id);
     }
   }, [open, mediaId, template, theme]);
+  // The aspect arrives after the first render: move an untouched auto pick
+  // to the best fit for portrait / square photos.
+  useEffect(() => {
+    if (open && autoPick.current && photoAr && !ownedHit(RECOMMENDED[0], draftTheme)) setDraft(RECOMMENDED[0]);
+  }, [open, aspectKey]);
   useEffect(() => {
     if (!open) return undefined;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, [open ]);
-  // Sel preview diukur (contain-fit terukur) — hook di atas early return
-  // agar urutan hook stabil saat modal buka/tutup.
-  const cellRef = useRef(null);
-  const [cellBox, setCellBox] = useState(null);
+  // Keep the picked template card in view (the phone tray scrolls sideways).
+  const tplRef = useRef(null);
   useEffect(() => {
-    if (!open || !cellRef.current) return undefined;
-    const ro = new ResizeObserver((es) => {
-      const r = es[0].contentRect;
-      setCellBox({ w: r.width, h: r.height });
-    });
-    ro.observe(cellRef.current);
-    return () => ro.disconnect();
-  }, [open ]);
+    if (!open || tab !== 'template') return;
+    tplRef.current?.querySelector('[aria-checked="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [open, tab, draft]);
   if (!open || typeof document === 'undefined') return null;
   const picked = logos.filter((l) => draftLogos.includes(l.id));
   // Belum pilih = placeholder netral YOUR LOGO (dari SponsorPhoto),
@@ -200,19 +195,20 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
   // list vertikal tetap enak di-scroll.
   const thumbRatio = photoAr ? `${photoAr.w} / ${photoAr.h}` : '16 / 10';
   const tallPhoto = photoAr && photoAr.h > photoAr.w * 1.15;
-  const themed = THEMED_VARIANTS.includes(draft);
-  // Preview selalu serasio foto asli (contain-fit terukur): height:100% +
-  // max-width memecah rasio saat lebar dikepotong (terukur 1.405 vs 1.499),
-  // jadi sel diukur lalu bingkai dihitung pas — tak pernah crop, tak pecah.
-  const previewFrame = (() => {
-    if (!photoAr || !cellBox || cellBox.w <= 0 || cellBox.h <= 0) {
-      return { width: '100%', aspectRatio: photoAr ? `${photoAr.w} / ${photoAr.h}` : undefined };
-    }
-    const ar = photoAr.w / photoAr.h;
-    let w = cellBox.w, h = w / ar;
-    if (h > cellBox.h) { h = cellBox.h; w = h * ar; }
-    return { width: Math.max(1, Math.floor(w)), height: Math.max(1, Math.floor(h)) };
-  })();
+  // Template cards share one square box (--tb, set per screen in CSS); the
+  // photo is contain-fit inside it.
+  const thumbAr = photoAr ? photoAr.w / photoAr.h : 1.5;
+  const thumbW = thumbAr >= 1 ? 'var(--tb)' : `calc(var(--tb) * ${thumbAr.toFixed(3)})`;
+  // Same default corner SponsorPhoto uses for logo i.
+  const defaultPos = (id) => ['bottom-left', 'bottom-right', 'top-right', 'top-left'][Math.max(0, picked.findIndex((l) => l.id === id)) % 4];
+  // Preview is contain-fit in pure CSS: the cell is a size container, the
+  // frame takes the largest width that still fits its height, and
+  // aspect-ratio locks the shape. No measuring, so no stale sizes on any
+  // screen (the old observer-based sizing could keep a size from a previous layout).
+  const photoRatio = photoAr ? `${photoAr.w} / ${photoAr.h}` : null;
+  const previewFrame = photoAr
+    ? { width: `min(100cqw, calc(100cqh * ${photoAr.w / photoAr.h}))`, aspectRatio: photoRatio }
+    : { width: '100%' };
   // Whole-design remove (the page has the same action): clears the saved
   // draft and reports empty selection upward — preview returns to plain.
   const removeAll = () => {
@@ -240,7 +236,7 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
       <div className={`st-modal-card st-modal-card-xwide ${m.card}`} role="document" onClick={(e) => e.stopPropagation()}
         style={{ margin: 0, height: 'calc(100dvh - 32px)', maxHeight: 900, width: 'min(1400px, 96vw)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header className="st-modal-head" style={{ marginBottom: 8 }}>
+        <header className={`st-modal-head ${m.head}`} style={{ marginBottom: 8 }}>
           <div className="st-modal-title">
             <p className="eyebrow">Sponsor design</p>
             <h3>Design your photo</h3>
@@ -248,9 +244,22 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
           <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
         </header>
 
-        <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', gap: 12, flexWrap: 'wrap', overflow: 'hidden' }}>
-          <div ref={cellRef} style={{ flex: '1 1 380px', minWidth: 0, minHeight: 280, display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
+        <div className={m.body}>
+          <div className={m.stage}>
+            <div className={m.stageBar}>
+              <p className={m.stageName} aria-live="polite">{variantName(draft)}</p>
+              <div role="radiogroup" aria-label="Style" className={m.seg}>
+                {[['Light', 'light'], ['Dark', 'dark']].map(([label, v]) => (
+                  <button key={v} type="button" role="radio" aria-checked={draftTheme === v}
+                    onClick={() => setDraftTheme(v)} className={m.segBtn}>{label}</button>
+                ))}
+              </div>
+            </div>
+          <div className={m.cell} style={{ '--ar': photoRatio || '3 / 2' }}>
             {/* Rasio asli foto, sebesar mungkin di ruang sisa — tidak di-crop. */}
+            {!draftLogos.length && (
+              <button type="button" className={m.emptyHint} onClick={() => setTab('sponsor')}>Pick a sponsor to place their logo</button>
+            )}
             <SponsorPhoto photo={photo} variant={draft} ratio={null}
               frameStyle={previewFrame} theme={draftTheme}
               onAspect={setPhotoAr}
@@ -258,8 +267,58 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
               event={previewMeta.event} className={draftClass}
               result={draftResult} subject={previewMeta.subject} />
           </div>
-          <aside style={{ flex: '1 1 280px', maxWidth: 360, minWidth: 0, minHeight: 0, height: '100%', overflowY: 'auto', display: 'grid', gap: 12, alignContent: 'start', paddingRight: 2 }}>
-            <div>
+          </div>
+          <section className={m.panel} aria-label="Design options">
+            <div role="tablist" aria-label="Design steps" className={m.tabs}>
+              {[['template', 'Template'], ['sponsor', 'Sponsors'], ['text', 'Text']].map(([id, label]) => (
+                <button key={id} type="button" role="tab" id={`dt-${id}`} aria-selected={tab === id} aria-controls="dt-panel"
+                  onClick={() => setTab(id)} className={m.tab}>
+                  {label}
+                  {id === 'sponsor' && draftLogos.length > 0 && <span className={m.tabCount}>{draftLogos.length}</span>}
+                </button>
+              ))}
+            </div>
+            <div role="tabpanel" id="dt-panel" aria-labelledby={`dt-${tab}`} className={m.panelBody}>
+              {tab === 'template' && (
+            <div role="radiogroup" aria-label="Design template" className={m.tplGrid} ref={tplRef}>
+              {ordered.map((t) => {
+                const isOwned = ownedHit(t.id, draftTheme);
+                return (
+                <button key={t.id} type="button" role="radio" aria-checked={draft === t.id}
+                  disabled={isOwned} aria-disabled={isOwned}
+                  onClick={() => { autoPick.current = false; setDraft(t.id); }} aria-label={`${t.name}: ${t.desc}${isOwned ? ' (owned)' : ''}`}
+                  title={isOwned ? 'You already own this design' : undefined}
+                  className={`${m.thumb} ${m.tplCard}`}
+                  style={{
+                    cursor: isOwned ? 'not-allowed' : 'pointer', opacity: isOwned ? 0.75 : 1,
+                  }}>
+                  {isOwned && (
+                    <span style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, background: '#e3b341', color: '#101010',
+                      fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 20 }}>✓ Owned</span>
+                  )}
+                  {draft === t.id && !isOwned && (
+                    <span className={m.currentPill}>Current</span>
+                  )}
+                  <span className={m.thumbBox}>
+                  <span style={{ display: 'block', width: thumbW }}>
+                    <SponsorPhoto photo={photo} variant={t.id} ratio={thumbRatio}
+                      theme={draftTheme}
+                      sponsors={sponsors} positions={draftPositions}
+                      event={previewMeta.event} className={draftClass}
+                      result={draftResult} subject={previewMeta.subject} />
+                  </span>
+                  </span>
+                  <div className={m.thumbName}>
+                    <strong>{t.short}</strong>
+                    {BEST_FIT.includes(t.id) && !isOwned && <small>Best fit</small>}
+                  </div>
+                  </button>
+                  );
+                })}
+            </div>
+              )}
+              {tab === 'sponsor' && (
+                <>
               <div role="tablist" aria-label="Sponsor sources" style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
                 {[['event', `Event sponsors${eventLogos.length ? ` (${eventLogos.length})` : ''}`], ['mine', `My sponsors${myLogos.length ? ` (${myLogos.length})` : ''}`]].map(([id, label]) => (
                   <button key={id} type="button" role="tab" aria-selected={spTab === id} onClick={() => setSpTab(id)}
@@ -289,8 +348,10 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
                           unoptimized style={{ objectFit: 'contain', width: '100%', height: '100%' }} />
                       </span>
                       <span className={m.chipLabel}>
-                        {l.label}{l.mine ? ' · yours' : dc ? ` −${nzd(dc)}` : ''}
+                        {l.label}{l.mine ? ' · yours' : ''}
+                        {!l.mine && dc ? <small className={m.chipDeal}>−{nzd(dc)} on this photo</small> : null}
                       </span>
+                      <span className={m.chipState} aria-hidden="true">{on ? '✓ Added' : '+ Add'}</span>
                     </button>
                     {l.mine && (
                       <button type="button" onClick={() => removeOwnLogo(l.id)} disabled={removingId === l.id}
@@ -344,89 +405,39 @@ export default function LogoModal({ open, onClose, logos, logoIds, logoPos = {},
                   </button>
                 )
               )}
-            </div>
-            <div>
-              <p className="purchase-label" style={{ margin: '0 0 6px' }}>Photo tags <span style={{ color: '#9a9a9a' }}>· for this design, empty = original</span></p>
-              <TagEditor value={draftTags} onChange={setDraftTags} />
-            </div>
-            <div style={{ display: 'grid', gap: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, position: 'sticky', top: 0, background: '#141414', paddingBottom: 8, zIndex: 1 }}>
-                <p className="purchase-label" style={{ margin: 0 }}>Choose a template</p>
-                <p style={{ margin: 0, color: '#999', fontSize: 11 }}>{ordered.length} designs · scroll for more ↓</p>
-              </div>
-              {themed && (
-              <div role="radiogroup" aria-label="Strip theme" style={{ display: 'flex', gap: 6 }}>
-                {[['Light', 'light'], ['Dark', 'dark']].map(([label, v]) => (
-                  <button key={v} type="button" role="radio" aria-checked={draftTheme === v}
-                    onClick={() => setDraftTheme(v)} className={m.pick} style={{ padding: '6px 10px' }}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {OVERLAY_VARIANTS.includes(draft) && picked.length > 0 && (
-              <div role="group" aria-label="Logo positions" style={{ display: 'grid', gap: 6 }}>
-                {picked.map((l) => (
-                  <div key={l.id || 'default'} role="radiogroup" aria-label={`${l.label || 'Logo'} position`}
-                    style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-end' }}>
-                    {picked.length > 1 && (
-                      <span style={{ marginRight: 'auto', color: '#999', fontSize: 12, fontWeight: 700,
-                        maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {l.label}
-                      </span>
-                    )}
-                    {[['Bottom left', 'bottom-left'], ['Bottom right', 'bottom-right'], ['Top right', 'top-right'], ['Top left', 'top-left']].map(([label, pos]) => (
-                      <button key={pos} type="button" role="radio" aria-checked={(draftPos[l.id] || 'bottom-left') === pos}
-                        onClick={() => setDraftPosFor(l.id, pos)} className={m.pick} style={{ padding: '6px 10px' }}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                ))}
+            {draft === 'logo-plate' && picked.length > 0 && (
+              <div>
+                <p className={m.step}>Logo corners <em className={m.stepNote}>tap a corner</em></p>
+                <div role="group" aria-label="Logo positions" className={m.cornerList}>
+                  {(picked.length > PLATE_MAX_CORNERS ? picked.slice(0, 1) : picked).map((l) => (
+                    <div key={l.id || 'default'} className={m.cornerRow}>
+                      <span className={m.cornerLabel}>{picked.length > PLATE_MAX_CORNERS ? 'All logos' : l.label}</span>
+                      <div role="radiogroup" aria-label={`${l.label || 'Logo'} corner`} className={m.corners}>
+                        {[['Top left', 'top-left'], ['Top right', 'top-right'], ['Bottom left', 'bottom-left'], ['Bottom right', 'bottom-right']].map(([label, pos]) => (
+                          <button key={pos} type="button" role="radio" aria-checked={(draftPos[l.id] || defaultPos(l.id)) === pos}
+                            aria-label={label} title={label} onClick={() => setDraftPosFor(l.id, pos)}
+                            className={`${m.corner} ${m['c-' + pos]}`}><i aria-hidden="true" /></button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-            <div role="radiogroup" aria-label="Design template" style={{ display: 'grid', gap: 10 }}>
-              {ordered.map((t) => {
-                const isOwned = ownedHit(t.id, draftTheme);
-                return (
-                <button key={t.id} type="button" role="radio" aria-checked={draft === t.id}
-                  disabled={isOwned} aria-disabled={isOwned}
-                  onClick={() => setDraft(t.id)} aria-label={`${t.name}: ${t.desc}${isOwned ? ' (owned)' : ''}`}
-                  title={isOwned ? 'You already own this design' : undefined}
-                  className={m.thumb}
-                  style={{
-                    cursor: isOwned ? 'not-allowed' : 'pointer', opacity: isOwned ? 0.75 : 1,
-                  }}>
-                  {isOwned && (
-                    <span style={{ position: 'absolute', top: 6, left: 6, zIndex: 2, background: '#e3b341', color: '#101010',
-                      fontSize: 11, fontWeight: 800, padding: '3px 8px', borderRadius: 20 }}>✓ Owned</span>
-                  )}
-                  {draft === t.id && !isOwned && (
-                    <span className={m.currentPill}>Current</span>
-                  )}
-                  <span style={{ display: 'block', width: '100%', maxWidth: tallPhoto ? 200 : undefined, margin: '0 auto' }}>
-                    <SponsorPhoto photo={photo} variant={t.id} ratio={thumbRatio}
-                      theme={draftTheme}
-                      sponsors={sponsors} positions={draftPositions}
-                      event={previewMeta.event} className={draftClass}
-                      result={draftResult} subject={previewMeta.subject} />
-                  </span>
-                  <div style={{ marginTop: 8, display: 'flex', alignItems: 'baseline', gap: 8, minHeight: 18 }}>
-                    <strong style={{ fontSize: 13 }}>{t.short}</strong>
-                    {RECOMMENDED.includes(t.id) && (
-                      <small style={{ color: '#e3b341', fontSize: 11, fontWeight: 700 }}>Recommended</small>
-                    )}
-                  </div>
-                  </button>
-                  );
-                })}
-              </div>
-              <div aria-hidden="true" style={{ position: 'sticky', bottom: 0, height: 28, marginTop: -20, background: 'linear-gradient(transparent, #141414)', pointerEvents: 'none' }} />
+                </>
+              )}
+              {tab === 'text' && (
+                <div>
+                  <p className={m.panelNote}>Shown on every template. Leave blank to use the photo&apos;s own class and moment.</p>
+                  <TagEditor value={draftTags} onChange={setDraftTags}
+                    hint={{ class: meta?.className || '', result: momentText(previewMeta.result, previewMeta.moment) }} />
+                </div>
+              )}
             </div>
-          </aside>
+          </section>
         </div>
 
-        <footer className="st-modal-foot" style={{ marginTop: 10, paddingTop: 12, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 14, minHeight: 60 }}>
+        <footer className={`st-modal-foot ${m.foot}`}>
           {draftOwned && (
             <span style={{ fontSize: 12, color: '#e08a8a', marginRight: 'auto' }}>
               You already own this design — pick another template.

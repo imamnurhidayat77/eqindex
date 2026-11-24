@@ -20,3 +20,19 @@
 }
 .input:hover { border-color: #555; }
 .input:focus { border-color: #777; }
+/* Quick moment chips: one tap fills the Moment field, tap again clears. */
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.preset {
+  min-height: 32px;
+  padding: 0 10px;
+  color: #ccc;
+  background: transparent;
+  border: 1px solid #333;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.preset:hover { border-color: #666; }
+.preset[aria-pressed='true'] { color: #101010; background: #e3b341; border-color: #e3b341; }

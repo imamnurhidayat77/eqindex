@@ -9,7 +9,9 @@ import { Icon } from './figma';
 import { toast } from './Toaster';
 import f from './FollowButton.module.css';
 
-export default function FollowButton({ kind, id, name, icon = false }) {
+// showName: label carries the full target ("Following Auckland SJ…"), for
+// places that stack several follow buttons side by side.
+export default function FollowButton({ kind, id, name, icon = false, showName = false }) {
   const router = useRouter();
   const pathname = usePathname();
   const [watchId, setWatchId] = useState(null);
@@ -74,7 +76,8 @@ export default function FollowButton({ kind, id, name, icon = false }) {
         <Icon name={watchId ? 'bell-fill' : 'bell'} size={15} />
         {watchId
           ? (<><span className={f.baseLabel}>Following</span><span className={f.hoverLabel}>Unfollow</span></>)
-          : `Follow ${short}`}
+          : (showName ? 'Follow' : `Follow ${short}`)}
+        {showName && name && <span className={f.name}>{name}</span>}
       </>)}
     </button>
   );

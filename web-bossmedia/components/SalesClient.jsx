@@ -3,8 +3,10 @@ import { useEffect, useMemo, useState } from 'react';
 import StudioShell, { Bars, Chip, Pager, Stat } from './studio';
 import { useNotify } from './Toaster';
 import SearchSelect from './SearchSelect';
+import styles from './Studio.module.css';
 import { API } from '../lib/api';
-import { dayOf, nzdc, studio, studioFetch } from '../lib/studio';
+import { studio, studioFetch } from '../lib/studio';
+import { fmtDay, isAbandoned, nzdc, payoutBreakdown, tierLabel } from '../lib/studio-format.mjs';
 
 const LIMIT = 25;
 
@@ -36,48 +38,52 @@ export default function SalesPage({ events, initialStatus }) {
 
   const resetPage = (fn) => (v) => { setOffset(0); fn(v); };
   const k = summary?.kpis;
+  const payouts = (summary?.settlement || []).map((x) => ({ ...x, ...payoutBreakdown(x) }));
   const csvHref = `${API}/admin/sales.csv${status || kind || eventId ? `?${new URLSearchParams({ ...(status ? { status } : {}), ...(kind ? { kind } : {}), ...(eventId ? { event_id: eventId } : {}) })}` : ''}`;
 
   return (
     <StudioShell active="sales">
       <div className="st-kpis">
         <Stat label="Paid" value={k ? nzdc(k.gross_cents) : '—'} sub={k ? `${k.paid} sales · avg ${nzdc(k.avg_cents)}` : 'collected revenue'} />
-        <Stat label="Pending" value={k ? nzdc(k.pending_cents) : '—'} sub={k ? `${k.pending} held at checkout` : 'awaiting payment'} />
+        <Stat label="Payout" value={summary ? nzdc(payouts.reduce((s, x) => s + x.payout, 0)) : '—'} sub="after platform, organizer and card fees" />
+        <Stat label="Checkouts in progress" value={k ? nzdc(k.open_checkout_cents) : '—'} sub={k ? `${k.open_checkouts} started in the last 24 hours · ${k.pending - k.open_checkouts} abandoned` : 'last 24 hours'} />
         <Stat label="Refunded" value={k ? k.refunded : '—'} sub="reversed sales" />
-        <Stat label="Stripe fees (est.)" value={summary ? nzdc((summary.settlement || []).reduce((s, x) => s + Number(x.stripe_fee_cents || 0), 0)) : '—'} sub="1.75% + 30¢ per sale" />
       </div>
       <div className="st-filters">
         <SearchSelect
           options={[{ id: '', label: 'All statuses' }, { id: 'paid', label: 'Paid' }, { id: 'pending', label: 'Pending' }, { id: 'refunded', label: 'Refunded' }]}
           value={status} onChange={(v) => resetPage(setStatus)(v || '')} placeholder="Status" />
         <SearchSelect
-          options={[{ id: '', label: 'Photo + package + reel + credit' }, { id: 'photo', label: 'Photos' }, { id: 'package', label: 'Packages' }, { id: 'reel', label: 'Reels' }, { id: 'credit', label: 'Credits' }]}
+          options={[{ id: '', label: 'All types' }, { id: 'photo', label: 'Photos' }, { id: 'package', label: 'Packages' }, { id: 'reel', label: 'Reels' }, { id: 'credit', label: 'Credits' }]}
           value={kind} onChange={(v) => resetPage(setKind)(v || '')} placeholder="Kind" />
         <SearchSelect
           options={[{ id: '', label: 'All events' }, ...events.map((e) => ({ id: e.id, label: e.name }))]}
           value={eventId} onChange={(v) => resetPage(setEventId)(v || '')} placeholder="Event" />
         <a className="st-btn-ghost" style={{ textDecoration: 'none', alignSelf: 'center' }} href={csvHref} download>Export CSV</a>
       </div>
-      <div className="st-grid-2">
+      <div className={`st-grid-2 ${styles.salesGrid}`}>
         <div className="st-card">
-          <h3>Revenue by tier</h3>
+          <h3>Revenue by licence</h3>
           <p className="st-csub">Paid sales only</p>
           {(summary?.by_tier || []).length
-            ? <Bars rows={summary.by_tier.map((t) => ({ label: t.tier, value: Number(t.gross_cents) }))} format={(r) => `${nzdc(r.value)} · ${summary.by_tier.find((t) => t.tier === r.label)?.sales || 0}`} />
+            ? <Bars rows={summary.by_tier.map((t) => ({ label: tierLabel(t.tier), value: Number(t.gross_cents), sales: Number(t.sales) || 0 }))} format={(r) => `${nzdc(r.value)} · ${r.sales} ${r.sales === 1 ? 'sale' : 'sales'}`} />
             : <p className="empty-note">No paid sales yet.</p>}
         </div>
         <div className="st-card">
-          <h3>Photographer payout</h3>
-          <p className="st-csub">Gross − commission − Stripe fees</p>
-          {(summary?.settlement || []).length ? (
+          <h3>Payout</h3>
+          <p className="st-csub">Gross − platform fee − organizer share − card fees = payout</p>
+          {payouts.length ? (
             <div className="table-scroll"><table className="st-table">
-              <thead><tr><th>Who</th><th>Gross</th><th>Payout</th></tr></thead>
+              <thead><tr><th>Who</th><th>Gross</th><th>Platform</th><th>Organizer</th><th>Card fees</th><th>Payout</th></tr></thead>
               <tbody>
-                {summary.settlement.map((s) => (
-                  <tr key={s.photographer_id}>
-                    <td>{s.photographer}<div style={{ color: '#777', fontSize: 11 }}>{s.sales} sales · {Math.round(Number(s.commission_rate) * 100)}% commission</div></td>
-                    <td>{nzdc(s.gross_cents)}</td>
-                    <td><b>{nzdc(s.payout_cents)}</b></td>
+                {payouts.map((x) => (
+                  <tr key={x.photographer_id}>
+                    <td>{x.photographer}<div style={{ color: '#9a9a9a', fontSize: 11 }}>{x.sales} {x.sales === 1 ? 'sale' : 'sales'}{x.gross ? ` · ${Math.round((x.fee / x.gross) * 1000) / 10}% platform` : ''}</div></td>
+                    <td>{nzdc(x.gross)}</td>
+                    <td>{nzdc(x.fee)}</td>
+                    <td>{nzdc(x.organizer)}</td>
+                    <td>{nzdc(x.cardFees)}</td>
+                    <td><b>{nzdc(x.payout)}</b></td>
                   </tr>
                 ))}
               </tbody>
@@ -91,12 +97,12 @@ export default function SalesPage({ events, initialStatus }) {
           <tbody>
             {(rows || []).map((s) => (
               <tr key={s.id}>
-                <td style={{ whiteSpace: 'nowrap' }}>{dayOf(s.created_at)}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{fmtDay(s.created_at)}</td>
                 <td>{s.buyer_email || '—'}</td>
-                <td>{[s.horse, s.rider].filter(Boolean).join(' · ') || s.package_title || s.event_name || s.kind || '—'}</td>
-                <td>{s.license_tier || s.package_title || s.kind || '—'}</td>
+                <td>{[s.horse, s.rider].filter(Boolean).join(' · ') || s.package_title || s.event_name || (s.kind === 'reel' ? 'Untagged reel' : 'Untagged photo')}</td>
+                <td>{tierLabel(s.license_tier || s.kind)}</td>
                 <td><b>{nzdc(s.amount_cents)}</b></td>
-                <td><Chip status={s.status} /></td>
+                <td><Chip status={isAbandoned(s) ? 'abandoned' : s.status} /></td>
               </tr>
             ))}
           </tbody>

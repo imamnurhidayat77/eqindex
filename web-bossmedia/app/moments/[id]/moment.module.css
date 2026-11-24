@@ -1,0 +1,95 @@
+/* Community moment detail: stage sized to the media, quiet detail list. */
+
+/* Doubled class: beats the global .media-preview-column box, so the
+   photo is not framed by a big panel. */
+.column.column {
+  border: 0;
+  background: none;
+}
+
+.sub {
+  margin: 0;
+  color: #999;
+  font-size: 13px;
+}
+
+/* The figure hugs the image: no letterbox box around portrait photos. */
+/* Full column width, capped at 80vh: portraits fill the height, landscapes
+   fill the width. object-fit keeps the ratio with no black panel behind. */
+.stage {
+  width: 100%;
+  margin: 0;
+}
+.stage img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 80vh;
+  object-fit: contain;
+}
+
+.note {
+  margin: 6px 0 0;
+  color: #777;
+  font-size: 12px;
+}
+
+.details {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  font-size: 13px;
+  color: #bbb;
+}
+.details dt {
+  margin-bottom: 3px;
+  color: #777;
+  font-size: 11px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+.details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.eventLink {
+  color: #fff;
+  font-size: 14px;
+  line-height: 1.5;
+  text-decoration: none;
+  border-bottom: 1px solid #444;
+  padding-bottom: 1px;
+  transition: border-color 150ms ease;
+}
+.eventLink:hover {
+  border-color: #fff;
+}
+
+.neighbor {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  color: #aaa;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: color 150ms ease;
+}
+.neighbor:hover {
+  color: #fff;
+}
+
+@media (max-width: 768px) {
+  .stage img {
+    max-height: 70vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eventLink,
+  .neighbor {
+    transition: none;
+  }
+}

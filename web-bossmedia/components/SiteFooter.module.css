@@ -1,0 +1,6 @@
+/* Four link columns (Legal added). Links get a 24px tap target (WCAG 2.5.8)
+   without changing how they look. `footer` prefix outranks globals.css. */
+footer .links { grid-template-columns: repeat(4, 1fr); gap: 42px 32px; }
+footer .links > div { gap: 7px; }
+footer .links a { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 0; }
+@media (max-width: 900px) { footer .links { grid-template-columns: 1fr 1fr; gap: 36px 24px; } }

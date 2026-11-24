@@ -19,6 +19,7 @@ export const studio = {
   get: (p) => studioFetch(p).then((j) => j.data),
   post: (p, body) => studioFetch(p, { method: 'POST', body }),
   patch: (p, body) => studioFetch(p, { method: 'PATCH', body }),
+  put: (p, body) => studioFetch(p, { method: 'PUT', body }),
   del: (p) => studioFetch(p, { method: 'DELETE' }),
   upload: (form) => studioFetch('/admin/media/upload', { method: 'POST', form }),
 };
@@ -40,7 +41,6 @@ export function useStudioUser() {
   return { user, state };
 }
 
-export const nzdc = (cents) =>
-  `NZ$${(Number(cents || 0) / 100).toLocaleString('en-NZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+export { nzdc } from './studio-format.mjs';
 
 export const dayOf = (iso) => (iso || '').slice(0, 10);

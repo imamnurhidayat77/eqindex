@@ -22,6 +22,23 @@ function devMailSkip(link) {
   console.log('[dev-mail-skip] auth link (email not configured):', link);
   return true;
 }
+// Email verification reuses password_resets (24h, single-use, sha256 at
+// rest): following either link proves the inbox, so both mark the email
+// verified. A forgot-password request replaces a pending verify link.
+async function sendVerifyEmail(user) {
+  if (!APP_URL) return false;
+  await pool.query(`DELETE FROM password_resets WHERE user_id = $1 AND used_at IS NULL`, [user.id]);
+  const raw = crypto.randomBytes(32).toString('hex');
+  await pool.query(
+    `INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES ($1, $2, NOW() + INTERVAL '24 hours')`,
+    [user.id, sha256(raw)]);
+  const link = `${APP_URL}/verify-email?token=${raw}`;
+  if (devMailSkip(link)) return true;
+  const t = require('../lib/emailTemplates').verifyEmail({ name: user.name, link });
+  await sendMail({ to: user.email, subject: t.subject, text: t.text, html: t.html });
+  return true;
+}
+
 const mailUnavailable = (res) => res.status(503).json({ error: 'we could not send that email — try again later or contact support' });
 
 module.exports = function mountAuthRoutes(app) {
@@ -75,7 +92,9 @@ module.exports = function mountAuthRoutes(app) {
       'INSERT INTO users (name, email, role, password_hash) VALUES ($1,$2,$3,$4) RETURNING id, name, email, role',
       [String(name).trim().slice(0, 100), cleanEmail, wantRole, hash]);
     await newSession(res, req, rows[0].id);
-    res.status(201).json({ data: rows[0] });
+    // Account works right away; the email gets confirmed in the background.
+    sendVerifyEmail(rows[0]).catch((e) => console.error('[register.verify] sendMail failed:', e.message));
+    res.status(201).json({ data: { ...rows[0], email_verified: false } });
   }));
 
   app.post('/auth/login', asyncH(async (req, res) => {
@@ -199,7 +218,38 @@ module.exports = function mountAuthRoutes(app) {
 
   app.get('/auth/me', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'not logged in' });
-    res.json({ data: req.authUser });
+    const { rows } = await pool.query('SELECT email_verified_at FROM users WHERE id = $1', [req.authUser.id]);
+    res.json({ data: { ...req.authUser, email_verified: !!rows[0]?.email_verified_at } });
+  }));
+
+  app.post('/auth/verify-email', asyncH(async (req, res) => {
+    if (await throttled(pool, req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
+    const token = req.body?.token;
+    if (!token || typeof token !== 'string' || token.length > 256) {
+      return res.status(400).json({ error: 'this link is invalid or expired — request a new one' });
+    }
+    const { rows } = await pool.query(
+      `UPDATE password_resets SET used_at = NOW()
+        WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW() RETURNING user_id`,
+      [sha256(token)]);
+    if (!rows.length) return res.status(400).json({ error: 'this link is invalid or expired — request a new one' });
+    await pool.query('UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = $1', [rows[0].user_id]);
+    audit(req, 'auth.verify_email', 'user', rows[0].user_id, {});
+    res.json({ ok: true });
+  }));
+
+  app.post('/auth/verify-email/resend', asyncH(async (req, res) => {
+    if (!req.authUser) return res.status(401).json({ error: 'login required' });
+    if (await throttled(pool, req.ip || 'x')) return res.status(429).json({ error: 'too many attempts, try later' });
+    const { rows } = await pool.query('SELECT id, name, email, email_verified_at FROM users WHERE id = $1', [req.authUser.id]);
+    if (rows[0]?.email_verified_at) return res.json({ ok: true, already: true });
+    try {
+      if (!(await sendVerifyEmail(rows[0]))) return mailUnavailable(res);
+    } catch (e) {
+      console.error('[verify.resend] sendMail failed:', e.message);
+      return mailUnavailable(res);
+    }
+    res.json({ ok: true });
   }));
 
   app.post('/auth/password', asyncH(async (req, res) => {
@@ -277,7 +327,8 @@ module.exports = function mountAuthRoutes(app) {
     );
     const row = rows[0];
     if (!row) return res.status(400).json({ error: 'this link is invalid or expired — request a new one' });
-    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2',
+    // The emailed link proves the inbox, so the email is verified too.
+    await pool.query('UPDATE users SET password_hash = $1, email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = $2',
       [await bcrypt.hash(String(password), 12), row.user_id]);
     await pool.query(`UPDATE password_resets SET used_at = NOW() WHERE id = $1`, [row.id]);
     // Force relogin everywhere, including attacker's sessions if any.

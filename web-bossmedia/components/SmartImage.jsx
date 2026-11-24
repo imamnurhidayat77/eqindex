@@ -23,8 +23,10 @@ export default function SmartImage({
   ...rest
 }) {
   if (!src || LOCAL_SRC.test(src)) {
+    // next/image-only props must not reach the DOM <img> (React warns).
+    const { unoptimized, quality, placeholder, blurDataURL, ...imgRest } = rest;
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt={alt} loading={priority ? 'eager' : 'lazy'} className={className} style={style} {...rest} />;
+    return <img src={src} alt={alt} loading={priority ? 'eager' : 'lazy'} className={className} style={style} {...imgRest} />;
   }
   if (fill) {
     return (

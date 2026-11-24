@@ -4,14 +4,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { API } from '../lib/api';
 import { Icon } from './figma';
-import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
+import { isValidEmail, normalizeEmail, safeNext, homeForRole } from '../lib/validation.mjs';
 import SmartImage from './SmartImage';
-
-function safeNext(v) {
-  return v && v.startsWith('/') && !v.startsWith('//') && v !== '/login' && v !== '/register'
-    ? v
-    : '/media';
-}
 
 function LoginInner({ visual }) {
   const FIGMA_FALLBACK =
@@ -64,7 +58,7 @@ function LoginInner({ visual }) {
 
   function land(role) {
     // Staff land in their workspace unless a deep link asked otherwise.
-    router.push(!rawNext && (role === 'ADMIN' || role === 'PHOTOGRAPHER') ? '/studio' : next);
+    router.push(rawNext ? next : homeForRole(role));
   }
 
   async function submitCode(e) {

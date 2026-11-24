@@ -1,7 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useMemo } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
+import { settleCartPending } from '../../../lib/cart';
 import { API } from '../../../lib/api';
 import { nzd } from '../../../lib/figma-data';
 import { usePurchasePoll } from '../../../lib/use-purchase-poll';
@@ -17,6 +18,8 @@ function Inner() {
     : batchKey.split(',').map((s) => s.trim()).filter((s) => /^[0-9a-f-]{36}$/i.test(s)).slice(0, 20)),
     [purchase, batchKey]);
   const { state, rows: details, empty, retry } = usePurchasePoll(ids);
+  // Paid: now (and only now) the bought items leave the cart.
+  useEffect(() => { if (state === 'paid') settleCartPending(ids); }, [state, ids]);
   // DIAGNOSTIK: cabang thumbnail dimatikan sementara — dikembalikan
   // setelah halaman paid terbukti sembuh tanpa-nya.
   const subjectOf = (detail) => [detail.horse, detail.rider].filter(Boolean).join(' × ');

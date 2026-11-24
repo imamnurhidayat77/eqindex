@@ -38,3 +38,15 @@ test('login/register keep the user-facing error copy', async () => {
     assert.match(s, /normalizeEmail/);
   }
 });
+
+test('safeNext keeps same-site paths and blocks off-site tricks', async () => {
+  const { safeNext, homeForRole } = await import('../lib/validation.mjs');
+  assert.equal(safeNext('/cart'), '/cart');
+  assert.equal(safeNext('/events/x?y=1'), '/events/x?y=1');
+  for (const bad of ['//evil.com', '/\\evil.com', '/\\/evil.com', 'https://evil.com', '/\tx', '', null, '/login']) {
+    assert.equal(safeNext(bad), '/media', String(bad));
+  }
+  assert.equal(homeForRole('ORGANIZER'), '/organizer');
+  assert.equal(homeForRole('SPONSOR'), '/sponsor');
+  assert.equal(homeForRole('PUBLIC'), '/media');
+});

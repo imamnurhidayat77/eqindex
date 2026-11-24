@@ -1,0 +1,51 @@
+/* Photo page quick picks (globals.css frozen, so everything lives here). */
+.wrap { --qb: 96px; display: grid; gap: 10px; margin-bottom: 10px; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.card {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px;
+  color: #fff;
+  font: inherit;
+  text-align: left;
+  background: #101010;
+  border: 1px solid #3a3a3a;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.card:hover { border-color: #888; background: #151515; }
+.card[aria-pressed='true'] { border-color: #e3b341; box-shadow: inset 0 0 0 1px #e3b341; }
+.card:focus-visible { outline: 2px solid #e3b341; outline-offset: 2px; }
+.box { display: grid; place-items: center; height: var(--qb); background: #0b0b0b; overflow: hidden; }
+.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 800; }
+.note { margin: 0; color: #bbb; font-size: 12px; line-height: 1.5; }
+.note b { color: #e3b341; }
+.customize {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: left;
+  background: transparent;
+  border: 1px solid #555;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.customize span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #999; font-weight: 600; font-size: 12px; }
+.customize i { font-style: normal; }
+.customize:hover { border-color: #999; background: #161616; }
+.customize:focus-visible { outline: 2px solid #e3b341; outline-offset: 2px; }
+@media (max-width: 420px) {
+  .wrap { --qb: 84px; }
+  .customize span { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card, .customize { transition: none; }
+}

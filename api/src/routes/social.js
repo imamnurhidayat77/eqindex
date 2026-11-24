@@ -6,6 +6,13 @@ const { audit } = require('../lib/audit');
 const { UUID_RE } = require('../lib/resolve');
 const mediaStore = require('../lib/mediaStore');
 const socialInsights = require('../lib/socialInsights');
+const { ensureBrandedFile } = require('../lib/communityBrand');
+
+// Community moments post free for everyone except sponsors, who must hold a
+// paid sponsor repost licence first. Studio photos always need ownership.
+function needsPaidLicence(isCommunity, role) {
+  return !isCommunity || role === 'SPONSOR';
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -28,6 +35,13 @@ async function ownsMedia(userId, mediaId) {
      AND ro.status IN ('ready', 'delivered') LIMIT 1`, [mediaId, userId]);
   if (reel.rows.length) return { ok: true, purchaseId: null };
   return { ok: false, purchaseId: null };
+}
+
+// Licence check for the session user only (uid never comes from the client).
+async function licenceStatus(uid, mediaId, owns = ownsMedia) {
+  if (!UUID_RE.test(String(mediaId || ''))) return { status: 400, body: { error: 'bad media_id' } };
+  const own = await owns(uid, mediaId);
+  return { status: 200, body: { data: { owned: own.ok } } };
 }
 
 const TAG_RE = /^[a-z0-9._]{1,30}$/i;
@@ -192,6 +206,14 @@ module.exports = function mountSocialRoutes(app) {
     return back('/account?connected=1');
   }));
 
+  // Does the logged-in user already hold a licence for this media? Lets the
+  // moment page show Post (licensed sponsor) or Buy instead of both.
+  app.get('/api/my/social/licence/:mediaId', asyncH(async (req, res) => {
+    const uid = needUser(req, res); if (!uid) return;
+    const out = await licenceStatus(uid, req.params.mediaId);
+    res.status(out.status).json(out.body);
+  }));
+
   // Post an owned photo. Returns the provider media id (exact link for tracking).
   app.post('/api/my/social/posts', asyncH(async (req, res) => {
     const uid = needUser(req, res); if (!uid) return;
@@ -206,8 +228,14 @@ module.exports = function mountSocialRoutes(app) {
     const m = await pool.query('SELECT * FROM media WHERE id = $1 AND status = $2', [media_id, 'published']);
     if (!m.rows.length) return res.status(404).json({ error: 'photo not found' });
     if (!m.rows[0].storage_key) return res.status(409).json({ error: 'original not stored yet' });
-    const own = await ownsMedia(uid, media_id);
-    if (!own.ok) return res.status(402).json({ error: 'purchase required' });
+    const isCommunity = ['email', 'admin', 'web'].includes(m.rows[0].source) && m.rows[0].price_cents == null;
+    const own = needsPaidLicence(isCommunity, req.authUser.role)
+      ? await ownsMedia(uid, media_id) : { ok: true, purchaseId: null };
+    if (!own.ok) {
+      return res.status(402).json({ error: isCommunity
+        ? 'Sponsors need the repost licence for this moment. Buy it on the moment page, then post.'
+        : 'purchase required' });
+    }
     const acct = await pool.query(
       'SELECT * FROM social_accounts WHERE user_id = $1 AND provider = $2 ORDER BY created_at DESC LIMIT 1',
       [uid, provider]);
@@ -230,7 +258,9 @@ module.exports = function mountSocialRoutes(app) {
        ORDER BY p.created_at DESC LIMIT 1`,
       [media_id, uid]
     );
-    let fileKey = m.rows[0].storage_key;
+    // Community moments always leave with the Boss Media mark, never raw.
+    let fileKey = isCommunity ? await ensureBrandedFile(m.rows[0]) : m.rows[0].storage_key;
+    if (!fileKey) return res.status(409).json({ error: 'The branded file is still being prepared. Try again in a few minutes.' });
     let purchaseId = own.purchaseId;
     if (logoBuy.rows.length) {
       purchaseId = logoBuy.rows[0].id;
@@ -365,3 +395,5 @@ module.exports = function mountSocialRoutes(app) {
     res.json({ data: { ok: true } });
   }));
 };
+module.exports.needsPaidLicence = needsPaidLicence;
+module.exports.licenceStatus = licenceStatus;

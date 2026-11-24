@@ -8,7 +8,7 @@ import { safeError } from '../../lib/errors';
 import { Icon, SiteFooter, SiteHeader } from '../../components/figma';
 import { Pager } from '../../components/studio';
 import SmartImage from '../../components/SmartImage';
-import { useAuthed } from '../../lib/use-authed';
+import { resetMe, useAuthed } from '../../lib/use-authed';
 import { useDocumentTitle } from '../../lib/use-document-title';
 
 const TABS = [['overview', 'Overview'], ['wallet', 'Wallet'], ['credits', 'Credits'], ['history', 'History'], ['posts', 'Posts'], ['profile', 'Profile']];
@@ -69,6 +69,7 @@ export default function AccountPage() {
             </div>
           ) : (
             <>
+              {user.email_verified === false && <VerifyEmailBanner email={user.email} />}
               <div className="media-tabs-dark" role="group" aria-label="My account">
                 {TABS.map(([k, label]) => (
                   <button key={k} aria-pressed={tab === k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
@@ -190,14 +191,14 @@ export default function AccountPage() {
                     <p className="st-csub">How you appear on receipts and orders.</p>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 16, margin: '6px 0 4px' }}>
                       <span aria-hidden="true" style={avatarLg}>{(user.name || user.email || '?').trim().charAt(0).toUpperCase()}</span>
-                      <div style={{ minWidth: 0 }}>
-                        <p style={{ margin: 0, fontSize: 18, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name || '—'}</p>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <NameEditor initial={user.name || ''} />
                         <p style={{ margin: '3px 0 0', color: '#999', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
                       </div>
                       {!!user.role && <span style={rolePill}>{user.role.toLowerCase()}</span>}
                     </div>
                     <p style={{ margin: '14px 0 0', color: '#777', fontSize: 12 }}>
-                      Name or email wrong? <Link href="/contact" className="text-link">Contact support</Link> — we update it for you.
+                      Need to change your email? <Link href="/contact" className="text-link">Contact support</Link>, we confirm the new address for you.
                     </p>
                   </div>
                   <div className="st-card" style={{ marginTop: 18 }}>
@@ -738,5 +739,61 @@ function SignOutButton() {
     <button type="button" className="st-btn-ghost st-btn-danger" disabled={busy} onClick={out}>
       {busy ? 'Signing out…' : 'Sign out'}
     </button>
+  );
+}
+
+function VerifyEmailBanner({ email }) {
+  const [state, setState] = useState('idle');
+  async function resend() {
+    setState('sending');
+    try {
+      const r = await fetch(`${API}/auth/verify-email/resend`, { method: 'POST', credentials: 'include' });
+      setState(r.ok ? 'sent' : 'error');
+    } catch { setState('error'); }
+  }
+  return (
+    <div className="st-card" role="status" style={{ marginBottom: 18, borderColor: '#5a4a1f' }}>
+      <h3>Confirm your email</h3>
+      <p className="st-csub">Confirm {email} with a one-click link. Until then, purchases made with this email while signed out stay off your account.</p>
+      {state === 'sent' ? <p style={{ margin: 0, color: '#8fd694', fontSize: 13 }}>Sent. Check your inbox.</p> : (
+        <button type="button" className="st-btn" disabled={state === 'sending'} onClick={resend}>
+          {state === 'sending' ? 'Sending…' : 'Send me the link'}
+        </button>
+      )}
+      {state === 'error' && <p role="alert" style={{ margin: '10px 0 0', color: '#ff9d9d', fontSize: 12 }}>Could not send right now. Try again in a minute.</p>}
+    </div>
+  );
+}
+
+function NameEditor({ initial }) {
+  const [name, setName] = useState(initial);
+  const [saved, setSaved] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const dirty = name.trim() !== saved;
+  async function save(e) {
+    e.preventDefault();
+    if (!dirty || busy) return;
+    setBusy(true); setErr('');
+    try {
+      const r = await fetch(`${API}/api/my/profile`, {
+        method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Could not save — try again.');
+      setSaved(j.data.name); setName(j.data.name);
+      resetMe(undefined);
+    } catch (e2) { setErr(safeError(e2.message)); }
+    setBusy(false);
+  }
+  return (
+    <form onSubmit={save} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <label htmlFor="acct-name" className="sr-only">Display name</label>
+      <input id="acct-name" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} autoComplete="name"
+        style={{ flex: '1 1 160px', minWidth: 0, minHeight: 40, padding: '0 10px', color: '#fff', background: '#0b0b0b', border: '1px solid #333', fontSize: 16, fontWeight: 700 }} />
+      {dirty && <button type="submit" className="st-btn" disabled={busy || !name.trim()}>{busy ? 'Saving…' : 'Save'}</button>}
+      {err && <p role="alert" style={{ flexBasis: '100%', margin: 0, color: '#ff9d9d', fontSize: 12 }}>{err}</p>}
+    </form>
   );
 }

@@ -257,4 +257,93 @@ async function expireHolds(pool, maxAgeHours = 24) {
   return n;
 }
 
-module.exports = { computeSplit, getRates, resolvePurchaseContext, recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds };
+// Sponsor discounts are pre-agreed budgets billed to the sponsor later, so
+// the platform fronts the money. Cap one discount at half the price so a
+// sponsor setting can never give photos away (Charles/Imam, 2026-11-24).
+const MAX_SPONSOR_DISCOUNT_RATE = 0.5;
+function cappedSponsorDiscount(discountCents, priceCents) {
+  const d = Math.round(Number(discountCents) || 0);
+  const cap = Math.floor((Number(priceCents) || 0) * MAX_SPONSOR_DISCOUNT_RATE);
+  return Math.max(0, Math.min(d, cap));
+}
+
+// SQL guard every "is this budget spendable" query shares (alias b).
+const SPONSOR_BUDGET_LIVE_SQL = "b.status = 'active' AND (b.ends_on IS NULL OR b.ends_on >= CURRENT_DATE)";
+// A budget funds either photo or merchandise discounts (migration 109).
+const SPONSOR_BUDGET_KINDS = ['photo', 'merch'];
+const budgetKindOf = (v) => (SPONSOR_BUDGET_KINDS.includes(v) ? v : 'photo');
+
+// Late organizer claim: sales at an event with no linked organizer keep the
+// organizer share inside platform_fee_cents. When an admin links an
+// organizer within ORGANIZER_CLAIM_DAYS after the event ends, that share
+// moves from the platform to the organizer. After the window it stays with
+// the platform. Uses the current organizer rate (sale-time rate isn't stored).
+const ORGANIZER_CLAIM_DAYS = 90;
+
+// Pure: the share to move for one purchase, capped by what the platform
+// actually kept (a sponsor discount can shrink the platform fee).
+function lateOrganizerShare(grossCents, platformFeeCents, organizerRate) {
+  const share = Math.round(Math.max(0, Number(grossCents) || 0) * (Number(organizerRate) || 0));
+  return Math.max(0, Math.min(share, Number(platformFeeCents) || 0));
+}
+
+// Idempotent: purchases that already carry an organizer_id are skipped, so
+// re-linking or relinking to someone else never pays twice.
+async function releaseLateOrganizerShares(pool, eventId, { rates } = {}) {
+  const { organizer: rate } = rates || await getRates(pool);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const ev = await client.query(
+      `SELECT o.id AS organizer_id, o.user_id,
+          (COALESCE(e.date_end, e.date_start) + $2::INT >= CURRENT_DATE) AS in_window
+         FROM events e JOIN organizers o ON o.id = e.organizer_id
+        WHERE e.id = $1 AND o.is_active`,
+      [eventId, ORGANIZER_CLAIM_DAYS]);
+    const org = ev.rows[0];
+    if (!org || !org.in_window || !org.user_id || rate <= 0) {
+      await client.query('ROLLBACK');
+      return { released: 0, cents: 0, in_window: !!org?.in_window };
+    }
+    const { rows } = await client.query(
+      `SELECT p.id, COALESCE(p.original_amount_cents, p.amount_cents) AS gross, p.platform_fee_cents
+         FROM purchases p
+        WHERE p.status = 'paid' AND p.organizer_id IS NULL AND p.platform_fee_cents IS NOT NULL
+          AND (p.media_id IN (SELECT id FROM media WHERE event_id = $1)
+            OR p.package_id IN (SELECT id FROM packages WHERE event_id = $1)
+            OR p.reel_order_id IN (SELECT id FROM reel_orders WHERE event_id = $1)
+            OR p.credit_bundle_id IN (SELECT id FROM credit_bundles WHERE event_id = $1))
+        FOR UPDATE OF p`,
+      [eventId]);
+    const bal = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [org.user_id]);
+    if (!bal.rows.length) { await client.query('ROLLBACK'); return { released: 0, cents: 0, in_window: true }; }
+    let balance = Number(bal.rows[0].balance_cents);
+    let released = 0, cents = 0;
+    for (const r of rows) {
+      const share = lateOrganizerShare(r.gross, r.platform_fee_cents, rate);
+      await client.query(
+        `UPDATE purchases SET organizer_id = $2, organizer_payout_cents = $3,
+            platform_fee_cents = platform_fee_cents - $3 WHERE id = $1`,
+        [r.id, org.organizer_id, share]);
+      if (share <= 0) continue;
+      balance += share;
+      await client.query(
+        `INSERT INTO wallet_transactions (user_id, kind, amount_cents, balance_after_cents, purchase_id, event_id, reason)
+         VALUES ($1, 'organizer_share', $2, $3, $4, $5, 'late claim: sale before your account was linked')`,
+        [org.user_id, share, balance, r.id, eventId]);
+      released++; cents += share;
+    }
+    await client.query('UPDATE users SET balance_cents = $2 WHERE id = $1', [org.user_id, balance]);
+    await client.query('COMMIT');
+    return { released, cents, in_window: true };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+module.exports = { computeSplit, getRates, resolvePurchaseContext, recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds,
+  ORGANIZER_CLAIM_DAYS, lateOrganizerShare, releaseLateOrganizerShares,
+  MAX_SPONSOR_DISCOUNT_RATE, cappedSponsorDiscount, SPONSOR_BUDGET_LIVE_SQL, SPONSOR_BUDGET_KINDS, budgetKindOf };

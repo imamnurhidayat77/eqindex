@@ -25,3 +25,8 @@ PRODUCT.md
 # Demo recordings and scratch plans.
 demo/
 openscreen-demo-plan.md
+
+# local backups and scratch
+backup-*/
+updates/
+merch-check*.png

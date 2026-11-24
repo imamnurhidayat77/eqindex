@@ -6,7 +6,8 @@ import ProductJsonLd from '../../../../../components/ProductJsonLd';
 
 export const revalidate = 30;
 
-export async function generateMetadata({ params }) {
+export async function generateMetadata(props) {
+  const params = await props.params;
   const res = await getJSON(`/photos/${params.id}`).catch(() => null);
   const d = res?.data;
   if (!d) return { title: 'Photo not found' };
@@ -17,17 +18,18 @@ export async function generateMetadata({ params }) {
   return { title, description, openGraph: { title, description, images } };
 }
 
-export default async function EventMediaPage({ params }) {
+export default async function EventMediaPage(props) {
+  const params = await props.params;
   const [{ data: events }, res, tiers] = await Promise.all([
     getJSON('/events?limit=200').catch(() => ({ data: [] })),
     getJSON(`/photos/${params.id}`).catch(() => ({ data: null })),
-    getJSON('/api/license-tiers').catch(() => ({ data: [] })),
+    getJSON(`/api/license-tiers?media_id=${encodeURIComponent(params.id)}`).catch(() => ({ data: [] })),
   ]);
   const media = res.data;
   if (!media) notFound();
   const event = (events || []).find((e) => (e.slug || e.id) === params.slug);
   const eventName = event?.name || media.event_name || 'Event gallery';
-  const tier = (tiers?.data || []).find((t) => String(t.id) === String(media.license_default || 'web'));
+  const tier = (tiers?.data || []).find((t) => String(t.id) === String(media.license_default || (media.kind === 'reel' ? 'reel' : 'web')));
   const backHref = event ? `/events/${event.slug || event.id}` : '/events';
   return (
     <div className="media-detail-page">

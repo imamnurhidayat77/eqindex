@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 import { useEffect, useRef, useState } from 'react';
 import { API } from '../lib/api';
-import { removeFromCart, useCart } from '../lib/cart';
+import { markCartPending, removeFromCart, useCart } from '../lib/cart';
 import { checkoutBase, newIdempotencyKey, nzd, stripeCheckoutUrl } from '../lib/figma-data';
 import { safeError } from '../lib/errors';
 import { isValidEmail, normalizeEmail } from '../lib/validation.mjs';
@@ -124,7 +124,8 @@ export default function CartClient() {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'Checkout failed — try again.');
-      removeFromCart(item.key);
+      markCartPending([j.data?.purchase_id], [item.key]);
+      if (j.data?.paid && j.data?.purchase_id) { window.location.assign(`/photos/success?purchase=${j.data.purchase_id}`); return; }
       window.location.assign(stripeCheckoutUrl(j.data));
     } catch (e) { setErr(e.message); setBusyKey(null); }
   }
@@ -141,8 +142,10 @@ export default function CartClient() {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'Order failed — try again.');
-      removeFromCart(item.key);
-      if (j.data?.checkout_url) window.location.assign(stripeCheckoutUrl(j.data));
+      markCartPending([j.data?.purchase_id], [item.key]);
+      if (j.data?.paid && j.data?.purchase_id) { window.location.assign(`/photos/success?purchase=${j.data.purchase_id}`); return; }
+      if (!j.data?.checkout_url) throw new Error('Could not open checkout — try again.');
+      window.location.assign(stripeCheckoutUrl(j.data));
     } catch (e) { setErr(e.message); setBusyKey(null); }
   }
 
@@ -178,7 +181,7 @@ export default function CartClient() {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || 'Checkout failed — try again.');
-      items.forEach((it) => removeFromCart(it.key));
+      markCartPending(j.data?.purchase_ids, [...photoItems, ...reelItems].map((it) => it.key));
       if (j.data?.paid && j.data?.purchase_ids?.length) {
         window.location.assign(`/photos/success?purchases=${j.data.purchase_ids.join(',')}`);
         return;
@@ -205,7 +208,7 @@ export default function CartClient() {
               <div className="cart-list-heading"><span>Item</span><span>Details</span><span>Price</span></div>
               {items.map((item, i) => (
                 <article className="cart-item" key={item.key}>
-                  <span className="cart-item-number">0{i + 1}</span>
+                  <span className="cart-item-number">{String(i + 1).padStart(2, '0')}</span>
                   {item.image ? (
                     itemHref(item) ? (
                       <Link href={itemHref(item)} className={s.thumb} aria-hidden="true" tabIndex={-1}>
@@ -253,7 +256,9 @@ export default function CartClient() {
                   ? <>Receipt to <strong style={{ color: '#ddd' }}>{meEmail}</strong> — downloads live in <Link href="/media" style={{ color: '#fff', borderBottom: '1px solid #555' }}>My media</Link>.</>
                   : <>Receipt and download access go to this email — no account needed.</>}
               </p>
-              {err && <p id="cart-email-error" className="auth-error" role="alert" style={{ marginTop: 12 }}>{safeError(err)}{' '}<Link href="/contact" style={{ color: '#fff', borderBottom: '1px solid #555' }}>Need help? Contact support</Link></p>}
+              {err && <p id="cart-email-error" className="auth-error" role="alert" style={{ marginTop: 12 }}>{safeError(err)}{' '}{/sign in to buy/.test(err)
+                ? <Link href="/login?next=/cart" style={{ color: '#fff', borderBottom: '1px solid #555' }}>Sign in</Link>
+                : <Link href="/contact" style={{ color: '#fff', borderBottom: '1px solid #555' }}>Need help? Contact support</Link>}</p>}
               <div className="cart-total"><span>Total</span><strong>{nzd(subtotal)}</strong></div>
               {meEmail && balance > 0 && photoTotal > 0 && (
                 <p style={{ margin: '16px 0 0', color: '#ccc', fontSize: 13, lineHeight: 1.5 }}>

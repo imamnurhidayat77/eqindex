@@ -1,0 +1,42 @@
+/* Merch order request form (Details step). globals.css is frozen. */
+.form { display: grid; gap: 18px; }
+.group { margin: 0; padding: 0; border: 0; display: grid; gap: 10px; min-width: 0; }
+.group legend { padding: 0; margin: 0 0 10px; font-size: 13px; font-weight: 800; color: #fff; }
+.group legend small, .label small { font-weight: 400; color: #888; font-size: 11px; margin-left: 6px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+.wide { grid-column: 1 / -1; }
+@media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+.label { display: grid; gap: 6px; font-size: 12px; color: #bbb; }
+.input { width: 100%; min-height: 44px; background: #0b0b0b; border: 1px solid #333; color: #fff; padding: 0 12px; font-size: 14px; font-family: inherit; border-radius: 0; transition: border-color 150ms ease-out; }
+.input:hover { border-color: #555; }
+.input:focus-visible { outline: 2px solid #FFC400; outline-offset: 1px; border-color: #FFC400; }
+.form:has(:user-invalid) .input:user-invalid { border-color: #e08a8a; }
+.lineRow { display: grid; grid-template-columns: minmax(0, 1fr) 96px 44px; gap: 8px; }
+.remove { min-height: 44px; background: transparent; border: 1px solid #333; color: #bbb; font-size: 18px; cursor: pointer; transition: border-color 150ms ease-out, color 150ms ease-out; }
+.remove:hover:not(:disabled) { border-color: #888; color: #fff; }
+.remove:disabled { opacity: .35; cursor: default; }
+.add { justify-self: start; background: none; border: 0; border-bottom: 1px solid #555; padding: 0 0 2px; color: #ccc; font-size: 12px; cursor: pointer; transition: color 150ms ease-out, border-color 150ms ease-out; }
+.add:hover { color: #fff; border-color: #999; }
+.options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 560px) { .options { grid-template-columns: 1fr; } }
+.option { display: flex; gap: 10px; align-items: center; min-height: 52px; padding: 8px 12px; background: #141414; border: 1px solid #3a3a3a; cursor: pointer; transition: border-color 150ms ease-out, background 150ms ease-out; }
+.option:hover { border-color: #888; }
+.option:has(input:checked) { border-color: #FFC400; background: #1c1a12; }
+.option input { accent-color: #FFC400; width: 16px; height: 16px; flex: none; }
+.option span { display: grid; gap: 2px; }
+.option strong { font-size: 13px; color: #fff; }
+.option small { font-size: 11px; color: #999; }
+.summary { display: grid; gap: 6px; font-size: 13px; color: #ccc; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.09); }
+.row { display: flex; justify-content: space-between; gap: 8px; }
+.total { font-size: 20px; color: #FFC400; font-weight: 800; border-top: 1px solid #2c2c2c; padding-top: 8px; }
+.gold { color: #FFC400; }
+.note { margin: 0; color: #999; font-size: 11px; line-height: 1.6; }
+.note a, .link { color: #FFC400; text-decoration: none; }
+.error { margin: 0; padding: 10px 12px; background: #2a1414; border-left: 2px solid #e08a8a; color: #f0c4c4; font-size: 13px; line-height: 1.5; }
+.done { display: grid; gap: 8px; padding: 14px 16px; background: #14210f; border-left: 2px solid #7fae5c; color: #cfe3bd; font-size: 13px; line-height: 1.6; }
+.done strong { color: #fff; font-size: 15px; }
+.done p { margin: 0; }
+.done .total { border: 0; padding: 0; font-size: 16px; }
+@media (prefers-reduced-motion: reduce) {
+  .remove, .add, .option, .input { transition: none; }
+}
