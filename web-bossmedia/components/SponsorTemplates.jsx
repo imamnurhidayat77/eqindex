@@ -607,7 +607,7 @@ export default function SponsorPhoto({
   // tidak ada logo terbuang — bake melakukan hal yang sama).
   const wide = logos.length > 4;
   return (
-    <div className={`${s["st-frame"]}${ar ? '' : ` ${s["st-natural"]}`}${compact ? ` ${s["st-compact"]}` : ''}${logos.length > 1 ? ` ${s["multi"]}` : ''}${frameBg ? ` ${frameBg}` : ''}`} style={{ ...(ar ? { aspectRatio: ar } : undefined), '--k': shortK, ...frameStyle }}>
+    <div className={`${s["st-frame"]}${ar ? '' : ` ${s["st-natural"]}`}${compact ? ` ${s["st-compact"]}` : ''}${logos.length > 1 ? ` ${s["multi"]}` : ''}${frameBg ? ` ${frameBg}` : ''}`} style={{ ...(ar ? { aspectRatio: ar } : undefined), '--k': shortK, '--ar': arNum || undefined, ...frameStyle }}>
       {photo && ar && windowStyle ? (
         <div className={`${s["st-window"]}`} style={windowStyle}>
           <SmartImage src={photo} alt={alt} fill sizes="(max-width: 640px) 100vw, 560px" className={`${s["st-photo"]}`} />

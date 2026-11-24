@@ -21,6 +21,12 @@ import ReelPlayer from './ReelPlayer';
 import accent from './PayAccent.module.css';
 import pm from './PurchaseMobile.module.css';
 
+// Width-driven hero frame: fill the column, but never taller than the
+// cap (width = cap x photo aspect, --ar comes from SponsorPhoto). A fixed
+// height plus max-width broke aspect-ratio on phones and cropped
+// landscape photos into a portrait box.
+const HERO_FRAME = { width: 'min(100%, calc(min(68vh, 720px) * var(--ar, 1.5)))' };
+
 // Honest per-tier subline when the DB has no custom description. Never
 // promises "full resolution" for small/medium renditions.
 function licenseSubline(t) {
@@ -509,7 +515,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
               // bought photo never masquerades as an unbought design.
               <SponsorPhoto photo={media.preview_url || media.thumb_url} alt={subject}
                 variant={appliedLive.template} ratio={null} theme={appliedLive.theme || 'light'}
-                frameStyle={{ height: 'min(68vh, 720px)', width: 'auto', maxWidth: '100%' }}
+                frameStyle={HERO_FRAME}
                 sponsors={appliedLive.logoIds.map((id) => {
                   const l = logos.find((x) => String(x.id) === String(id));
                   return { id, label: l?.label, src: `${API}/api/sponsor-logos/${id}/file` };
@@ -521,7 +527,7 @@ export default function MediaPurchase({ media, eventName, eventSlug, backHref, b
               // they own instead of reading an id like `banner`.
               <SponsorPhoto photo={media.preview_url || media.thumb_url} alt={subject}
                 variant={heroOwned.variant} ratio={null} theme={heroOwned.logo_theme || 'light'}
-                frameStyle={{ height: 'min(68vh, 720px)', width: 'auto', maxWidth: '100%' }}
+                frameStyle={HERO_FRAME}
                 sponsors={(heroOwned.logos || []).map((l) => ({ id: l.id, label: l.label, src: `${API}/api/sponsor-logos/${l.id}/file` }))}
                 positions={Object.fromEntries((heroOwned.logos || []).map((l) => [l.id, l.position || 'bottom-left']))}
                 event={eventName} className={heroOwned.design_class || effClass} subject={effSubject}
