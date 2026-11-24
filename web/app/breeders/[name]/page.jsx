@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getJSON } from '../../../lib/api';
+import { getJSON, getEntityJSON } from '../../../lib/api';
 import { CARD, H1, NUM, SUB, TABLE, TD, TH } from '../../../lib/tokens';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 
@@ -27,10 +27,14 @@ const divisionFor = (heightCm, divs) => {
 
 const HORSES_PER_PAGE = 25;
 
+export function generateMetadata({ params }) {
+  return { title: `${decodeURIComponent(params.name)} · Breeder` };
+}
+
 export default async function BreederProfile({ params, searchParams }) {
   const name = decodeURIComponent(params.name);
   const [res, scoring] = await Promise.all([
-    getJSON(`/breeders/${encodeURIComponent(name)}`).catch(() => null),
+    getEntityJSON(`/breeders/${encodeURIComponent(name)}`),
     getJSON('/scoring/active').catch(() => null),
   ]);
   if (!res || !res.data) notFound();

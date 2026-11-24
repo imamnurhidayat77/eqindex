@@ -4,6 +4,8 @@ import { API } from '../../lib/api';
 import { CARD, LINK } from '../../lib/tokens';
 import AdminNav from '../../components/AdminNav';
 
+export const metadata = { title: { default: 'Admin', template: '%s · Admin · EQIndex' } };
+
 async function currentUser() {
   try {
     const token = cookies().get('eq_session')?.value;

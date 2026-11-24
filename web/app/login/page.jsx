@@ -100,7 +100,9 @@ function LoginForm() {
           <label className="text-xs text-muted flex flex-col gap-1.5">Email address
             <input className={`${INP} py-2.5`} type="email" required autoComplete="email"
               placeholder="you@stable.co.nz" value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-          <label className="text-xs text-muted flex flex-col gap-1.5">Password
+          <label className="text-xs text-muted flex flex-col gap-1.5">
+            <span className="flex items-center justify-between">Password
+              <Link href="/forgot" className="text-[12px] text-sky no-underline hover:underline">Forgot password?</Link></span>
             <span className="relative block">
               <input className={`${INP} py-2.5 w-full pr-14`} type={show ? 'text' : 'password'} required
                 autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />

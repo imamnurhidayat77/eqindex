@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { API } from '../lib/api';
 import CommandPalette, { useCommandPalette } from './CommandPalette';
 
@@ -65,6 +65,7 @@ const groupOf = (pathname) =>
 
 export default function AdminNav({ user }) {
   const pathname = usePathname() || '/admin';
+  const router = useRouter();
   const [counts, setCounts] = useState({});
   const [palOpen, setPalOpen] = useCommandPalette();
   // Photographers work in Boss Media studio now — no photo/media pages
@@ -125,6 +126,7 @@ export default function AdminNav({ user }) {
     return ALL_HREFS.every((h) =>
       h.length <= href.length || !(pathname === h || pathname.startsWith(`${h}/`)));
   };
+  const currentHref = ALL_HREFS.find((h) => active(h)) || '/admin';
   const row = ([href, icon, label, badgeKey], sub = false) => {
     const on = active(href);
     const n = badgeKey ? counts[badgeKey] : null;
@@ -154,10 +156,29 @@ export default function AdminNav({ user }) {
         <button onClick={() => setPalOpen(true)}
           className="flex w-full items-center gap-2 rounded border border-line bg-ink px-2.5 py-[7px] text-[12px] text-faint hover:text-muted hover:border-faint cursor-pointer transition-colors">
           <span aria-hidden="true">⌕</span> Jump to…
-          <kbd className="ml-auto rounded border border-line bg-card2 px-1.5 py-px text-[10px] text-muted font-sans">⌘K</kbd>
+          <kbd className="ml-auto hidden lg:inline rounded border border-line bg-card2 px-1.5 py-px text-[10px] text-muted font-sans">⌘K</kbd>
         </button>
       </div>
-      <nav className="p-2 flex lg:flex-col gap-0.5 overflow-x-auto">
+      {/* Phones/tablets: one compact section picker instead of the full
+          sidebar, so the page content starts on the first screen. */}
+      <div className="px-4 pb-3 lg:hidden">
+        <label htmlFor="admin-section" className="sr-only">Admin section</label>
+        <select id="admin-section" value={currentHref}
+          onChange={(e) => router.push(e.target.value)}
+          className="w-full rounded border border-line bg-ink px-2.5 py-2 text-[13px] text-body focus:border-gold/60 focus:outline-none">
+          {top.map(([href, , label]) => <option key={href} value={href}>{label}</option>)}
+          {[...groups, ...flat].map((g) => (
+            <optgroup key={g.title} label={g.title}>
+              {g.items.map(([href, , label, badgeKey]) => (
+                <option key={href} value={href}>
+                  {label}{badgeKey && counts[badgeKey] ? ` (${counts[badgeKey]})` : ''}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+      <nav aria-label="Admin" className="p-2 hidden lg:flex lg:flex-col gap-0.5">
         <div className="min-w-fit">
           <div className="hidden lg:block px-2.5 pt-3 pb-1 text-[12px] text-faint font-semibold">Manage</div>
           {top.map((item) => row(item))}
@@ -185,7 +206,7 @@ export default function AdminNav({ user }) {
           </div>
         ))}
       </nav>
-      <div className="p-2 border-t border-rowline">
+      <div className="p-2 border-t border-rowline hidden lg:block">
         <Link href="/" className="flex items-center gap-2.5 rounded px-2.5 py-2 text-[13px] text-faint no-underline hover:text-white">← Back to site</Link>
       </div>
       <CommandPalette open={palOpen} onClose={() => setPalOpen(false)} role={user?.role} />

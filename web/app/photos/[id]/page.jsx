@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { getJSON } from '../../../lib/api';
+import { getJSON, getEntityJSON } from '../../../lib/api';
 import { H1, SUB } from '../../../lib/tokens';
 import { BOSSMEDIA_URL, bossPhotoUrl } from '../../../lib/bossmedia';
 import EventWallGrid from '../../../components/EventWallGrid';
@@ -57,7 +57,7 @@ async function EventWall({ event, kind }) {
 export default async function PhotoRoute({ params, searchParams }) {
   // Photo/reel detail lives on Boss Media now — send buyers straight there.
   if (isUuid(params.id)) redirect(bossPhotoUrl(params.id));
-  const ev = await getJSON(`/events/${params.id}`).catch(() => null);
+  const ev = await getEntityJSON(`/events/${params.id}`);
   if (ev?.data) return <EventWall event={ev.data} kind={searchParams?.kind || ''} />;
   // Non-UUID that isn't an event slug can never be a photo id
   // (photo ids are UUIDs) — 404 directly instead of querying.

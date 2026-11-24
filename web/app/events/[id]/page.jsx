@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getJSON } from '../../../lib/api';
+import { getEntityJSON } from '../../../lib/api';
 import { ordinal } from '../../../lib/eq';
 import { BADGE, CARD, H1, H2, LINK, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
 import { nzDay, fmtRange } from '../../../lib/dates';
@@ -15,8 +15,13 @@ export const revalidate = 30;
 
 const pct1 = (v) => `${Number(v).toFixed(1)}%`;
 
+export async function generateMetadata({ params }) {
+  const a = await getEntityJSON(`/events/${params.id}/analytics`).catch(() => null);
+  return { title: a?.event?.name || 'Event' };
+}
+
 export default async function EventDetail({ params }) {
-  const a = await getJSON(`/events/${params.id}/analytics`).catch(() => null);
+  const a = await getEntityJSON(`/events/${params.id}/analytics`);
   if (!a?.event) notFound();
   const e = a.event;
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(params.id) && e.slug && e.slug !== params.id) {

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import SeasonTimeline from '../../../components/SeasonTimeline';
 import { notFound } from 'next/navigation';
-import { getJSON } from '../../../lib/api';
+import { getJSON, getEntityJSON } from '../../../lib/api';
 import { projectForm, recommendHeight, suggestPartners } from '../../../lib/forecast';
 import { statusBadge } from '../../../lib/tokens';
 import WatchButton from '../../../components/WatchButton';
@@ -103,9 +103,14 @@ function groupBest(rows, keyFn, labelFn) {
   return arr;
 }
 
+export async function generateMetadata({ params }) {
+  const p = await getJSON(`/riders/${params.id}`).catch(() => null);
+  return { title: p?.data?.name || 'Rider' };
+}
+
 export default async function RiderProfile({ params, searchParams }) {
   const [p, allRiders, allHorses, heightStats, splits, mbBoard, fg, scoring] = await Promise.all([
-    getJSON(`/riders/${params.id}`).catch(() => null),
+    getEntityJSON(`/riders/${params.id}`),
     getJSON('/rankings/riders?limit=100').catch(() => ({ data: [] })),
     getJSON('/rankings/horses?limit=100').catch(() => ({ data: [] })),
     getJSON('/height-stats?limit=200').catch(() => ({ data: [] })),

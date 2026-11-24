@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getJSON } from '../../../lib/api';
+import { getJSON, getEntityJSON } from '../../../lib/api';
 import { statusBadge } from '../../../lib/tokens';
 import WatchButton from '../../../components/WatchButton';
 import ExportCsv from '../../../components/ExportCsv';
@@ -74,10 +74,15 @@ const divRange = (d) => {
   return `${(lo / 100).toFixed(2)}–${(hi / 100).toFixed(2)}m`;
 };
 
+export async function generateMetadata({ params }) {
+  const p = await getJSON(`/horses/${params.id}`).catch(() => null);
+  return { title: p?.data?.name || 'Horse' };
+}
+
 export default async function HorseProfile({ params, searchParams }) {
   const hBand = (searchParams && searchParams.h) || '';
   const [p, mbBoard, fg, scoring] = await Promise.all([
-    getJSON(`/horses/${params.id}`).catch(() => null),
+    getEntityJSON(`/horses/${params.id}`),
     getJSON('/rankings/modelb/horses?limit=500').catch(() => ({ data: [] })),
     getJSON(`/formguide/horse/${params.id}`).catch(() => null),
     getJSON('/scoring/active').catch(() => null),

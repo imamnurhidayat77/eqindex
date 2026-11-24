@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
-import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY } from '../../../lib/tokens';
+import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN, BTN_PRIMARY } from '../../../lib/tokens';
+import { ConfirmDialog } from '../../../components/Modal';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { TableRowsSk } from '../../../components/Skeletons';
 import { RowBtn } from '../../../components/TableBits';
@@ -31,6 +32,10 @@ export default function AdminSeriesReview() {
   const [checkText, setCheckText] = useState('');
   const [diff, setDiff] = useState(null);
   const [initial, setInitial] = useState(true);
+  // Bulk: tick classes, pick one series (or non-series), confirm once.
+  const [sel, setSel] = useState(() => new Set());
+  const [bulkKey, setBulkKey] = useState('');
+  const [bulkConfirm, setBulkConfirm] = useState(null); // series key or 'non_series'
 
   async function load() {
     try {
@@ -63,6 +68,29 @@ export default function AdminSeriesReview() {
       load();
     } catch (e) { setMsg(e.message); }
     setBusy(false);
+  }
+
+  const seriesName = (k) => (seriesList.find((x) => x.series_key === k)?.series_name) || k;
+  const toggleSel = (id) => setSel((p) => {
+    const n = new Set(p);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+  const allSel = rows.length > 0 && rows.every((r) => sel.has(r.class_id));
+  async function bulkVerdict(seriesKey) {
+    const items = rows.filter((r) => sel.has(r.class_id))
+      .map((r) => ({ class_id: r.class_id, name: r.name, series_key: seriesKey }));
+    if (!items.length) return;
+    setBusy(true); setMsg('');
+    try {
+      const d = await call('/admin/series/verdicts', { method: 'POST', body: JSON.stringify({ items }) });
+      setMsg(seriesKey === 'non_series'
+        ? `Marked ${items.length} class(es) non-series. They won't be asked again.`
+        : `Tagged ${d.tagged} class(es) as ${seriesName(seriesKey)}. Points recalculated.`);
+      setSel(new Set()); setBulkKey('');
+      load();
+    } catch (e) { setMsg(e.message); }
+    setBusy(false); setBulkConfirm(null);
   }
 
   async function saveSpec() {
@@ -125,13 +153,28 @@ export default function AdminSeriesReview() {
         <section className={CARD}>
           <h2 className="text-[14px] font-bold mb-1">Classes without a series tag</h2>
           <p className="text-[12.5px] text-muted mb-3">Tag to a series (points recalculate at once) or judge non-series (never asked again). <span className="text-gold">Series-like</span> names matched our patterns but no rule.</p>
+          {sel.size > 0 && (
+            <div className="sticky top-[60px] z-[5] mb-3 flex flex-wrap items-center gap-2 rounded border border-gold/40 bg-goldbg px-3 py-2">
+              <span className="text-[13px] font-bold text-white">{sel.size} selected</span>
+              <select value={bulkKey} onChange={(e) => setBulkKey(e.target.value)} className={INP} style={{ maxWidth: 220 }} aria-label="Series for selected classes">
+                <option value="">Pick series…</option>
+                {seriesList.map((x) => <option key={x.series_key} value={x.series_key}>{x.series_name || x.series_key}</option>)}
+              </select>
+              <button disabled={busy || !bulkKey} onClick={() => setBulkConfirm(bulkKey)} className={BTN_PRIMARY}>Tag {sel.size}</button>
+              <button disabled={busy} onClick={() => setBulkConfirm('non_series')} className={BTN}>Mark {sel.size} not series</button>
+              <button onClick={() => setSel(new Set())} className="ml-auto text-[12px] text-muted hover:text-white bg-none border-0 cursor-pointer">Clear selection</button>
+            </div>
+          )}
           <div className={TABLEWRAP}>
           <table className={TABLE}>
-            <thead><tr><th className={TH}>Class</th><th className={TH}>Event</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Signals</th><th className={TH}>Verdict</th></tr></thead>
+            <thead><tr><th className={`${TH} w-8`}><input type="checkbox" aria-label="Select all classes" checked={allSel}
+              onChange={() => setSel(allSel ? new Set() : new Set(rows.map((r) => r.class_id)))} /></th><th className={TH}>Class</th><th className={TH}>Event</th><th className={`${TH} ${NUM}`}>Rounds</th><th className={TH}>Signals</th><th className={TH}>Verdict</th></tr></thead>
             <tbody>
               {initial && <TableRowsSk rows={5} />}
               {rows.map((r) => (
-                <tr key={r.class_id} className="border-b border-rowline last:border-0">
+                <tr key={r.class_id} className={`border-b border-rowline last:border-0 ${sel.has(r.class_id) ? 'bg-white/[0.04]' : ''}`}>
+                  <td className={`${TD} w-8`}><input type="checkbox" aria-label={`Select ${r.name}`}
+                    checked={sel.has(r.class_id)} onChange={() => toggleSel(r.class_id)} /></td>
                   <td className={`${TD} max-w-[280px]`}><span className="block truncate" title={r.name}>{r.name}</span>
                     <span className="text-[11px] text-faint">{nzDay(r.class_date)}</span></td>
                   <td className={`${TD} text-muted text-[13px]`}>{r.event}</td>
@@ -151,10 +194,23 @@ export default function AdminSeriesReview() {
                   </td>
                 </tr>
               ))}
-              {!initial && !rows.length && <tr><td colSpan={5} className="px-2 py-4 text-[13px] text-faint">Everything tagged or judged — clean.</td></tr>}
+              {!initial && !rows.length && <tr><td colSpan={6} className="px-2 py-4 text-[13px] text-faint">Everything tagged or judged — clean.</td></tr>}
             </tbody>
           </table>
           </div>
+          {bulkConfirm && (
+            <ConfirmDialog
+              title={bulkConfirm === 'non_series' ? `Mark ${sel.size} classes as not series?` : `Tag ${sel.size} classes as ${seriesName(bulkConfirm)}?`}
+              body={bulkConfirm === 'non_series'
+                ? 'They leave this list and are never asked again. Series points are not affected.'
+                : 'Series points for every rider in these classes recalculate right away.'}
+              confirmLabel={bulkConfirm === 'non_series' ? 'Mark not series' : `Tag ${sel.size}`}
+              danger={false}
+              busy={busy}
+              onCancel={() => setBulkConfirm(null)}
+              onConfirm={() => bulkVerdict(bulkConfirm)}
+            />
+          )}
         </section>
       )}
 

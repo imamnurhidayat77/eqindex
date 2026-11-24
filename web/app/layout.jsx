@@ -7,7 +7,10 @@ import { AuthProvider } from '../components/auth';
 import UserMenu from '../components/UserMenu';
 import NotificationBell from '../components/NotificationBell';
 
-export const metadata = { title: 'EQIndex — Horse Intelligence' };
+export const metadata = {
+  title: { default: 'EQIndex · NZ show jumping results and ratings', template: '%s · EQIndex' },
+  description: 'New Zealand show jumping results, horse and rider ratings, series standings and event photos.',
+};
 export const viewport = { width: 'device-width', initialScale: 1 };
 
 export default function RootLayout({ children }) {

@@ -8,6 +8,12 @@ export const revalidate = 30;
 
 const num = (v, d = 0) => (v === null || v === undefined || v === '' ? d : Number(v));
 
+export async function generateMetadata({ params }) {
+  const key = decodeURIComponent(params.key);
+  const d = await getJSON(`/series/${key}/detail`).catch(() => null);
+  return { title: d?.data?.info?.display_name || d?.data?.standings?.[0]?.series_name || 'Series' };
+}
+
 export default async function SeriesPage({ params }) {
   const key = decodeURIComponent(params.key);
   const [d] = await Promise.all([

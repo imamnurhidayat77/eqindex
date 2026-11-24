@@ -7,14 +7,19 @@ import { useSeason } from './global';
 import Dropdown from './Dropdown';
 import { useAuth } from './auth';
 import { useDismiss } from './useDismiss';
+import { PUBLIC_PATHS } from '../lib/public-paths';
 
-// Minimal header for logged-out visitors everywhere: logo + Join stay,
-// app nav/search/season only render once a session is known.
-// NB: intentionally ignore `loading` — render nothing until session is known,
-// so logged-out visitors never see the menu flash before it hides.
+// Minimal header for logged-out visitors: logo + Join only.
+// While /auth/me is still loading, show the app nav when the visitor is
+// almost certainly signed in, so it doesn't pop in on every page load:
+//  - gated pages: middleware already turned away anyone without a session
+//  - public pages: the "signed in last visit" hint from AuthProvider
 function useLandingHidden() {
-  const { user } = useAuth();
-  return !user;
+  const { user, loading, hint } = useAuth();
+  const pathname = usePathname() || '/';
+  if (user) return false;
+  if (!loading) return true;
+  return !(hint || !PUBLIC_PATHS.has(pathname));
 }
 
 // Flat interest-group tabs.
@@ -44,7 +49,7 @@ export default function Navbar() {
     }`;
   return (
     <span ref={menuRef} className="contents">
-      <nav className="hidden xl:flex gap-[18px]">
+      <nav aria-label="Main" className="hidden lg:flex gap-[14px] xl:gap-[18px]">
         {NAV.map((item) => (
           <Link key={item.href} href={item.href} className={linkCls(item.match(pathname))}>
             {item.label}
@@ -52,11 +57,21 @@ export default function Navbar() {
         ))}
       </nav>
       <button
-        className="xl:hidden bg-card border border-line rounded text-body w-8 h-8"
+        className="lg:hidden bg-card border border-line rounded text-body w-8 h-8"
         onClick={() => setOpen((o) => !o)}
         aria-label="Menu"
+        aria-expanded={open}
       >
         ☰
+      </button>
+      {/* 1024-1279px: tabs fit but the search box doesn't, so it opens in the panel. */}
+      <button
+        className="hidden lg:inline-flex xl:hidden items-center justify-center bg-card border border-line rounded text-muted hover:text-white w-8 h-8"
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Search"
+        aria-expanded={open}
+      >
+        ⌕
       </button>
       {open && (
         <div className="absolute top-[60px] left-0 right-0 xl:hidden bg-navbg border-b border-line px-7 py-2 flex flex-col max-h-[70vh] overflow-y-auto">
@@ -70,7 +85,7 @@ export default function Navbar() {
                 key={item.href}
                 href={item.href}
                 onClick={() => setOpen(false)}
-                className={`no-underline text-sm py-2.5 border-b border-line/50 last:border-0 ${
+                className={`lg:hidden no-underline text-sm py-2.5 border-b border-line/50 last:border-0 ${
                   active ? 'text-gold font-bold' : 'text-muted'
                 }`}
               >
@@ -146,6 +161,7 @@ export function NavSearch({ mobile = false, onGo = null }) {
           else if (e.key === 'Enter') go(hi);
           else if (e.key === 'Escape') setOpen(false);
         }}
+        autoFocus={mobile}
         placeholder="⌕  Search..."
         aria-label="Search horses, riders and events"
         className={`bg-card border border-line rounded text-body px-3 py-[7px] text-[13px] placeholder:text-muted focus:border-gold/60 focus:outline-none ${mobile ? 'w-full' : 'w-[180px]'}`}

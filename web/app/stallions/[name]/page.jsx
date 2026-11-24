@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getJSON } from '../../../lib/api';
+import { getEntityJSON } from '../../../lib/api';
 import { CARD, H1, NUM, SUB, TABLE, TD, TH } from '../../../lib/tokens';
 import { StatCard, StatGrid } from '../../../components/StatCard';
 
@@ -8,9 +8,13 @@ export const revalidate = 30;
 
 const OFFSPRING_PER_PAGE = 25;
 
+export function generateMetadata({ params }) {
+  return { title: `${decodeURIComponent(params.name)} · Stallion` };
+}
+
 export default async function StallionProfile({ params, searchParams }) {
   const name = decodeURIComponent(params.name);
-  const res = await getJSON(`/stallions/${encodeURIComponent(name)}`).catch(() => null);
+  const res = await getEntityJSON(`/stallions/${encodeURIComponent(name)}`);
   if (!res || !res.data) notFound();
   const d = res.data;
   const horses = res.horses || [];
