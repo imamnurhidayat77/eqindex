@@ -1,4 +1,5 @@
 'use client';
+import { nzDay } from '../lib/dates';
 
 // Client-side CSV export of a competition history array (briefing §7C).
 export default function ExportCsv({ rows, filename }) {
@@ -8,7 +9,7 @@ export default function ExportCsv({ rows, filename }) {
     const lines = [cols.join(',')];
     for (const r of rows || []) {
       lines.push([
-        (r.class_date || '').slice(0, 10), r.event_name || '', r.class_name || '',
+        nzDay(r.class_date), r.event_name || '', r.class_name || '',
         r.height_cm ?? '', r.rider || r.horse || '',
         r.jump_faults ?? '', r.time_faults ?? '', r.total_faults ?? '',
         r.finish_place ?? '', r.points ?? '', r.status || '',

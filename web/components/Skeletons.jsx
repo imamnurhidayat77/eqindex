@@ -238,53 +238,6 @@ export function EventDetailSk() {
   );
 }
 
-export function RankingsSk() {
-  // Mirrors app/rankings/page.jsx: 5 tabs + chip filters, then tables.
-  return (
-    <>
-      <div className="mb-1"><Sk className="h-8 w-44 !rounded-md" /></div>
-      <p className={SUB}><Sk className="h-3.5 w-80 max-w-full" /></p>
-      <div className="flex gap-1 bg-card border border-line rounded p-1.5 mb-3 overflow-hidden">
-        {[0, 1, 2, 3, 4].map((i) => <Sk key={i} className="h-8 w-28 !rounded-md shrink-0" />)}
-      </div>
-      <div className="flex flex-wrap gap-2 mb-5 items-center">
-        {[0, 1, 2, 3, 4].map((i) => <Sk key={i} className="h-8 w-32 !rounded-md" />)}
-        {[0, 1, 2].map((i) => <Sk key={i} className="h-7 w-28 !rounded-full" />)}
-      </div>
-      <TableSk cols={8} rows={8} />
-      <TableSk cols={6} rows={5} />
-    </>
-  );
-}
-
-export function ListSk({ filters = false } = {}) {
-  // Mirrors app/venues/page.jsx: H1 + sub + one CARD table (Venue/Region/
-  // Events/Rounds/Open, no avatars). No filter bar, no pagination.
-  return (
-    <>
-      <div className="mb-1"><Sk className="h-8 w-40 !rounded-md" /></div>
-      <p className={SUB}><Sk className="h-3.5 w-72 max-w-full" /></p>
-      {filters && <FilterBarSk />}
-      <section className={CARD}>
-        <div className="flex gap-2 mb-3">
-          {[0, 1, 2, 3, 4].map((_, i) => <Sk key={i} className="h-3 flex-1" />)}
-        </div>
-        <div className="space-y-2.5">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <Sk className="h-4 flex-[2]" />
-              <Sk className="h-4 flex-1" />
-              <Sk className="h-4 w-14" />
-              <Sk className="h-4 w-14" />
-              <Sk className="h-4 w-16 ml-auto" />
-            </div>
-          ))}
-        </div>
-      </section>
-    </>
-  );
-}
-
 export function SeriesDetailSk() {
   // Mirrors app/series/[key]/page.jsx: breadcrumb + H1 + Points Race pill,
   // Standings header + sub + one SeriesRiderTable card. No hero, no stats.
@@ -308,24 +261,6 @@ export function SeriesDetailSk() {
           </div>
         ))}
       </section>
-    </>
-  );
-}
-
-export function VenueDetailSk() {
-  // Mirrors app/venues/[id]/page.jsx: H1 + sub, then grid lg:grid-cols-2 —
-  // Events table left, Top horses + Top riders stacked right. No stat cards.
-  return (
-    <>
-      <div className="mb-1"><Sk className="h-8 w-56 max-w-full !rounded-md" /></div>
-      <p className={SUB}><Sk className="h-3.5 w-72 max-w-full" /></p>
-      <div className="grid gap-5 lg:grid-cols-2">
-        <TableSk cols={3} rows={5} />
-        <div>
-          <TableSk cols={3} rows={5} />
-          <TableSk cols={3} rows={5} />
-        </div>
-      </div>
     </>
   );
 }
@@ -407,38 +342,6 @@ export function AdminSk() {
         </section>
       </div>
     </div>
-  );
-}
-
-export function AnalyticsSk() {
-  // Mirrors app/analytics/page.jsx: H1 + sub, then two titled sections each
-  // with 2 ChipSelect pills and one CARD table. No tabs, no stat grid.
-  const section = (title) => (
-    <div key={title} className="mb-6">
-      <Sk className="h-5 w-48 mb-3" />
-      <div className="flex flex-wrap gap-2 mb-3">
-        <Sk className="h-8 w-40 !rounded-md" />
-        <Sk className="h-8 w-36 !rounded-md" />
-      </div>
-      <section className={CARD}>
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="flex gap-2 items-center py-2 border-b border-rowline last:border-0">
-            <Sk className="h-3.5 flex-[2]" />
-            <Sk className="h-3.5 flex-1" />
-            <Sk className="h-3.5 flex-1" />
-            <Sk className="h-3.5 w-16 ml-auto" />
-          </div>
-        ))}
-      </section>
-    </div>
-  );
-  return (
-    <>
-      <div className="mb-1"><Sk className="h-8 w-44 !rounded-md" /></div>
-      <p className={SUB}><Sk className="h-3.5 w-80 max-w-full" /></p>
-      {section('Class difficulty')}
-      {section('Height progression')}
-    </>
   );
 }
 

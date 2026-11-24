@@ -5,6 +5,7 @@ import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY } from '
 import { useAdminApi } from '../../../components/useAdminApi';
 import { TableRowsSk } from '../../../components/Skeletons';
 import { RowBtn } from '../../../components/TableBits';
+import { nzDay } from '../../../lib/dates';
 
 // Series Review — close the Sophia gap from both ends:
 // 1. Untagged: classes without series_key (tag them or judge non-series;
@@ -132,7 +133,7 @@ export default function AdminSeriesReview() {
               {rows.map((r) => (
                 <tr key={r.class_id} className="border-b border-rowline last:border-0">
                   <td className={`${TD} max-w-[280px]`}><span className="block truncate" title={r.name}>{r.name}</span>
-                    <span className="text-[11px] text-faint">{(r.class_date || '').slice(0, 10)}</span></td>
+                    <span className="text-[11px] text-faint">{nzDay(r.class_date)}</span></td>
                   <td className={`${TD} text-muted text-[13px]`}>{r.event}</td>
                   <td className={`${TD} ${NUM}`}>{r.rounds}</td>
                   <td className={TD}>{r.series_like

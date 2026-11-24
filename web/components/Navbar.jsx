@@ -17,8 +17,7 @@ function useLandingHidden() {
   return !user;
 }
 
-// Flat interest-group tabs. Rankings / Compare / Analytics / My Stable are
-// hidden from the nav — routes still live and linkable.
+// Flat interest-group tabs.
 export const NAV = [
   { href: '/', label: 'Home', match: (p) => p === '/' },
   { href: '/events', label: 'Events', match: (p) => p.startsWith('/events') },

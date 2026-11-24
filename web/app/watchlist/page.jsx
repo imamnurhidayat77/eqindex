@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getJSON, getPrivateJSON } from '../../lib/api';
-import { CARD, H1, SUB, LIVE } from '../../lib/tokens';
+import { CARD, H1, SUB } from '../../lib/tokens';
 import { trendBadge } from '../../lib/eq';
 import WatchlistView from '../../components/WatchlistView';
 
@@ -299,9 +299,6 @@ export default async function Watchlist() {
         <div>
           <h1 className={H1}>My Watchlist</h1>
           <p className={SUB}>Form and latest results for the horses and riders you follow. NZ National Circuit.</p>
-        </div>
-        <div className="flex gap-2 items-center shrink-0 pt-1.5">
-          <span className={LIVE}>● LIVE MONITORED</span>
         </div>
       </div>
 

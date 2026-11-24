@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { API } from '../lib/api';
+import { nzDay } from '../lib/dates';
 
 // Admin command palette (Ctrl/⌘+K): jump to pages + fuzzy-find
 // horses, riders, events and classes via /admin/lookup.
@@ -78,7 +79,7 @@ export default function CommandPalette({ open, onClose, role }) {
           const j = await res.json();
           return (j.data || []).slice(0, 4).map((r) => ({
             key: `${type}-${r.id}`, group,
-            label: r.name, sub: type === 'class' ? `${r.class_date || ''}`.slice(0, 10) : null,
+            label: r.name, sub: type === 'class' ? nzDay(r.class_date) : null,
             href: base ? `${base}/${r.id}` : null,
           }));
         }));

@@ -41,10 +41,6 @@ export default async function AdminLayout({ children }) {
         <div className="text-[11px] uppercase tracking-[0.8px] text-faint font-bold">
           EQIndex <span className="text-gold">/</span> Administration
         </div>
-        <div className="flex items-center gap-2 text-[12px] text-muted">
-          <span className="w-2 h-2 rounded-full bg-moss inline-block" title="API reachable" />
-          Console live
-        </div>
       </div>
       <div className="grid gap-5 lg:grid-cols-[220px_1fr] items-start">
         <AdminNav user={user} />

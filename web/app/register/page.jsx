@@ -8,7 +8,7 @@ import { H1, INP, BTN_PRIMARY, LINK } from '../../lib/tokens';
 const ROLES = [
   ['PUBLIC', 'Supporter', 'Follow horses, riders & rankings'],
   ['RIDER', 'Rider', 'Claim your rider profile & form'],
-  ['COACH', 'Coach', 'Manage a roster of athletes'],
+  ['COACH', 'Coach', 'Follow the riders you coach'],
 ];
 
 export default function Register() {
@@ -82,9 +82,9 @@ export default function Register() {
             <p className="mt-1 text-[12px] font-semibold uppercase tracking-[0.08em] opacity-70">One account, full circuit</p>
           </div>
           <div className="space-y-2.5 text-[13px] font-semibold leading-snug">
-            <div className="border-l-2 border-black/70 pl-3">Personal watchlists & saved comparisons</div>
+            <div className="border-l-2 border-black/70 pl-3">Personal watchlists</div>
             <div className="border-l-2 border-black/40 pl-3">Tag yourself to find your photos</div>
-            <div className="border-l-2 border-black/40 pl-3">Coaches track their whole roster</div>
+            <div className="border-l-2 border-black/40 pl-3">Coaches follow every rider they train</div>
           </div>
           <p className="text-[11px] opacity-60">Free for supporters. No card required.</p>
         </div>

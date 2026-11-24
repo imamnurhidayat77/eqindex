@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getJSON } from '../../../lib/api';
 import { ordinal } from '../../../lib/eq';
-import { BADGE, CARD, H1, H2, LINK, LIVE, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
+import { BADGE, CARD, H1, H2, LINK, NUM, SUB, TABLE, TABLEWRAP, TD, TH, badge } from '../../../lib/tokens';
+import { nzDay, fmtRange } from '../../../lib/dates';
 import ClassResults from '../../../components/ClassResults';
 import { EventDifficultyTable } from '../../../components/EventTables';
 import { StatCard, StatGrid } from '../../../components/StatCard';
@@ -13,7 +14,6 @@ import { bossEventUrl, bossPhotosUrl } from '../../../lib/bossmedia';
 export const revalidate = 30;
 
 const pct1 = (v) => `${Number(v).toFixed(1)}%`;
-const d = (o) => new Date(o).toLocaleDateString('en-NZ', { month: 'short', year: '2-digit' });
 
 export default async function EventDetail({ params }) {
   const a = await getJSON(`/events/${params.id}/analytics`).catch(() => null);
@@ -25,10 +25,6 @@ export default async function EventDetail({ params }) {
   }
   const rounds = a.rounds;
   const maxH = Math.max(0, ...rounds.map((r) => Number(r.height_cm) || 0));
-  // Circuit benchmark from career rankings (for the overview deltas).
-  const [rankAll] = await Promise.all([
-    getJSON('/rankings/horses?limit=200'),
-  ]);
   const n = rounds.length;
   const clears = rounds.filter((r) => r.clear_round).length;
   const clearPct = n ? 100 * clears / n : 0;
@@ -39,12 +35,7 @@ export default async function EventDetail({ params }) {
   const horsesN = new Set(rounds.map((r) => r.horse)).size;
   const ridersN = new Set(rounds.map((r) => r.rider)).size;
 
-  // circuit benchmark from career rankings
-  const totS = rankAll.data.reduce((s, h) => s + Number(h.starts), 0);
-  const totC = rankAll.data.reduce((s, h) => s + Number(h.clears), 0);
-  const circClear = totS ? 100 * totC / totS : 0;
-  const circAvg = totS ? rankAll.data.reduce((s, h) => s + Number(h.avg_faults) * Number(h.starts), 0) / totS : 0;
-  const fmtDate = `${d(e.date_start)}–${d(e.date_end)}`;
+  const fmtDate = fmtRange(e.date_start, e.date_end);
 
   // height + fault distributions
   const buckets = [[100, 110], [110, 120], [120, 130], [130, 140], [140, 999]];
@@ -106,8 +97,7 @@ export default async function EventDetail({ params }) {
           <p className={SUB}>Detailed physical arena, class, horse, and rider metadata from New Zealand&apos;s premier circuits.</p>
         </div>
         <div className="flex gap-2.5 items-center shrink-0 pt-1.5">
-          <span className={LIVE}>● LIVE EVENT FEED</span>
-          {e.updated_at && <span className="text-muted border border-line rounded-full px-3 py-[5px] text-xs">◷ Updated {(e.updated_at || '').slice(0, 10)}</span>}
+          {e.updated_at && <span className="text-muted border border-line rounded-full px-3 py-[5px] text-xs">◷ Updated {nzDay(e.updated_at)}</span>}
         </div>
       </div>
 
@@ -121,9 +111,9 @@ export default async function EventDetail({ params }) {
           <div>
             <div className="text-[20px] font-extrabold leading-snug">{e.name}</div>
             <div className="text-muted text-xs mt-1.5">
-              Venue: <b className="text-body">{e.venue}</b>&nbsp;&nbsp;
-              Region: <b className="text-body">{e.region}, NZ</b>&nbsp;&nbsp;
-              Arena: <b className="text-body">{e.arena_type}</b>&nbsp;&nbsp;
+              {e.venue && <>Venue: <b className="text-body">{e.venue}</b>&nbsp;&nbsp;</>}
+              {e.region && <>Region: <b className="text-body">{e.region}, NZ</b>&nbsp;&nbsp;</>}
+              {e.arena_type && <>Arena: <b className="text-body">{e.arena_type}</b>&nbsp;&nbsp;</>}
               Date: <b className="text-body">{fmtDate}</b>
               {e.tier && <>&nbsp;&nbsp;Tier: <b className="text-gold">{e.tier}</b></>}
             </div>
@@ -152,8 +142,8 @@ export default async function EventDetail({ params }) {
           ['Total Rounds', null, n],
           ['Horses Entered', null, horsesN],
           ['Riders Entered', null, ridersN],
-          ['Clear Rate', `${(clearPct - circClear) >= 0 ? '+' : ''}${(clearPct - circClear).toFixed(1)}% vs avg`, `${clearPct.toFixed(0)}%`],
-          ['Avg Faults', `${(avgF - circAvg) >= 0 ? '+' : ''}${(avgF - circAvg).toFixed(1)} penalty`, avgF.toFixed(1)],
+          ['Clear Rate', null, `${clearPct.toFixed(0)}%`],
+          ['Avg Faults', null, avgF.toFixed(1)],
           ['Clear Rounds', `${n} rounds`, clears],
         ].map(([lbl, delta, big]) => (
           <StatCard key={lbl} label={lbl} delta={delta} value={big} />

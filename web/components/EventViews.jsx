@@ -5,26 +5,20 @@ import { API } from '../lib/api';
 import { H1, INP, badge, BADGE } from '../lib/tokens';
 import { Pagination } from './list-controls';
 import { EmptyState } from './EmptyState';
+import { nzDay, fmtDay, fmtRange } from '../lib/dates';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const WDAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
 const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// NZ calendar day as a local Date (calendar grid math needs a Date).
 const parseDay = (s) => {
-  if (!s) return null;
-  const d = new Date(s);
-  return Number.isNaN(d.getTime()) ? null : d;
+  const k = nzDay(s);
+  if (!k) return null;
+  const [y, m, d] = k.split('-').map(Number);
+  return new Date(y, m - 1, d);
 };
-const fmtD = (s) => {
-  const d = parseDay(s);
-  if (!d) return '—';
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-};
-const fmtRange = (e) => {
-  if (!e.date_start) return 'Date TBC';
-  if (!e.date_end || e.date_end.slice(0, 10) === e.date_start.slice(0, 10)) return fmtD(e.date_start);
-  return `${fmtD(e.date_start)} – ${fmtD(e.date_end)}`;
-};
+const eventRange = (e) => fmtRange(e.date_start, e.date_end);
 const hasData = (e) =>
   Number(e.class_count || 0) > 0 || Number(e.round_count || 0) > 0 || Number(e.combo_count || 0) > 0;
 const startOfToday = () => { const t = new Date(); t.setHours(0, 0, 0, 0); return t; };
@@ -68,18 +62,18 @@ const hrefOf = (e) => `/events/${e.slug || e.id}`;
 const metaLine = (e) =>
   [e.venue || '—', e.region, e.season ? `Season ${e.season.replace('-', '/')}` : null].filter(Boolean).join(' · ');
 const statLine = (e) =>
-  [e.class_count ? `${e.class_count} classes` : null, (e.combo_count || e.round_count) ? `${e.combo_count ?? e.round_count} rounds` : null]
+  [e.class_count ? `${e.class_count} classes` : null, e.round_count ? `${e.round_count} rounds` : null]
     .filter(Boolean).join(' · ');
 
 function EventCard({ e, today }) {
   const stats = [
     e.class_count ? { v: String(e.class_count), l: 'classes' } : null,
-    (e.combo_count || e.round_count) ? { v: String(e.combo_count ?? e.round_count), l: 'rounds' } : null,
+    e.round_count ? { v: String(e.round_count), l: 'rounds' } : null,
   ].filter(Boolean);
   return (
     <article className="group flex h-full flex-col rounded-lg border border-line bg-ink p-5 transition-colors hover:border-gold/50">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-[0.8px] text-gold">{fmtRange(e)}</span>
+        <span className="text-[11px] font-bold uppercase tracking-[0.8px] text-gold">{eventRange(e)}</span>
         <Badges e={e} today={today} />
       </div>
       <Link href={hrefOf(e)} aria-label={`${e.name} — view details`} className="mt-2.5 block font-extrabold text-[16px] leading-[1.25] text-white no-underline hover:text-gold line-clamp-2 transition-colors">
@@ -112,7 +106,7 @@ function EventRow({ e, today }) {
           <Badges e={e} today={today} />
         </div>
         <div className="mt-1 text-[12.5px] text-muted">
-          {fmtRange(e)}{e.venue ? ` · ${e.venue}` : ''}{e.region ? `, ${e.region}` : ''}
+          {eventRange(e)}{e.venue ? ` · ${e.venue}` : ''}{e.region ? `, ${e.region}` : ''}
           {statLine(e) ? ` · ${statLine(e)}` : ''}
         </div>
       </div>
@@ -257,7 +251,7 @@ export default function EventViews() {
           </div>
           <div className="mt-5 border-t border-line pt-3">
             <div className="mb-2 text-[14px] font-bold text-white">
-              {activeDay ? `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][parseDay(activeDay).getDay()]} ${fmtD(activeDay)}` : 'Select a day'}
+              {activeDay ? `${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][parseDay(activeDay).getDay()]} ${fmtDay(activeDay)}` : 'Select a day'}
             </div>
             {dayEvents.length ? dayEvents.map((e) => <EventRow key={e.id} e={e} today={today} />) : (
               <EmptyState icon={<CalendarGlyph />} title={loading ? 'Loading events…' : 'No events this day'} hint="Pick a highlighted date to see its events." />

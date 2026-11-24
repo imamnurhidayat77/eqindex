@@ -4,6 +4,7 @@ import { getJSON } from '../../../lib/api';
 import { H1, SUB } from '../../../lib/tokens';
 import { BOSSMEDIA_URL, bossPhotoUrl } from '../../../lib/bossmedia';
 import EventWallGrid from '../../../components/EventWallGrid';
+import { fmtDay } from '../../../lib/dates';
 
 export const revalidate = 30;
 
@@ -34,7 +35,7 @@ async function EventWall({ event, kind }) {
         <Link href="/events" className="text-sky text-[13px] no-underline hover:underline">← All events</Link>
       </div>
       <p className={SUB}>
-        {[event.venue, (event.date_start || '').slice(0, 10)].filter(Boolean).join(' · ') || 'Event photos'} — watermarked previews.{' '}
+        {[event.venue, event.date_start && fmtDay(event.date_start)].filter(Boolean).join(' · ') || 'Event photos'} — watermarked previews.{' '}
         <a href={`${BOSSMEDIA_URL}/photos`} target="_blank" rel="noreferrer" className="text-sky no-underline hover:underline">
           View and buy full resolution on Boss Media →
         </a>

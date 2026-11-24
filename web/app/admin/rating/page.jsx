@@ -3,7 +3,9 @@
 // edit the weights, Save, live immediately. Every save is snapshotted as
 // a new active version behind the scenes (audit trail, rollback via Scoring).
 import { useEffect, useState } from 'react';
-import { CARD, H1, SUB, BTN_PRIMARY } from '../../../lib/tokens';
+import Link from 'next/link';
+import { CARD, H1, SUB, BTN, BTN_PRIMARY, LINK } from '../../../lib/tokens';
+import { ConfirmDialog } from '../../../components/Modal';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { AdminFormSk } from '../../../components/Skeletons';
 import { ModelBSections } from '../../../components/ScoringForms';
@@ -16,6 +18,8 @@ export default function AdminRating() {
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
+  const [asking, setAsking] = useState(false);
+  const dirty = !!(meta && draft) && JSON.stringify(draft) !== JSON.stringify(meta.params || {});
 
   async function load() {
     setErr('');
@@ -28,6 +32,7 @@ export default function AdminRating() {
   useEffect(() => { load(); }, []);
 
   async function save() {
+    setAsking(false);
     if (!draft) return;
     setBusy(true); setErr(''); setNotice('');
     try {
@@ -43,19 +48,31 @@ export default function AdminRating() {
   return (
     <>
       <h1 className={H1}>EQIndex rating</h1>
-      <p className={SUB}>Model B weights, live now{meta ? ` · ${meta.season} v${meta.version}` : ''}. Edit, save, done — no drafts.</p>
+      <p className={SUB}>Model B weights, live now{meta ? ` · ${meta.season} v${meta.version}` : ''}. Changes go live for every visitor when you save. Each save is kept as a version, so you can roll back under <Link className={LINK} href="/admin/scoring">Scoring</Link>.</p>
       {err && <section className={CARD}><p className="text-blood text-sm">{err}</p></section>}
       {notice && <section className={CARD}><p className="text-moss text-sm">{notice}</p></section>}
       {draft ? (
         <section className={CARD}>
           <ModelBSections draft={draft} setDraft={setDraft} />
           <div className="flex flex-wrap items-center gap-2 mt-4 sticky bottom-0 py-3 border-t border-line" style={{ backgroundColor: '#141414' }}>
-            <button className={BTN_PRIMARY} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save — go live'}</button>
+            <button className={`${BTN_PRIMARY} disabled:opacity-40 disabled:cursor-not-allowed`} disabled={busy || !dirty} onClick={() => setAsking(true)}>{busy ? 'Saving…' : 'Save — go live'}</button>
+            {dirty && !busy && <button className={BTN} onClick={() => setDraft(JSON.parse(JSON.stringify(meta.params || {})))}>Discard changes</button>}
+            {!dirty && !savedAt && <span className="text-[12px] text-muted">No unsaved changes.</span>}
             {savedAt && <span className="text-[12px] text-muted">Saved {savedAt.toLocaleTimeString()}.</span>}
           </div>
         </section>
       ) : !err && (
         <AdminFormSk rows={4} />
+      )}
+      {asking && (
+        <ConfirmDialog
+          title="Put these weights live?"
+          body={<p>Every horse and rider rating on the public site is recalculated with the new weights right away. The current version stays in Scoring if you need to roll back.</p>}
+          confirmLabel="Save and go live"
+          danger={false}
+          onCancel={() => setAsking(false)}
+          onConfirm={save}
+        />
       )}
     </>
   );

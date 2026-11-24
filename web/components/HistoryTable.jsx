@@ -2,8 +2,9 @@
 import Link from 'next/link';
 import { statusBadge } from '../lib/tokens';
 import DataTable from './DataTable';
+import { nzDay } from '../lib/dates';
 
-const fmtDate = (d) => (d || '').slice(0, 10);
+const fmtDate = nzDay;
 const num = (v, d = 0) => (v === null || v === undefined || v === '' ? d : Number(v));
 
 function placingBadge(place, status) {

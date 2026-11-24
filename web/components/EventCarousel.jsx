@@ -3,8 +3,8 @@ import Link from 'next/link';
 import { useRef, useState, useEffect } from 'react';
 import { CARD, LINK, badge, BADGE } from '../lib/tokens';
 import { EmptyState } from './EmptyState';
+import { fmtDay, fmtRange } from '../lib/dates';
 
-const fmtDay = (d) => (d || '').slice(0, 10);
 const fmtUpdated = (d) => {
   if (!d) return null;
   const diff = Date.now() - new Date(d).getTime();
@@ -81,7 +81,7 @@ export default function EventCarousel({ events, kind = 'results' }) {
             style={{ animationDelay: `${Math.min(i * 50, 300)}ms` }}
             className="rise snap-start shrink-0 w-[260px] bg-ink border border-line rounded-lg p-5 no-underline hover:border-gold/60 transition-colors group flex flex-col">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-[0.8px] text-gold">{fmtDay(e.date_start)}{e.date_end && e.date_end !== e.date_start ? ` → ${fmtDay(e.date_end)}` : ''}</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.8px] text-gold">{fmtRange(e.date_start, e.date_end)}</span>
               {upcoming && <span className={badge(BADGE.goldfill)}>Upcoming</span>}
             </div>
             <div className="mt-2 font-extrabold text-[17px] leading-[1.2] text-white group-hover:text-gold line-clamp-2 min-h-[41px] transition-colors">{e.name}</div>

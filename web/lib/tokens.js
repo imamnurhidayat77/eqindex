@@ -22,7 +22,6 @@ export const BTN_SECONDARY = 'border border-ember/60 text-ember rounded-md px-3.
 export const INP = 'bg-ink border border-line text-body rounded-md px-3 py-2 text-sm placeholder:text-faint focus:border-gold/60 focus:outline-none';
 export const MUT = 'text-muted';
 export const LINK = 'text-sky no-underline hover:underline';
-export const LIVE = 'text-moss border border-greenbg bg-greenbg/40 rounded-full px-3 py-1 text-xs font-bold';
 export const badge = (color) =>
   `inline-block text-[11px] font-bold rounded-md px-2 py-[3px] ${color}`;
 export const BADGE = {

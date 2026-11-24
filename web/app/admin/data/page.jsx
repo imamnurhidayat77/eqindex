@@ -1,17 +1,20 @@
 'use client';
 import { useState } from 'react';
 import { API } from '../../../lib/api';
-import { CARD, H1, H2, SUB, INP, BTN_PRIMARY, BTN_DANGER } from '../../../lib/tokens';
+import { CARD, H1, H2, SUB, INP, BTN, BTN_PRIMARY, BTN_DANGER } from '../../../lib/tokens';
+import { ConfirmDialog } from '../../../components/Modal';
 
 export default function AdminData() {
   const [confirm, setConfirm] = useState('');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [askMaintenance, setAskMaintenance] = useState(false);
   function download() {
     window.location.href = `${API}/admin/export`;
   }
   async function maintenance() {
+    setAskMaintenance(false);
     setErr(''); setMsg(''); setBusy(true);
     try {
       const res = await fetch(`${API}/admin/maintenance/run`, {
@@ -56,7 +59,7 @@ export default function AdminData() {
       <section className={CARD}>
         <h2 className={H2}>Maintenance — retention & reminders</h2>
         <p className="text-muted text-sm mt-1 mb-3">Deletes storage files of unpublished drafts older than 90 days (published work never touched) and sends one checkout reminder per stale pending order. For automation, schedule Cloud Scheduler against <code>/admin/maintenance/run</code> with header <code>x-maintenance-secret</code> = MAINTENANCE_SECRET.</p>
-        <button className={BTN_PRIMARY} disabled={busy} onClick={maintenance}>{busy ? 'Running…' : 'Run maintenance now'}</button>
+        <button className={BTN} disabled={busy} onClick={() => setAskMaintenance(true)}>{busy ? 'Running…' : 'Run maintenance now'}</button>
       </section>
       <section className={CARD}>
         <h2 className={H2}>Danger zone — wipe competition data</h2>
@@ -66,6 +69,15 @@ export default function AdminData() {
           <button className={BTN_DANGER} disabled={busy} onClick={wipe}>{busy ? 'Wiping…' : 'Wipe competition data'}</button>
         </div>
       </section>
+      {askMaintenance && (
+        <ConfirmDialog
+          title="Run maintenance now?"
+          body={<p>Draft files older than 90 days are deleted for good, and every buyer with a stale pending order gets a reminder email. These emails go to real buyers.</p>}
+          confirmLabel="Run maintenance"
+          onCancel={() => setAskMaintenance(false)}
+          onConfirm={maintenance}
+        />
+      )}
     </>
   );
 }

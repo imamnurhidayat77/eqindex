@@ -4,6 +4,7 @@ import { API } from '../../../../lib/api';
 import { rulePoints, pointsLine } from '../../../../lib/scoring';
 import { CARD, H1, SUB, INP, BTN_PRIMARY, badge, BADGE } from '../../../../lib/tokens';
 import Dropdown from '../../../../components/Dropdown';
+import { nzDay } from '../../../../lib/dates';
 
 const CLASS_TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
 const STATUSES = ['finished', 'eliminated', 'withdrawn', 'retired', 'disqualified'];
@@ -122,12 +123,12 @@ export default function AddResult() {
           <label className="text-xs text-muted flex flex-col gap-1">Event
             <Dropdown ariaLabel="Event" value={eventId} searchable block placeholder="— select —"
               options={[{ value: '', label: '— select —' },
-                ...events.map((e) => ({ value: e.id, label: `${e.name} · ${(e.date_start || '').slice(0, 10)}` }))]}
+                ...events.map((e) => ({ value: e.id, label: `${e.name} · ${nzDay(e.date_start)}` }))]}
               onSelect={(o) => setEventId(o.value)} /></label>
           <label className="text-xs text-muted flex flex-col gap-1">Class
             <Dropdown ariaLabel="Class" value={classId} searchable block placeholder="— select or type new below —" disabled={!eventId}
               options={[{ value: '', label: '— select or type new below —' },
-                ...classes.map((c) => ({ value: c.id, label: `${c.name}${c.class_date ? ` · ${c.class_date.slice(0, 10)}` : ''}` }))]}
+                ...classes.map((c) => ({ value: c.id, label: `${c.name}${c.class_date ? ` · ${nzDay(c.class_date)}` : ''}` }))]}
               onSelect={(o) => { setClassId(o.value); setNewClass(''); }} /></label>
           {!classId && (
             <label className="text-xs text-muted flex flex-col gap-1">+ New class name

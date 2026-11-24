@@ -6,6 +6,7 @@ import Dropdown from '../../../components/Dropdown';
 import { ConfirmDialog } from '../../../components/Modal';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { TableRowsSk } from '../../../components/Skeletons';
+import { nzDay } from '../../../lib/dates';
 
 const ROLES = ['PUBLIC', 'RIDER', 'COACH', 'OWNER', 'BREEDER', 'PHOTOGRAPHER', 'ADMIN'];
 
@@ -15,6 +16,7 @@ export default function AdminUsers() {
   const [err, setErr] = useState('');
   const [notice, setNotice] = useState('');
   const [revoking, setRevoking] = useState(null);
+  const [roleChange, setRoleChange] = useState(null); // { u, role } awaiting confirmation
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const call = useAdminApi();
@@ -28,10 +30,15 @@ export default function AdminUsers() {
     const t = setTimeout(() => load(q.trim()), q ? 300 : 0);
     return () => clearTimeout(t);
   }, [q]);
-  async function setRole(u, role) {
-    setErr('');
-    try { await call(`/admin/users/${u.id}`, { method: 'PATCH', body: JSON.stringify({ role }) }); await load(q.trim()); }
-    catch (e) { setErr(e.message); }
+  async function setRole() {
+    const { u, role } = roleChange;
+    setBusy(true); setErr('');
+    try {
+      await call(`/admin/users/${u.id}`, { method: 'PATCH', body: JSON.stringify({ role }) });
+      setRoleChange(null);
+      await load(q.trim());
+    } catch (e) { setErr(e.message); setRoleChange(null); }
+    setBusy(false);
   }
   async function revoke() {
     const u = revoking;
@@ -68,12 +75,12 @@ export default function AdminUsers() {
                 <td className={TD}>
                   <Dropdown ariaLabel="Role" value={u.role} size="sm"
                     options={ROLES.map((r) => ({ value: r, label: r }))}
-                    onSelect={(o) => setRole(u, o.value)} />
+                    onSelect={(o) => { if (o.value !== u.role) setRoleChange({ u, role: o.value }); }} />
                 </td>
                 <td className={`${TD} ${NUM} ${u.active_sessions ? 'text-moss font-bold' : 'text-faint'}`}>{u.active_sessions}</td>
-                <td className={`${TD} text-muted`}>{(u.created_at || '').slice(0, 10)}</td>
+                <td className={`${TD} text-muted`}>{nzDay(u.created_at)}</td>
                 <td className={TD}>
-                  <button className={BTN_DANGER} disabled={!u.active_sessions} onClick={() => { setRevoking(u); setErr(''); setNotice(''); }}>Revoke sessions</button>
+                  <button className={`${BTN_DANGER} disabled:opacity-40 disabled:cursor-not-allowed`} disabled={!u.active_sessions} onClick={() => { setRevoking(u); setErr(''); setNotice(''); }}>Revoke sessions</button>
                 </td>
               </tr>
             ))}
@@ -83,6 +90,22 @@ export default function AdminUsers() {
         </table>
         </div>
       </section>
+      {roleChange && (
+        <ConfirmDialog
+          title={`Change ${roleChange.u.name} to ${roleChange.role}?`}
+          body={<>
+            <p className="mb-2 text-body font-semibold">{roleChange.u.email} · now {roleChange.u.role}.</p>
+            <p>{['ADMIN', 'PHOTOGRAPHER'].includes(roleChange.role)
+              ? 'This grants console access. Only do this for people you trust.'
+              : 'Their access changes on their next request.'}</p>
+          </>}
+          confirmLabel={`Make ${roleChange.role}`}
+          danger={['ADMIN', 'PHOTOGRAPHER'].includes(roleChange.role) || roleChange.u.role === 'ADMIN'}
+          busy={busy}
+          onCancel={() => setRoleChange(null)}
+          onConfirm={setRole}
+        />
+      )}
       {revoking && (
         <ConfirmDialog
           title={`Revoke sessions for ${revoking.name}?`}

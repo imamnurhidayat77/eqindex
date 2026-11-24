@@ -7,6 +7,7 @@ import { Pagination } from '../../../components/list-controls';
 import { LabeledSwitch } from '../../../components/Switch';
 import Dropdown from '../../../components/Dropdown';
 import { keyOptions, FALLBACK_CATS } from '../../../lib/categories';
+import { nzDay } from '../../../lib/dates';
 
 // Class rider-category options come from the rider_categories master table
 // (Admin → Categories). Stored values are master keys; '' = open/unrestricted.
@@ -107,7 +108,7 @@ export default function AdminClasses() {
                 <tr key={r.id} className={on ? '' : 'opacity-55'}>
                   <td className={TD}><b>{r.name}</b></td>
                   <td className={`${TD} text-muted`}>{r.event_name}</td>
-                  <td className={`${TD} text-muted whitespace-nowrap`}>{(r.class_date || '').slice(0, 10) || '—'}</td>
+                  <td className={`${TD} text-muted whitespace-nowrap`}>{nzDay(r.class_date) || '—'}</td>
                   <td className={TD}>{r.class_type || '—'}</td>
                   <td className={`${TD} ${NUM} text-muted`}>{r.height_cm ? `${r.height_cm}cm` : '—'}</td>
                   <td className={`${TD} ${NUM} text-muted`}>{r.round_count}</td>

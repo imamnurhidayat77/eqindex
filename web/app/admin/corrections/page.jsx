@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { AdminCardsSk } from '../../../components/Skeletons';
+import { nzDay } from '../../../lib/dates';
 
 const STATUSES = ['open', 'in_review', 'resolved', 'rejected'];
 const stBadge = (s) => s === 'open' ? badge(BADGE.goldfill) : s === 'in_review' ? badge(BADGE.blue)
@@ -55,7 +56,7 @@ export default function AdminCorrections() {
         <section className={`${CARD} ${r.status === 'open' ? 'border-l-2 !border-l-gold/70' : ''}`} key={r.id}>
           <div className="flex flex-wrap gap-2 items-center mb-1.5">
             <b>{r.subject}</b><span className={stBadge(r.status)}>{r.status.replace('_', ' ')}</span>
-            <span className="text-faint text-[12px]">{r.name} · {r.email} · {(r.created_at || '').slice(0, 10)}</span>
+            <span className="text-faint text-[12px]">{r.name} · {r.email} · {nzDay(r.created_at)}</span>
           </div>
           <p className="text-sm">{r.message}</p>
           {r.entity_type && <p className="text-faint text-[12px] mt-1">About: {r.entity_type}{r.entity_id ? ` · ${String(r.entity_id).slice(0, 8)}` : ''}</p>}

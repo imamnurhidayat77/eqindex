@@ -17,7 +17,6 @@ import { StatCard, StatGrid } from '../../../components/StatCard';
 
 export const revalidate = 30;
 
-const fmtDate = (d) => (d || '').slice(0, 10);
 const num = (v, d = 0) => (v === null || v === undefined || v === '' ? d : Number(v));
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -105,10 +104,9 @@ function groupBest(rows, keyFn, labelFn) {
 }
 
 export default async function RiderProfile({ params, searchParams }) {
-  const [p, allRiders, events, allHorses, heightStats, splits, mbBoard, fg, scoring] = await Promise.all([
+  const [p, allRiders, allHorses, heightStats, splits, mbBoard, fg, scoring] = await Promise.all([
     getJSON(`/riders/${params.id}`).catch(() => null),
     getJSON('/rankings/riders?limit=100').catch(() => ({ data: [] })),
-    getJSON('/events?limit=100&has_data=1').catch(() => ({ data: [] })),
     getJSON('/rankings/horses?limit=100').catch(() => ({ data: [] })),
     getJSON('/height-stats?limit=200').catch(() => ({ data: [] })),
     getJSON(`/riders/${params.id}/splits`).catch(() => ({ data: [] })),
@@ -233,11 +231,6 @@ export default async function RiderProfile({ params, searchParams }) {
   const byHeight = groupBest(history, (x) => (x.height_cm ? `${(num(x.height_cm) / 100).toFixed(2)}m` : null), (x, k) => k);
   const byVenue = groupBest(history, (x) => x.event_name, (x) => x.event_name);
   const byLevel = groupBest(history, (x) => x.class_name, (x) => x.class_name);
-  const arenaOf = Object.fromEntries((events.data || []).map((e) => [e.id, e.arena_type]));
-  const byArena = groupBest(
-    history.map((x) => ({ ...x, _arena: arenaOf[x.event_id] || null })),
-    (x) => x._arena, (x, k) => k,
-  );
   const bestVenueWins = [...byVenue].sort((a, b) => b.wins - a.wins || b.clear - a.clear)[0];
 
   // ---- forecast + recommendations ----
@@ -264,26 +257,6 @@ export default async function RiderProfile({ params, searchParams }) {
       starts: num(x.starts),
     })),
   });
-
-  // ---- career timeline from history ----
-  const asc = [...history].sort((a, b) => new Date(a.class_date) - new Date(b.class_date));
-  const firstClear = asc.find((x) => x.clear_round);
-  const firstWin = asc.find((x) => Number(x.finish_place) === 1);
-  const highest = [...history].filter((x) => x.height_cm).sort((a, b) => num(b.height_cm) - num(a.height_cm) || num(a.finish_place || 99) - num(b.finish_place || 99))[0];
-  const latest = [...history].sort((a, b) => new Date(b.class_date) - new Date(a.class_date))[0];
-  const timeline = [
-    asc[0] && { date: fmtDate(asc[0].class_date), title: 'National GP Series Debut', body: `Secured top-five placing in debut national class at ${asc[0].event_name}.` },
-    firstWin && { date: fmtDate(firstWin.class_date), title: `Grand Prix Win — ${firstWin.event_name}`, body: `First career win at Grand Prix tier riding ${firstWin.horse}.` },
-    best && { date: fmtDate(firstClear?.class_date || asc[0]?.class_date), title: `Partnership Formation with ${best.horse}`, body: `Acquired biological synergy with the top-string mount.` },
-    highest && { date: fmtDate(highest.class_date), title: 'Regional Championship Form', body: `Took overall title contention at ${(highest.height_cm / 100).toFixed(2)}m with record clear round rate.` },
-    latest && { date: fmtDate(latest.class_date), title: 'Latest Championship Qualification', body: `Attained top-five finish at ${latest.event_name} to qualify for tier trials.` },
-  ].filter(Boolean);
-
-  const insights = [
-    { tag: 'Partnership Synergy Peak', body: best ? `${r.name} displays outstanding coordination with ${best.horse}. Their ${num(best.clear_pct).toFixed(0)}% clear rate at top height is the strongest dynamic verified this season.` : 'No partnership signal yet — more rounds needed to verify synergy.' },
-    { tag: 'Fault Retention Trend', body: monthly.length > 1 && monthly[monthly.length - 1].faults < monthly[0].faults ? `Average faults dropped over the last ${monthly.length} months, proving elite course-rehearsal adjustments and take-off point precision.` : 'Fault average holding steady — rehearsal adjustments keeping penalties contained.' },
-    { tag: 'Arena Type Optimization', body: byArena[0] ? `Clear rate is higher on ${byArena[0].key} surfaces (${byArena[0].clear.toFixed(0)}%), indicating a tighter stride collection strategy.` : 'Not enough venue variety yet to isolate an arena edge.' },
-  ];
 
   return (
     <div className="text-[14px] text-body">

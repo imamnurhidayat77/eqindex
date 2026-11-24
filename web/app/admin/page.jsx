@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { API } from '../../lib/api';
 import { CARD, EMPTY, H1, SUB, LINK } from '../../lib/tokens';
+import { nzDay } from '../../lib/dates';
 import AdminCharts from '../../components/AdminCharts';
 
 export const dynamic = 'force-dynamic';
@@ -73,7 +74,7 @@ export default async function AdminOverview() {
     return <section className={CARD}><p className={EMPTY}>Overview unavailable.</p></section>;
   }
   const c = d.counts;
-  const queueTotal = (c.pendingReview || 0) + (c.pendingClaims || 0);
+  const queueTotal = (c.pendingReview || 0) + (c.pendingClaims || 0) + (c.openCorrections || 0) + (c.untaggedClasses || 0);
   const imp = d.lastImport;
   const impFailed = imp && Number(imp.rows_failed) > 0;
   const queueBadge = (key) => {
@@ -91,6 +92,8 @@ export default async function AdminOverview() {
           <span className="text-gold text-sm font-bold whitespace-nowrap">● {queueTotal} item{queueTotal === 1 ? '' : 's'} need{queueTotal === 1 ? 's' : ''} a decision</span>
           {!!c.pendingReview && <Link href="/admin/review" className={LINK} style={{ fontSize: 13 }}>Naming review ({c.pendingReview}) →</Link>}
           {!!c.pendingClaims && <Link href="/admin/claims" className={LINK} style={{ fontSize: 13 }}>Rider claims ({c.pendingClaims}) →</Link>}
+          {!!c.openCorrections && <Link href="/admin/corrections" className={LINK} style={{ fontSize: 13 }}>Corrections ({c.openCorrections}) →</Link>}
+          {!!c.untaggedClasses && <Link href="/admin/series-review" className={LINK} style={{ fontSize: 13 }}>Untagged classes ({c.untaggedClasses}) →</Link>}
         </section>
       )}
 
@@ -111,16 +114,18 @@ export default async function AdminOverview() {
           <h2 className="text-[15px] font-bold mb-3">Needs attention</h2>
           <div className="flex flex-col">
             {[
-              ['Naming review', c.pendingReview, '/admin/review', 'Ambiguous names'],
-              ['Rider claims', c.pendingClaims, '/admin/claims', 'Ownership approvals'],
-            ].map(([t, n, href, sub]) => (
+              ['Naming review', 'pendingReview', '/admin/review', 'Ambiguous names'],
+              ['Rider claims', 'pendingClaims', '/admin/claims', 'Ownership approvals'],
+              ['Corrections', 'openCorrections', '/admin/corrections', 'Public reports'],
+              ['Series review', 'untaggedClasses', '/admin/series-review', 'Classes without a series tag'],
+            ].map(([t, key, href, sub]) => (
               <Link key={href} href={href} className="flex items-center gap-3 py-2.5 border-b border-rowline no-underline group">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${n ? 'bg-blood' : 'bg-moss'}`} />
+                <span className={`w-2 h-2 rounded-full shrink-0 ${c[key] ? 'bg-blood' : 'bg-moss'}`} />
                 <span className="min-w-0">
                   <span className="block text-[13.5px] font-bold text-white group-hover:text-gold">{t}</span>
                   <span className="block text-[12px] text-muted">{sub}</span>
                 </span>
-                <span className="ml-auto">{queueBadge(t === 'Naming review' ? 'pendingReview' : 'pendingClaims')}</span>
+                <span className="ml-auto">{queueBadge(key)}</span>
               </Link>
             ))}
             <div className="flex items-center gap-3 py-2.5">
@@ -129,7 +134,7 @@ export default async function AdminOverview() {
                 <span className="block text-[13.5px] font-bold text-white">Last import</span>
                 <span className={`block text-[12px] ${impFailed ? 'text-blood font-semibold' : 'text-muted'}`}>
                   {!imp ? 'No imports yet'
-                    : `${(imp.created_at || '').slice(0, 16).replace('T', ' ')} · ${imp.rows_ok} ok${impFailed ? ` · ${imp.rows_failed} failed` : ''}`}
+                    : `${nzDay(imp.created_at)} · ${imp.rows_ok} ok${impFailed ? ` · ${imp.rows_failed} failed` : ''}`}
                 </span>
               </span>
               <Link href="/admin/import" className={`${LINK} ml-auto shrink-0`} style={{ fontSize: 12 }}>Open →</Link>

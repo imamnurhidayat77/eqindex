@@ -8,6 +8,7 @@ import { API } from '../../../lib/api';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
 import Dropdown from '../../../components/Dropdown';
+import { nzDay } from '../../../lib/dates';
 
 const LS_KEY = 'eq-assistant-chats';
 const uid = () => Math.random().toString(36).slice(2);
@@ -430,7 +431,7 @@ export default function AdminAssistant() {
                         <label className="text-xs text-muted flex flex-col gap-1 grow min-w-[200px]">Target event
                           <Dropdown ariaLabel="Target event" value={eventId} searchable placeholder="— select —"
                             options={[{ value: '', label: '— select —' }, { value: '__new__', label: '＋ New event…' },
-                              ...events.map((e) => ({ value: e.id, label: `${e.name} · ${(e.date_start || '').slice(0, 10)}` }))]}
+                              ...events.map((e) => ({ value: e.id, label: `${e.name} · ${nzDay(e.date_start)}` }))]}
                             onSelect={(o) => setEventId(o.value)} /></label>
                         <button className={BTN_PRIMARY} disabled={!!busy} onClick={() => run(true)}>{busy === 'validate' ? `Validating… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Validate & preview →'}</button>
                         <button className={BTN_DANGER} disabled={!!busy || !preview || preview.dry_run === false} onClick={() => run(false)}>{busy === 'commit' ? `Committing… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Commit'}</button>

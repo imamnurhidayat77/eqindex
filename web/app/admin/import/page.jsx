@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
 import Dropdown from '../../../components/Dropdown';
+import { nzDay } from '../../../lib/dates';
 
 const SPEC = 'class_name, class_type, class_date, rider_name, horse_name, placing, faults, time, time_faults, height_cm, format, status, notes, series_key, breed, age, gender, sire, dam, breeder, country, region, rider_region, series_category, nationality, venue, venue_country, arena_type, event_name, date_start, date_end';
 
@@ -197,7 +198,7 @@ export default function AdminImport() {
           <label className="text-xs text-muted flex flex-col gap-1">Target event <span className="text-faint">(optional if rows carry event_name + date_start)</span>
             <Dropdown ariaLabel="Target event" value={eventId} searchable placeholder="— select —"
               options={[{ value: '', label: '— select —' }, { value: '__new__', label: '＋ New event…' },
-                ...events.map((e) => ({ value: e.id, label: `${e.name} · ${(e.date_start || '').slice(0, 10)}` }))]}
+                ...events.map((e) => ({ value: e.id, label: `${e.name} · ${nzDay(e.date_start)}` }))]}
               onSelect={(o) => setEventId(o.value)} /></label>
           <label className="text-xs text-muted flex flex-col gap-1">…or {mode.toUpperCase()} file
             <input type="file" accept={mode === 'csv' ? '.csv,text/csv' : '.json,application/json'} onChange={onFile} className="text-[13px] text-muted" /></label>

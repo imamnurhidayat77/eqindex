@@ -88,7 +88,7 @@ function LoginForm() {
         <div className="space-y-2.5 text-[13px] font-semibold leading-snug">
           <div className="border-l-2 border-black/70 pl-3">Placing-based points from every round</div>
           <div className="border-l-2 border-black/40 pl-3">Horse, rider & combination intelligence</div>
-          <div className="border-l-2 border-black/40 pl-3">Watchlists, forecasts & comparisons</div>
+          <div className="border-l-2 border-black/40 pl-3">Watchlists & forecasts</div>
         </div>
         <p className="text-[11px] opacity-60">© 2026 EQIndex Platforms Ltd.</p>
       </div>

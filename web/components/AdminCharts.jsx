@@ -4,6 +4,7 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { CARD } from '../lib/tokens';
+import { nzDay } from '../lib/dates';
 
 const tip = { backgroundColor: '#1C2330', border: '1px solid #2A2A2A', borderRadius: 8, fontSize: 12 };
 
@@ -12,7 +13,7 @@ const tip = { backgroundColor: '#1C2330', border: '1px solid #2A2A2A', borderRad
 export default function AdminCharts({ rows = [], summary = null }) {
   const data = rows.map((r) => ({
     ...r,
-    label: String(r.day || '').slice(0, 10).slice(5).replace('-', '/'),
+    label: nzDay(r.day).slice(5).replace('-', '/'),
   }));
   const avg = summary && summary.days ? Math.round(summary.totalRounds / summary.days) : 0;
   return (

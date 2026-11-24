@@ -66,12 +66,12 @@ export default async function SeriesCategory({ params }) {
             icon="🏇"
             title="No ranked riders in this category yet"
             hint="Categories are assigned per rider — ask an admin to set them under Admin → Riders."
-            action={<Link className={LINK} href="/rankings">National leaderboard →</Link>}
+            action={<Link className={LINK} href="/riders">Rider ratings →</Link>}
             compact
           />
         )}
       </section>
-      <p className="text-[12px] text-faint">Riders without a category compete unranked here. <Link className={LINK} href="/rankings">National leaderboard →</Link></p>
+      <p className="text-[12px] text-faint">Riders without a category compete unranked here. <Link className={LINK} href="/riders">Rider ratings →</Link></p>
     </>
   );
 }

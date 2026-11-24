@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, BTN_PRIMARY, BTN_DANGER } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { TableRowsSk } from '../../../components/Skeletons';
+import { nzDay } from '../../../lib/dates';
 
 export default function AdminClaims() {
   const [rows, setRows] = useState([]);
@@ -43,7 +44,7 @@ export default function AdminClaims() {
                 <td className={TD}><b>{c.rider}</b></td>
                 <td className={TD}>{c.claimant}</td>
                 <td className={`${TD} text-muted`}>{c.note || '—'}</td>
-                <td className={`${TD} text-muted`}>{(c.created_at || '').slice(0, 10)}</td>
+                <td className={`${TD} text-muted`}>{nzDay(c.created_at)}</td>
                 <td className={TD}>
                   <span className="flex gap-2">
                     <button className={BTN_PRIMARY} disabled={busy} onClick={() => decide(c.id, true)}>Approve</button>

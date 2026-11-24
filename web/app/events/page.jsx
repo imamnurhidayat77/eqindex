@@ -6,6 +6,7 @@ import { CARD, H1, SUB, TABLE, TD, TH } from '../../lib/tokens';
 import { FilterBar, Pagination } from '../../components/list-controls';
 import { TableEmpty } from '../../components/EmptyState';
 import { useSeason } from '../../components/global';
+import { fmtRange } from '../../lib/dates';
 
 const DEF = { q: '', season: '', region: '', arena: '', height: '', minStarts: '1' };
 
@@ -103,7 +104,7 @@ export default function Events() {
                   <tr key={x.id}>
                     <td className={TD}><Link className="text-sky no-underline" href={`/events/${x.slug || x.id}`}>{x.name}</Link></td>
                     <td className={TD}>{x.venue}</td>
-                    <td className={TD}>{(x.date_start || '').slice(0, 10)} – {(x.date_end || '').slice(0, 10)}</td>
+                    <td className={TD}>{fmtRange(x.date_start, x.date_end)}</td>
                     <td className={TD}><span className="text-gold font-semibold">{seasonLabel(x.season)}</span></td><td className={TD}>{x.class_count}</td><td className={TD}>{x.round_count}</td>
                   </tr>
                 </Fragment>

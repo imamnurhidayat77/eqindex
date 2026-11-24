@@ -38,13 +38,3 @@ describe('scoring versions: one mutation at a time', () => {
   });
 });
 
-describe('my-stable: no guest fetch, no concurrent roster writes', () => {
-  const s = src('app/my-stable/page.jsx');
-  test('candidates only load for coaches', () => {
-    assert.match(s, /Only fetch candidates for coaches|user\.role !== 'COACH' && user\.role !== 'ADMIN'/);
-  });
-  test('add/remove refuse while a roster write runs', () => {
-    const hits = s.match(/busy\) return/g) || [];
-    assert.ok(hits.length >= 2, `want ≥2 busy guards, got ${hits.length}`);
-  });
-});

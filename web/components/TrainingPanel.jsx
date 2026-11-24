@@ -6,6 +6,7 @@ import { useAuth } from './auth';
 import Dropdown from './Dropdown';
 import { ConfirmDialog } from './Modal';
 import { TableEmpty } from './EmptyState';
+import { nzDay } from '../lib/dates';
 
 const INTENSITY_STYLE = {
   High: 'bg-danger/15 text-danger border border-danger/30',
@@ -97,7 +98,7 @@ export default function TrainingPanel({ horseId, riders = [], compact = false })
           <tbody>
             {items.map((t) => (
               <tr key={t.id} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
-                <td className="whitespace-nowrap px-4 py-2.5 text-muted">{(t.date || '').slice(0, 10)}</td>
+                <td className="whitespace-nowrap px-4 py-2.5 text-muted">{nzDay(t.date)}</td>
                 <td className="px-4 py-2.5 font-medium">{t.type}</td>
                 <td className="px-4 py-2.5"><span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${INTENSITY_STYLE[t.intensity] || 'bg-card2 text-muted border border-line'}`}>{t.intensity}</span></td>
                 <td className="whitespace-nowrap px-4 py-2.5">{t.rider || '-'}</td>

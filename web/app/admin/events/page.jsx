@@ -1,5 +1,6 @@
 'use client';
 import ManageTable from '../../../components/AdminTable';
+import { nzDay } from '../../../lib/dates';
 
 export default function ManageEvents() {
   return (
@@ -8,7 +9,7 @@ export default function ManageEvents() {
       base="events" profile={(r) => { const id = r.slug || r.id; return id ? `/events/${id}` : null; }}
       columns={[
         { k: 'is_active', label: 'Active', bool: true }, { k: 'name', label: 'Event' }, { k: 'venue', label: 'Venue' },
-        { k: 'date_start', label: 'Starts', render: (r) => String(r.date_start || '').slice(0, 10) || '–' },
+        { k: 'date_start', label: 'Starts', render: (r) => nzDay(r.date_start) || '—' },
         { k: 'tier', label: 'Tier' }, { k: 'status', label: 'Status' },
         { k: 'round_count', label: 'Rounds', num: true },
       ]}

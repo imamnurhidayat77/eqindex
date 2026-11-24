@@ -4,6 +4,7 @@ import { API } from '../../../lib/api';
 import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, EMPTY } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { TableRowsSk } from '../../../components/Skeletons';
+import { nzDay } from '../../../lib/dates';
 
 export default function AdminSeasons() {
   const call = useAdminApi();
@@ -59,8 +60,8 @@ export default function AdminSeasons() {
               <tr key={s.key}>
                 <td className={TD}><b>{s.key}</b></td>
                 <td className={TD}>{s.label}</td>
-                <td className={`${TD} text-muted`}>{(s.date_start || '').slice(0, 10)}</td>
-                <td className={`${TD} text-muted`}>{(s.date_end || '').slice(0, 10)}</td>
+                <td className={`${TD} text-muted`}>{nzDay(s.date_start)}</td>
+                <td className={`${TD} text-muted`}>{nzDay(s.date_end)}</td>
                 <td className={TD}>{s.is_current
                   ? <span className="inline-flex items-center rounded-full bg-greenbg px-2 py-[3px] text-[11px] font-bold text-moss">● CURRENT</span>
                   : <span className="text-faint text-[12px]">—</span>}</td>

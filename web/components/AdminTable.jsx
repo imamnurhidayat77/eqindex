@@ -8,6 +8,7 @@ import Modal, { ConfirmDialog } from './Modal';
 import { Pagination } from './list-controls';
 import { TableEmpty } from './EmptyState';
 import Switch, { LabeledSwitch } from './Switch';
+import { nzDay } from '../lib/dates';
 
 // Small outline action glyphs (replacing ✎/🗑 text glyphs).
 export function PencilIcon({ className = 'h-3.5 w-3.5' }) {
@@ -223,7 +224,7 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
     }
     if (fld.type === 'date') {
       return (
-        <input type="date" className={INP} value={String(form[fld.k] ?? '').slice(0, 10)}
+        <input type="date" className={INP} value={nzDay(form[fld.k])}
           onChange={(e) => setForm({ ...form, [fld.k]: e.target.value })} />
       );
     }
@@ -355,7 +356,7 @@ export default function ManageTable({ title, sub, base, profile, columns, fields
               <TableEmpty
                 icon="◌"
                 title="No records found"
-                hint="Try a different search — or add the first record below."
+                hint="Try a different search."
               />
             )}
             {loading && <tr><td colSpan={shownColumns.length + 2} className={EMPTY}>

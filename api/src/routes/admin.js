@@ -1012,13 +1012,17 @@ module.exports = function mountAdminRoutes(app) {
     const rounds = await q('SELECT COUNT(*)::INT AS n FROM round_results');
     const pendingReview = await q("SELECT COUNT(*)::INT AS n FROM review_queue WHERE status='pending'");
     const pendingClaims = await q("SELECT COUNT(*)::INT AS n FROM rider_claims WHERE status='pending'");
+    const openCorrections = await q("SELECT COUNT(*)::INT AS n FROM correction_reports WHERE status='open'");
+    const { listUntaggedClasses } = require('../lib/seriesVerify');
+    const untaggedClasses = (await listUntaggedClasses({ limit: 500 })).length;
     const users = await q('SELECT COUNT(*)::INT AS n FROM users');
     const lastImport = await q('SELECT created_at, rows_ok, rows_failed FROM import_logs ORDER BY created_at DESC LIMIT 1');
     const recent = (await pool.query(
       'SELECT action, actor, entity_type, created_at FROM entity_audit ORDER BY created_at DESC LIMIT 8')).rows;
     res.json({ data: {
       counts: { horses: horses.n, riders: riders.n, events: events.n, rounds: rounds.n,
-                pendingReview: pendingReview.n, pendingClaims: pendingClaims.n, users: users.n },
+                pendingReview: pendingReview.n, pendingClaims: pendingClaims.n,
+                openCorrections: openCorrections.n, untaggedClasses, users: users.n },
       lastImport: lastImport || null, recent,
     }});
   }));
@@ -1641,15 +1645,34 @@ module.exports = function mountAdminRoutes(app) {
 
   // ---- Series management ----
   app.get('/admin/series', needRole('ADMIN'), asyncH(async (req, res) => {
+    // Same key set as public GET /series: series_standings is often empty,
+    // so tagged classes and the series_info registry must count too.
     const { rows } = await pool.query(
-      `SELECT s.series_key, MIN(s.series_name) AS series_name, MIN(s.event_name) AS event_name,
-         MIN(s.season) AS season, COUNT(*)::INT AS entries,
-         MIN(i.display_name) AS display_name, MIN(i.qual_rules) AS qual_rules,
-         MAX(i.best_of) AS best_of, BOOL_OR(COALESCE(i.auto_calc, FALSE)) AS auto_calc,
-         BOOL_OR(COALESCE(i.is_official, FALSE)) AS is_official,
-         MIN(i.official_source) AS official_source, MIN(i.description) AS description
-       FROM series_standings s LEFT JOIN series_info i ON i.series_key = s.series_key
-       GROUP BY s.series_key ORDER BY series_key`);
+      `WITH keys AS (
+         SELECT series_key FROM series_info
+         UNION SELECT series_key FROM classes WHERE series_key IS NOT NULL
+         UNION SELECT series_key FROM series_standings
+       ),
+       live AS (
+         SELECT c.series_key, MIN(e.season) AS season,
+           COUNT(DISTINCT (rr.horse_id, rr.rider_id))::INT AS entries
+         FROM classes c
+         LEFT JOIN round_results rr ON rr.class_id = c.id
+         LEFT JOIN events e ON e.id = c.event_id
+         WHERE c.series_key IS NOT NULL
+         GROUP BY 1
+       )
+       SELECT k.series_key,
+         COALESCE(i.display_name, INITCAP(REPLACE(k.series_key, '-', ' '))) AS series_name,
+         l.season, COALESCE(l.entries, 0) AS entries,
+         i.display_name, i.qual_rules, i.best_of,
+         (i.auto_calc IS NOT FALSE) AS auto_calc,
+         COALESCE(i.is_official, FALSE) AS is_official,
+         i.official_source, i.description
+       FROM keys k
+       LEFT JOIN series_info i ON i.series_key = k.series_key
+       LEFT JOIN live l ON l.series_key = k.series_key
+       ORDER BY k.series_key`);
     res.json({ data: rows });
   }));
 

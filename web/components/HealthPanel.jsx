@@ -6,6 +6,7 @@ import { useAuth } from './auth';
 import Dropdown from './Dropdown';
 import { ConfirmDialog } from './Modal';
 import { TableEmpty } from './EmptyState';
+import { nzDay } from '../lib/dates';
 
 const CATS = ['VET', 'TREATMENT', 'FARRIER', 'VACCINATION', 'OTHER'];
 const CAT_STYLE = {
@@ -88,7 +89,7 @@ export default function HealthPanel({ horseId, compact = false }) {
           <tbody>
             {items.map((x) => (
               <tr key={x.id} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
-                <td className="whitespace-nowrap px-4 py-2.5 text-muted">{(x.date || '').slice(0, 10)}</td>
+                <td className="whitespace-nowrap px-4 py-2.5 text-muted">{nzDay(x.date)}</td>
                 <td className="px-4 py-2.5"><span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${CAT_STYLE[x.category] || CAT_STYLE.OTHER}`}>{x.category}</span></td>
                 <td className="px-4 py-2.5 text-slate-200">{x.description}</td>
                 <td className="whitespace-nowrap px-4 py-2.5 text-muted">{x.provider || '—'}</td>

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { API } from '../lib/api';
 import { bossPhotoUrl, bossPhotosUrl } from '../lib/bossmedia';
+import { nzDay } from '../lib/dates';
 
 async function deleteWatch(watchId) {
   const res = await fetch(`${API}/watchlist/${watchId}`, {
@@ -103,7 +104,7 @@ function EventAthleteCard({ a, onUnwatch }) {
             <tbody>
               {a.rounds.map((r, i) => (
                 <tr key={i} className="border-b border-line/50 last:border-0 hover:bg-white/[0.02]">
-                  <td className="whitespace-nowrap px-2 py-1.5 text-muted">{r.date ? String(r.date).slice(0, 10) : '–'}</td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-muted">{r.date ? nzDay(r.date) : '–'}</td>
                   <td className="px-2 py-1.5 text-slate-200">{r.cls || '—'}</td>
                   <td className="whitespace-nowrap px-2 py-1.5 text-muted">{r.height ? `${(Number(r.height) / 100).toFixed(2)}m` : '—'}</td>
                   <td className="whitespace-nowrap px-2 py-1.5">
