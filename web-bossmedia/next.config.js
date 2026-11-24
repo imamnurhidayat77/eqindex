@@ -27,7 +27,10 @@ module.exports = {
     if (process.env.NODE_ENV !== 'production') return [];
     const csp = [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      // 'wasm-unsafe-eval' lets the 3D preview decode meshopt-compressed
+      // .glb files (horse gear) with WebAssembly. It allows compiling wasm
+      // only, not JavaScript eval. Without it those models fail in prod.
+      "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       // blob: is required by the 3D merch preview: GLTFLoader unpacks the
