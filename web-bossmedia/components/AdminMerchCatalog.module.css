@@ -1,0 +1,14 @@
+.muted { color: #999; }
+.dots { display: inline-flex; gap: 4px; }
+.dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.35); }
+.group { border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; margin: 0; }
+.group legend { padding: 0 6px; font-size: 13px; }
+.colorRow { display: grid; grid-template-columns: 44px 96px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.swatch { width: 44px; height: 36px; padding: 2px; cursor: pointer; }
+.hex { font-family: ui-monospace, monospace; }
+.num { max-width: 96px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 560px) {
+  .colorRow { grid-template-columns: 44px minmax(0, 1fr) auto; }
+  .hex { display: none; }
+}

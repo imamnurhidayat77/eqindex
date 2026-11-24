@@ -6,13 +6,14 @@ import { useConfirm } from '../../../components/ConfirmModal';
 import SearchSelect from '../../../components/SearchSelect';
 import QrPosterModal from '../../../components/QrPosterModal';
 import AdminSponsors from '../../../components/AdminSponsors';
+import AdminMerchCatalog from '../../../components/AdminMerchCatalog';
 import AdminMerchOrders from '../../../components/AdminMerchOrders';
 import { nzdc, studio, studioFetch, useStudioUser } from '../../../lib/studio';
 import { fmtDay, payoutBreakdown } from '../../../lib/studio-format.mjs';
 import { useDocumentTitle } from '../../../lib/use-document-title';
 import formRow from '../../../components/FormRow.module.css';
 
-const SECTIONS = [['commission', 'Commission'], ['orders', 'Merch orders'], ['merch', 'Merch settings'], ['users', 'Users'], ['applications', 'Requests'], ['events', 'Events'], ['sponsors', 'Sponsors']];
+const SECTIONS = [['commission', 'Commission'], ['orders', 'Merch orders'], ['merch', 'Merch pricing & delivery'], ['catalog', 'Merch catalog'], ['users', 'Users'], ['applications', 'Requests'], ['events', 'Events'], ['sponsors', 'Sponsors']];
 // Pickable roles (mirrors the API allowlist — PHOTOGRAPHER and ORGANIZER are
 // granted only by approving an application, never picked here).
 const ROLES = ['PUBLIC', 'RIDER', 'COACH', 'OWNER', 'BREEDER', 'ADMIN'];
@@ -69,6 +70,7 @@ function AdminBody() {
       {section === 'commission' && <Commission />}
       {section === 'orders' && <AdminMerchOrders />}
       {section === 'merch' && <MerchSettings />}
+      {section === 'catalog' && <AdminMerchCatalog />}
       {section === 'users' && <Users selfId={user.id} />}
       {section === 'applications' && <Applications />}
       {section === 'events' && <Events />}
@@ -176,11 +178,13 @@ function sortEventsForAdmin(events, today = new Date().toISOString().slice(0, 10
   return [...upcoming, ...past];
 }
 
-/* ---------- merch orders: delivery prices, pickup, sponsor cap ---------- */
+/* ---------- merch pricing rules, delivery prices, pickup, sponsor cap ---------- */
 const MERCH_FIELDS = [
   ['courierCents', 'Courier, flat (NZ$)', 'NZ-wide flat rate'],
   ['freeOverCents', 'Free courier from (NZ$)', '0 = never free'],
   ['sponsorCapCents', 'Sponsor discount cap per order (NZ$)', 'Max sponsor discount on one order'],
+  ['fallbackSponsorDiscountCents', 'Estimated sponsor discount per logo (NZ$)', 'Shown while a sponsor has no funded amount. Orders only use funded amounts'],
+  ['uploadLogoCents', 'Extra for the buyer\'s own logo (NZ$)', '0 = free'],
 ];
 function MerchSettings() {
   const notify = useNotify();
@@ -190,12 +194,16 @@ function MerchSettings() {
     studio.get('/api/merch/settings').then((d) => setForm({
       ...Object.fromEntries(MERCH_FIELDS.map(([k]) => [k, String(Number(d[k]) / 100)])),
       pickupEnabled: !!d.pickupEnabled,
+      maxDiscountPct: String(d.maxDiscountPct),
+      sponsorDiscountOncePerItem: !!d.sponsorDiscountOncePerItem,
     })).catch((e) => notify(e.message, true));
   }, [notify]);
 
   async function save(e) {
     e.preventDefault();
-    const body = { pickupEnabled: form.pickupEnabled };
+    const pct = Number(form.maxDiscountPct);
+    if (!Number.isInteger(pct) || pct < 0 || pct > 90) return notify('Max discount per item: enter a whole percent, 0 to 90.', true);
+    const body = { pickupEnabled: form.pickupEnabled, maxDiscountPct: pct, sponsorDiscountOncePerItem: form.sponsorDiscountOncePerItem };
     for (const [k, label] of MERCH_FIELDS) {
       const c = Math.round(Number(form[k]) * 100);
       if (form[k].trim() === '' || !Number.isInteger(c) || c < 0 || c > 1000000) return notify(`${label}: enter 0 to 10000.`, true);
@@ -219,13 +227,21 @@ function MerchSettings() {
               <input type="text" inputMode="decimal" value={form[k]} title={hint} placeholder={hint}
                 onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} /></label>
           ))}
+          <label><span>Max sponsor discount per item (%)</span>
+            <input type="text" inputMode="numeric" value={form.maxDiscountPct} title="Never discount more than this share of the base price"
+              onChange={(e) => setForm((f) => ({ ...f, maxDiscountPct: e.target.value }))} /></label>
         </div>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input type="checkbox" checked={form.pickupEnabled} style={{ width: 'auto' }}
             onChange={(e) => setForm((f) => ({ ...f, pickupEnabled: e.target.checked }))} />
           <span>Offer free club pickup</span>
         </label>
-        <p style={{ margin: 0, color: "#999", fontSize: 12 }}>Prices include GST. New orders use these right away, orders already sent keep their quote.</p>
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="checkbox" checked={form.sponsorDiscountOncePerItem} style={{ width: 'auto' }}
+            onChange={(e) => setForm((f) => ({ ...f, sponsorDiscountOncePerItem: e.target.checked }))} />
+          <span>Count each sponsor once per item (the same logo twice discounts once)</span>
+        </label>
+        <p style={{ margin: 0, color: "#999", fontSize: 12 }}>Prices include GST. The designer and new orders use these within a minute, orders already sent keep their quote.</p>
         <div><button className="st-btn" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save merch settings'}</button></div>
       </form>
     </div>

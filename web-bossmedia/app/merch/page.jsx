@@ -5,7 +5,7 @@ import { SiteFooter, SiteHeader } from '../../components/figma';
 import SmartImage from '../../components/SmartImage';
 import { nzd, useClubParam, withClub } from '../../components/MerchClient';
 import { merchClub } from '../../lib/merch-config.mjs';
-import { MERCH_CATEGORIES, MERCH_PRODUCTS, merchCutoutSrc, merchPositions } from '../../lib/merch.mjs';
+import { MERCH_CATEGORIES, merchCutoutSrc, merchPositions, merchProducts } from '../../lib/merch.mjs';
 import { useDocumentTitle } from '../../lib/use-document-title';
 import s from '../../components/MerchStorefront.module.css';
 
@@ -36,9 +36,8 @@ export default function MerchPage() {
   const club = merchClub(clubId);
 
   const products = useMemo(() => {
-    const list = category === 'all'
-      ? MERCH_PRODUCTS
-      : MERCH_PRODUCTS.filter((p) => p.category === category);
+    const all = merchProducts();
+    const list = category === 'all' ? all : all.filter((p) => p.category === category);
     return sortProducts(list, sort);
   }, [category, sort]);
 

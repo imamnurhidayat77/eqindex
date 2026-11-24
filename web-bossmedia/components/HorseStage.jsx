@@ -5,32 +5,27 @@ import { useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { useValidLogos } from './MerchDecals';
 import { FittedGear } from './HorseGear';
-import { tuckEars } from '../lib/horse-ears.mjs';
+import { tuckEars, CLIENT_EARS } from '../lib/horse-ears.mjs';
 
-const HORSE_FILE = '/models/horse/horse-warmblood.glb';
-
-// Show-ring groom: a slightly deeper bay and a glossier coat than the raw
-// scan, so the horse reads like a turned-out show jumper under the studio
-// environment light. Tuned on the cached material once (shared scene).
-function groom(scene) {
-  scene.traverse((o) => {
-    if (!o.isMesh || o.userData.groomed) return;
-    o.userData.groomed = true;
-    const m = o.material;
-    m.color.set('#e2d3c9');
-    m.roughness = 0.62;
-    m.metalness = 0;
-    m.envMapIntensity = 1.15;
-    m.needsUpdate = true;
-  });
-}
+// The client's own Tripo horse, extra legs removed by
+// scripts/fix-horse-legs.mjs. Its authored coat is shown as is.
+const HORSE_FILE = '/models/horse/horse-client.glb';
+// Each piece of gear comes from the client's Tripo "horse wearing it"
+// file, cut into horse and gear by scripts/split-worn-rug.mjs. Tripo only
+// modelled the gear's surface there, so each horse has no body under its
+// gear and is only shown with that gear.
+const CLIENT_HORSE = {
+  'rug-light': '/models/horse/horse-lightweight-rug.glb',
+  'rug-warm': '/models/horse/horse-warm-rug.glb',
+  'saddle-blanket': '/models/horse/horse-saddle-pad.glb',
+  'ear-bonnet': '/models/horse/horse-ear-bonnet.glb',
+};
 
 // Base horse. Rendered as its own object — gear is never merged into it.
 // With the ear bonnet on, a copy with the ears tucked into the socks is
 // drawn instead (the client's socks are slimmer than this horse's ears).
 export function HorseModel({ earsTucked = false }) {
   const { scene } = useGLTF(HORSE_FILE);
-  useMemo(() => groom(scene), [scene]);
   const tucked = useMemo(() => {
     if (!earsTucked) return null;
     let mesh = null;
@@ -46,11 +41,23 @@ export function HorseModel({ earsTucked = false }) {
       xyz[i * 3 + 1] = src.getY(i);
       xyz[i * 3 + 2] = src.getZ(i);
     }
-    g.setAttribute('position', new THREE.BufferAttribute(tuckEars(xyz), 3));
+    g.setAttribute('position', new THREE.BufferAttribute(tuckEars(xyz, CLIENT_EARS), 3));
     return { geometry: g, material: mesh.material };
   }, [scene, earsTucked]);
   useEffect(() => () => tucked?.geometry.dispose(), [tucked]);
   if (tucked) return <mesh geometry={tucked.geometry} material={tucked.material} />;
+  return <primitive object={scene} />;
+}
+
+// The client's horse is drawn as authored (no groom tint). Both sides are
+// drawn so the open body never shows through at the collar.
+function ClientHorse({ file }) {
+  const { scene } = useGLTF(file);
+  useMemo(() => scene.traverse((o) => {
+    if (!o.isMesh) return;
+    o.material.side = THREE.DoubleSide;
+    o.material.envMapIntensity = 1.1;
+  }), [scene]);
   return <primitive object={scene} />;
 }
 
@@ -82,7 +89,9 @@ export function HorseScene({ productId, color, slots, zoom, aspects }) {
   const valid = useValidLogos(filledIds);
   return (
     <>
-      <HorseModel earsTucked={productId === 'ear-bonnet'} />
+      {CLIENT_HORSE[productId]
+        ? <ClientHorse file={CLIENT_HORSE[productId]} />
+        : <HorseModel earsTucked={productId === 'ear-bonnet'} />}
       <FittedGear productId={productId} color={color} slots={slots} valid={valid} zoom={zoom} aspects={aspects} draped />
     </>
   );

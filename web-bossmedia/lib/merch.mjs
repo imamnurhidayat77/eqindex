@@ -101,23 +101,27 @@ const SLOT_SPECS_BY_PRODUCT = {
     forehead: { widthMm: 140, heightMm: 70 },
   },
 };
-function slotSpec(productId, slotId) {
+function defaultSlotSpec(productId, slotId) {
   return SLOT_SPECS_BY_PRODUCT[String(productId)]?.[String(slotId)] || SLOT_SPECS[String(slotId)] || null;
 }
 
+// Print area of a slot from the live catalog (see setMerchCatalog).
+function slotSpec(productId, slotId) {
+  const slot = catalog.get(String(productId))?.slotList.find((s) => s.id === String(slotId));
+  return slot ? { widthMm: slot.widthMm, heightMm: slot.heightMm } : null;
+}
+
+// The slots a product offers right now, in catalog order.
 export function merchPositions(productId) {
-  const ids = MERCH_POSITIONS_BY_PRODUCT[String(productId)] || [];
-  return ids.map((id) => {
-    const spec = slotSpec(productId, id) || {};
-    return {
-      id,
-      label: MERCH_POSITION_LABELS[id] || id,
-      short: MERCH_POSITION_SHORTS[id] || MERCH_POSITION_LABELS[id] || id,
-      widthMm: spec.widthMm || null,
-      heightMm: spec.heightMm || null,
-      premiumCents: Number(MERCH_PRICING_RULES.slotPremiumCents[id]) || 0,
-    };
-  });
+  const p = catalog.get(String(productId));
+  return (p?.slotList || []).filter((s) => s.active).map((s) => ({
+    id: s.id,
+    label: s.label,
+    short: MERCH_POSITION_SHORTS[s.id] || s.label,
+    widthMm: s.widthMm,
+    heightMm: s.heightMm,
+    premiumCents: s.premiumCents,
+  }));
 }
 
 // Saved drafts from when the jacket used shoulder slots: carry a jacket
@@ -150,6 +154,172 @@ export const MERCH_PRODUCTS = [
   { id: 'rug-light', label: 'Lightweight rug', group: 'Horse', category: 'rugs', baseCents: 17900, colors: ['#101418', '#0e2a4a', '#5b1a1a'], sizes: ['4\'0', '4\'3', '4\'6', '5\'0', '5\'3'], blurb: 'Turnout rug · large side panels and the rear' },
   { id: 'rug-warm', label: 'Warm rug', group: 'Horse', category: 'rugs', badge: 'Premium', baseCents: 21900, colors: ['#101418', '#0e2a4a', '#5b1a1a'], sizes: ['4\'0', '4\'3', '4\'6', '5\'0', '5\'3'], blurb: 'Warm turnout rug · large side panels and the rear' },
 ];
+
+// ---------------------------------------------------------------------------
+// Live catalog. MERCH_PRODUCTS and the slot tables above are the built-in
+// defaults: the products and slots the 3D views can draw, and the fallback
+// when the database catalog (merch_products, edited in Studio > Admin >
+// Merch catalog) cannot be read. A stored row overrides the editable fields
+// of a known product. A new product reuses one of these as its `model`:
+// the 3D view, slot positions and photos come from the model, everything
+// else (name, price, colours, sizes, slot sizes) is its own. A product with
+// a 3D shape none of them has still needs code (docs/merch-3d-models.md).
+// ---------------------------------------------------------------------------
+export const MERCH_STATUSES = ['active', 'hidden'];
+const COLOR_NAMES = {
+  '#101418': 'Black', '#0e2a4a': 'Navy', '#5b1a1a': 'Maroon',
+  '#e8e4da': 'Bone', '#ffffff': 'White', '#1d5c3a': 'Forest',
+};
+const HEX_RE = /^#[0-9a-f]{6}$/;
+const PRODUCT_ID_RE = /^[a-z0-9][a-z0-9-]{1,39}$/;
+// Own GLB for a product on a rider-top model (any shirt-shaped mesh fits).
+const TOP_FILE_RE = /^\/models\/rider\/[a-z0-9-]+\.glb$/;
+const CATALOG_LIMITS = { colors: 12, sizes: 12, cents: 1000000, mmMin: 10, mmMax: 2000, premiumCents: 100000 };
+
+// `colors` (hex list) is what the designer and the order checks read.
+const withColors = (p) => ({ ...p, colors: p.colorList.map((c) => c.hex) });
+
+function defaultProduct(p, sort) {
+  return withColors({
+    id: p.id, model: p.id, modelFile: null, group: p.group, label: p.label, category: p.category, badge: p.badge || null,
+    blurb: p.blurb, baseCents: p.baseCents, status: 'active', sort,
+    colorList: p.colors.map((hex) => ({ hex, name: COLOR_NAMES[hex] || hex })),
+    sizes: [...p.sizes],
+    slotList: (MERCH_POSITIONS_BY_PRODUCT[p.id] || []).map((id) => ({
+      id, label: MERCH_POSITION_LABELS[id] || id, ...defaultSlotSpec(p.id, id),
+      premiumCents: Number(MERCH_PRICING_RULES.slotPremiumCents[id]) || 0, active: true,
+    })),
+  });
+}
+
+const DEFAULT_CATALOG = new Map(MERCH_PRODUCTS.map((p, i) => [p.id, defaultProduct(p, i)]));
+let catalog = DEFAULT_CATALOG;
+
+// Checks one admin edit (or stored row) of a known product. Returns
+// { product, errors }; product is null when anything is wrong.
+export function parseMerchProduct(input) {
+  const b = input || {};
+  const id = String(b.id || '');
+  // A built-in product is its own model; a new one names the model it reuses.
+  const builtin = DEFAULT_CATALOG.has(id);
+  const model = builtin ? id : String(b.model || '');
+  const base = DEFAULT_CATALOG.get(model);
+  if (!PRODUCT_ID_RE.test(id)) return { product: null, errors: ['product id: 2 to 40 lowercase letters, digits or dashes'] };
+  if (!base) return { product: null, errors: ['choose the 3D model this product uses'] };
+  const errors = [];
+  let modelFile = b.modelFile ? String(b.modelFile).trim() : null;
+  if (modelFile && !(RIDER_MODELS[model] && TOP_FILE_RE.test(modelFile))) {
+    errors.push('own 3D file: only for shirts and jackets, as /models/rider/<name>.glb');
+    modelFile = null;
+  }
+  const text = (v, name, min, max) => {
+    const t = String(v ?? '').trim();
+    if (t.length < min || t.length > max) errors.push(`${name} must be ${min} to ${max} characters`);
+    return t;
+  };
+  const whole = (v, name, min, max) => {
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < min || n > max) errors.push(`${name} must be a whole number from ${min} to ${max}`);
+    return n;
+  };
+  const list = (v, name, max) => {
+    const a = Array.isArray(v) ? v : [];
+    if (!a.length || a.length > max) errors.push(`${name}: 1 to ${max} needed`);
+    return a.slice(0, max);
+  };
+
+  const label = text(b.label, 'name', 2, 60);
+  const blurb = text(b.blurb, 'description', 0, 160);
+  const badge = text(b.badge, 'badge', 0, 20) || null;
+  const category = String(b.category || '');
+  if (category === 'all' || !MERCH_CATEGORIES.some((c) => c.id === category)) errors.push('unknown category');
+  const baseCents = whole(b.baseCents, 'base price (cents)', 0, CATALOG_LIMITS.cents);
+  const status = String(b.status || '');
+  if (!MERCH_STATUSES.includes(status)) errors.push('status must be active or hidden');
+  const sort = whole(b.sort ?? base.sort, 'sort order', 0, 999);
+
+  const colorList = [];
+  for (const c of list(b.colorList, 'colours', CATALOG_LIMITS.colors)) {
+    const hex = String(c?.hex || '').toLowerCase();
+    if (!HEX_RE.test(hex)) { errors.push(`colour ${String(c?.hex ?? '').slice(0, 10)} must look like #1a2b3c`); continue; }
+    if (colorList.some((x) => x.hex === hex)) { errors.push(`colour ${hex} listed twice`); continue; }
+    colorList.push({ hex, name: text(c?.name, `name of ${hex}`, 1, 30) });
+  }
+  const sizes = [];
+  for (const z of list(b.sizes, 'sizes', CATALOG_LIMITS.sizes)) {
+    const size = text(z, 'size', 1, 12);
+    if (sizes.includes(size)) errors.push(`size ${size} listed twice`);
+    else sizes.push(size);
+  }
+  const known = new Set(base.slotList.map((x) => x.id));
+  const slotList = [];
+  for (const x of Array.isArray(b.slotList) ? b.slotList : []) {
+    const id = String(x?.id || '');
+    if (!known.has(id)) { errors.push(`unknown logo spot ${id.slice(0, 30)}`); continue; }
+    if (slotList.some((y) => y.id === id)) { errors.push(`logo spot ${id} listed twice`); continue; }
+    slotList.push({
+      id,
+      label: text(x.label, `${id} label`, 1, 30),
+      widthMm: whole(x.widthMm, `${id} width (mm)`, CATALOG_LIMITS.mmMin, CATALOG_LIMITS.mmMax),
+      heightMm: whole(x.heightMm, `${id} height (mm)`, CATALOG_LIMITS.mmMin, CATALOG_LIMITS.mmMax),
+      premiumCents: whole(x.premiumCents ?? 0, `${id} extra price (cents)`, 0, CATALOG_LIMITS.premiumCents),
+      active: x.active !== false,
+    });
+  }
+  // A slot the row does not mention (added to the code later) starts off.
+  for (const d of base.slotList) if (!slotList.some((y) => y.id === d.id)) slotList.push({ ...d, active: false });
+  if (!slotList.some((x) => x.active)) errors.push('at least one logo spot must be on');
+  if (errors.length) return { product: null, errors };
+  return {
+    product: withColors({ id, model, modelFile, group: base.group, label, category, badge, blurb, baseCents, status, sort, colorList, sizes, slotList }),
+    errors,
+  };
+}
+
+// The stored form of a product (merch_products.data): editable fields only.
+export function merchProductData(p) {
+  const { id, group, colors, ...data } = p;
+  return data;
+}
+
+// The built-in 3D model a product is drawn with (its own id for the
+// built-ins). 3D views and photos branch on this, never on the product id.
+export function merchModel(productId) {
+  return catalog.get(String(productId))?.model || String(productId);
+}
+
+// A new product prefilled from its model, hidden until an admin shows it.
+export function newMerchProductDraft(id, model) {
+  const base = DEFAULT_CATALOG.get(String(model));
+  if (!base) return null;
+  return { ...merchProductData(base), id: String(id), model: base.id, label: `${base.label} (new)`, status: 'hidden', sort: catalog.size };
+}
+
+// Replaces the live catalog with stored rows ([{ id, data }]) over the
+// defaults. A row that fails the checks keeps the default; its id is
+// returned so the caller can log it.
+export function setMerchCatalog(rows) {
+  const next = new Map(DEFAULT_CATALOG);
+  const rejected = [];
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const { product } = parseMerchProduct({ ...(r?.data || {}), id: r?.id });
+    if (product) next.set(product.id, product);
+    else rejected.push(String(r?.id));
+  }
+  catalog = next;
+  return rejected;
+}
+
+// Catalog order; `all` includes hidden products (admin, old orders).
+export function merchProducts({ all = false } = {}) {
+  return [...catalog.values()].filter((p) => all || p.status === 'active').sort((a, b) => a.sort - b.sort);
+}
+
+// Buyer-facing colour name from the catalog (hex when unnamed).
+export function merchColorName(productId, hex) {
+  const h = String(hex).toLowerCase();
+  return catalog.get(String(productId))?.colorList.find((c) => c.hex === h)?.name || COLOR_NAMES[h] || String(hex);
+}
 
 // Estimate rules (display only, checkout re-quotes):
 // - each filled sponsor position: −NZ$5 (sponsor-funded estimate)
@@ -191,7 +361,7 @@ export function slotFrame(rx = 0, ry = 0, rz = 0) {
 // Print area of a slot in model units (refW = garment width in units).
 export function slotSizeUnits(productId, slotId, refW = 1) {
   const spec = slotSpec(productId, slotId);
-  const garmentMm = GARMENT_WIDTH_MM[String(productId)];
+  const garmentMm = GARMENT_WIDTH_MM[merchModel(productId)];
   if (!spec || !garmentMm) return null;
   return { w: (spec.widthMm / garmentMm) * refW, h: (spec.heightMm / garmentMm) * refW };
 }
@@ -310,6 +480,12 @@ export function buildHoverTargets(defs, { slots, ok, zoom, aspects, shift, refW,
 // on the rider mannequin. Kept here (dependency-free) so the configurator
 // can switch stage mood without statically importing three.js.
 export const HORSE_PRODUCTS = new Set(['saddle-blanket', 'ear-bonnet', 'rug-light', 'rug-warm']);
+export const isHorseProduct = (productId) => HORSE_PRODUCTS.has(merchModel(productId));
+
+// The GLB a rider top is drawn with: the product's own file, else its model's.
+export function riderModelFile(productId) {
+  return merchProduct(productId)?.modelFile || RIDER_MODELS[merchModel(productId)]?.file || null;
+}
 
 // ---------------------------------------------------------------------------
 // Adding a product or swapping a 3D model (no component changes needed):
@@ -353,7 +529,7 @@ export function canonicalFit(box) {
 }
 
 export function merchProduct(id) {
-  return MERCH_PRODUCTS.find((p) => p.id === String(id)) || null;
+  return catalog.get(String(id)) || null;
 }
 
 export function isMerchColor(productId, color) {
@@ -386,14 +562,15 @@ export function merchPhotoView(positionId) {
   return MERCH_POS_TO_VIEW[String(positionId)] || 'front';
 }
 
+// New products show their model's photos (own photos are a later phase).
 export function merchPhotoSrc(productId, view) {
-  return `/merch/${String(productId)}/${String(view)}.jpg`;
+  return `/merch/${merchModel(productId)}/${String(view)}.jpg`;
 }
 
 // Transparent 3D cutout for the storefront (one hero angle per product,
 // alpha background). Customiser minis keep the JPG angles above.
 export function merchCutoutSrc(productId) {
-  return `/merch/${String(productId)}/cutout.png`;
+  return `/merch/${merchModel(productId)}/cutout.png`;
 }
 
 // Buyer-uploaded club logos ride as `upload:<key>` slot values. They are
@@ -424,8 +601,8 @@ export function isClubSlot(v) {
 export function quoteMerch(productId, slots, ctx = {}) {
   const p = merchProduct(productId);
   if (!p) return null;
-  const rules = MERCH_PRICING_RULES;
-  const order = MERCH_POSITIONS_BY_PRODUCT[String(productId)] || [];
+  const rules = ctx.settings || currentMerchSettings();
+  const order = merchPositions(productId);
   const label = (v) => (ctx.labelFor ? ctx.labelFor(v) : String(v));
   const lines = [{ kind: 'base', label: `${p.label} base price`, cents: p.baseCents }];
   let discount = 0;
@@ -434,16 +611,15 @@ export function quoteMerch(productId, slots, ctx = {}) {
   let customCount = 0;
   let hasBack = false;
   const seenSponsors = new Set();
-  for (const pos of order) {
+  for (const { id: pos, label: where, premiumCents: slotExtra } of order) {
     const v = String((slots || {})[pos] || '').trim();
     if (!v) continue;
-    const where = MERCH_POSITION_LABELS[pos] || pos;
     if (pos === 'back') hasBack = true;
     if (isClubSlot(v)) {
       lines.push({ kind: 'club', slot: pos, label: `${where}: ${label(v)} (included)`, cents: 0 });
     } else if (isUploadSlot(v)) {
       customCount += 1;
-      const extra = Number(rules.logoPremiumCents.upload) || 0;
+      const extra = rules.uploadLogoCents;
       premium += extra;
       lines.push({ kind: 'upload', slot: pos, label: `${where}: ${label(v)}, no discount`, cents: extra });
     } else {
@@ -463,7 +639,6 @@ export function quoteMerch(productId, slots, ctx = {}) {
       discount += amount;
       lines.push({ kind: 'sponsor', slot: pos, label: `${where}: ${label(v)}${note}`, cents: -amount });
     }
-    const slotExtra = Number(rules.slotPremiumCents[pos]) || 0;
     if (slotExtra) {
       premium += slotExtra;
       lines.push({ kind: 'premium', slot: pos, label: `${where}: large placement`, cents: slotExtra });
@@ -480,23 +655,38 @@ export function quoteMerch(productId, slots, ctx = {}) {
   return { baseCents: p.baseCents, filled, customCount, hasBack, discountCents: discount, premiumCents: premium, totalCents: total, capped, lines };
 }
 
-// Price effect of filling a slot, for the slot list ("+NZ$8").
-export function slotPremiumCents(slotId) {
-  return Number(MERCH_PRICING_RULES.slotPremiumCents[String(slotId)]) || 0;
-}
-
-// Live order settings: admin values over the defaults, each one checked
-// so a bad stored value falls back instead of breaking prices.
+// Live order + pricing settings (Studio > Admin > Merch orders): admin
+// values over the defaults in merch-config.mjs, each one checked so a bad
+// stored value falls back instead of breaking prices.
+export const MERCH_MAX_DISCOUNT_PCT = 90;
 export function merchOrderSettings(stored = {}) {
   const d = MERCH_ORDER_RULES.defaults;
-  const cents = (v, dflt) => (Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 1000000 ? Number(v) : dflt);
+  const p = MERCH_PRICING_RULES;
+  const whole = (v, dflt, max) => (Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= max ? Number(v) : dflt);
+  const cents = (v, dflt) => whole(v, dflt, 1000000);
+  const flag = (v, dflt) => (typeof v === 'boolean' ? v : dflt);
   const s = stored || {};
   return {
     courierCents: cents(s.courierCents, d.courierCents),
     freeOverCents: cents(s.freeOverCents, d.freeOverCents),
-    pickupEnabled: typeof s.pickupEnabled === 'boolean' ? s.pickupEnabled : d.pickupEnabled,
+    pickupEnabled: flag(s.pickupEnabled, d.pickupEnabled),
     sponsorCapCents: cents(s.sponsorCapCents, d.sponsorCapCents),
+    maxDiscountPct: whole(s.maxDiscountPct, p.maxDiscountPct, MERCH_MAX_DISCOUNT_PCT),
+    fallbackSponsorDiscountCents: whole(s.fallbackSponsorDiscountCents, p.fallbackSponsorDiscountCents, 100000),
+    uploadLogoCents: whole(s.uploadLogoCents, Number(p.logoPremiumCents.upload) || 0, 100000),
+    sponsorDiscountOncePerItem: flag(s.sponsorDiscountOncePerItem, p.sponsorDiscountOncePerItem),
   };
+}
+
+// The settings every quote uses unless one is passed in. Set from the API
+// (server) or the merch layout (browser), like the catalog.
+let liveSettings = null;
+export function setMerchSettings(stored) {
+  liveSettings = merchOrderSettings(stored);
+  return liveSettings;
+}
+export function currentMerchSettings() {
+  return liveSettings || merchOrderSettings();
 }
 
 // Whole-order quote: the per-item quote times the units ordered, the
@@ -504,8 +694,8 @@ export function merchOrderSettings(stored = {}) {
 // lines: [{ size, qty }]. delivery: 'courier' | 'pickup'. settings: from
 // merchOrderSettings. Returns null for an unknown product, a delivery that
 // is not offered, or an empty order.
-export function quoteMerchOrder(productId, slots, lines, ctx = {}, delivery = 'courier', settings = merchOrderSettings()) {
-  const item = quoteMerch(productId, slots, ctx);
+export function quoteMerchOrder(productId, slots, lines, ctx = {}, delivery = 'courier', settings = currentMerchSettings()) {
+  const item = quoteMerch(productId, slots, { ...ctx, settings });
   const offered = delivery === 'courier' || (delivery === 'pickup' && settings.pickupEnabled);
   if (!item || !offered) return null;
   const units = (lines || []).reduce((n, l) => n + (Number(l.qty) || 0), 0);

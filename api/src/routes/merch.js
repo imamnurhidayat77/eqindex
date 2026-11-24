@@ -28,11 +28,29 @@ const newRef = () => `BM-${Array.from({ length: 6 }, () => REF_ALPHABET[crypto.r
 const newSecret = () => crypto.randomBytes(24).toString('base64url');
 const str = (v, max) => String(v ?? '').trim().slice(0, max);
 
+// Live catalog (merch_products, migration 110) into the shared pricing lib,
+// cached per instance. A missing table or a DB error keeps the last good
+// catalog (the built-in defaults at worst), so ordering never breaks.
+const CATALOG_TTL_MS = 30 * 1000;
+let catalogLoadedAt = 0;
+async function loadCatalog(m, { fresh = false } = {}) {
+  if (!fresh && Date.now() - catalogLoadedAt < CATALOG_TTL_MS) return;
+  try {
+    const { rows } = await pool.query('SELECT id, data FROM merch_products');
+    const rejected = m.setMerchCatalog(rows);
+    if (rejected.length) console.error('[merch.catalog] invalid rows, defaults kept for:', rejected.join(', '));
+    catalogLoadedAt = Date.now();
+  } catch (e) {
+    console.error('[merch.catalog] load failed, keeping the last catalog:', e.message);
+  }
+}
+const catalogRows = (m) => m.merchProducts({ all: true }).map((p) => ({ id: p.id, data: m.merchProductData(p) }));
+
 async function loadSettings(m) {
   const { rows } = await pool.query('SELECT value FROM admin_settings WHERE key = $1', [SETTINGS_KEY]);
   let stored = {};
   try { stored = rows.length ? JSON.parse(rows[0].value) : {}; } catch { stored = {}; }
-  return m.merchOrderSettings(stored);
+  return m.setMerchSettings(stored);
 }
 
 // Pure shape check of an order body (no DB). Returns { values, errors }.
@@ -43,6 +61,7 @@ function parseOrderInput(body, m) {
   const errors = [];
   const product = m.merchProduct(b.productId);
   if (!product) return { values: null, errors: ['unknown product'] };
+  if (product.status !== 'active') return { values: null, errors: ['this product is no longer available'] };
   const color = String(b.color || '');
   if (!m.isMerchColor(product.id, color)) errors.push('colour not offered for this product');
 
@@ -430,7 +449,9 @@ module.exports = function mountMerchRoutes(app) {
     res.json({ data: await loadSettings(m) });
   }));
 
-  // Admin only: delivery prices, pickup on/off, sponsor cap per order.
+  // Admin only: delivery prices, pickup on/off, sponsor cap per order, and
+  // the price rules every quote uses (discount limit, fallback sponsor
+  // discount, own-logo charge, one discount per sponsor per item).
   app.put('/admin/merch/settings', needRole('ADMIN'), asyncH(async (req, res) => {
     const m = await lib();
     const b = req.body || {};
@@ -441,15 +462,73 @@ module.exports = function mountMerchRoutes(app) {
       return v;
     };
     const next = { courierCents: cents('courierCents'), freeOverCents: cents('freeOverCents'), sponsorCapCents: cents('sponsorCapCents') };
-    if (typeof b.pickupEnabled !== 'boolean') errors.push('pickupEnabled must be true or false');
-    next.pickupEnabled = b.pickupEnabled;
+    for (const k of ['fallbackSponsorDiscountCents', 'uploadLogoCents']) {
+      next[k] = Number(b[k]);
+      if (!Number.isInteger(next[k]) || next[k] < 0 || next[k] > 100000) errors.push(`${k} must be whole cents, 0 to 100000`);
+    }
+    next.maxDiscountPct = Number(b.maxDiscountPct);
+    if (!Number.isInteger(next.maxDiscountPct) || next.maxDiscountPct < 0 || next.maxDiscountPct > m.MERCH_MAX_DISCOUNT_PCT) {
+      errors.push(`maxDiscountPct must be a whole number, 0 to ${m.MERCH_MAX_DISCOUNT_PCT}`);
+    }
+    for (const k of ['pickupEnabled', 'sponsorDiscountOncePerItem']) {
+      if (typeof b[k] !== 'boolean') errors.push(`${k} must be true or false`);
+      next[k] = b[k];
+    }
     if (errors.length) return res.status(400).json({ error: errors.join('; ') });
     await pool.query(
       `INSERT INTO admin_settings (key, value, updated_at) VALUES ($1, $2, NOW())
        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
       [SETTINGS_KEY, JSON.stringify(next)]);
     audit(req, 'merch.settings.edit', 'admin_settings', SETTINGS_KEY, next);
-    res.json({ data: m.merchOrderSettings(next) });
+    res.json({ data: m.setMerchSettings(next) });
+  }));
+
+  // Catalog for the designer and the storefront. Hidden products are
+  // included (flagged) so old orders still show their names.
+  app.get('/api/merch/catalog', asyncH(async (req, res) => {
+    const m = await lib();
+    await loadCatalog(m);
+    res.setHeader('Cache-Control', 'public, max-age=30');
+    res.json({ data: catalogRows(m) });
+  }));
+
+  // Admin only: add a product on one of the built-in 3D models. Never
+  // overwrites: an existing id is a 409. No delete: hide it instead.
+  app.post('/admin/merch/catalog', needRole('ADMIN'), asyncH(async (req, res) => {
+    const m = await lib();
+    await loadCatalog(m, { fresh: true });
+    const id = String(req.body?.id || '');
+    if (m.merchProduct(id)) return res.status(409).json({ error: 'a product with this id already exists' });
+    const { product, errors } = m.parseMerchProduct({ ...(req.body || {}), id });
+    if (!product) return res.status(400).json({ error: errors.join('; ') });
+    const data = m.merchProductData(product);
+    const r = await pool.query(
+      `INSERT INTO merch_products (id, data, updated_at, updated_by) VALUES ($1, $2, NOW(), $3)
+       ON CONFLICT (id) DO NOTHING RETURNING id`,
+      [product.id, JSON.stringify(data), req.authUser?.id || null]);
+    if (!r.rowCount) return res.status(409).json({ error: 'a product with this id already exists' });
+    audit(req, 'merch.catalog.create', 'merch_product', product.id, data);
+    await loadCatalog(m, { fresh: true });
+    res.status(201).json({ data: catalogRows(m) });
+  }));
+
+  // Admin only: edit an existing product (hide it with status 'hidden').
+  app.put('/admin/merch/catalog/:id', needRole('ADMIN'), asyncH(async (req, res) => {
+    const m = await lib();
+    await loadCatalog(m, { fresh: true });
+    const current = m.merchProduct(String(req.params.id || ''));
+    if (!current) return res.status(404).json({ error: 'product not found' });
+    // The model is fixed once a product exists: its slots and orders depend on it.
+    const { product, errors } = m.parseMerchProduct({ ...(req.body || {}), id: current.id, model: current.model });
+    if (!product) return res.status(400).json({ error: errors.join('; ') });
+    const data = m.merchProductData(product);
+    await pool.query(
+      `INSERT INTO merch_products (id, data, updated_at, updated_by) VALUES ($1, $2, NOW(), $3)
+       ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW(), updated_by = EXCLUDED.updated_by`,
+      [product.id, JSON.stringify(data), req.authUser?.id || null]);
+    audit(req, 'merch.catalog.edit', 'merch_product', product.id, data);
+    await loadCatalog(m, { fresh: true });
+    res.json({ data: catalogRows(m) });
   }));
 
   // Buyer artwork for an order. Guests allowed: the returned secret is the
@@ -483,6 +562,7 @@ module.exports = function mountMerchRoutes(app) {
   app.post('/api/merch/orders', asyncH(async (req, res) => {
     if (await throttled(pool, req.ip, 'merch-order', 10)) return res.status(429).json({ error: 'too many orders, try again later' });
     const m = await lib();
+    await loadCatalog(m);
     const { values: v, errors } = parseOrderInput(req.body, m);
     if (errors.length) return res.status(400).json({ error: errors.join('; ') });
 
@@ -498,6 +578,7 @@ module.exports = function mountMerchRoutes(app) {
     }
     const settings = await loadSettings(m);
     const units = v.lines.reduce((n, l) => n + l.qty, 0);
+    const colorName = v.product.colorList.find((c) => c.hex === v.color.toLowerCase())?.name || v.color;
 
     const secret = newSecret();
     const client = await pool.connect();
@@ -525,6 +606,8 @@ module.exports = function mountMerchRoutes(app) {
         labelFor: (id) => funded[id]?.sponsor_name || (String(id).startsWith('club:') ? 'Club logo' : 'Your logo'),
       }, v.delivery, settings);
       if (!quote) { const e = new Error('this delivery option is not available'); e.status = 400; throw e; }
+      // What the catalog said at order time, so later edits never change it.
+      const stored = { ...quote, product: { label: v.product.label, colorName } };
 
       for (let attempt = 0; attempt < 5 && !order; attempt++) {
         const r = await client.query(
@@ -534,7 +617,7 @@ module.exports = function mountMerchRoutes(app) {
            ON CONFLICT (ref) DO NOTHING RETURNING *`,
           [newRef(), sha256(secret), req.authUser?.id || null, v.contact.email, v.contact.name, v.contact.phone, v.contact.club,
             v.product.id, v.color, JSON.stringify({ slots: v.slots, slotZoom: v.slotZoom, slotShift: v.slotShift }),
-            v.delivery, v.address ? JSON.stringify(v.address) : null, v.notes, JSON.stringify(quote), quote.totalCents]);
+            v.delivery, v.address ? JSON.stringify(v.address) : null, v.notes, JSON.stringify(stored), quote.totalCents]);
         order = r.rows[0];
       }
       if (!order) throw new Error('could not allocate an order reference');

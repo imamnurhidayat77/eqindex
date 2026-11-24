@@ -1,7 +1,7 @@
 // Unit: merch quote (estimate only, checkout re-quotes server-side).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BACK_PREMIUM_CENTS, RIDER_MODELS, SHIFT_MAX, SHIFT_MIN, SPONSOR_DISCOUNT_CENTS, buildHoverTargets, canonicalFit, clampLogoOffset, clampShift, clampSpin, fitLogoInSlot, slotFrame, slotShiftLimits, slotSizeUnits, snapSpin, isMerchColor, isMerchSize, isUploadSlot, merchPositions, merchProduct, quoteMerch } from '../lib/merch.mjs';
+import { BACK_PREMIUM_CENTS, RIDER_MODELS, SHIFT_MAX, SHIFT_MIN, SPONSOR_DISCOUNT_CENTS, buildHoverTargets, canonicalFit, clampLogoOffset, clampShift, clampSpin, fitLogoInSlot, slotFrame, slotShiftLimits, slotSizeUnits, snapSpin, isMerchColor, isMerchSize, isUploadSlot, merchPositions, merchModel, merchProduct, merchProductData, merchProducts, merchCutoutSrc, newMerchProductDraft, parseMerchProduct, quoteMerch, riderModelFile, isHorseProduct, setMerchCatalog } from '../lib/merch.mjs';
 
 test('unknown product returns null', () => {
   assert.equal(quoteMerch('nope', {}), null);
@@ -262,4 +262,121 @@ test('order settings: admin values win, bad values fall back, pickup can be off'
   assert.equal(quoteMerchOrder('tee', {}, [{ size: 'M', qty: 1 }], {}, 'pickup', s), null);
   const big = quoteMerchOrder('jacket', {}, [{ size: 'M', qty: 10 }], {}, 'courier', s);
   assert.equal(big.shippingCents, 900); // freeOver 0 = never free
+});
+
+// ---- live catalog (merch_products rows over the built-in defaults) ----
+
+const jacketEdit = (patch = {}) => ({ id: 'jacket', ...merchProductData(merchProduct('jacket')), ...patch });
+
+test('a default product survives its own stored form unchanged', () => {
+  setMerchCatalog([]);
+  for (const p of merchProducts({ all: true })) {
+    const { product, errors } = parseMerchProduct({ id: p.id, ...merchProductData(p) });
+    assert.deepEqual(errors, []);
+    assert.deepEqual(product, p);
+  }
+});
+
+test('a stored row changes price, colours, sizes and slots everywhere', () => {
+  setMerchCatalog([]);
+  const data = merchProductData(merchProduct('jacket'));
+  data.baseCents = 15900;
+  data.colorList = [{ hex: '#ABCDEF', name: 'Sky' }];
+  data.sizes = ['M', 'L'];
+  data.slotList = data.slotList.map((s) => (s.id === 'sleeve-left' ? { ...s, active: false } : s.id === 'back' ? { ...s, premiumCents: 800, label: 'Big back' } : s));
+  assert.deepEqual(setMerchCatalog([{ id: 'jacket', data }]), []);
+  assert.equal(merchProduct('jacket').baseCents, 15900);
+  assert.ok(isMerchColor('jacket', '#abcdef'));
+  assert.ok(!isMerchColor('jacket', '#101418'));
+  assert.ok(isMerchSize('jacket', 'M') && !isMerchSize('jacket', 'XS'));
+  assert.ok(!merchPositions('jacket').some((p) => p.id === 'sleeve-left'));
+  const q = quoteMerch('jacket', { back: 'club:x', 'sleeve-left': 'club:x' });
+  assert.equal(q.totalCents, 15900 + 800);
+  assert.ok(q.lines.some((l) => l.label.startsWith('Big back')));
+  setMerchCatalog([]);
+  assert.equal(merchProduct('jacket').baseCents, 14900);
+});
+
+test('hidden products leave the storefront but still resolve for old orders', () => {
+  setMerchCatalog([{ id: 'cap', data: { ...merchProductData(merchProduct('cap')), status: 'hidden' } }]);
+  assert.ok(!merchProducts().some((p) => p.id === 'cap'));
+  assert.equal(merchProduct('cap').label, 'Cap');
+  setMerchCatalog([]);
+});
+
+test('catalog edits are checked before they reach the store', () => {
+  setMerchCatalog([]);
+  const bad = (patch) => parseMerchProduct(jacketEdit(patch)).errors;
+  assert.deepEqual(parseMerchProduct({ id: 'hoodie' }).errors, ['choose the 3D model this product uses']);
+  assert.ok(bad({ baseCents: -1 }).length);
+  assert.ok(bad({ baseCents: 10.5 }).length);
+  assert.ok(bad({ colorList: [{ hex: 'red', name: 'Red' }] }).length);
+  assert.ok(bad({ colorList: [] }).length);
+  assert.ok(bad({ sizes: ['M', 'M'] }).length);
+  assert.ok(bad({ category: 'all' }).length);
+  assert.ok(bad({ status: 'deleted' }).length);
+  assert.ok(bad({ slotList: [{ id: 'forehead', label: 'X', widthMm: 50, heightMm: 50 }] }).length);
+  assert.ok(bad({ slotList: merchProductData(merchProduct('jacket')).slotList.map((s) => ({ ...s, active: false })) }).length);
+  assert.ok(bad({ slotList: [{ ...merchProductData(merchProduct('jacket')).slotList[0], widthMm: 5 }] }).length);
+  // A broken stored row keeps the default and is reported, never breaks the store.
+  assert.deepEqual(setMerchCatalog([{ id: 'jacket', data: { baseCents: 'free' } }, { id: 'hoodie', data: {} }]), ['jacket', 'hoodie']);
+  assert.equal(merchProduct('jacket').baseCents, 14900);
+  setMerchCatalog([]);
+});
+
+test('a new product reuses a built-in model with its own name, price and slots', () => {
+  setMerchCatalog([]);
+  const draft = newMerchProductDraft('club-hoodie', 'jacket');
+  assert.equal(draft.status, 'hidden');
+  draft.label = 'Club hoodie';
+  draft.baseCents = 9900;
+  draft.modelFile = '/models/rider/hoodie.glb';
+  draft.slotList = draft.slotList.map((x) => (x.id === 'back' ? { ...x, widthMm: 280 } : x));
+  const { product, errors } = parseMerchProduct(draft);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(setMerchCatalog([{ id: 'club-hoodie', data: merchProductData(product) }]), []);
+  assert.equal(merchModel('club-hoodie'), 'jacket');
+  assert.equal(riderModelFile('club-hoodie'), '/models/rider/hoodie.glb');
+  assert.equal(riderModelFile('jacket'), RIDER_MODELS.jacket.file);
+  assert.equal(merchCutoutSrc('club-hoodie'), '/merch/jacket/cutout.png');
+  assert.ok(!merchProducts().some((p) => p.id === 'club-hoodie'), 'hidden until shown');
+  assert.equal(merchPositions('club-hoodie').find((p) => p.id === 'back').widthMm, 280);
+  assert.equal(merchPositions('jacket').find((p) => p.id === 'back').widthMm, 300);
+  assert.equal(quoteMerch('club-hoodie', {}).totalCents, 9900);
+  assert.ok(slotSizeUnits('club-hoodie', 'back', 1).w > 0, 'garment width comes from the model');
+  setMerchCatalog([]);
+});
+
+test('new product checks: id, model and own 3D file', () => {
+  setMerchCatalog([]);
+  const ok = newMerchProductDraft('rug-pro', 'rug-warm');
+  assert.deepEqual(parseMerchProduct(ok).errors, []);
+  assert.ok(isHorseProduct('rug-warm'));
+  assert.ok(parseMerchProduct({ ...ok, id: 'Rug Pro' }).errors[0].includes('product id'));
+  assert.ok(parseMerchProduct({ ...ok, model: 'boots' }).errors[0].includes('3D model'));
+  assert.ok(parseMerchProduct({ ...ok, modelFile: '/models/rider/x.glb' }).errors.some((e) => e.includes('own 3D file')));
+  const top = newMerchProductDraft('tee-2', 'tee');
+  assert.ok(parseMerchProduct({ ...top, modelFile: 'https://evil.example/x.glb' }).errors.some((e) => e.includes('own 3D file')));
+  // A built-in product keeps its own model whatever the row says.
+  const { product } = parseMerchProduct({ id: 'jacket', ...merchProductData(merchProduct('jacket')), model: 'cap' });
+  assert.equal(product.model, 'jacket');
+  assert.equal(newMerchProductDraft('x1', 'nope'), null);
+});
+
+test('admin price rules drive every quote and fall back when stored values are bad', async () => {
+  const { currentMerchSettings, merchOrderSettings, quoteMerchOrder, setMerchSettings } = await import('../lib/merch.mjs');
+  setMerchCatalog([]);
+  const s = setMerchSettings({ maxDiscountPct: 10, fallbackSponsorDiscountCents: 300, uploadLogoCents: 250, sponsorDiscountOncePerItem: false });
+  assert.equal(currentMerchSettings(), s);
+  const q = quoteMerch('jacket', { 'chest-left': 'a', 'chest-right': 'a', back: 'upload:blob:x' });
+  assert.equal(q.premiumCents, 250);
+  // Same sponsor twice now discounts twice, then the 10% limit caps it.
+  assert.equal(q.discountCents, Math.min(600, Math.floor(14900 * 0.1)));
+  assert.equal(quoteMerch('jacket', { 'chest-left': 'a' }).discountCents, 300);
+  // A quote can still pass its own settings (the server does).
+  assert.equal(quoteMerch('jacket', { 'chest-left': 'a' }, { settings: merchOrderSettings() }).discountCents, SPONSOR_DISCOUNT_CENTS);
+  assert.equal(quoteMerchOrder('jacket', { back: 'upload:blob:x' }, [{ size: 'M', qty: 2 }], {}, 'pickup').goodsCents, 2 * (14900 + 250));
+  const bad = setMerchSettings({ maxDiscountPct: 95, uploadLogoCents: -1, sponsorDiscountOncePerItem: 'yes' });
+  assert.deepEqual([bad.maxDiscountPct, bad.uploadLogoCents, bad.sponsorDiscountOncePerItem], [40, 0, true]);
+  setMerchSettings({});
 });

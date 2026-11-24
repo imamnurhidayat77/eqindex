@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { API } from '../lib/api';
-import { HORSE_PRODUCTS, LOGO_URL, LOGO_ZOOM_MIN, MERCH_PRODUCTS, clampShift, clampSpin, isClubSlot, isMerchColor, isMerchSize, isUploadSlot, merchPhotoSrc, merchPositions, migrateSlotId, quoteMerch, slotShiftLimits, slotSizeUnits, snapSpin } from '../lib/merch.mjs';
+import { LOGO_URL, currentMerchSettings, LOGO_ZOOM_MIN, clampShift, clampSpin, isClubSlot, isHorseProduct, isMerchColor, isMerchSize, isUploadSlot, merchColorName, merchModel, merchPhotoSrc, merchPositions, merchProduct, merchProducts, migrateSlotId, quoteMerch, slotShiftLimits, slotSizeUnits, snapSpin } from '../lib/merch.mjs';
 import { MERCH_PRICING_RULES, merchClub } from '../lib/merch-config.mjs';
 import SmartImage from './SmartImage';
 import SlotEditor from './SlotEditor';
@@ -33,16 +33,12 @@ export function useClubParam() {
 export const withClub = (href, clubId) => (clubId ? `${href}?club=${encodeURIComponent(clubId)}` : href);
 const SAVE_KEY = 'bossmedia:merch-draft';
 
-const COLOR_NAMES = {
-  '#101418': 'Black', '#0e2a4a': 'Navy', '#5b1a1a': 'Maroon',
-  '#e8e4da': 'Bone', '#ffffff': 'White', '#1d5c3a': 'Forest',
-};
-const colorName = (c) => COLOR_NAMES[String(c).toLowerCase()] || String(c);
 
 export function groupOf(productId) {
-  if (productId === 'cap') return 'cap';
-  if (productId === 'ear-bonnet') return 'bonnet';
-  if (productId === 'saddle-blanket' || productId === 'rug-light' || productId === 'rug-warm') return 'flat';
+  const model = merchModel(productId);
+  if (model === 'cap') return 'cap';
+  if (model === 'ear-bonnet') return 'bonnet';
+  if (model === 'saddle-blanket' || model === 'rug-light' || model === 'rug-warm') return 'flat';
   return 'top';
 }
 
@@ -65,7 +61,7 @@ export function ProductPhoto({ productId, view, alt, group, product, color, dot,
   // Cover fills the tile (no letterbox); anchor tops near the collar so
   // cover crops the hem, never the collar/buttons.
   const position = group === 'flat' ? 'center 50%' : 'center 12%';
-  if (!failed && !VECTOR_ONLY.has(productId)) {
+  if (!failed && !VECTOR_ONLY.has(merchModel(productId))) {
     return (
       <span className={s.photoWrap}>
         <SmartImage
@@ -97,7 +93,8 @@ function ProductVector({ group, product, color, dot, dotState, className }) {
   const detail = light ? 'rgba(0,0,0,.55)' : 'rgba(255,255,255,.55)';
   const fab = `fab${uid}`;
   const top = `top${uid}`;
-  const topKind = group === 'top' ? (product === 'jacket' ? 'jacket' : product === 'polo' ? 'polo' : 'tee') : null;
+  const model = merchModel(product);
+  const topKind = group === 'top' ? (model === 'jacket' ? 'jacket' : model === 'polo' ? 'polo' : 'tee') : null;
   const body = 'M22 8 L28 12 L32 14 L36 12 L42 8 L52 18 L47 28 L42 25 L42 58 L22 58 L22 25 L17 28 L12 18 Z';
   return (
     <svg viewBox="0 0 64 64" className={className || s.thumb} aria-hidden="true">
@@ -209,10 +206,9 @@ function PriceLines({ quote }) {
 // GET /api/sponsor-logos, which the server already filters to funded,
 // registered sponsors. No free upload here — buyer picks, never adds.
 export default function MerchClient({ productId: initialProductId = 'jacket', single = false }) {
-  const [productId, setProductId] = useState(
-    MERCH_PRODUCTS.some((p) => p.id === initialProductId) ? initialProductId : 'jacket',
-  );
-  const product = MERCH_PRODUCTS.find((p) => p.id === productId) || MERCH_PRODUCTS[0];
+  const [productId, setProductId] = useState(merchProduct(initialProductId) ? initialProductId : 'jacket');
+  const product = merchProduct(productId) || merchProducts()[0];
+  const colorName = (c) => merchColorName(product.id, c);
   const [color, setColor] = useState(product.colors[0]);
   const [size, setSize] = useState(product.sizes[2] || product.sizes[0]);
   const [slots, setSlots] = useState({});
@@ -226,8 +222,9 @@ export default function MerchClient({ productId: initialProductId = 'jacket', si
   // A locked club logo cannot be removed or replaced, only fine-tuned.
   const clubId = useClubParam();
   const club = merchClub(clubId);
-  const clubSlot = club && merchPositions(productId).some((p) => p.id === club.defaults?.[productId])
-    ? club.defaults[productId] : null;
+  // A new product takes its club default from the model it reuses.
+  const clubDefault = club?.defaults?.[productId] ?? club?.defaults?.[merchModel(productId)];
+  const clubSlot = club && merchPositions(productId).some((p) => p.id === clubDefault) ? clubDefault : null;
   const isLocked = (pos) => !!(club?.locked && pos === clubSlot);
   // Logo aspect ratios as measured by the 3D preview (for slider limits).
   const [aspects, setAspects] = useState({});
@@ -577,7 +574,7 @@ export default function MerchClient({ productId: initialProductId = 'jacket', si
   const logoById = useMemo(() => Object.fromEntries(logos.map((l) => [String(l.id), l])), [logos]);
   // What a sponsor logo takes off: its funded amount, or the rules'
   // fallback when the API has no amount (the quote uses the same rule).
-  const sponsorAmount = (l) => discountOf(l) || MERCH_PRICING_RULES.fallbackSponsorDiscountCents;
+  const sponsorAmount = (l) => discountOf(l) || currentMerchSettings().fallbackSponsorDiscountCents;
   const quoteCtx = useMemo(() => ({
     discountFor: (id) => (logoById[String(id)] ? discountOf(logoById[String(id)]) : NaN),
     sponsorOf: (id) => logoById[String(id)]?.sponsor_name || id,
@@ -668,7 +665,7 @@ export default function MerchClient({ productId: initialProductId = 'jacket', si
           </div>
         )}
         <section className={s.previewCard} aria-label="Live 3D preview">
-          <div className={`${s.stage}${HORSE_PRODUCTS.has(product.id) ? ` ${s.stageDark}` : ''}`} ref={stageRef}
+          <div className={`${s.stage}${isHorseProduct(product.id) ? ` ${s.stageDark}` : ''}`} ref={stageRef}
             tabIndex={0} onKeyDown={onStageKey} aria-label="3D preview. Arrow keys move the selected logo.">
             <Merch3D productId={product.id} color={color} slots={clean ? {} : effSlots} zoom={zoomFractions} shift={viewShift} onShift={patchShift} selectedPos={clean ? null : activePos} onSelectPos={selectPos} switching={false} stageRef={stageRef} clean={clean} hotspots={tab === 'branding'} onAspects={setAspects} onReady={() => setModelReady(true)} onUndo={undo} onRedo={redo} canUndo={canUndo} canRedo={canRedo} />
             {!clean && activeLogoId && tab === 'branding' && (

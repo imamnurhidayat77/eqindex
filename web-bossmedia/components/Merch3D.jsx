@@ -7,7 +7,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { SlotFrameDecal, Sticker, slotRegion, useLogoAspects, useValidLogos } from './MerchDecals';
 import { HorseScene } from './HorseStage';
 import { FittedGear } from './HorseGear';
-import { HORSE_PRODUCTS, RIDER_MODELS, buildHoverTargets, canonicalFit, clampLogoOffset, clampShift, merchPositions, slotFrame, slotSizeUnits } from '../lib/merch.mjs';
+import { buildHoverTargets, canonicalFit, clampLogoOffset, clampShift, isHorseProduct, merchModel, merchPositions, riderModelFile, slotFrame, slotSizeUnits } from '../lib/merch.mjs';
 import { GearShiftContext, GearSlotContext } from './HorseGear';
 import { GARMENT_WIDTH_MM } from '../lib/merch-config.mjs';
 import s from './MerchClient.module.css';
@@ -427,7 +427,7 @@ function capSlotDef(geometry, ray, depth) {
   return { x, y, z, rx: e.x, ry: e.y, rz: e.z, depth };
 }
 
-export function CapGLB({ color, slots, valid, zoom, shift, onShift, selectedPos, onSelectPos, draggingPos, onDragging, onDragVis, tipRef, posLabels, aspects, clean, hotspots }) {
+export function CapGLB({ productId = 'cap', color, slots, valid, zoom, shift, onShift, selectedPos, onSelectPos, draggingPos, onDragging, onDragVis, tipRef, posLabels, aspects, clean, hotspots }) {
   const { geometry, material } = useClientModel(CAP_FILE, color);
   const capW = useMemo(() => {
     if (!geometry) return 0.66;
@@ -446,7 +446,7 @@ export function CapGLB({ color, slots, valid, zoom, shift, onShift, selectedPos,
     }
     return out;
   }, [geometry, capW]);
-  const anchors = useSlotAnchors(defs, { productId: 'cap', slots, valid, zoom, aspects, shift, refW: capW });
+  const anchors = useSlotAnchors(defs, { productId, slots, valid, zoom, aspects, shift, refW: capW });
   const gdrag = useGarmentDrag(anchors, { refW: capW, onSelectPos, onShift, onDragging, onDragVis, tipRef, posLabels, selectedPos });
   if (!geometry) return null;
   return (
@@ -747,7 +747,7 @@ function SlotStickers({ anchors, depth, selectedPos, draggingPos, clean, hotspot
 // The gear GLBs are in metres, so the garment width in mm sets refW and
 // the print areas come out at their real size on the rug.
 function GearSlotLayer({ geometry, material, defs, productId, slots, valid, zoom, aspects, shift, onShift, selectedPos, onSelectPos, draggingPos, onDragging, onDragVis, tipRef, posLabels, clean, hotspots }) {
-  const refW = (GARMENT_WIDTH_MM[productId] || 1000) / 1000;
+  const refW = (GARMENT_WIDTH_MM[merchModel(productId)] || 1000) / 1000;
   const anchors = useSlotAnchors(defs, { productId, slots, valid, zoom, aspects, shift, refW });
   const gdrag = useGarmentDrag(anchors, { refW, selectedPos, onSelectPos, onShift, onDragging, onDragVis, tipRef, posLabels });
   return (
@@ -885,27 +885,29 @@ const FRAMING = {
   // tall collar needs real headroom, so the target sits well above center
   // and the whole garment hangs clear of the top view controls.
   studio: { pos: [0, 0.4, 4.3], target: [0, 0.3, 0] },
-  horse: { pos: [3.4, 1.7, 3.9], target: [0, 1.05, 0] },
-  bonnet: { pos: [0.85, 1.98, 2.15], target: [0, 1.82, 0.9] },
-  // Bonnet on its own (studio file, centred at y 1.92, z 0.92, ~0.27 wide).
-  bonnetSolo: { pos: [0.5, 2.0, 1.64], target: [0, 1.91, 0.92] },
+  // Tuned on the client's horse (horse-client.glb, 1.70 tall, ears at
+  // y 1.70, z 0.86).
+  horse: { pos: [3.4, 1.5, 3.9], target: [0, 0.92, 0] },
+  bonnet: { pos: [0.85, 1.7, 2.05], target: [0, 1.54, 0.8] },
+  // Bonnet on its own (studio file, centred at y 1.63, z 0.83, ~0.27 wide).
+  bonnetSolo: { pos: [0.5, 1.72, 1.54], target: [0, 1.63, 0.82] },
   // Fitted gear without the horse: per-size frames (the bonnet reuses
   // its head close-up, which fits with or without the horse).
-  gearBlanket: { pos: [1.3, 1.55, 1.9], target: [0, 1.3, -0.25] },
-  // Rugs sit in horse space (back at y ~1.4, hem at 0.8).
-  gearRug: { pos: [2.3, 1.85, 3.1], target: [0, 1.08, -0.2] },
+  gearBlanket: { pos: [1.3, 1.41, 1.9], target: [0, 1.16, -0.25] },
+  // Rugs sit in horse space (back at y ~1.3, hem at 0.7).
+  gearRug: { pos: [2.3, 1.71, 3.1], target: [0, 0.94, -0.2] },
 };
 
 // Camera azimuth that looks straight at a slot (null: no sideways facing,
 // e.g. a slot on top of a flat blanket).
-function slotAzimuth(productId, pos) {
+function slotAzimuth(model, pos) {
   let n = null;
-  if (productId === 'cap') {
+  if (model === 'cap') {
     const r = CAP_RAYS[pos];
     if (r) n = [-r.dir[0], -r.dir[1], -r.dir[2]];
   } else {
-    const layout = productId === 'ear-bonnet' ? 'bonnet'
-      : ['saddle-blanket', 'rug-light', 'rug-warm'].includes(productId) ? 'flat' : 'top-glb';
+    const layout = model === 'ear-bonnet' ? 'bonnet'
+      : ['saddle-blanket', 'rug-light', 'rug-warm'].includes(model) ? 'flat' : 'top-glb';
     const d = DECALS[layout]?.[pos];
     if (d) n = slotFrame(d[3], d[4], 0).normal;
   }
@@ -1013,20 +1015,23 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
     const prev = lastPos.current;
     lastPos.current = selectedPos;
     if (!selectedPos || prev === null || prev === selectedPos) return;
-    const angle = HORSE_PRODUCTS.has(productId)
+    const angle = isHorseProduct(productId)
       ? (selectedPos === 'back' ? Math.PI : null)
-      : slotAzimuth(productId, selectedPos);
+      : slotAzimuth(merchModel(productId), selectedPos);
     if (angle !== null) setFace({ angle, n: Date.now() });
   }, [selectedPos, productId]);
+  // 3D branches follow the product's model: a new product reuses one.
+  const model = merchModel(productId);
   const group = (() => {
-    if (productId === 'cap') return 'cap';
-    if (productId === 'ear-bonnet') return 'bonnet';
-    if (productId === 'saddle-blanket') return 'flat-narrow';
-    if (productId === 'rug-light' || productId === 'rug-warm') return 'flat-wide';
+    if (model === 'cap') return 'cap';
+    if (model === 'ear-bonnet') return 'bonnet';
+    if (model === 'saddle-blanket') return 'flat-narrow';
+    if (model === 'rug-light' || model === 'rug-warm') return 'flat-wide';
     return 'top';
   })();
-  const kind = productId === 'jacket' ? 'jacket' : productId === 'polo' ? 'polo' : 'tee';
-  const isHorse = HORSE_PRODUCTS.has(productId);
+  const kind = model === 'jacket' ? 'jacket' : model === 'polo' ? 'polo' : 'tee';
+  const isHorse = isHorseProduct(productId);
+  const topFile = riderModelFile(productId);
   const filledIds = useMemo(() => [...new Set(Object.values(slots).filter(Boolean).map(String))], [slots]);
   const valid = useValidLogos(filledIds);
   const aspects = useLogoAspects(filledIds);
@@ -1039,9 +1044,9 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
   );
   // Product-only framing for horse gear; the horse keeps its wide frame.
   const framing = !isHorse ? FRAMING.studio
-    : productId === 'ear-bonnet' ? (showHorse ? FRAMING.bonnet : FRAMING.bonnetSolo)
+    : model === 'ear-bonnet' ? (showHorse ? FRAMING.bonnet : FRAMING.bonnetSolo)
     : showHorse ? FRAMING.horse
-    : productId === 'saddle-blanket' ? FRAMING.gearBlanket : FRAMING.gearRug;
+    : model === 'saddle-blanket' ? FRAMING.gearBlanket : FRAMING.gearRug;
   // Shared garment props (every product component takes the same set).
   const gp = {
     productId, color, slots, valid, zoom, shift: effShift, onShift,
@@ -1099,24 +1104,24 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
           <Suspense fallback={null}>
             {isHorse ? (
               <SceneErrorBoundary
-                fallback={productId === 'ear-bonnet'
+                fallback={model === 'ear-bonnet'
                   ? <BonnetGarment {...gp} />
-                  : <FlatGarment {...gp} wide={productId !== 'saddle-blanket'} stripe={productId === 'saddle-blanket'} />}
+                  : <FlatGarment {...gp} wide={model !== 'saddle-blanket'} stripe={model === 'saddle-blanket'} />}
               >
                 <GearShiftContext.Provider value={clean ? null : effShift}>
                   <GearSlotContext.Provider value={gearLayer}>
                     {showHorse
-                      ? <HorseScene productId={productId} color={color} slots={slots} zoom={zoom} aspects={aspects} />
+                      ? <HorseScene productId={model} color={color} slots={slots} zoom={zoom} aspects={aspects} />
                       // The bonnet is shown on its own (Imam: no horse head);
                       // "Show horse" puts it on the full horse.
-                      : <FittedGear productId={productId} color={color} slots={slots} valid={valid} zoom={zoom} aspects={aspects} />}
+                      : <FittedGear productId={model} color={color} slots={slots} valid={valid} zoom={zoom} aspects={aspects} />}
                   </GearSlotContext.Provider>
                 </GearShiftContext.Provider>
               </SceneErrorBoundary>
             ) : (
               <>
-                {group === 'top' && (RIDER_MODELS[productId]
-                  ? <TopGLB {...gp} file={RIDER_MODELS[productId].file} buttons={productId === 'polo'} />
+                {group === 'top' && (topFile
+                  ? <TopGLB {...gp} file={topFile} buttons={model === 'polo'} />
                   : <TopGarment {...gp} kind={kind} />)}
                 {group === 'cap' && <CapGLB {...gp} />}
                 {group === 'flat-narrow' && <FlatGarment {...gp} wide={false} stripe />}

@@ -99,6 +99,36 @@ test('a saved account logo (my:) is collected for the owner check and never disc
   assert.equal(m.LOGO_URL(`my:${id}`), `/merch-logo/${id}`);
 });
 
+test('a hidden product cannot be ordered', () => {
+  m.setMerchCatalog([{ id: 'jacket', data: { ...m.merchProductData(m.merchProduct('jacket')), status: 'hidden' } }]);
+  assert.deepEqual(parseOrderInput(good(), m).errors, ['this product is no longer available']);
+  m.setMerchCatalog([]);
+  assert.deepEqual(parseOrderInput(good(), m).errors, []);
+});
+
+test('migration 110 seeds exactly the built-in catalog', () => {
+  const sql = readFileSync(join(root, '../db/migrations/110_merch_catalog.sql'), 'utf8');
+  assert.ok(sql.includes('CREATE TABLE IF NOT EXISTS merch_products ('));
+  assert.ok(sql.includes('ON CONFLICT (id) DO NOTHING'));
+  const rows = [...sql.matchAll(/\('([a-z0-9-]+)', '(.*)'::JSONB\)/g)].map(([, id, json]) => ({ id, data: JSON.parse(json.replace(/''/g, "'")) }));
+  m.setMerchCatalog([]);
+  const builtin = m.merchProducts({ all: true });
+  assert.deepEqual(rows.map((r) => r.id), builtin.map((p) => p.id));
+  // Seeded rows (written before products had a model) load as the built-ins.
+  assert.deepEqual(m.setMerchCatalog(rows), []);
+  assert.deepEqual(m.merchProducts({ all: true }), builtin);
+  m.setMerchCatalog([]);
+});
+
+test('an order for a new product on a built-in model parses with that model\'s slots', () => {
+  const d = m.newMerchProductDraft('club-softshell', 'jacket');
+  m.setMerchCatalog([{ id: 'club-softshell', data: { ...d, status: 'active' } }]);
+  const { values, errors } = parseOrderInput({ ...good(), productId: 'club-softshell' }, m);
+  assert.deepEqual(errors, []);
+  assert.equal(values.product.model, 'jacket');
+  m.setMerchCatalog([]);
+});
+
 test('proof answer: approve, or changes with a note', () => {
   const { parseProofResponse, canSendProof } = require('./src/routes/merch.js');
   assert.deepEqual(parseProofResponse({ decision: 'approve' }), { decision: 'approved', note: null });

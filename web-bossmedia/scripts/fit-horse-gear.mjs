@@ -1,7 +1,7 @@
 // Fits the client's Tripo gear GLBs (warm-rug, lightweight-rug, saddle-pad,
-// ear-bonnet in public/models/horse) onto horse-warmblood.glb and writes
-// *-on-horse.glb next to them. The product view and the horse view both
-// render these, so the buyer sees the client's own design everywhere.
+// ear-bonnet in models-src/horse) onto the client's horse (horse-client.glb) and writes
+// *-studio.glb into public/models/horse. The product view renders these,
+// so the buyer sees the client's own design everywhere.
 //   node scripts/fit-horse-gear.mjs
 // Rugs and pad keep their authored shape: one smooth per-slice scale (length
 // to the horse, top line onto the horse's back, width to the barrel), then
@@ -14,17 +14,22 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { prune, dedup, weld, simplify, textureCompress } from '@gltf-transform/functions';
 import { EXTMeshoptCompression } from '@gltf-transform/extensions';
-import { MeshoptSimplifier, MeshoptEncoder } from 'meshoptimizer';
+import { MeshoptSimplifier, MeshoptEncoder, MeshoptDecoder } from 'meshoptimizer';
 import sharp from 'sharp';
 import * as THREE from 'three';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
+import { drape } from './drape.mjs';
+import { tuckEars, CLIENT_EARS } from '../lib/horse-ears.mjs';
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 await MeshoptSimplifier.ready;
+await MeshoptDecoder.ready;
 await MeshoptEncoder.ready;
 
 const DIR = process.env.GEAR_DIR || 'public/models/horse';
 const OUT = process.env.GEAR_OUT || DIR;
-const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.encoder': MeshoptEncoder });
+// Raw Tripo gear sources live outside public/ so they are not served.
+const SRC = process.env.GEAR_SRC || 'models-src/horse';
+const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.encoder': MeshoptEncoder, 'meshopt.decoder': MeshoptDecoder });
 
 async function loadMesh(file) {
   const doc = await io.read(file);
@@ -35,7 +40,9 @@ async function loadMesh(file) {
   return { doc, prim, g };
 }
 
-const H = await loadMesh(`${DIR}/horse-warmblood.glb`);
+// The client's own Tripo horse (scripts/fix-horse-legs.mjs).
+const HORSE = process.env.GEAR_HORSE || 'horse-client.glb';
+const H = await loadMesh(`${DIR}/${HORSE}`);
 H.g.boundsTree = new MeshBVH(H.g);
 const horse = new THREE.Mesh(H.g, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
 const rc = new THREE.Raycaster();
@@ -64,6 +71,9 @@ function table(z0, z1, f) {
     const i = Math.min(v.length - 2, Math.floor(t));
     return v[i] + (v[i + 1] - v[i]) * (t - i);
   };
+}
+if (process.env.MEASURE) {
+  for (let z = -1.1; z <= 1.1; z += 0.1) console.log('z', z.toFixed(1), 'top', hit([0, 3, z], [0, -1, 0])?.point.y.toFixed(3));
 }
 const topY = table(-1.2, 0.9, (z) => hit([0, 3, z], [0, -1, 0])?.point.y ?? null);
 const barrelW = table(-1.2, 0.9, (z) => {
@@ -202,7 +212,10 @@ function seamlessNormals(pos, idx) {
   return out;
 }
 
-async function writeLight(doc, prim, pos, dst, { tris, tex, nor = null, error = 0.002 }) {
+async function writeLight(doc, prim, pos, dst, { tris, tex, nor = null, error = 0.002, doubleSided = false }) {
+  // Draped cloth can fold so a patch of the outer face ends up under the
+  // inner face; drawing both sides shows fabric there instead of the horse.
+  if (doubleSided) for (const m of doc.getRoot().listMaterials()) m.setDoubleSided(true);
   const P = prim.getAttribute('POSITION');
   prim.setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(pos).setBuffer(P.getBuffer()));
   const normals = nor || seamlessNormals(pos, prim.getIndices().getArray());
@@ -229,7 +242,7 @@ async function writeLight(doc, prim, pos, dst, { tris, tex, nor = null, error = 
 // turned to face +Z, uniformly scaled and centred where the fitted piece
 // sits, so it frames like the horse view. Authored normals are kept.
 async function writeStudio(name, { rotY = 0, scale, center, tex = 1024, dst }) {
-  const G = await loadMesh(`${DIR}/${name}.glb`);
+  const G = await loadMesh(`${SRC}/${name}.glb`);
   const N = G.prim.getAttribute('NORMAL').getArray();
   const S = G.g.attributes.position.array;
   const c = Math.cos(rotY), sn = Math.sin(rotY);
@@ -260,8 +273,8 @@ const centreOf = (pos) => {
 };
 
 // ---- Rugs and pad.
-async function fitWear(name, { rotY = 0, z0, z1, sy, gap, off, cap = 9, shoulder = 0.35, cell = 0.02, blur = 2, sideways = false, tris = 20000, tex = 1024, studio }) {
-  const G = await loadMesh(`${DIR}/${name}.glb`);
+async function fitWear(name, { rotY = 0, z0, z1, sy, gap, off, cap = 9, shoulder = 0.35, cell = 0.02, blur = 2, sideways = false, tris = 20000, tex = 1024, studio, cloth = null, studioOnly = false }) {
+  const G = await loadMesh(`${SRC}/${name}.glb`);
   if (rotY) G.g.rotateY(rotY);
   const S = G.g.attributes.position.array;
   const src = sourceTables(S);
@@ -279,18 +292,28 @@ async function fitWear(name, { rotY = 0, z0, z1, sy, gap, off, cap = 9, shoulder
     out[i * 3 + 1] = Math.min(cap, topY(zh)) + off + (y - src.top(z)) * sy;
     out[i * 3 + 2] = zh;
   }
+  const rest = Float32Array.from(out);
   for (let k = 0; k < (process.env.NOPUSH ? 0 : 3); k++) console.log(name, 'push', k, pushOut(out, { off, cell, blur, sideways }));
-  await writeLight(G.doc, G.prim, out, `${OUT}/${name}-on-horse.glb`, { tris, tex });
   const { c, size } = centreOf(out);
+  // Let it settle under gravity on the horse (see drape.mjs).
+  const worn = cloth && !process.env.NODRAPE
+    ? drape(out, G.prim.getIndices().getArray(), H.g, {
+      rest, off, ...cloth, log: (t) => console.log(name, t),
+      // Straps hang below the hem in the middle of the source rug.
+      pull: cloth.straps ? Uint8Array.from({ length: S.length / 3 }, (_, i) => S[i * 3 + 1] < cloth.straps.y && Math.abs(S[i * 3 + 2]) < cloth.straps.z) : null,
+    })
+    : out;
+  if (worn !== out) for (let k = 0; k < 2; k++) console.log(name, 'settle push', k, pushOut(worn, { off: off * 1.2, cell, blur: 3, sideways }));
+  if (!studioOnly) await writeLight(G.doc, G.prim, worn, `${OUT}/${name}-on-horse.glb`, { tris, tex, doubleSided: worn !== out });
   await writeStudio(name, { rotY, scale: size.z / (src.zmax - src.zmin), center: c, tex, dst: studio });
 }
 
 // ---- Ear bonnet: the socks are moved over the horse's ears as they are
 // (no push, so they stay clean cones), the cap is narrowed to the head and
-// pushed clear of it. Sock tips (x +/-35, y 97.6, z -2 src) land on the
-// horse's ear tips (x +/-0.067, y 2.01, z 0.951) raised by `lift`.
-async function fitBonnet({ scale, capX = 1, earX, earDz = 0, earS = 1, tilt = 0, earTilt = 0, lift, off, tris = 20000, tex = 1024 }) {
-  const G = await loadMesh(`${DIR}/ear-bonnet.glb`);
+// pushed clear of it. Sock tips (x +/-35, y 97.6, z -2 src) land on
+// (+/-earX, atY, atZ) raised by `lift`.
+async function fitBonnet({ studioOnly = false, atY = 2.01, atZ = 0.951, scale, capX = 1, earX, earDz = 0, earS = 1, tilt = 0, earTilt = 0, lift, off, tris = 20000, tex = 1024 }) {
+  const G = await loadMesh(`${SRC}/ear-bonnet.glb`);
   const S = G.g.attributes.position.array;
   const n = S.length / 3;
   const W = new Float32Array(n);
@@ -322,17 +345,36 @@ async function fitBonnet({ scale, capX = 1, earX, earDz = 0, earS = 1, tilt = 0,
     const xCap = x * scale * capX;
     const xEar = Math.sign(x) * (earX + (Math.abs(x) - 35) * scale * earS);
     out[i * 3] = xCap * (1 - w) + xEar * w;
-    out[i * 3 + 1] = 2.01 + lift + dy * ca - dz * sa;
-    out[i * 3 + 2] = 0.951 + dz * ca + dy * sa + earDz * w;
+    out[i * 3 + 1] = atY + lift + dy * ca - dz * sa;
+    out[i * 3 + 2] = atZ + dz * ca + dy * sa + earDz * w;
     mask[i] = w < 0.5 ? 1 : 0;
   }
+  const rest = Float32Array.from(out);
   for (let k = 0; k < 3; k++) console.log('bonnet push', k, pushOut(out, { off, cell: 0.01, blur: 3, maxPush: 0.06, mask }));
-  await writeLight(G.doc, G.prim, out, `${OUT}/ear-bonnet-on-horse.glb`, { tris, tex });
+  // Settle the cap on the head under gravity; the socks stay as modelled.
+  // Collides with the horse as shown while the bonnet is worn (ears tucked).
+  let worn = out;
+  if (process.env.BONNET_DRAPE) {
+    const tucked = H.g.clone();
+    tucked.setAttribute('position', new THREE.BufferAttribute(tuckEars(H.g.attributes.position.array, CLIENT_EARS), 3));
+    tucked.boundsTree = new MeshBVH(tucked);
+    worn = drape(out, G.prim.getIndices().getArray(), tucked, {
+      rest, off, cell: 0.012, steps: 200, pinned: Uint8Array.from(mask, (v) => 1 - v), log: (t) => console.log('bonnet', t),
+    });
+  }
+  if (!studioOnly) await writeLight(G.doc, G.prim, worn, `${OUT}/ear-bonnet-on-horse.glb`, { tris, tex });
   await writeStudio('ear-bonnet', { scale, center: centreOf(out).c, tex, dst: 'ear-bonnet-studio.glb' });
 }
 
 const only = process.argv[2];
-if (!only || only === 'warm-rug') await fitWear('warm-rug', { studio: 'warm-rug-studio.glb', z0: -1.14, z1: 0.7, cap: 1.68, sy: 0.0104, gap: 0.05, off: 0.015 });
-if (!only || only === 'lightweight-rug') await fitWear('lightweight-rug', { studio: 'lightweight-rug-studio.glb', z0: -1.14, z1: 0.7, cap: 1.68, sy: 0.0104, gap: 0.04, off: 0.01 });
-if (!only || only === 'saddle-pad') await fitWear('saddle-pad', { studio: 'saddle-pad-studio.glb', rotY: -Math.PI / 2, z0: -0.52, z1: 0.16, sy: 0.0068, gap: 0.06, off: 0.012, cell: 0.02, blur: 3, sideways: true });
-if (!only || only === 'ear-bonnet') await fitBonnet({ scale: 0.0028, capX: 0.82, earX: 0.072, earS: 1.15, earDz: 0.012, tilt: 8, earTilt: 26, lift: 0.02, off: 0.016 });
+// Tuned on horse-client.glb: croup peak z -0.65 y 1.33, withers dip z -0.15
+// y 1.26, tail root z -1.05, ears merge into the poll at y 1.645 (x +/-0.08,
+// z 0.84) with tips at y 1.70. The client's ears are shorter than the
+// socks, so the sock tips sit a sock length above the poll.
+// All gear on the horse comes from the client's own Tripo "horse wearing
+// it" files (fix-horse-legs.mjs RAW=1, then split-worn-rug.mjs); only the
+// product views (no horse) are made here.
+if (!only || only === 'warm-rug') await fitWear('warm-rug', { studio: 'warm-rug-studio.glb', studioOnly: true, z0: -1.03, z1: 0.62, cap: 1.49, sy: 0.0094, gap: 0.045, off: 0.014 });
+if (!only || only === 'lightweight-rug') await fitWear('lightweight-rug', { studio: 'lightweight-rug-studio.glb', studioOnly: true, z0: -1.03, z1: 0.62, cap: 1.49, sy: 0.0094, gap: 0.04, off: 0.01 });
+if (!only || only === 'saddle-pad') await fitWear('saddle-pad', { studio: 'saddle-pad-studio.glb', studioOnly: true, rotY: -Math.PI / 2, z0: -0.52, z1: 0.16, sy: 0.0062, gap: 0.055, off: 0.011, cell: 0.02, blur: 3, sideways: true });
+if (!only || only === 'ear-bonnet') await fitBonnet({ studioOnly: true, atY: 1.74, atZ: 0.86, scale: 0.0028, capX: 0.72, earX: 0.086, earS: 1.15, earDz: 0.04, tilt: 8, earTilt: 26, lift: 0, off: 0.014 });

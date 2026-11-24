@@ -272,9 +272,10 @@ const PAD_ZONES_STUDIO = [
 // every colourway. On the horse the side panels sit on the lower rear of
 // the pad (clear of the saddle flap); the rear logo rides the top of the pad at the spine.
 const PAD_ZONES_ON_HORSE = [
-  { face: '+x', slots: ['side-left'], wFrac: 0.5, at: [1.19, -0.15] },
-  { face: '-x', slots: ['side-right'], wFrac: 0.5, at: [1.19, -0.15] },
-  { face: '-z', slots: ['back'], wFrac: 0.4, at: [1.43] },
+  // On the horse of the client's Tripo "horse wearing the pad" file.
+  { face: '+x', slots: ['side-left'], wFrac: 0.5, at: [1.3, -0.2] },
+  { face: '-x', slots: ['side-right'], wFrac: 0.5, at: [1.3, -0.2] },
+  { face: '-z', slots: ['back'], wFrac: 0.4, at: [1.4] },
 ];
 
 export function SaddleBlanket({ color, slots, valid, zoom, aspects, draped }) {
@@ -362,6 +363,12 @@ function useRugAuthored(file, color, fitted = false) {
 // the rump curve (measured flat z -1.0 for y 1.0..1.3, |x| < 0.2; higher up
 // the logo wraps the curve and gets cut). The horse's tail hangs over it.
 const RUG_ZONES_ON_HORSE = [
+  { face: '+x', slots: ['side-left'], wFrac: 0.3, at: [1.0, -0.3] },
+  { face: '-x', slots: ['side-right'], wFrac: 0.3, at: [1.0, -0.3] },
+  { face: '-z', slots: ['back'], wFrac: 0.3, at: [1.05] },
+];
+// Rugs worn by the taller horses of their own Tripo files.
+const RUG_WORN_ZONES_ON_HORSE = [
   { face: '+x', slots: ['side-left'], wFrac: 0.3, at: [1.12, -0.3] },
   { face: '-x', slots: ['side-right'], wFrac: 0.3, at: [1.12, -0.3] },
   { face: '-z', slots: ['back'], wFrac: 0.3, at: [1.17] },
@@ -427,7 +434,7 @@ export function WarmRug({ color, slots, valid, zoom, aspects, draped }) {
   return (
     <Suspense fallback={null}>
       <RugGLBMesh file={draped ? RUG_WARM_ON_HORSE : RUG_WARM_STUDIO} fitted puff={0.009}
-        zones={draped ? RUG_ZONES_ON_HORSE : RUG_ZONES_STUDIO}
+        zones={draped ? RUG_WORN_ZONES_ON_HORSE : RUG_ZONES_STUDIO}
         color={color} slots={slots} valid={valid} zoom={zoom} aspects={aspects} />
     </Suspense>
   );
@@ -437,7 +444,7 @@ export function LightRug({ color, slots, valid, zoom, aspects, draped }) {
   return (
     <Suspense fallback={null}>
       <RugGLBMesh file={draped ? RUG_LIGHT_ON_HORSE : RUG_LIGHT_STUDIO} fitted puff={0.004}
-        zones={draped ? RUG_ZONES_ON_HORSE : RUG_ZONES_STUDIO}
+        zones={draped ? RUG_WORN_ZONES_ON_HORSE : RUG_ZONES_STUDIO}
         color={color} slots={slots} valid={valid} zoom={zoom} aspects={aspects} />
     </Suspense>
   );
@@ -578,9 +585,10 @@ function EarBonnetGLB({ color, slots, valid, zoom, aspects, fitted }) {
 // Same rug material path, so the cord keeps its colour on every colourway. Forehead logo
 // on the browband panel, ear logos on the outer side of each sock.
 const BONNET_ZONES_ON_HORSE = [
-  { face: '+z', slots: ['forehead'], size: 0.05, at: [1.875] },
-  { face: '+x', slots: ['ear-left'], size: 0.024, at: [1.96, 0.928] },
-  { face: '-x', slots: ['ear-right'], size: 0.024, at: [1.96, 0.928] },
+  // On the horse of the client's Tripo "horse wearing the bonnet" file.
+  { face: '+z', slots: ['forehead'], size: 0.05, at: [1.76] },
+  { face: '+x', slots: ['ear-left'], size: 0.024, at: [1.9, 1.0] },
+  { face: '-x', slots: ['ear-right'], size: 0.024, at: [1.9, 1.0] },
 ];
 
 const BONNET_STUDIO = '/models/horse/ear-bonnet-studio.glb';

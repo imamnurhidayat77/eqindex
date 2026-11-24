@@ -18,3 +18,12 @@ test('input array is not modified', () => {
   tuckEars(a);
   assert.equal(a[1], new Float32Array([2.01])[0]);
 });
+
+test('client horse ears tuck toward their own base', async () => {
+  const { CLIENT_EARS } = await import('../horse-ears.mjs');
+  const tip = [0.084, 1.7, 0.86];
+  const out = tuckEars(new Float32Array(tip), CLIENT_EARS);
+  assert.ok(out[1] < 1.68, 'tip lowered');
+  const muzzle = new Float32Array([0, 1.2, 1.1]);
+  assert.deepEqual([...tuckEars(muzzle, CLIENT_EARS)], [...muzzle]);
+});

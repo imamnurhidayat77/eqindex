@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { API } from '../lib/api';
-import { isUploadSlot, merchOrderSettings, quoteMerchOrder } from '../lib/merch.mjs';
+import { currentMerchSettings, isUploadSlot, merchOrderSettings, quoteMerchOrder } from '../lib/merch.mjs';
 import { MERCH_ORDER_RULES } from '../lib/merch-config.mjs';
 import s from './MerchOrderForm.module.css';
 
@@ -33,7 +33,7 @@ async function readError(r, fallback) {
 export default function MerchOrderForm({
   product, color, size, slots, slotZoom, slotShift, notes, uploads, quoteCtx, clubName, onState,
 }) {
-  const [settings, setSettings] = useState(() => merchOrderSettings());
+  const [settings, setSettings] = useState(() => currentMerchSettings());
   const [lines, setLines] = useState([{ key: 'l0', size, qty: 1 }]);
   const [contact, setContact] = useState({ name: '', email: '', phone: '', club: clubName || '' });
   const [delivery, setDelivery] = useState('courier');
