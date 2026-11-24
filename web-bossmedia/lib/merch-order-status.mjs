@@ -11,8 +11,8 @@ export const ORDER_STEPS = [
 const LABELS = {
   submitted: 'Received, waiting for artwork check',
   artwork_review: 'Artwork being checked',
-  changes_requested: 'We need a change to your artwork',
-  proof_sent: 'Proof sent, check your email',
+  changes_requested: 'Changes requested, a new proof is on its way',
+  proof_sent: 'Your proof is ready, please check it',
   approved: 'Proof approved, payment opens soon',
   paid: 'Paid',
   in_production: 'In production',

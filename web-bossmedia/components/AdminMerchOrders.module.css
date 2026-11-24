@@ -1,0 +1,25 @@
+/* Admin > Merch orders. globals.css is frozen. */
+.muted { color: #999; }
+.filter { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: #bbb; }
+.status { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid #444; font-size: 11px; white-space: nowrap; color: #ccc; }
+.status[data-status='submitted'], .status[data-status='changes_requested'] { border-color: #6b5326; color: #e3b95c; }
+.status[data-status='proof_sent'] { border-color: #2f4d63; color: #8fc3e8; }
+.status[data-status='approved'] { border-color: #3f5a2c; color: #a9d38a; }
+.h3 { margin: 0 0 12px; font-size: 16px; color: #fff; }
+.h4 { margin: 0; font-size: 14px; color: #fff; }
+.grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+.facts { margin: 0; display: grid; gap: 6px; font-size: 13px; }
+.facts div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; }
+.facts dt { color: #888; }
+.facts dd { margin: 0; color: #eee; overflow-wrap: anywhere; }
+.facts a { color: #FFC400; }
+.links { display: grid; gap: 4px; }
+.timeline { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 2px solid #2c2c2c; display: grid; gap: 12px; font-size: 13px; color: #ddd; }
+.note { margin: 4px 0 0; color: #bbb; white-space: pre-wrap; overflow-wrap: anywhere; }
+.thumbLink { display: inline-block; margin-top: 6px; border-radius: 6px; overflow: hidden; border: 1px solid #333; background: #fff; }
+.thumbLink:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+.thumb { display: block; width: 160px; height: auto; }
+.send { display: grid; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #2c2c2c; max-width: 560px; }
+.field { display: grid; gap: 6px; font-size: 13px; color: #bbb; }
+.field textarea { width: 100%; font: inherit; resize: vertical; }

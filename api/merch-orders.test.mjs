@@ -98,3 +98,28 @@ test('a saved account logo (my:) is collected for the owner check and never disc
   assert.equal(q.discountCents, 0);
   assert.equal(m.LOGO_URL(`my:${id}`), `/merch-logo/${id}`);
 });
+
+test('proof answer: approve, or changes with a note', () => {
+  const { parseProofResponse, canSendProof } = require('./src/routes/merch.js');
+  assert.deepEqual(parseProofResponse({ decision: 'approve' }), { decision: 'approved', note: null });
+  assert.equal(parseProofResponse({ decision: 'changes', note: ' ' }).error, 'tell us what to change');
+  assert.equal(parseProofResponse({ decision: 'changes', note: 'Make the back logo bigger' }).decision, 'changes_requested');
+  assert.equal(parseProofResponse({ decision: 'paid' }).error, 'choose approve or request changes');
+  assert.equal(parseProofResponse({ decision: 'changes', note: 'x'.repeat(5000) }).note.length, 1000);
+  assert.ok(canSendProof('changes_requested') && canSendProof('proof_sent'));
+  assert.ok(!canSendProof('approved') && !canSendProof('paid'));
+});
+
+test('order link tokens: buyer token and mail token open only their order', async () => {
+  const { tokenOpens, mailToken } = require('./src/routes/merch.js');
+  const { createHash } = await import('node:crypto');
+  const hash = (v) => createHash('sha256').update(v).digest('hex');
+  const a = { ref: 'BM-AAAAAA', access_hash: hash('buyer-secret-a') };
+  const b = { ref: 'BM-BBBBBB', access_hash: hash('buyer-secret-b') };
+  assert.ok(tokenOpens(a, 'buyer-secret-a'));
+  assert.ok(tokenOpens(a, mailToken(a)));
+  assert.ok(!tokenOpens(a, mailToken(b)));
+  assert.ok(!tokenOpens(a, 'buyer-secret-b'));
+  assert.ok(!tokenOpens(a, ''));
+  assert.ok(!tokenOpens(a, a.access_hash), 'the stored hash itself is not a token');
+});

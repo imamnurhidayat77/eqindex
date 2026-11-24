@@ -277,9 +277,47 @@ function merchOrderReceived({ name, ref, productLabel, units, totalText, link })
   };
 }
 
+// Art proof ready for the buyer. The thumbnail is a convenience only: many
+// inboxes block images, so the button and text carry the whole message.
+function merchProofReady({ name, ref, productLabel, note, link, proofUrl }) {
+  return {
+    subject: `Your artwork proof is ready — order ${ref}`,
+    text: `Hi ${name || 'there'},\n\nYour artwork proof for the ${productLabel} order is ready.${note ? `\n\nNote from us: ${note}` : ''}\n\nCheck it and approve it, or ask for changes: ${link}\n\nYou pay only after you approve the proof.\n\nReference: ${ref}`,
+    html: layout({
+      preheader: 'Approve it, or tell us what to change.',
+      eyebrow: `ORDER ${escHtml(ref)}`,
+      title: 'Your artwork proof is ready.',
+      body: p(`Hi ${escHtml(firstName(name))}, here is the proof for your ${escHtml(productLabel)} order.`) +
+        `<a href="${link}"><img src="${proofUrl}" width="540" alt="Artwork proof for order ${escHtml(ref)}" style="display:block;width:100%;max-width:540px;height:auto;border:1px solid #dddddd;border-radius:8px;margin:8px 0;"></a>` +
+        (note ? p(`<strong>Note from us:</strong> ${escHtml(note)}`) : '') +
+        p('Approve it, or tell us what to change. <strong>You pay only after you approve it.</strong>') +
+        btn(link, 'Review my proof') +
+        fallbackLink(link),
+    }),
+  };
+}
+
+// Buyer answered a proof (to the admins).
+function merchProofAnswered({ ref, buyerName, productLabel, approved, note, link }) {
+  const what = approved ? 'approved the proof' : 'asked for changes';
+  return {
+    subject: `Order ${ref}: ${approved ? 'proof approved' : 'changes requested'}`,
+    text: `${buyerName || 'The buyer'} ${what} for order ${ref} (${productLabel}).${note ? `\n\nTheir note: ${note}` : ''}\n\nOpen Studio > Admin > Merch orders: ${link}`,
+    html: layout({
+      preheader: `${buyerName || 'The buyer'} ${what}.`,
+      eyebrow: `ORDER ${escHtml(ref)}`,
+      title: approved ? 'Proof approved.' : 'Changes requested.',
+      body: p(`${escHtml(buyerName || 'The buyer')} ${what} for order ${escHtml(ref)} (${escHtml(productLabel)}).`) +
+        (note ? p(`<strong>Their note:</strong> ${escHtml(note)}`) : '') +
+        btn(link, 'Open merch orders') +
+        fallbackLink(link),
+    }),
+  };
+}
+
 module.exports = {
   verifyEmail,
   claimAccount, resetPassword, unknownEvent, noAttachments, overLimits,
   verifySender, acceptedIntake, momentsReject, momentsLive, purchaseClaim,
-  sponsorGift, merchOrderReceived,
+  sponsorGift, merchOrderReceived, merchProofReady, merchProofAnswered,
 };

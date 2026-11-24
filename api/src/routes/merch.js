@@ -158,6 +158,65 @@ function publicOrder(o, lines) {
   };
 }
 
+// Art proof step (F3). Proofs live in R2 under the proof_sent event's id,
+// so no extra table is needed: the latest proof_sent event is the proof
+// the buyer answers.
+const REF_RE = /^BM-[A-Z0-9]{6}$/;
+const ORDER_STATUSES = ['submitted', 'artwork_review', 'changes_requested', 'proof_sent', 'approved',
+  'paid', 'in_production', 'shipped', 'delivered', 'cancelled', 'refunded'];
+const PROOF_FROM = ['submitted', 'artwork_review', 'changes_requested', 'proof_sent'];
+const PROOF_MAX_BYTES = 15 * 1024 * 1024;
+const PROOF_MIMES = ['image/png', 'image/jpeg', 'image/webp'];
+const PROOF_MAX_PX = 2400;
+const NOTE_MAX = 1000;
+const CHANGE_NOTE_MIN = 3;
+const ARTWORK_LINK_SECONDS = 15 * 60;
+const canSendProof = (status) => PROOF_FROM.includes(status);
+const proofKey = (orderId, eventId) => `merch/proofs/${orderId}/${eventId}.jpg`;
+const proofPath = (ref, eventId, token) => `/api/merch/orders/${ref}/proofs/${eventId}?t=${token}`;
+
+// Link token for mails sent after the order (the buyer's own token is only
+// stored hashed). Keyed on that stored hash: only someone with the database
+// can make one, and it opens exactly this order.
+const mailToken = (o) => crypto.createHmac('sha256', o.access_hash).update(`merch-order-link:${o.ref}`).digest('base64url');
+const sameText = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+function tokenOpens(o, token) {
+  const t = String(token || '').slice(0, 128);
+  return !!t && (sameText(sha256(t), o.access_hash) || sameText(t, mailToken(o)));
+}
+
+// The order in :ref when this request may see it: its link token, the
+// logged-in owner, or (when allowed) an admin.
+async function viewableOrder(req, { admin }) {
+  const ref = String(req.params.ref || '').toUpperCase();
+  if (!REF_RE.test(ref)) return null;
+  const o = (await pool.query('SELECT * FROM merch_orders WHERE ref = $1', [ref])).rows[0];
+  if (!o) return null;
+  const token = req.query.t || req.body?.t;
+  const isAdmin = admin && req.authUser?.role === 'ADMIN';
+  const ok = tokenOpens(o, token) || (req.authUser && req.authUser.id === o.buyer_user_id) || isAdmin;
+  return ok ? { o, isAdmin } : null;
+}
+
+// Buyer's answer to a proof. Asking for changes needs a short note.
+function parseProofResponse(body) {
+  const b = body || {};
+  const decision = b.decision === 'approve' ? 'approved' : b.decision === 'changes' ? 'changes_requested' : null;
+  if (!decision) return { error: 'choose approve or request changes' };
+  const note = str(b.note, NOTE_MAX) || null;
+  if (decision === 'changes_requested' && (note || '').length < CHANGE_NOTE_MIN) return { error: 'tell us what to change' };
+  return { decision, note };
+}
+
+// Timeline for the order page. Proof events carry their image link.
+function publicEvents(o, events) {
+  const token = mailToken(o);
+  return events.map((e) => ({
+    id: String(e.id), status: e.status, note: e.note, at: e.created_at,
+    proofPath: e.status === 'proof_sent' ? proofPath(o.ref, e.id, token) : null,
+  }));
+}
+
 module.exports = function mountMerchRoutes(app) {
   // Live order settings, so the designer's estimate matches the server.
   app.get('/api/merch/settings', asyncH(async (req, res) => {
@@ -296,18 +355,160 @@ module.exports = function mountMerchRoutes(app) {
   }));
 
   // One order: the buyer's link token, the logged-in owner, or an admin.
+  // Admins also get short-lived links to the buyer's uploaded artwork.
   app.get('/api/merch/orders/:ref', asyncH(async (req, res) => {
-    const ref = String(req.params.ref || '').toUpperCase();
-    if (!/^BM-[A-Z0-9]{6}$/.test(ref)) return res.status(404).json({ error: 'order not found' });
-    const { rows } = await pool.query('SELECT * FROM merch_orders WHERE ref = $1', [ref]);
-    const o = rows[0];
-    const token = String(req.query.t || '');
-    const ok = o && ((token && crypto.timingSafeEqual(Buffer.from(sha256(token)), Buffer.from(o.access_hash)))
-      || (req.authUser && (req.authUser.id === o.buyer_user_id || req.authUser.role === 'ADMIN')));
-    if (!ok) return res.status(404).json({ error: 'order not found' });
-    const lines = (await pool.query('SELECT size, qty FROM merch_order_lines WHERE order_id = $1 ORDER BY size', [o.id])).rows;
+    const found = await viewableOrder(req, { admin: true });
+    if (!found) return res.status(404).json({ error: 'order not found' });
+    const { o, isAdmin } = found;
+    const [lines, events] = await Promise.all([
+      pool.query('SELECT size, qty FROM merch_order_lines WHERE order_id = $1 ORDER BY size', [o.id]),
+      pool.query('SELECT id, status, note, created_at FROM merch_order_events WHERE order_id = $1 ORDER BY created_at, id', [o.id]),
+    ]);
+    const data = { ...publicOrder(o, lines.rows), events: publicEvents(o, events.rows) };
+    if (isAdmin) {
+      const logos = await pool.query(`SELECT id, r2_key, width, height FROM merch_order_logos WHERE order_id = $1 AND r2_key <> ''`, [o.id]);
+      data.artwork = await Promise.all(logos.rows.map(async (l) => ({
+        id: l.id, width: l.width, height: l.height,
+        url: await mediaStore.signedDownloadUrl(l.r2_key, ARTWORK_LINK_SECONDS, `${o.ref}-logo-${l.id.slice(0, 8)}${l.r2_key.slice(l.r2_key.lastIndexOf('.'))}`).catch(() => null),
+      })));
+    }
     res.setHeader('Cache-Control', 'private, no-store');
-    res.json({ data: publicOrder(o, lines) });
+    res.json({ data });
+  }));
+
+  // A proof image of an order, for the same viewers as the order itself
+  // (the emailed thumbnail uses the order's mail token).
+  app.get('/api/merch/orders/:ref/proofs/:eventId', asyncH(async (req, res) => {
+    const found = await viewableOrder(req, { admin: true });
+    const eventId = String(req.params.eventId || '');
+    if (!found || !/^\d{1,18}$/.test(eventId)) return res.status(404).json({ error: 'proof not found' });
+    const ev = await pool.query(`SELECT id FROM merch_order_events WHERE id = $1 AND order_id = $2 AND status = 'proof_sent'`, [eventId, found.o.id]);
+    if (!ev.rowCount) return res.status(404).json({ error: 'proof not found' });
+    let obj;
+    try { obj = await mediaStore.getStream(proofKey(found.o.id, eventId)); } catch { return res.status(404).json({ error: 'proof not found' }); }
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    obj.stream.pipe(res);
+  }));
+
+  // Buyer answers the latest proof: approve it, or ask for changes with a
+  // note. Only the buyer (link token or owner account), only while a proof
+  // is waiting. The status update is conditional, so a double click or two
+  // tabs never record two answers.
+  app.post('/api/merch/orders/:ref/proof-response', asyncH(async (req, res) => {
+    if (await throttled(pool, req.ip, 'merch-proof-response', 20)) return res.status(429).json({ error: 'too many tries, try again later' });
+    const found = await viewableOrder(req, { admin: false });
+    if (!found) return res.status(404).json({ error: 'order not found' });
+    const { decision, note, error } = parseProofResponse(req.body);
+    if (error) return res.status(400).json({ error });
+    const { o } = found;
+    const client = await pool.connect();
+    let moved;
+    try {
+      await client.query('BEGIN');
+      moved = await client.query(
+        `UPDATE merch_orders SET status = $2, updated_at = NOW() WHERE id = $1 AND status = 'proof_sent' RETURNING id`,
+        [o.id, decision]);
+      if (moved.rowCount) {
+        await client.query('INSERT INTO merch_order_events (order_id, status, note, actor_user_id) VALUES ($1, $2, $3, $4)',
+          [o.id, decision, note, req.authUser?.id || null]);
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+    if (!moved.rowCount) return res.status(409).json({ error: 'this proof was already answered, reload the page' });
+    try {
+      const admins = (await pool.query(`SELECT email FROM users WHERE role = 'ADMIN'`)).rows.map((r) => r.email);
+      const t = require('../lib/emailTemplates').merchProofAnswered({
+        ref: o.ref, buyerName: o.buyer_name, productLabel: o.quote?.product?.label || o.product_id,
+        approved: decision === 'approved', note, link: `${APP_URL}/studio/admin`,
+      });
+      const { sendMail } = require('../lib/mailer');
+      for (const to of admins) await sendMail({ to, subject: t.subject, text: t.text, html: t.html });
+    } catch (e) {
+      console.error('[merch.proof] admin mail failed:', e.message);
+    }
+    audit(req, `merch.proof.${decision}`, 'merch_order', o.id, { ref: o.ref });
+    res.json({ data: { status: decision } });
+  }));
+
+  // Admin: newest orders first, optionally one status.
+  app.get('/admin/merch/orders', needRole('ADMIN'), asyncH(async (req, res) => {
+    const status = String(req.query.status || '');
+    const { rows } = await pool.query(
+      `SELECT o.ref, o.status, o.product_id, o.quote->'product'->>'label' AS product_label, o.buyer_name, o.buyer_email,
+         o.club_name, o.total_cents, o.created_at, o.updated_at,
+         (SELECT COALESCE(SUM(qty), 0) FROM merch_order_lines l WHERE l.order_id = o.id)::INT AS units
+       FROM merch_orders o WHERE ($1 = '' OR o.status = $1) ORDER BY o.created_at DESC LIMIT 200`,
+      [ORDER_STATUSES.includes(status) ? status : '']);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ data: rows });
+  }));
+
+  // Admin: send a proof. The image is re-encoded to a JPEG (max 2400 px,
+  // metadata stripped) and kept privately under the event's id. Allowed
+  // until the buyer approves; sending again replaces the waiting proof.
+  const proofUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: PROOF_MAX_BYTES, files: 1 } });
+  app.post('/admin/merch/orders/:ref/proof', needRole('ADMIN'), proofUpload.single('proof'), asyncH(async (req, res) => {
+    const ref = String(req.params.ref || '').toUpperCase();
+    const o = REF_RE.test(ref) ? (await pool.query('SELECT * FROM merch_orders WHERE ref = $1', [ref])).rows[0] : null;
+    if (!o) return res.status(404).json({ error: 'order not found' });
+    if (!canSendProof(o.status)) return res.status(409).json({ error: `a proof cannot be sent while the order is ${o.status}` });
+    const f = req.file;
+    if (!f?.buffer?.length) return res.status(400).json({ error: 'choose a PNG, JPEG or WebP proof up to 15 MB' });
+    const { fileTypeFromBuffer } = await import('file-type');
+    const real = (await fileTypeFromBuffer(f.buffer).catch(() => null))?.mime || '';
+    if (!PROOF_MIMES.includes(real)) return res.status(400).json({ error: 'proof must be a real PNG, JPEG or WebP image' });
+    const jpeg = await require('sharp')(f.buffer).rotate()
+      .resize(PROOF_MAX_PX, PROOF_MAX_PX, { fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#ffffff' }).jpeg({ quality: 86 }).toBuffer().catch(() => null);
+    if (!jpeg) return res.status(400).json({ error: 'proof image could not be read' });
+    const note = str(req.body?.note, NOTE_MAX) || null;
+
+    const client = await pool.connect();
+    let eventId;
+    try {
+      await client.query('BEGIN');
+      const moved = await client.query(
+        `UPDATE merch_orders SET status = 'proof_sent', updated_at = NOW() WHERE id = $1 AND status = ANY($2::TEXT[]) RETURNING id`,
+        [o.id, PROOF_FROM]);
+      if (!moved.rowCount) { const e = new Error('the order changed, reload and try again'); e.status = 409; throw e; }
+      eventId = (await client.query(
+        `INSERT INTO merch_order_events (order_id, status, note, actor_user_id) VALUES ($1, 'proof_sent', $2, $3) RETURNING id`,
+        [o.id, note, req.authUser?.id || null])).rows[0].id;
+      try {
+        await mediaStore.putBuffer(proofKey(o.id, eventId), jpeg, 'image/jpeg');
+      } catch {
+        const e = new Error('proof storage unavailable, try again shortly'); e.status = 502; throw e;
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      if (e.status) return res.status(e.status).json({ error: e.message });
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    const token = mailToken(o);
+    const link = `${APP_URL}/merch/orders/${o.ref}?t=${token}`;
+    let mailed = true;
+    try {
+      const t = require('../lib/emailTemplates').merchProofReady({
+        name: o.buyer_name, ref: o.ref, productLabel: o.quote?.product?.label || o.product_id, note, link,
+        proofUrl: `${APP_URL}/api${proofPath(o.ref, eventId, token)}`,
+      });
+      await require('../lib/mailer').sendMail({ to: o.buyer_email, subject: t.subject, text: t.text, html: t.html });
+    } catch (e) {
+      mailed = false;
+      console.error('[merch.proof] buyer mail failed:', e.message);
+    }
+    audit(req, 'merch.proof.send', 'merch_order', o.id, { ref: o.ref, event_id: String(eventId) });
+    res.status(201).json({ data: { status: 'proof_sent', eventId: String(eventId), mailed } });
   }));
 
   app.get('/api/my/merch-orders', asyncH(async (req, res) => {
@@ -323,3 +524,7 @@ module.exports = function mountMerchRoutes(app) {
 };
 
 module.exports.parseOrderInput = parseOrderInput;
+module.exports.parseProofResponse = parseProofResponse;
+module.exports.canSendProof = canSendProof;
+module.exports.tokenOpens = tokenOpens;
+module.exports.mailToken = mailToken;

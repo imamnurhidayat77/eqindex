@@ -1,8 +1,9 @@
 'use client';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { SiteFooter, SiteHeader } from '../../../../components/figma';
+import SmartImage from '../../../../components/SmartImage';
 import { API } from '../../../../lib/api';
 import { merchPositions, merchProduct } from '../../../../lib/merch.mjs';
 import { ORDER_STEPS, orderStatusLabel, orderStepIndex } from '../../../../lib/merch-order-status.mjs';
@@ -10,23 +11,29 @@ import { useDocumentTitle } from '../../../../lib/use-document-title';
 import s from '../orders.module.css';
 
 const nzd = (c) => `NZ$${(Number(c || 0) / 100).toFixed(2)}`;
+const day = (d) => new Date(d).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' });
+const linkToken = () => new URLSearchParams(window.location.search).get('t') || '';
 const logoName = (v) => (String(v).startsWith('club:') ? 'Club logo' : String(v).startsWith('mlogo:') ? 'Your logo' : 'Sponsor logo');
 
 // One merch order, opened from the emailed link (?t=token) or by a
-// logged-in owner. Read only: proof approval and payment come later.
+// logged-in owner. The buyer answers the artwork proof here; payment comes later.
 export default function MerchOrderPage() {
   const ref = String(useParams()?.ref || '').toUpperCase();
   useDocumentTitle(`Order ${ref}`);
   const [state, setState] = useState({ loading: true, order: null });
+  const load = useCallback(() => {
+    const t = linkToken();
+    return fetch(`${API}/api/merch/orders/${encodeURIComponent(ref)}${t ? `?t=${encodeURIComponent(t)}` : ''}`, { credentials: 'include', cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => j?.data || null)
+      .catch(() => null);
+  }, [ref]);
   useEffect(() => {
     let live = true;
-    const t = new URLSearchParams(window.location.search).get('t') || '';
-    fetch(`${API}/api/merch/orders/${encodeURIComponent(ref)}${t ? `?t=${encodeURIComponent(t)}` : ''}`, { credentials: 'include', cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (live) setState({ loading: false, order: j?.data || null }); })
-      .catch(() => { if (live) setState({ loading: false, order: null }); });
+    load().then((order) => { if (live) setState({ loading: false, order }); });
     return () => { live = false; };
-  }, [ref]);
+  }, [load]);
+  const reload = () => load().then((order) => setState({ loading: false, order }));
 
   const o = state.order;
   const product = o ? merchProduct(o.productId) : null;
@@ -43,6 +50,7 @@ export default function MerchOrderPage() {
           {!state.loading && !o && (
             <p className={s.muted}>We could not find this order. Open it from the link in your confirmation email, or log in with the account you ordered with.</p>
           )}
+          {o && <ProofCard order={o} onAnswered={reload} />}
           {o && (
             <div className={s.layout}>
               <div className={s.card}>
@@ -62,7 +70,7 @@ export default function MerchOrderPage() {
                   ))}
                   <div><dt>Delivery</dt><dd>{o.delivery === 'pickup' ? `Club pickup${o.contact.club ? `, ${o.contact.club}` : ''}` : [o.address?.line1, o.address?.line2, o.address?.city, o.address?.postcode].filter(Boolean).join(', ')}</dd></div>
                   {o.notes && <div><dt>Notes</dt><dd>{o.notes}</dd></div>}
-                  <div><dt>Placed</dt><dd>{new Date(o.createdAt).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' })}</dd></div>
+                  <div><dt>Placed</dt><dd>{day(o.createdAt)}</dd></div>
                 </dl>
               </div>
               <div className={s.card}>
@@ -78,6 +86,77 @@ export default function MerchOrderPage() {
         </section>
       </main>
       <SiteFooter />
+    </div>
+  );
+}
+
+// The latest artwork proof and the buyer's answer to it. Shown once a
+// proof exists; buttons only while it waits for an answer.
+function ProofCard({ order, onAnswered }) {
+  const events = order.events || [];
+  const proofAt = events.map((e) => e.status).lastIndexOf('proof_sent');
+  const [asking, setAsking] = useState(false);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  if (proofAt < 0) return null;
+  const proof = events[proofAt];
+  const answer = events.slice(proofAt + 1).find((e) => e.status === 'approved' || e.status === 'changes_requested');
+  const waiting = order.status === 'proof_sent';
+
+  async function send(decision) {
+    if (decision === 'changes' && note.trim().length < 3) return setError('Tell us what to change.');
+    setBusy(true);
+    setError('');
+    try {
+      const r = await fetch(`${API}/api/merch/orders/${encodeURIComponent(order.ref)}/proof-response`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ t: linkToken(), decision, note: decision === 'changes' ? note : '' }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Could not send your answer, try again.');
+      await onAnswered();
+    } catch (e) {
+      setError(e.message.charAt(0).toUpperCase() + e.message.slice(1));
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className={`${s.card} ${s.proof}`}>
+      <h2 className={s.h2}>Artwork proof</h2>
+      <p className={s.muted}>Sent {day(proof.at)}. This is how your logos will be printed.</p>
+      <a href={`${API}${proof.proofPath}`} target="_blank" rel="noreferrer" className={s.proofLink}>
+        <SmartImage src={`${API}${proof.proofPath}`} alt={`Artwork proof for order ${order.ref}`} className={s.proofImg}
+          width={1200} height={900} unoptimized priority />
+      </a>
+      {proof.note && <p className={s.note}><strong>Note from us:</strong> {proof.note}</p>}
+      {answer?.status === 'approved' && <p className={s.ok}>You approved this proof on {day(answer.at)}. Payment opens next.</p>}
+      {answer?.status === 'changes_requested' && (
+        <>
+          <p className={s.note}><strong>You asked for changes:</strong> {answer.note}</p>
+          <p className={s.muted}>We will send you a new proof by email.</p>
+        </>
+      )}
+      {waiting && (
+        <div className={s.answer}>
+          {asking && (
+            <label className={s.field}>
+              <span>What should we change?</span>
+              <textarea rows={3} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)}
+                placeholder="e.g. Make the back logo bigger and move the club name lower" />
+            </label>
+          )}
+          {error && <p className={s.err} role="alert">{error}</p>}
+          <div className={s.actions}>
+            {!asking && <button type="button" className={s.primary} disabled={busy} onClick={() => send('approve')}>{busy ? 'Sending…' : 'Approve proof'}</button>}
+            {!asking && <button type="button" className={s.ghost} disabled={busy} onClick={() => setAsking(true)}>Request changes</button>}
+            {asking && <button type="button" className={s.primary} disabled={busy} onClick={() => send('changes')}>{busy ? 'Sending…' : 'Send change request'}</button>}
+            {asking && <button type="button" className={s.ghost} disabled={busy} onClick={() => { setAsking(false); setError(''); }}>Cancel</button>}
+          </div>
+          <p className={s.muted}>Approving locks the design for printing. You pay only after approving.</p>
+        </div>
+      )}
     </div>
   );
 }

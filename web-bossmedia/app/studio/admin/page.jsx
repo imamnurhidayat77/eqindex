@@ -6,12 +6,13 @@ import { useConfirm } from '../../../components/ConfirmModal';
 import SearchSelect from '../../../components/SearchSelect';
 import QrPosterModal from '../../../components/QrPosterModal';
 import AdminSponsors from '../../../components/AdminSponsors';
+import AdminMerchOrders from '../../../components/AdminMerchOrders';
 import { nzdc, studio, studioFetch, useStudioUser } from '../../../lib/studio';
 import { fmtDay, payoutBreakdown } from '../../../lib/studio-format.mjs';
 import { useDocumentTitle } from '../../../lib/use-document-title';
 import formRow from '../../../components/FormRow.module.css';
 
-const SECTIONS = [['commission', 'Commission'], ['merch', 'Merch orders'], ['users', 'Users'], ['applications', 'Requests'], ['events', 'Events'], ['sponsors', 'Sponsors']];
+const SECTIONS = [['commission', 'Commission'], ['orders', 'Merch orders'], ['merch', 'Merch settings'], ['users', 'Users'], ['applications', 'Requests'], ['events', 'Events'], ['sponsors', 'Sponsors']];
 // Pickable roles (mirrors the API allowlist — PHOTOGRAPHER and ORGANIZER are
 // granted only by approving an application, never picked here).
 const ROLES = ['PUBLIC', 'RIDER', 'COACH', 'OWNER', 'BREEDER', 'ADMIN'];
@@ -66,6 +67,7 @@ function AdminBody() {
         ))}
       </div>
       {section === 'commission' && <Commission />}
+      {section === 'orders' && <AdminMerchOrders />}
       {section === 'merch' && <MerchSettings />}
       {section === 'users' && <Users selfId={user.id} />}
       {section === 'applications' && <Applications />}

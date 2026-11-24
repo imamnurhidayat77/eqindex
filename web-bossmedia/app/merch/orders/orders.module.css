@@ -31,3 +31,25 @@
 .itemTotal { color: #FFC400; font-weight: 800; }
 @media (max-width: 560px) { .item { grid-template-columns: minmax(0, 1fr) auto; } .itemStatus { grid-column: 1 / -1; grid-row: 2; } }
 @media (prefers-reduced-motion: reduce) { .item { transition: none; } }
+/* Artwork proof card */
+.proof { max-width: 760px; margin-bottom: 16px; }
+.proofLink { display: block; border-radius: 8px; overflow: hidden; background: #fff; border: 1px solid #2c2c2c; }
+.proofLink:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+.proofImg { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
+.note { margin: 0; color: #ddd; line-height: 1.6; overflow-wrap: anywhere; }
+.ok { margin: 0; padding: 10px 12px; background: #14210f; border-left: 2px solid #7fae5c; color: #cfe3bd; line-height: 1.6; }
+.err { margin: 0; color: #e08a8a; font-size: 12px; }
+.answer { display: grid; gap: 10px; }
+.field { display: grid; gap: 6px; color: #bbb; }
+.field textarea { width: 100%; padding: 10px 12px; background: #141414; color: #fff; border: 1px solid #333; border-radius: 8px; font: inherit; resize: vertical; }
+.field textarea:focus-visible { outline: 2px solid #FFC400; outline-offset: 1px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.primary, .ghost { min-height: 44px; padding: 0 18px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; transition: background 150ms ease-out, border-color 150ms ease-out, transform 150ms ease-out; }
+.primary { background: #FFC400; color: #101010; border: 0; }
+.primary:hover { background: #ffd24d; }
+.ghost { background: transparent; color: #fff; border: 1px solid #444; }
+.ghost:hover { border-color: #888; }
+.primary:active, .ghost:active { transform: scale(0.97); }
+.primary:disabled, .ghost:disabled { opacity: 0.55; cursor: default; }
+.primary:focus-visible, .ghost:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .primary, .ghost { transition: none; } .primary:active, .ghost:active { transform: none; } }

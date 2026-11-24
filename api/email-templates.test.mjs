@@ -20,6 +20,8 @@ const samples = {
   momentsLive: [{ name: 'Jessie G', eventName: 'E', link: 'http://x/m?e=1', forEvent: true }],
   purchaseClaim: [{ name: 'Jessie', link: 'http://x/reset?token=a' }],
   sponsorGift: [{ sponsor: 'Dunstan', slots: 5, scope: 'E · H', claimLink: 'http://x/reset?token=a' }],
+  merchProofReady: [{ name: 'Sam', ref: 'BM-ABC234', productLabel: 'Jacket', note: 'Logo <b>moved</b> up', link: 'http://x/merch/orders/BM-ABC234?t=a', proofUrl: 'http://x/p.jpg' }],
+  merchProofAnswered: [{ ref: 'BM-ABC234', buyerName: 'Sam', productLabel: 'Jacket', approved: false, note: 'bigger logo', link: 'http://x/studio/admin' }],
 };
 
 test('every template renders subject + text + branded html without leaks', () => {
@@ -39,4 +41,12 @@ test('pluralization and counts read naturally', () => {
   assert.match(t.acceptedIntake({ count: 1, eventName: 'E', skipped: [] }).subject, /^Got 1 photo —/);
   assert.match(t.acceptedIntake({ count: 3, eventName: 'E', skipped: [] }).subject, /^Got 3 photos —/);
   assert.match(t.momentsReject({ eventName: 'E', count: 1, reason: 'x' }).text, /1 photo /);
+});
+
+test('merch proof mails escape notes and say what happened', () => {
+  const ready = t.merchProofReady(...samples.merchProofReady);
+  assert.ok(!ready.html.includes('<b>moved</b>'), 'note is escaped');
+  assert.ok(ready.html.includes('http://x/p.jpg'), 'thumbnail');
+  assert.match(t.merchProofAnswered({ ...samples.merchProofAnswered[0], approved: true }).subject, /proof approved$/);
+  assert.match(t.merchProofAnswered(...samples.merchProofAnswered).subject, /changes requested$/);
 });
