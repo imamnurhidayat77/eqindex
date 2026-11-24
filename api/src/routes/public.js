@@ -7,6 +7,10 @@ const { EMAIL_RE, needRole, ownOrAdmin } = require('../lib/auth');
 const { throttled } = require('../lib/ratelimit');
 const { audit } = require('../lib/audit');
 const { budgetKindOf } = require('../lib/wallet');
+const { MERCH_BUDGET_LEFT_SQL } = require('./merch');
+// Budget left for sponsor listings: merch budgets also subtract the
+// discounts live merch orders hold (migration 111).
+const budgetLeftSql = (kind) => (kind === 'merch' ? MERCH_BUDGET_LEFT_SQL : '(b.agreed_cents - b.spent_cents)');
 const { resolveId } = require('../lib/resolve');
 const { canonCategoryKey, masterCategoryKeys } = require('../lib/categories');
 const { seriesCountFor } = require('./scoring');
@@ -85,7 +89,7 @@ module.exports = function mountPublicRoutes(app) {
            SELECT 1 FROM sponsor_budgets b
            WHERE b.sponsor_id = s.id AND b.status = 'active' AND (b.ends_on IS NULL OR b.ends_on >= CURRENT_DATE)
              AND b.discount_cents > 0
-             AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
+             AND ${budgetLeftSql(kind)} >= b.discount_cents
              AND ($1::UUID IS NULL OR b.event_id IS NULL OR b.event_id = $1)
              AND b.applies_to = $2
          )
@@ -120,7 +124,7 @@ module.exports = function mountPublicRoutes(app) {
        LEFT JOIN events e ON e.id = b.event_id
        WHERE b.status = 'active' AND (b.ends_on IS NULL OR b.ends_on >= CURRENT_DATE)
          AND s.is_active AND b.discount_cents > 0
-         AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
+         AND ${budgetLeftSql(kind)} >= b.discount_cents
          AND ($1::UUID IS NULL OR b.event_id IS NULL OR b.event_id = $1)
          AND b.applies_to = $2
        ORDER BY b.discount_cents DESC LIMIT 20`,

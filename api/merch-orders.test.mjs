@@ -123,3 +123,40 @@ test('order link tokens: buyer token and mail token open only their order', asyn
   assert.ok(!tokenOpens(a, ''));
   assert.ok(!tokenOpens(a, a.access_hash), 'the stored hash itself is not a token');
 });
+
+test('sponsor discount on a big order never passes the budget left', () => {
+  const { perItemSponsorCaps, splitSponsorDiscount } = require('./src/routes/merch.js');
+  const S1 = '33333333-3333-4333-8333-333333333333';
+  const S2 = '44444444-4444-4444-8444-444444444444';
+  const funded = {
+    [LOGO]: { sponsor_id: S1, budget_id: 'b1', discount_cents: 1000, left_cents: 3000 },
+    [S2]: { sponsor_id: S2, budget_id: 'b2', discount_cents: 500, left_cents: 100000 },
+  };
+  const slots = { back: LOGO, 'chest-left': S2 };
+  const caps = perItemSponsorCaps(slots, funded, 20, true);
+  assert.deepEqual(caps, { [S1]: 150, [S2]: 5000 });
+  assert.equal(perItemSponsorCaps({ back: LOGO, 'chest-left': LOGO }, funded, 20, false)[S1], 75, 'two slots share the budget');
+
+  const lines = [{ size: 'M', qty: 20 }];
+  const settings = m.merchOrderSettings({ sponsorCapCents: 1000000, maxDiscountPct: 90 });
+  const quote = m.quoteMerchOrder('jacket', slots, lines, {
+    strict: true,
+    discountFor: (id) => Math.min(funded[id].discount_cents, caps[funded[id].sponsor_id]),
+    sponsorOf: (id) => funded[id]?.sponsor_id || id,
+  }, 'courier', settings);
+  const split = splitSponsorDiscount(quote, slots, (id) => funded[id]?.sponsor_id);
+  assert.ok(split[S1] <= 3000, `sponsor 1 holds ${split[S1]}, budget left 3000`);
+  assert.equal(split[S1] + split[S2], quote.discountCents, 'parts sum to the order discount');
+});
+
+test('splitting a capped discount keeps exact cents', () => {
+  const { splitSponsorDiscount } = require('./src/routes/merch.js');
+  const quote = { discountCents: 100, item: { lines: [
+    { kind: 'sponsor', slot: 'a', cents: -1000 }, { kind: 'sponsor', slot: 'b', cents: -1000 }, { kind: 'sponsor', slot: 'c', cents: -1000 },
+  ] } };
+  const split = splitSponsorDiscount(quote, { a: 'x', b: 'y', c: 'z' }, (v) => v);
+  assert.equal(split.x + split.y + split.z, 100);
+  assert.ok(Object.values(split).every((c) => c === 33 || c === 34));
+  assert.deepEqual(splitSponsorDiscount({ discountCents: 0, item: { lines: [] } }, {}, (v) => v), {});
+});
+

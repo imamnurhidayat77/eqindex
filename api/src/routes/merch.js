@@ -131,21 +131,75 @@ function parseOrderInput(body, m) {
   };
 }
 
-// Funded discount per sponsor logo: the best active merchandise budget
-// (applies_to merch, migration 109) of its sponsor with enough left for one
-// more discount. Photo budgets never discount merch. Unfunded logos discount nothing.
-async function sponsorDiscounts(logoIds) {
+// Sponsor budgets for merch (migration 111): an order holds its sponsor
+// discount when placed, spends it when paid, releases it on refund. Budget
+// left (SQL, budget alias b) = agreed - spent - active holds; a hold stops
+// counting once expired (14 days after proof approval, unpaid).
+const MERCH_BUDGET_LEFT_SQL = `(b.agreed_cents - b.spent_cents - COALESCE((SELECT SUM(h.cents) FROM merch_sponsor_holds h
+  WHERE h.budget_id = b.id AND h.status = 'held' AND (h.expires_at IS NULL OR h.expires_at > NOW())), 0))`;
+const HOLD_DAYS_TO_PAY = 14;
+
+// Funded discount per sponsor logo: the best active merch budget (applies_to
+// merch, migration 109) of its sponsor with enough left for one more item.
+// Photo budgets never discount merch. Unfunded logos discount nothing.
+async function sponsorDiscounts(db, logoIds) {
   if (!logoIds.length) return {};
-  const { rows } = await pool.query(
+  const { rows } = await db.query(
     `SELECT l.id AS logo_id, s.id AS sponsor_id, s.name AS sponsor_name,
-       COALESCE((SELECT MAX(b.discount_cents) FROM sponsor_budgets b
-         WHERE b.sponsor_id = s.id AND b.status = 'active' AND (b.ends_on IS NULL OR b.ends_on >= CURRENT_DATE)
-           AND b.discount_cents > 0 AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
-           AND b.applies_to = 'merch'), 0) AS discount_cents
+       pick.id AS budget_id, COALESCE(pick.discount_cents, 0) AS discount_cents, COALESCE(pick.left_cents, 0) AS left_cents
      FROM sponsor_logos l JOIN sponsors s ON s.id = l.sponsor_id
+     LEFT JOIN LATERAL (
+       SELECT b.id, b.discount_cents, ${MERCH_BUDGET_LEFT_SQL} AS left_cents FROM sponsor_budgets b
+       WHERE b.sponsor_id = s.id AND b.status = 'active' AND (b.ends_on IS NULL OR b.ends_on >= CURRENT_DATE)
+         AND b.discount_cents > 0 AND b.applies_to = 'merch' AND ${MERCH_BUDGET_LEFT_SQL} >= b.discount_cents
+       ORDER BY b.discount_cents DESC, b.id LIMIT 1
+     ) pick ON TRUE
      WHERE l.id = ANY($1::UUID[]) AND l.is_active AND s.is_active AND s.kind = 'official'`,
     [logoIds]);
-  return Object.fromEntries(rows.map((r) => [r.logo_id, r]));
+  return Object.fromEntries(rows.map((r) => [r.logo_id, { ...r, discount_cents: Number(r.discount_cents), left_cents: Number(r.left_cents) }]));
+}
+
+// Largest per-item discount each sponsor may give on this order so that
+// units x discount never passes its budget left. A sponsor on two slots
+// counts twice unless one discount per sponsor per item applies.
+function perItemSponsorCaps(slots, funded, units, oncePerItem) {
+  const slotsPerSponsor = {};
+  for (const v of Object.values(slots || {})) {
+    const f = funded[v];
+    if (!f?.budget_id) continue;
+    slotsPerSponsor[f.sponsor_id] = oncePerItem ? 1 : (slotsPerSponsor[f.sponsor_id] || 0) + 1;
+  }
+  const caps = {};
+  for (const f of Object.values(funded)) {
+    const n = slotsPerSponsor[f.sponsor_id];
+    if (n) caps[f.sponsor_id] = Math.floor(f.left_cents / (Math.max(1, units) * n));
+  }
+  return caps;
+}
+
+// Splits the order's sponsor discount (after the per-item and per-order
+// caps) between sponsors in proportion to what each funds per item.
+// Largest remainder keeps the parts summing exactly to the discount.
+function splitSponsorDiscount(quote, slots, sponsorOf) {
+  const weight = {};
+  for (const line of quote?.item?.lines || []) {
+    if (line.kind !== 'sponsor' || !(line.cents < 0)) continue;
+    const key = sponsorOf(slots[line.slot]);
+    if (key) weight[key] = (weight[key] || 0) - line.cents;
+  }
+  const keys = Object.keys(weight).sort();
+  const total = keys.reduce((n, k) => n + weight[k], 0);
+  const discount = Number(quote?.discountCents) || 0;
+  if (!total || !discount) return {};
+  const parts = keys.map((k) => ({ k, exact: (discount * weight[k]) / total }));
+  const out = Object.fromEntries(parts.map((x) => [x.k, Math.floor(x.exact)]));
+  let rest = discount - Object.values(out).reduce((n, c) => n + c, 0);
+  for (const x of [...parts].sort((a, b) => (b.exact % 1) - (a.exact % 1) || (a.k < b.k ? -1 : 1))) {
+    if (rest <= 0) break;
+    out[x.k] += 1;
+    rest -= 1;
+  }
+  return out;
 }
 
 function publicOrder(o, lines) {
@@ -246,6 +300,52 @@ function paymentProblem(o, session) {
   return null;
 }
 
+// Paid: each held discount moves into its budget's spent_cents. A hold
+// that expired meanwhile may meet a budget other orders now hold or spent:
+// only what is left is spent, and the platform carries the rest.
+async function spendSponsorHolds(client, orderId) {
+  const holds = (await client.query(
+    `SELECT budget_id, cents FROM merch_sponsor_holds WHERE order_id = $1 AND status = 'held' ORDER BY budget_id`, [orderId])).rows;
+  for (const h of holds) {
+    await client.query('SELECT id FROM sponsor_budgets WHERE id = $1 FOR UPDATE', [h.budget_id]);
+    // Left for this order: other orders' live holds stay untouched.
+    const left = (await client.query(
+      `SELECT b.agreed_cents - b.spent_cents - COALESCE((SELECT SUM(o.cents) FROM merch_sponsor_holds o
+         WHERE o.budget_id = b.id AND o.order_id <> $2 AND o.status = 'held' AND (o.expires_at IS NULL OR o.expires_at > NOW())), 0) AS left_cents
+       FROM sponsor_budgets b WHERE b.id = $1`, [h.budget_id, orderId])).rows[0]?.left_cents;
+    const spent = Math.min(Number(h.cents), Math.max(0, Number(left) || 0));
+    await client.query('UPDATE sponsor_budgets SET spent_cents = spent_cents + $2 WHERE id = $1', [h.budget_id, spent]);
+    await client.query(
+      `UPDATE merch_sponsor_holds SET status = 'spent', cents = $3, updated_at = NOW() WHERE order_id = $1 AND budget_id = $2`,
+      [orderId, h.budget_id, spent]);
+  }
+}
+
+// Refunded: what the order spent goes back to each budget.
+async function releaseSponsorSpend(orderId) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const holds = (await client.query(
+      `SELECT budget_id, cents, status FROM merch_sponsor_holds WHERE order_id = $1 AND status IN ('held', 'spent')
+       ORDER BY budget_id FOR UPDATE`, [orderId])).rows;
+    for (const h of holds) {
+      if (h.status === 'spent') {
+        await client.query('UPDATE sponsor_budgets SET spent_cents = GREATEST(0, spent_cents - $2) WHERE id = $1', [h.budget_id, h.cents]);
+      }
+      await client.query(
+        `UPDATE merch_sponsor_holds SET status = 'released', updated_at = NOW() WHERE order_id = $1 AND budget_id = $2`,
+        [orderId, h.budget_id]);
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[merch.refund] sponsor budget release failed:', e.message);
+  } finally {
+    client.release();
+  }
+}
+
 // checkout.session.completed for a merch order (called from the Stripe
 // webhook in media.js). Always resolves: the webhook answers 200 either way.
 async function markMerchOrderPaid(req, session) {
@@ -269,6 +369,7 @@ async function markMerchOrderPaid(req, session) {
     if (moved.rowCount) {
       await client.query(`INSERT INTO merch_order_events (order_id, status, note) VALUES ($1, 'paid', $2)`,
         [o.id, `Stripe ${session.payment_intent || session.id}`]);
+      await spendSponsorHolds(client, o.id);
     }
     await client.query('COMMIT');
   } catch (e) {
@@ -305,6 +406,7 @@ async function markMerchOrderRefunded(req, paymentIntentId) {
   if (!r.rowCount) return;
   await pool.query(`INSERT INTO merch_order_events (order_id, status, note) VALUES ($1, 'refunded', $2)`,
     [r.rows[0].id, `Stripe ${paymentIntentId}`]);
+  await releaseSponsorSpend(r.rows[0].id);
   audit(req, 'merch.order.refunded', 'merch_order', r.rows[0].id, { ref, pi: String(paymentIntentId) });
 }
 
@@ -381,23 +483,36 @@ module.exports = function mountMerchRoutes(app) {
         [v.personalLogoIds, req.authUser.id]);
       if (own.rowCount !== v.personalLogoIds.length) return res.status(403).json({ error: 'a saved logo is not available to you' });
     }
-    const funded = await sponsorDiscounts(v.sponsorLogoIds);
-    const missing = v.sponsorLogoIds.filter((id) => !funded[id]);
-    if (missing.length) return res.status(400).json({ error: 'a sponsor logo is no longer available, pick another' });
     const settings = await loadSettings(m);
-    const quote = m.quoteMerchOrder(v.product.id, v.slots, v.lines, {
-      strict: true,
-      discountFor: (id) => Number(funded[id]?.discount_cents) || 0,
-      sponsorOf: (id) => funded[id]?.sponsor_id || id,
-      labelFor: (id) => funded[id]?.sponsor_name || (String(id).startsWith('club:') ? 'Club logo' : 'Your logo'),
-    }, v.delivery, settings);
-    if (!quote) return res.status(400).json({ error: 'this delivery option is not available' });
+    const units = v.lines.reduce((n, l) => n + l.qty, 0);
 
     const secret = newSecret();
     const client = await pool.connect();
     let order;
+    let quote;
     try {
       await client.query('BEGIN');
+      // Lock this order's sponsor budgets first, so two orders placed at the
+      // same moment can never both take the same budget left.
+      if (v.sponsorLogoIds.length) {
+        await client.query(
+          `SELECT b.id FROM sponsor_budgets b JOIN sponsor_logos l ON l.sponsor_id = b.sponsor_id
+           WHERE l.id = ANY($1::UUID[]) AND b.applies_to = 'merch' ORDER BY b.id FOR UPDATE OF b`, [v.sponsorLogoIds]);
+      }
+      const funded = await sponsorDiscounts(client, v.sponsorLogoIds);
+      if (v.sponsorLogoIds.some((id) => !funded[id])) {
+        const e = new Error('a sponsor logo is no longer available, pick another'); e.status = 400; throw e;
+      }
+      const caps = perItemSponsorCaps(v.slots, funded, units, settings.sponsorDiscountOncePerItem);
+      const sponsorOf = (id) => funded[id]?.sponsor_id || null;
+      quote = m.quoteMerchOrder(v.product.id, v.slots, v.lines, {
+        strict: true,
+        discountFor: (id) => Math.min(funded[id]?.discount_cents || 0, caps[funded[id]?.sponsor_id] ?? 0),
+        sponsorOf: (id) => sponsorOf(id) || id,
+        labelFor: (id) => funded[id]?.sponsor_name || (String(id).startsWith('club:') ? 'Club logo' : 'Your logo'),
+      }, v.delivery, settings);
+      if (!quote) { const e = new Error('this delivery option is not available'); e.status = 400; throw e; }
+
       for (let attempt = 0; attempt < 5 && !order; attempt++) {
         const r = await client.query(
           `INSERT INTO merch_orders (ref, access_hash, buyer_user_id, buyer_email, buyer_name, buyer_phone, club_name,
@@ -410,6 +525,12 @@ module.exports = function mountMerchRoutes(app) {
         order = r.rows[0];
       }
       if (!order) throw new Error('could not allocate an order reference');
+      const budgetOf = Object.fromEntries(Object.values(funded).filter((f) => f.budget_id).map((f) => [f.sponsor_id, f.budget_id]));
+      for (const [sponsorId, cents] of Object.entries(splitSponsorDiscount(quote, v.slots, sponsorOf))) {
+        if (cents > 0 && budgetOf[sponsorId]) {
+          await client.query('INSERT INTO merch_sponsor_holds (order_id, budget_id, cents) VALUES ($1, $2, $3)', [order.id, budgetOf[sponsorId], cents]);
+        }
+      }
       for (const l of v.lines) {
         await client.query('INSERT INTO merch_order_lines (order_id, size, qty) VALUES ($1, $2, $3)', [order.id, l.size, l.qty]);
       }
@@ -503,6 +624,12 @@ module.exports = function mountMerchRoutes(app) {
       if (moved.rowCount) {
         await client.query('INSERT INTO merch_order_events (order_id, status, note, actor_user_id) VALUES ($1, $2, $3, $4)',
           [o.id, decision, note, req.authUser?.id || null]);
+        // Approved: the sponsor discount stays held for HOLD_DAYS_TO_PAY.
+        if (decision === 'approved') {
+          await client.query(
+            `UPDATE merch_sponsor_holds SET expires_at = NOW() + make_interval(days => $2), updated_at = NOW()
+             WHERE order_id = $1 AND status = 'held'`, [o.id, HOLD_DAYS_TO_PAY]);
+        }
       }
       await client.query('COMMIT');
     } catch (e) {
@@ -648,3 +775,6 @@ module.exports.mailToken = mailToken;
 module.exports.paymentProblem = paymentProblem;
 module.exports.markMerchOrderPaid = markMerchOrderPaid;
 module.exports.markMerchOrderRefunded = markMerchOrderRefunded;
+module.exports.perItemSponsorCaps = perItemSponsorCaps;
+module.exports.splitSponsorDiscount = splitSponsorDiscount;
+module.exports.MERCH_BUDGET_LEFT_SQL = MERCH_BUDGET_LEFT_SQL;

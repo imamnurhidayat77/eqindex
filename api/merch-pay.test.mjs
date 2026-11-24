@@ -17,6 +17,9 @@ const order = {
   buyer_name: 'Sam Rider', buyer_email: 'sam@example.com', product_id: 'jacket', quote: { product: { label: 'Team jacket' } },
 };
 const events = [];
+// One sponsor budget with NZ$25 left and a NZ$40 hold that expired while unpaid.
+const budget = { agreed: 10000, spent: 7500 };
+const holds = [{ budget_id: 'b1', cents: 4000, status: 'held' }];
 const query = async (sql, params = []) => {
   if (/^SELECT \* FROM merch_orders WHERE ref/.test(sql)) return { rows: params[0] === order.ref ? [order] : [] };
   if (/UPDATE merch_orders SET status = 'paid'/.test(sql)) {
@@ -26,6 +29,14 @@ const query = async (sql, params = []) => {
   }
   if (/INSERT INTO merch_order_events/.test(sql)) { events.push(params); return { rowCount: 1, rows: [] }; }
   if (/SELECT email FROM users WHERE role = 'ADMIN'/.test(sql)) return { rows: [{ email: 'admin@example.com' }] };
+  if (/SELECT budget_id, cents FROM merch_sponsor_holds/.test(sql)) return { rows: holds.filter((h) => h.status === 'held') };
+  if (/AS left_cents/.test(sql)) return { rows: [{ left_cents: budget.agreed - budget.spent }] };
+  if (/UPDATE sponsor_budgets SET spent_cents = spent_cents \+/.test(sql)) { budget.spent += params[1]; return { rowCount: 1 }; }
+  if (/UPDATE merch_sponsor_holds SET status = 'spent'/.test(sql)) {
+    const h = holds.find((x) => x.budget_id === params[1]);
+    Object.assign(h, { status: 'spent', cents: params[2] });
+    return { rowCount: 1 };
+  }
   return { rowCount: 0, rows: [] };
 };
 stub('./src/db.js', { query, connect: async () => ({ query, release() {} }) });
@@ -56,4 +67,10 @@ test('a repeated webhook pays once and mails once', async () => {
   assert.equal(order.status, 'paid');
   assert.equal(events.length, 1);
   assert.deepEqual(sent, ['sam@example.com', 'admin@example.com']);
+});
+
+test('paying spends the held sponsor discount once, never past the budget', () => {
+  assert.equal(holds[0].status, 'spent');
+  assert.equal(holds[0].cents, 2500, 'only what was left is spent, the platform carries the rest');
+  assert.equal(budget.spent, budget.agreed);
 });
