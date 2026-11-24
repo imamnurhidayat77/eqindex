@@ -348,9 +348,27 @@ function merchOrderPaidAdmin({ ref, buyerName, productLabel, totalText, link }) 
   };
 }
 
+// Merch order shipped (courier) or ready to collect (club pickup).
+function merchOrderShipped({ name, ref, productLabel, pickup, club, tracking, link }) {
+  const where = pickup ? `ready to collect${club ? ` from ${club}` : ''}` : 'on its way';
+  return {
+    subject: pickup ? `Order ${ref} is ready to collect` : `Order ${ref} has shipped`,
+    text: `Hi ${name || 'there'},\n\nYour ${productLabel} order is ${where}.${tracking ? `\n\n${pickup ? 'Pickup details' : 'Tracking'}: ${tracking}` : ''}\n\nOrder details: ${link}\n\nReference: ${ref}`,
+    html: layout({
+      preheader: pickup ? 'Your order is ready to collect.' : 'Your order is on its way.',
+      eyebrow: `ORDER ${escHtml(ref)}`,
+      title: pickup ? 'Ready to collect.' : 'Your order has shipped.',
+      body: p(`Hi ${escHtml(firstName(name))}, your ${escHtml(productLabel)} order is ${escHtml(where)}.`) +
+        (tracking ? p(`<strong>${pickup ? 'Pickup details' : 'Tracking'}:</strong> ${escHtml(tracking)}`) : '') +
+        btn(link, 'View my order') +
+        fallbackLink(link),
+    }),
+  };
+}
+
 module.exports = {
   verifyEmail,
   claimAccount, resetPassword, unknownEvent, noAttachments, overLimits,
   verifySender, acceptedIntake, momentsReject, momentsLive, purchaseClaim,
-  sponsorGift, merchOrderReceived, merchProofReady, merchProofAnswered, merchOrderPaid, merchOrderPaidAdmin,
+  sponsorGift, merchOrderReceived, merchProofReady, merchProofAnswered, merchOrderPaid, merchOrderPaidAdmin, merchOrderShipped,
 };

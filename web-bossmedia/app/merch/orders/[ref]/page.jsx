@@ -40,6 +40,7 @@ export default function MerchOrderPage() {
   const product = o ? merchProduct(o.productId) : null;
   const step = o ? orderStepIndex(o.status) : -1;
   const q = o?.quote || {};
+  const shipped = o?.events?.findLast((e) => e.status === 'shipped');
   return (
     <div className="gallery-page">
       <SiteHeader />
@@ -56,7 +57,7 @@ export default function MerchOrderPage() {
           {o && (
             <div className={s.layout}>
               <div className={s.card}>
-                <p className={s.status}>{orderStatusLabel(o.status)}</p>
+                <p className={s.status}>{orderStatusLabel(o.status, o.delivery)}</p>
                 {step >= 0 && (
                   <ol className={s.steps} aria-label="Order progress">
                     {ORDER_STEPS.map((st, i) => (
@@ -72,6 +73,7 @@ export default function MerchOrderPage() {
                   ))}
                   <div><dt>Delivery</dt><dd>{o.delivery === 'pickup' ? `Club pickup${o.contact.club ? `, ${o.contact.club}` : ''}` : [o.address?.line1, o.address?.line2, o.address?.city, o.address?.postcode].filter(Boolean).join(', ')}</dd></div>
                   {o.notes && <div><dt>Notes</dt><dd>{o.notes}</dd></div>}
+                  {shipped && <div><dt>{o.delivery === 'pickup' ? 'Ready' : 'Shipped'}</dt><dd>{day(shipped.at)}{shipped.note ? `, ${shipped.note}` : ''}</dd></div>}
                   <div><dt>Placed</dt><dd>{day(o.createdAt)}</dd></div>
                 </dl>
               </div>

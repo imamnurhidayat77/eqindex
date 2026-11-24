@@ -410,6 +410,19 @@ async function markMerchOrderRefunded(req, paymentIntentId) {
   audit(req, 'merch.order.refunded', 'merch_order', r.rows[0].id, { ref, pi: String(paymentIntentId) });
 }
 
+// Fulfilment (F5): after payment the admin moves the order forward one
+// step at a time. For club pickup, shipped means ready to collect.
+const FULFILMENT_NEXT = { paid: 'in_production', in_production: 'shipped', shipped: 'delivered' };
+const TRACKING_MAX = 200;
+
+// Admin's status change: only the next step, with an optional note
+// (tracking for courier). Returns { to, note } or { error }.
+function parseFulfilment(from, body) {
+  const to = String(body?.status || '');
+  if (FULFILMENT_NEXT[from] !== to) return { error: `an order that is ${from} cannot move to ${to || 'that status'}` };
+  return { to, note: str(body?.note, TRACKING_MAX) || null };
+}
+
 module.exports = function mountMerchRoutes(app) {
   // Live order settings, so the designer's estimate matches the server.
   app.get('/api/merch/settings', asyncH(async (req, res) => {
@@ -684,13 +697,57 @@ module.exports = function mountMerchRoutes(app) {
   app.get('/admin/merch/orders', needRole('ADMIN'), asyncH(async (req, res) => {
     const status = String(req.query.status || '');
     const { rows } = await pool.query(
-      `SELECT o.ref, o.status, o.product_id, o.quote->'product'->>'label' AS product_label, o.buyer_name, o.buyer_email,
+      `SELECT o.ref, o.status, o.delivery, o.product_id, o.quote->'product'->>'label' AS product_label, o.buyer_name, o.buyer_email,
          o.club_name, o.total_cents, o.created_at, o.updated_at,
          (SELECT COALESCE(SUM(qty), 0) FROM merch_order_lines l WHERE l.order_id = o.id)::INT AS units
        FROM merch_orders o WHERE ($1 = '' OR o.status = $1) ORDER BY o.created_at DESC LIMIT 200`,
       [ORDER_STATUSES.includes(status) ? status : '']);
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ data: rows });
+  }));
+
+  // Admin: next fulfilment step (in production, shipped with tracking,
+  // delivered). Shipping emails the buyer.
+  app.post('/admin/merch/orders/:ref/status', needRole('ADMIN'), asyncH(async (req, res) => {
+    const ref = String(req.params.ref || '').toUpperCase();
+    const o = REF_RE.test(ref) ? (await pool.query('SELECT * FROM merch_orders WHERE ref = $1', [ref])).rows[0] : null;
+    if (!o) return res.status(404).json({ error: 'order not found' });
+    const { to, note, error } = parseFulfilment(o.status, req.body);
+    if (error) return res.status(409).json({ error });
+    const client = await pool.connect();
+    let moved;
+    try {
+      await client.query('BEGIN');
+      moved = await client.query(
+        'UPDATE merch_orders SET status = $2, updated_at = NOW() WHERE id = $1 AND status = $3 RETURNING id', [o.id, to, o.status]);
+      if (moved.rowCount) {
+        await client.query('INSERT INTO merch_order_events (order_id, status, note, actor_user_id) VALUES ($1, $2, $3, $4)',
+          [o.id, to, note, req.authUser?.id || null]);
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
+    if (!moved.rowCount) return res.status(409).json({ error: 'the order changed, reload and try again' });
+    let mailed = null;
+    if (to === 'shipped') {
+      mailed = true;
+      try {
+        const t = require('../lib/emailTemplates').merchOrderShipped({
+          name: o.buyer_name, ref: o.ref, productLabel: productLabelOf(o), pickup: o.delivery === 'pickup',
+          club: o.club_name, tracking: note, link: `${APP_URL}/merch/orders/${o.ref}?t=${mailToken(o)}`,
+        });
+        await require('../lib/mailer').sendMail({ to: o.buyer_email, subject: t.subject, text: t.text, html: t.html });
+      } catch (e) {
+        mailed = false;
+        console.error('[merch.ship] buyer mail failed:', e.message);
+      }
+    }
+    audit(req, `merch.order.${to}`, 'merch_order', o.id, { ref: o.ref });
+    res.json({ data: { status: to, mailed } });
   }));
 
   // Admin: send a proof. The image is re-encoded to a JPEG (max 2400 px,
@@ -758,7 +815,7 @@ module.exports = function mountMerchRoutes(app) {
   app.get('/api/my/merch-orders', asyncH(async (req, res) => {
     if (!req.authUser) return res.status(401).json({ error: 'login required' });
     const { rows } = await pool.query(
-      `SELECT o.ref, o.status, o.product_id, o.color, o.total_cents, o.created_at,
+      `SELECT o.ref, o.status, o.delivery, o.product_id, o.color, o.total_cents, o.created_at,
          (SELECT COALESCE(SUM(qty), 0) FROM merch_order_lines l WHERE l.order_id = o.id)::INT AS units
        FROM merch_orders o WHERE o.buyer_user_id = $1 ORDER BY o.created_at DESC LIMIT 50`,
       [req.authUser.id]);
@@ -778,3 +835,4 @@ module.exports.markMerchOrderRefunded = markMerchOrderRefunded;
 module.exports.perItemSponsorCaps = perItemSponsorCaps;
 module.exports.splitSponsorDiscount = splitSponsorDiscount;
 module.exports.MERCH_BUDGET_LEFT_SQL = MERCH_BUDGET_LEFT_SQL;
+module.exports.parseFulfilment = parseFulfilment;

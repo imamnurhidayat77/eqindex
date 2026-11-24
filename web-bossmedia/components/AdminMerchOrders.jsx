@@ -14,6 +14,13 @@ const STATUSES = ['submitted', 'artwork_review', 'changes_requested', 'proof_sen
   'paid', 'in_production', 'shipped', 'delivered', 'cancelled', 'refunded'];
 const PROOF_FROM = ['submitted', 'artwork_review', 'changes_requested', 'proof_sent'];
 const PROOF_MAX_BYTES = 15 * 1024 * 1024;
+// After payment: the one next step and its button. Pickup orders are
+// collected at the club instead of shipped.
+const FULFILMENT_STEPS = {
+  paid: { to: 'in_production', label: () => 'Mark in production' },
+  in_production: { to: 'shipped', label: (pickup) => (pickup ? 'Mark ready to collect' : 'Mark shipped'), note: true },
+  shipped: { to: 'delivered', label: (pickup) => (pickup ? 'Mark collected' : 'Mark delivered') },
+};
 const statusName = (st) => st.charAt(0).toUpperCase() + st.slice(1).replace(/_/g, ' ');
 const day = (d) => new Date(d).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' });
 const logoName = (v) => (String(v).startsWith('club:') ? 'Club logo' : String(v).startsWith('mlogo:') ? 'Buyer upload'
@@ -113,9 +120,9 @@ function OrderDetail({ orderRef, onChanged }) {
           ))}
         </ol>
       </div>
-      {PROOF_FROM.includes(o.status)
-        ? <SendProof orderRef={o.ref} resend={o.status === 'proof_sent'} onSent={() => { load(); onChanged(); }} />
-        : <p className="st-csub" style={{ marginTop: 12 }}>No proof can be sent at this stage ({statusName(o.status).toLowerCase()}).</p>}
+      {PROOF_FROM.includes(o.status) && <SendProof orderRef={o.ref} resend={o.status === 'proof_sent'} onSent={() => { load(); onChanged(); }} />}
+      {FULFILMENT_STEPS[o.status] && <NextStep order={o} onMoved={() => { load(); onChanged(); }} />}
+      {o.status === 'approved' && <p className="st-csub" style={{ marginTop: 12 }}>Proof approved. Waiting for the buyer to pay.</p>}
     </div>
   );
 }
@@ -158,3 +165,39 @@ function SendProof({ orderRef, resend, onSent }) {
     </form>
   );
 }
+
+function NextStep({ order, onMoved }) {
+  const notify = useNotify();
+  const step = FULFILMENT_STEPS[order.status];
+  const pickup = order.delivery === 'pickup';
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function move(e) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const j = await studioFetch(`/admin/merch/orders/${order.ref}/status`, { method: 'POST', body: { status: step.to, note } });
+      if (j.data?.mailed === false) notify('Status saved, but the email failed. Let the buyer know yourself.', true);
+      else notify(j.data?.mailed ? 'Status saved, the buyer has been emailed' : 'Status saved');
+      setNote('');
+      onMoved();
+    } catch (err) { notify(err.message, true); }
+    setBusy(false);
+  }
+
+  return (
+    <form className={s.send} onSubmit={move}>
+      <h4 className={s.h4}>Next step</h4>
+      {step.note && (
+        <label className={s.field}><span>{pickup ? 'Pickup details for the buyer (optional)' : 'Courier and tracking number (optional)'}</span>
+          <input type="text" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)}
+            placeholder={pickup ? 'e.g. At the club office, Saturdays 9 to 12' : 'e.g. NZ Post, tracking AB123456789NZ'} />
+        </label>
+      )}
+      {step.note && <p className={s.hint}>The buyer is emailed when you save this step.</p>}
+      <div><button className="st-btn" type="submit" disabled={busy}>{busy ? 'Saving…' : step.label(pickup)}</button></div>
+    </form>
+  );
+}
+

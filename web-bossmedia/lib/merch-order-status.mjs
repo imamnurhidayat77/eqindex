@@ -22,7 +22,11 @@ const LABELS = {
   refunded: 'Refunded',
 };
 
-export const orderStatusLabel = (status) => LABELS[status] || 'Unknown status';
+// Club pickup orders are never shipped: they become ready to collect.
+const PICKUP_LABELS = { shipped: 'Ready to collect at your club', delivered: 'Collected' };
+
+export const orderStatusLabel = (status, delivery) =>
+  (delivery === 'pickup' && PICKUP_LABELS[status]) || LABELS[status] || 'Unknown status';
 
 // Index of the current step, or -1 for cancelled/refunded/unknown.
 export function orderStepIndex(status) {

@@ -23,3 +23,4 @@
 .send { display: grid; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #2c2c2c; max-width: 560px; }
 .field { display: grid; gap: 6px; font-size: 13px; color: #bbb; }
 .field textarea { width: 100%; font: inherit; resize: vertical; }
+.hint { margin: 0; font-size: 12px; color: #999; }

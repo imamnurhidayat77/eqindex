@@ -25,7 +25,7 @@ export default function MyMerchOrdersPage() {
     const guest = Promise.all(saved.map((o) => fetch(`${API}/api/merch/orders/${encodeURIComponent(o.ref)}?t=${encodeURIComponent(o.token)}`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => (j?.data ? {
-        ref: j.data.ref, status: j.data.status, product_id: j.data.productId, total_cents: j.data.totalCents,
+        ref: j.data.ref, status: j.data.status, delivery: j.data.delivery, product_id: j.data.productId, total_cents: j.data.totalCents,
         created_at: j.data.createdAt, units: j.data.lines.reduce((n, l) => n + l.qty, 0), token: o.token,
       } : null))
       .catch(() => null)));
@@ -55,7 +55,7 @@ export default function MyMerchOrdersPage() {
                 <li key={r.ref}>
                   <Link className={s.item} href={`/merch/orders/${r.ref}${r.token ? `?t=${encodeURIComponent(r.token)}` : ''}`}>
                     <span><strong>{r.ref}</strong><small>{merchProduct(r.product_id)?.label || r.product_id} · {r.units} items</small></span>
-                    <span className={s.itemStatus}>{orderStatusLabel(r.status)}</span>
+                    <span className={s.itemStatus}>{orderStatusLabel(r.status, r.delivery)}</span>
                     <span className={s.itemTotal}>{nzd(r.total_cents)}</span>
                   </Link>
                 </li>

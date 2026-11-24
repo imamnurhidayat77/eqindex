@@ -18,3 +18,10 @@ test('steps progress in order and end states are off the track', () => {
   assert.equal(orderStepIndex('delivered'), ORDER_STEPS.length - 1);
   assert.equal(orderStepIndex('cancelled'), -1);
 });
+
+test('club pickup orders read as collected, not shipped', () => {
+  assert.equal(orderStatusLabel('shipped', 'pickup'), 'Ready to collect at your club');
+  assert.equal(orderStatusLabel('shipped', 'courier'), 'Shipped');
+  assert.equal(orderStatusLabel('paid', 'pickup'), orderStatusLabel('paid'));
+});
+

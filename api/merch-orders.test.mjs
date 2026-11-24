@@ -160,3 +160,12 @@ test('splitting a capped discount keeps exact cents', () => {
   assert.deepEqual(splitSponsorDiscount({ discountCents: 0, item: { lines: [] } }, {}, (v) => v), {});
 });
 
+test('fulfilment moves one step at a time', () => {
+  const { parseFulfilment } = require('./src/routes/merch.js');
+  assert.deepEqual(parseFulfilment('paid', { status: 'in_production' }), { to: 'in_production', note: null });
+  assert.equal(parseFulfilment('in_production', { status: 'shipped', note: ' NZ Post AB123 ' }).note, 'NZ Post AB123');
+  assert.ok(parseFulfilment('approved', { status: 'in_production' }).error, 'unpaid orders never go to production');
+  assert.ok(parseFulfilment('paid', { status: 'delivered' }).error, 'no skipping steps');
+  assert.ok(parseFulfilment('delivered', { status: 'shipped' }).error, 'no going back');
+});
+

@@ -21,6 +21,7 @@ const samples = {
   purchaseClaim: [{ name: 'Jessie', link: 'http://x/reset?token=a' }],
   sponsorGift: [{ sponsor: 'Dunstan', slots: 5, scope: 'E · H', claimLink: 'http://x/reset?token=a' }],
   merchProofReady: [{ name: 'Sam', ref: 'BM-ABC234', productLabel: 'Jacket', note: 'Logo <b>moved</b> up', link: 'http://x/merch/orders/BM-ABC234?t=a', proofUrl: 'http://x/p.jpg' }],
+  merchOrderShipped: [{ name: 'Sam', ref: 'BM-ABC234', productLabel: 'Jacket', pickup: false, club: null, tracking: 'NZ Post AB123', link: 'http://x/o' }],
   merchOrderPaid: [{ name: 'Sam', ref: 'BM-ABC234', productLabel: 'Jacket', totalText: 'NZ$600.00', link: 'http://x/merch/orders/BM-ABC234?t=a' }],
   merchOrderPaidAdmin: [{ ref: 'BM-ABC234', buyerName: 'Sam', productLabel: 'Jacket', totalText: 'NZ$600.00', link: 'http://x/studio/admin' }],
   merchProofAnswered: [{ ref: 'BM-ABC234', buyerName: 'Sam', productLabel: 'Jacket', approved: false, note: 'bigger logo', link: 'http://x/studio/admin' }],
@@ -52,3 +53,11 @@ test('merch proof mails escape notes and say what happened', () => {
   assert.match(t.merchProofAnswered({ ...samples.merchProofAnswered[0], approved: true }).subject, /proof approved$/);
   assert.match(t.merchProofAnswered(...samples.merchProofAnswered).subject, /changes requested$/);
 });
+
+test('merch shipped mail reads right for courier and pickup', () => {
+  assert.match(t.merchOrderShipped(...samples.merchOrderShipped).subject, /has shipped$/);
+  const pickup = t.merchOrderShipped({ ...samples.merchOrderShipped[0], pickup: true, club: 'Demo Club', tracking: '' });
+  assert.match(pickup.subject, /ready to collect$/);
+  assert.ok(pickup.text.includes('from Demo Club') && !pickup.text.includes('Tracking'));
+});
+
