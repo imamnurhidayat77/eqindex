@@ -217,6 +217,97 @@ function publicEvents(o, events) {
   }));
 }
 
+// Payment (F4): after the proof is approved the buyer pays the total they
+// approved (the stored quote, never re-priced). Stripe's webhook moves the
+// order to paid; the conditional update makes repeated webhooks a no-op.
+const STRIPE_MIN_CENTS = 50; // Stripe's smallest NZD charge
+const stripe = () => {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    const err = new Error('payments are not available yet, try again later');
+    err.status = 503;
+    throw err;
+  }
+  return require('stripe')(process.env.STRIPE_SECRET_KEY);
+};
+const nzdText = (cents) => `NZ$${(Number(cents) / 100).toFixed(2)}`;
+const productLabelOf = (o) => o.quote?.product?.label || o.product_id;
+
+async function adminEmails() {
+  return (await pool.query(`SELECT email FROM users WHERE role = 'ADMIN'`)).rows.map((r) => r.email);
+}
+
+// Whether a completed Checkout session really pays this order. Returns
+// null when it does, or the reason it is rejected.
+function paymentProblem(o, session) {
+  if (!o) return 'order_missing';
+  if (session.payment_status !== 'paid') return 'not_paid';
+  if (String(session.currency || '').toLowerCase() !== String(o.currency || 'NZD').toLowerCase()) return 'currency_mismatch';
+  if (session.amount_total !== o.total_cents) return 'amount_mismatch';
+  return null;
+}
+
+// checkout.session.completed for a merch order (called from the Stripe
+// webhook in media.js). Always resolves: the webhook answers 200 either way.
+async function markMerchOrderPaid(req, session) {
+  const ref = String(session.metadata?.merch_order_ref || '').toUpperCase();
+  if (!REF_RE.test(ref)) return;
+  const o = (await pool.query('SELECT * FROM merch_orders WHERE ref = $1', [ref])).rows[0];
+  const problem = paymentProblem(o, session);
+  if (problem) {
+    if (problem !== 'not_paid') {
+      console.error('[merch.pay] webhook rejected', { ref, problem });
+      audit(req, 'stripe.webhook.rejected', 'merch_order', o?.id || null, { ref, reason: problem, session: session.id });
+    }
+    return;
+  }
+  const client = await pool.connect();
+  let moved;
+  try {
+    await client.query('BEGIN');
+    moved = await client.query(
+      `UPDATE merch_orders SET status = 'paid', updated_at = NOW() WHERE id = $1 AND status = 'approved' RETURNING id`, [o.id]);
+    if (moved.rowCount) {
+      await client.query(`INSERT INTO merch_order_events (order_id, status, note) VALUES ($1, 'paid', $2)`,
+        [o.id, `Stripe ${session.payment_intent || session.id}`]);
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+  if (!moved.rowCount) return; // already paid (repeated webhook) or no longer approved
+  audit(req, 'merch.order.paid', 'merch_order', o.id, { ref, session: session.id, total_cents: o.total_cents });
+  const t = require('../lib/emailTemplates');
+  const { sendMail } = require('../lib/mailer');
+  const facts = { ref, productLabel: productLabelOf(o), totalText: nzdText(o.total_cents) };
+  try {
+    const mail = t.merchOrderPaid({ ...facts, name: o.buyer_name, link: `${APP_URL}/merch/orders/${ref}?t=${mailToken(o)}` });
+    await sendMail({ to: o.buyer_email, subject: mail.subject, text: mail.text, html: mail.html });
+  } catch (e) { console.error('[merch.pay] buyer mail failed:', e.message); }
+  try {
+    const mail = t.merchOrderPaidAdmin({ ...facts, buyerName: o.buyer_name, link: `${APP_URL}/studio/admin` });
+    for (const to of await adminEmails()) await sendMail({ to, subject: mail.subject, text: mail.text, html: mail.html });
+  } catch (e) { console.error('[merch.pay] admin mail failed:', e.message); }
+}
+
+// A full refund of a merch payment (charge.refunded, called from media.js).
+async function markMerchOrderRefunded(req, paymentIntentId) {
+  let ref = '';
+  try {
+    ref = String((await stripe().paymentIntents.retrieve(String(paymentIntentId))).metadata?.merch_order_ref || '').toUpperCase();
+  } catch (e) { console.error('[merch.refund] payment lookup failed:', e.message); return; }
+  if (!REF_RE.test(ref)) return;
+  const r = await pool.query(
+    `UPDATE merch_orders SET status = 'refunded', updated_at = NOW()
+      WHERE ref = $1 AND status IN ('paid', 'in_production', 'shipped', 'delivered') RETURNING id`, [ref]);
+  if (!r.rowCount) return;
+  await pool.query(`INSERT INTO merch_order_events (order_id, status, note) VALUES ($1, 'refunded', $2)`,
+    [r.rows[0].id, `Stripe ${paymentIntentId}`]);
+  audit(req, 'merch.order.refunded', 'merch_order', r.rows[0].id, { ref, pi: String(paymentIntentId) });
+}
+
 module.exports = function mountMerchRoutes(app) {
   // Live order settings, so the designer's estimate matches the server.
   app.get('/api/merch/settings', asyncH(async (req, res) => {
@@ -422,7 +513,7 @@ module.exports = function mountMerchRoutes(app) {
     }
     if (!moved.rowCount) return res.status(409).json({ error: 'this proof was already answered, reload the page' });
     try {
-      const admins = (await pool.query(`SELECT email FROM users WHERE role = 'ADMIN'`)).rows.map((r) => r.email);
+      const admins = await adminEmails();
       const t = require('../lib/emailTemplates').merchProofAnswered({
         ref: o.ref, buyerName: o.buyer_name, productLabel: o.quote?.product?.label || o.product_id,
         approved: decision === 'approved', note, link: `${APP_URL}/studio/admin`,
@@ -434,6 +525,32 @@ module.exports = function mountMerchRoutes(app) {
     }
     audit(req, `merch.proof.${decision}`, 'merch_order', o.id, { ref: o.ref });
     res.json({ data: { status: decision } });
+  }));
+
+  // Buyer pays an approved order: a Stripe Checkout session for the total
+  // they approved. Clicking twice reuses the same session (idempotency key).
+  app.post('/api/merch/orders/:ref/checkout', asyncH(async (req, res) => {
+    if (await throttled(pool, req.ip, 'merch-checkout', 20)) return res.status(429).json({ error: 'too many tries, try again later' });
+    const found = await viewableOrder(req, { admin: false });
+    if (!found) return res.status(404).json({ error: 'order not found' });
+    const { o } = found;
+    if (o.status !== 'approved') return res.status(409).json({ error: 'this order is not ready for payment' });
+    if (o.total_cents < STRIPE_MIN_CENTS) return res.status(409).json({ error: 'this order cannot be paid online, contact us' });
+    const back = `${APP_URL}/merch/orders/${o.ref}?t=${mailToken(o)}`;
+    const session = await stripe().checkout.sessions.create({
+      mode: 'payment',
+      customer_email: o.buyer_email,
+      line_items: [{
+        price_data: { currency: String(o.currency || 'NZD').toLowerCase(), product_data: { name: `${productLabelOf(o)}, order ${o.ref}`.slice(0, 120) }, unit_amount: o.total_cents },
+        quantity: 1,
+      }],
+      success_url: `${back}&paid=1`,
+      cancel_url: back,
+      metadata: { merch_order_ref: o.ref },
+      payment_intent_data: { metadata: { merch_order_ref: o.ref } },
+    }, { idempotencyKey: `merch-${o.id}-${o.total_cents}` });
+    audit(req, 'merch.order.checkout', 'merch_order', o.id, { ref: o.ref, session: session.id });
+    res.status(201).json({ data: { url: session.url } });
   }));
 
   // Admin: newest orders first, optionally one status.
@@ -528,3 +645,6 @@ module.exports.parseProofResponse = parseProofResponse;
 module.exports.canSendProof = canSendProof;
 module.exports.tokenOpens = tokenOpens;
 module.exports.mailToken = mailToken;
+module.exports.paymentProblem = paymentProblem;
+module.exports.markMerchOrderPaid = markMerchOrderPaid;
+module.exports.markMerchOrderRefunded = markMerchOrderRefunded;

@@ -2945,6 +2945,11 @@ module.exports = function mountMediaRoutes(app) {
     const ok = (extra) => res.json({ received: true, ...extra });
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object || {};
+      // Merch orders (routes/merch.js) pay through the same webhook.
+      if (session.metadata?.merch_order_ref) {
+        await require('./merch').markMerchOrderPaid(req, session);
+        return ok();
+      }
       // Batch checkout (cart "Pay all"): one session, many purchases.
       const batchIds = (() => {
         try {
@@ -3034,6 +3039,7 @@ module.exports = function mountMediaRoutes(app) {
           RETURNING id`,
         [String(pi), sessionId]
       );
+      if (!done.rows.length) await require('./merch').markMerchOrderRefunded(req, pi);
       if (done.rows.length) {
         audit(req, 'media.refund', 'purchase', done.rows.map((r) => r.id).join(','), { pi });
         // Freeze service products tied to refunded purchases. Photo/package

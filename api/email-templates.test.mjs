@@ -21,6 +21,8 @@ const samples = {
   purchaseClaim: [{ name: 'Jessie', link: 'http://x/reset?token=a' }],
   sponsorGift: [{ sponsor: 'Dunstan', slots: 5, scope: 'E · H', claimLink: 'http://x/reset?token=a' }],
   merchProofReady: [{ name: 'Sam', ref: 'BM-ABC234', productLabel: 'Jacket', note: 'Logo <b>moved</b> up', link: 'http://x/merch/orders/BM-ABC234?t=a', proofUrl: 'http://x/p.jpg' }],
+  merchOrderPaid: [{ name: 'Sam', ref: 'BM-ABC234', productLabel: 'Jacket', totalText: 'NZ$600.00', link: 'http://x/merch/orders/BM-ABC234?t=a' }],
+  merchOrderPaidAdmin: [{ ref: 'BM-ABC234', buyerName: 'Sam', productLabel: 'Jacket', totalText: 'NZ$600.00', link: 'http://x/studio/admin' }],
   merchProofAnswered: [{ ref: 'BM-ABC234', buyerName: 'Sam', productLabel: 'Jacket', approved: false, note: 'bigger logo', link: 'http://x/studio/admin' }],
 };
 

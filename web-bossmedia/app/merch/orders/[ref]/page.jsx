@@ -11,6 +11,7 @@ import { useDocumentTitle } from '../../../../lib/use-document-title';
 import s from '../orders.module.css';
 
 const nzd = (c) => `NZ$${(Number(c || 0) / 100).toFixed(2)}`;
+const PAID_STATUSES = ['paid', 'in_production', 'shipped', 'delivered'];
 const day = (d) => new Date(d).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' });
 const linkToken = () => new URLSearchParams(window.location.search).get('t') || '';
 const logoName = (v) => (String(v).startsWith('club:') ? 'Club logo' : String(v).startsWith('mlogo:') ? 'Your logo' : 'Sponsor logo');
@@ -33,7 +34,7 @@ export default function MerchOrderPage() {
     load().then((order) => { if (live) setState({ loading: false, order }); });
     return () => { live = false; };
   }, [load]);
-  const reload = () => load().then((order) => setState({ loading: false, order }));
+  const reload = useCallback(() => load().then((order) => setState({ loading: false, order })), [load]);
 
   const o = state.order;
   const product = o ? merchProduct(o.productId) : null;
@@ -50,6 +51,7 @@ export default function MerchOrderPage() {
           {!state.loading && !o && (
             <p className={s.muted}>We could not find this order. Open it from the link in your confirmation email, or log in with the account you ordered with.</p>
           )}
+          {o?.status === 'approved' && <PayCard order={o} onConfirmed={reload} />}
           {o && <ProofCard order={o} onAnswered={reload} />}
           {o && (
             <div className={s.layout}>
@@ -79,7 +81,7 @@ export default function MerchOrderPage() {
                 {q.discountCents > 0 && <div className={s.row}><span>Sponsor discount</span><span className={s.gold}>−{nzd(q.discountCents)}</span></div>}
                 <div className={s.row}><span>{o.delivery === 'pickup' ? 'Club pickup' : 'Courier'}</span><span>{q.shippingCents ? nzd(q.shippingCents) : 'Free'}</span></div>
                 <div className={`${s.row} ${s.total}`}><span>Total</span><span>{nzd(o.totalCents)}</span></div>
-                <p className={s.muted}>Includes {nzd(q.gstCents)} GST. Nothing is charged until you approve the artwork proof.</p>
+                <p className={s.muted}>Includes {nzd(q.gstCents)} GST. {PAID_STATUSES.includes(o.status) ? 'Paid in full.' : 'Nothing is charged until you approve the artwork proof.'}</p>
               </div>
             </div>
           )}
@@ -131,7 +133,7 @@ function ProofCard({ order, onAnswered }) {
           width={1200} height={900} unoptimized priority />
       </a>
       {proof.note && <p className={s.note}><strong>Note from us:</strong> {proof.note}</p>}
-      {answer?.status === 'approved' && <p className={s.ok}>You approved this proof on {day(answer.at)}. Payment opens next.</p>}
+      {answer?.status === 'approved' && <p className={s.ok}>You approved this proof on {day(answer.at)}.</p>}
       {answer?.status === 'changes_requested' && (
         <>
           <p className={s.note}><strong>You asked for changes:</strong> {answer.note}</p>
@@ -157,6 +159,63 @@ function ProofCard({ order, onAnswered }) {
           <p className={s.muted}>Approving locks the design for printing. You pay only after approving.</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// Pay the approved total through Stripe Checkout. Back from Stripe
+// (?paid=1) the webhook may still be on its way, so the order is re-read
+// a few times before asking the buyer to refresh later.
+const CONFIRM_TRIES = 5;
+const CONFIRM_EVERY_MS = 2000;
+function PayCard({ order, onConfirmed }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('paid') !== '1') return undefined;
+    setConfirming(true);
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      onConfirmed();
+      if (tries >= CONFIRM_TRIES) { clearInterval(timer); setConfirming(false); }
+    }, CONFIRM_EVERY_MS);
+    return () => clearInterval(timer);
+  }, [onConfirmed]);
+
+  async function pay() {
+    setBusy(true);
+    setError('');
+    try {
+      const r = await fetch(`${API}/api/merch/orders/${encodeURIComponent(order.ref)}/checkout`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ t: linkToken() }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.data?.url) throw new Error(j.error || 'Could not open the payment page, try again.');
+      window.location.assign(j.data.url);
+    } catch (e) {
+      setError(e.message.charAt(0).toUpperCase() + e.message.slice(1));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className={`${s.card} ${s.proof}`}>
+      <h2 className={s.h2}>Pay for your order</h2>
+      {confirming
+        ? <p className={s.ok} role="status">Thanks! We are confirming your payment, this page updates in a moment.</p>
+        : (
+          <>
+            <p className={s.muted}>Your proof is approved. Pay {nzd(order.totalCents)} (incl. GST) and we start production.</p>
+            {error && <p className={s.err} role="alert">{error}</p>}
+            <div className={s.actions}>
+              <button type="button" className={s.primary} disabled={busy} onClick={pay}>{busy ? 'Opening payment…' : `Pay ${nzd(order.totalCents)}`}</button>
+            </div>
+            <p className={s.muted}>Secure card payment by Stripe.</p>
+          </>
+        )}
     </div>
   );
 }

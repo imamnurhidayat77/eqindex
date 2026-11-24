@@ -315,9 +315,42 @@ function merchProofAnswered({ ref, buyerName, productLabel, approved, note, link
   };
 }
 
+// Merch order paid: receipt for the buyer.
+function merchOrderPaid({ name, ref, productLabel, totalText, link }) {
+  return {
+    subject: `Payment received — order ${ref}`,
+    text: `Hi ${name || 'there'},\n\nWe received ${totalText} (incl. GST) for your ${productLabel} order. It goes into production now and we will let you know when it ships.\n\nTrack your order: ${link}\n\nReference: ${ref}`,
+    html: layout({
+      preheader: 'Your order goes into production now.',
+      eyebrow: `ORDER ${escHtml(ref)}`,
+      title: 'Payment received, thank you.',
+      body: p(`Hi ${escHtml(firstName(name))}, we received <strong>${escHtml(totalText)}</strong> (incl. GST) for your ${escHtml(productLabel)} order.`) +
+        p('It goes into production now. We will let you know when it ships.') +
+        btn(link, 'Track my order') +
+        fallbackLink(link),
+    }),
+  };
+}
+
+// Merch order paid: heads-up for the admins.
+function merchOrderPaidAdmin({ ref, buyerName, productLabel, totalText, link }) {
+  return {
+    subject: `Order ${ref} paid — ready for production`,
+    text: `${buyerName || 'The buyer'} paid ${totalText} for order ${ref} (${productLabel}).\n\nOpen Studio > Admin > Merch orders: ${link}`,
+    html: layout({
+      preheader: `${buyerName || 'The buyer'} paid ${totalText}.`,
+      eyebrow: `ORDER ${escHtml(ref)}`,
+      title: 'Order paid.',
+      body: p(`${escHtml(buyerName || 'The buyer')} paid <strong>${escHtml(totalText)}</strong> for order ${escHtml(ref)} (${escHtml(productLabel)}). It is ready for production.`) +
+        btn(link, 'Open merch orders') +
+        fallbackLink(link),
+    }),
+  };
+}
+
 module.exports = {
   verifyEmail,
   claimAccount, resetPassword, unknownEvent, noAttachments, overLimits,
   verifySender, acceptedIntake, momentsReject, momentsLive, purchaseClaim,
-  sponsorGift, merchOrderReceived, merchProofReady, merchProofAnswered,
+  sponsorGift, merchOrderReceived, merchProofReady, merchProofAnswered, merchOrderPaid, merchOrderPaidAdmin,
 };
