@@ -97,9 +97,22 @@ async function aiResponses({ input, tools, maxTokens = 3000, session, model }) {
   return { text: extractText(j).trim(), calls };
 }
 
+const PROMPT_MAX_CHARS = 15000;
+
+// Fit a prompt under max chars: the head (system prompt) is always kept
+// whole, the tail keeps its END (newest turns) — never the other way round.
+function fitPrompt(head, tail, max = PROMPT_MAX_CHARS) {
+  const sep = '\n\n';
+  const room = Math.max(0, max - head.length - sep.length);
+  return `${head}${sep}${tail.length > room ? tail.slice(tail.length - room) : tail}`;
+}
+
+const renderTurns = (messages) => messages
+  .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n');
+
 async function aiChat({ system, messages, maxTokens = 3000, session }) {
-  const input = `${system}\n\n${messages.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')}\n\nAssistant:`;
-  const { text } = await aiResponses({ input: input.slice(0, 15000), maxTokens, session });
+  const input = fitPrompt(system, `${renderTurns(messages)}\n\nAssistant:`);
+  const { text } = await aiResponses({ input, maxTokens, session });
   if (!text) throw new Error('AI returned an empty reply — try again');
   return text;
 }
@@ -109,13 +122,13 @@ async function aiChat({ system, messages, maxTokens = 3000, session }) {
 // model either answers or emits function calls, whose results are pasted
 // back as text. Bounded by maxIter so interactive chats stay fast.
 async function aiAgent({ system, messages, tools, runTool, toolCtx, maxIter = 2, maxTokens = 3000, session, model }) {
-  let transcript = `${system}\n\n${messages.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n')}`;
+  let transcript = renderTurns(messages);
   const toolUses = [];
   const cache = new Map(); // same tool+args twice → serve cached, don't re-run
   for (let i = 0; i <= maxIter; i++) {
     const last = i === maxIter;
     const { text, calls } = await aiResponses({
-      input: (transcript + '\n\nAssistant:').slice(-15000),
+      input: fitPrompt(system, `${transcript}\n\nAssistant:`),
       tools: last ? undefined : tools,
       maxTokens, session: `${session || `agent-${Date.now().toString(36)}`}-r${i}`,
       model,
@@ -142,7 +155,7 @@ async function aiAgent({ system, messages, tools, runTool, toolCtx, maxIter = 2,
     }
     transcript += '\nContinue. Answer concisely once you have what you need.';
   }
-  const { text } = await aiResponses({ input: (transcript + '\n\nAssistant:').slice(-15000), maxTokens, session, model });
+  const { text } = await aiResponses({ input: fitPrompt(system, `${transcript}\n\nAssistant:`), maxTokens, session, model });
   if (!text) throw new Error('AI returned an empty reply — try again');
   return { reply: text, toolUses };
 }
@@ -299,4 +312,4 @@ async function aiMapRecords({ text, hint, session, onChunk }) {
   return { records: kept, dropped: dropped.length, prose, truncated };
 }
 
-module.exports = { aiMapRecords, aiChat, aiAgent, aiResponses, cleanRecord, aiAvailable: () => !!KEY };
+module.exports = { aiMapRecords, aiChat, aiAgent, aiResponses, cleanRecord, fitPrompt, aiAvailable: () => !!KEY };

@@ -35,6 +35,53 @@ function summarizeAssist(type, meta, records, skipped) {
   };
 }
 
+// Quote-aware CSV parser ("Smith, John" stays one cell). Shared by the
+// CSV import route and the Import Assistant's csv-rule path.
+function parseCsv(text) {
+  const rows = [];
+  let cur = [''], q = false;
+  const push = () => { rows.push(cur); cur = ['']; };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { cur[cur.length - 1] += '"'; i++; } else q = false; }
+      else cur[cur.length - 1] += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') cur.push('');
+    else if (c === '\n') push();
+    else if (c === '\r') { /* skip */ }
+    else cur[cur.length - 1] += c;
+  }
+  if (cur.length > 1 || cur[0] !== '') push();
+  return rows.filter((r) => r.some((x) => String(x).trim() !== ''));
+}
+
+// Organiser header spellings → canonical import keys.
+const CSV_HEADER_ALIAS = {
+  class: 'class_name', rider: 'rider_name', horse: 'horse_name',
+  finish_place: 'placing', place: 'placing', jump_faults: 'faults',
+  time_seconds: 'time', height: 'height_cm', series: 'series_key',
+  prize_money: 'prize', event: 'event_name', event_date: 'date_start',
+};
+const normHeader = (h) => String(h).trim().toLowerCase().replace(/\s+/g, '_');
+
+// Deterministic csv-rule: text whose first row is a CSV header with
+// class + rider + horse columns → canonical records. null = not that CSV.
+function csvRuleRecords(text) {
+  const grid = parseCsv(String(text || '').trim());
+  if (grid.length < 2) return null;
+  const cols = grid[0].map(normHeader).map((h) => CSV_HEADER_ALIAS[h] || h);
+  if (!['class_name', 'rider_name', 'horse_name'].every((k) => cols.includes(k))) return null;
+  return grid.slice(1).map((cells) => {
+    const r = {};
+    cols.forEach((k, i) => {
+      const v = String(cells[i] ?? '').trim();
+      if (v) r[k] = v;
+    });
+    return r;
+  });
+}
+
 // Load this admin's remembered series mappings: [{pattern, series_key}].
 async function loadSeriesMap(userId) {
   if (!userId) return [];
@@ -89,4 +136,4 @@ function mapResultToReply({ records, dropped, prose, truncated, filename, tagged
   };
 }
 
-module.exports = { summarizeAssist, loadSeriesMap, applySeriesMap, mapResultToReply };
+module.exports = { summarizeAssist, loadSeriesMap, applySeriesMap, mapResultToReply, parseCsv, csvRuleRecords };

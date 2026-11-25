@@ -87,6 +87,10 @@ export default function AdminAssistant() {
   const [eventId, setEventId] = useState('');
   const [evNew, setEvNew] = useState({ name: '', date_start: '', venue: '' });
   const [preview, setPreview] = useState(null);
+  // Admin confirmed the flagged series-like classes are not series classes.
+  const [seriesAck, setSeriesAck] = useState(false);
+  // Partial commit: { from, saved, failed, error } — rows before `from` were committed.
+  const [resume, setResume] = useState(null);
   const [err, setErr] = useState('');
   const [drawer, setDrawer] = useState(true);
   const bottom = useRef(null);
@@ -110,7 +114,8 @@ export default function AdminAssistant() {
   useEffect(() => { saveChats(chats); }, [chats]);
   const active = chats.find((c) => c.id === activeId) || null;
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [active?.msgs?.length, busy]);
-  useEffect(() => { setPreview(null); }, [activeId]);
+  // A preview (and any ack/resume) belongs to the exact records it checked.
+  useEffect(() => { setPreview(null); setSeriesAck(false); setResume(null); }, [activeId, active?.analysis]);
 
   function patchActive(fn) {
     setChats((prev) => prev.map((c) => (c.id === activeId ? fn(c) : c)));
@@ -212,9 +217,10 @@ export default function AdminAssistant() {
     try {
       // Text travels inside the chat transcript (no binary upload at all).
       const withText = attachedText
-        ? [...base, { id: uid(), role: 'user', content: `File contents (${attachment.name}):\n${attachedText.slice(0, 60000)}` }]
+        ? [...base, { id: uid(), role: 'user', content: `File contents (${attachment.name}):\n${attachedText}` }]
         : base;
       const fd = new FormData();
+      if (attachment) fd.append('filename', attachment.name);
       fd.append('messages', JSON.stringify(withText.map(({ role, content }) => ({ role, content })).slice(-12)));
       fd.append('session', active.id);
       const a = active.analysis;
@@ -274,37 +280,55 @@ export default function AdminAssistant() {
 
   // Chunked runs: the Vercel proxy kills requests past ~30s, and prod
   // rows cost ~0.5s each over the ocean link — so big files go in ~50-row
-  // chunks with a progress readout. Each chunk is its own transaction;
-  // duplicates across chunks are caught at commit (dup check reads
-  // committed rows), never silently double-imported.
+  // chunks with a progress readout. Each chunk is its own transaction, so
+  // a commit can stop part-way: it then returns failedAt (first unsaved
+  // record index) and the admin resumes from there. The server dup check
+  // reads committed rows, so a retried chunk never double-imports.
   const CHUNK = 50;
   const [progress, setProgress] = useState(null);
-  async function runChunked(records, dry) {
-    const merged = { rows: [], summary: null };
+  async function runChunked(records, dry, from = 0) {
+    const rows = [];
     const evAgg = {};
-    for (let i = 0; i < records.length; i += CHUNK) {
-      setProgress({ done: Math.min(i, records.length), total: records.length, phase: dry ? 'Validating' : 'Committing' });
+    const blocking = new Map();
+    const phase = dry ? 'Validating' : 'Committing';
+    const result = (extra) => {
+      const ok = rows.filter((r) => r.ok).length;
+      return {
+        dry_run: dry, rows, ...extra,
+        summary: {
+          total: records.length - from, ok, failed: rows.length - ok, enriched: 0, events: Object.values(evAgg),
+          series_blocking: [...blocking].map(([name, n]) => ({ name, rows: n })),
+        },
+      };
+    };
+    for (let i = from; i < records.length; i += CHUNK) {
+      setProgress({ done: i, total: records.length, phase });
       const body = { records: records.slice(i, i + CHUNK), dry_run: dry };
+      if (!dry && seriesAck) body.series_ack = true;
       if (eventId === '__new__') {
         body.event = { name: evNew.name.trim(), date_start: evNew.date_start, date_end: evNew.date_start, venue: evNew.venue.trim() };
       } else {
         body.event_id = eventId;
       }
-      const d = await call('/admin/import', { method: 'POST', body: JSON.stringify(body) });
-      const off = i;
-      for (const r of d.rows) merged.rows.push({ ...r, line: off + r.line - 1 });
+      let d;
+      try {
+        d = await call('/admin/import', { method: 'POST', body: JSON.stringify(body) });
+      } catch (e) {
+        if (dry) throw e;
+        return result({ failedAt: i, error: e.message });
+      }
+      for (const r of d.rows) rows.push({ ...r, line: i + r.line - 1 });
       for (const e of d.summary.events || []) {
         (evAgg[e.id] ||= { ...e, ok: 0, failed: 0 }).ok += e.ok;
         evAgg[e.id].failed += e.failed;
       }
+      for (const b of d.summary.series_blocking || []) blocking.set(b.name, (blocking.get(b.name) || 0) + b.rows);
     }
-    setProgress({ done: records.length, total: records.length, phase: dry ? 'Validating' : 'Committing' });
-    const ok = merged.rows.filter((r) => r.ok).length;
-    merged.summary = { total: records.length, ok, failed: merged.rows.length - ok, enriched: 0, events: Object.values(evAgg) };
-    return { dry_run: dry, rows: merged.rows, summary: merged.summary };
+    setProgress({ done: records.length, total: records.length, phase });
+    return result({});
   }
 
-  async function run(dry) {
+  async function run(dry, from = 0) {
     setErr('');
     const analysis = active?.analysis;
     if (!analysis?.records?.length) { setErr('Nothing to import yet — ask me to read a link or file first.'); return; }
@@ -312,17 +336,23 @@ export default function AdminAssistant() {
     if (eventId === '__new__' && (!evNew.name.trim() || !evNew.date_start)) { setErr('New event needs a name and start date.'); return; }
     setBusy(dry ? 'validate' : 'commit');
     try {
-      const d = await runChunked(analysis.records, dry);
-      setPreview(d);
-      if (!dry) {
-        const s = d.summary;
-        const evNames = (s.events || []).map((e) => e.name).join(', ');
-        patchActive((c) => ({
-          ...c, updatedAt: Date.now(),
-          msgs: [...c.msgs, { id: uid(), role: 'assistant', content: `✅ Imported **${s.ok}** rounds${evNames ? ` into ${evNames}` : ''}${s.failed ? ` (${s.failed} failed — see preview above)` : ''}. The review form is cleared; send a new link or file whenever ready.` }],
-          analysis: null,
-        }));
-        setPreview(null);
+      const d = await runChunked(analysis.records, dry, from);
+      if (dry) {
+        setPreview(d);
+      } else {
+        // Saved/failed counts carry over from earlier partial runs.
+        const saved = (resume?.saved || 0) + d.summary.ok;
+        const failed = (resume?.failed || 0) + d.summary.failed;
+        if (d.failedAt !== undefined) {
+          setResume({ from: d.failedAt, saved, failed, error: d.error });
+        } else {
+          const evNames = (d.summary.events || []).map((e) => e.name).join(', ');
+          patchActive((c) => ({
+            ...c, updatedAt: Date.now(),
+            msgs: [...c.msgs, { id: uid(), role: 'assistant', content: `✅ Imported **${saved}** rounds${evNames ? ` into ${evNames}` : ''}${failed ? ` (${failed} failed and were not saved)` : ''}. The review form is cleared; send a new link or file whenever ready.` }],
+            analysis: null,
+          }));
+        }
       }
     } catch (e) { setErr(e.message); }
     setBusy(null);
@@ -330,6 +360,8 @@ export default function AdminAssistant() {
   }
 
   const analysis = active?.analysis || null;
+  const seriesBlocking = (preview?.dry_run && preview.summary.series_blocking) || [];
+  const commitBlocked = !preview || preview.dry_run === false || !!resume || (seriesBlocking.length > 0 && !seriesAck);
   const isFresh = (active?.msgs || []).filter((m) => m.role === 'user').length === 0;
   const timeFmt = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
@@ -434,8 +466,18 @@ export default function AdminAssistant() {
                               ...events.map((e) => ({ value: e.id, label: `${e.name} · ${nzDay(e.date_start)}` }))]}
                             onSelect={(o) => setEventId(o.value)} /></label>
                         <button className={BTN_PRIMARY} disabled={!!busy} onClick={() => run(true)}>{busy === 'validate' ? `Validating… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Validate & preview →'}</button>
-                        <button className={BTN_DANGER} disabled={!!busy || !preview || preview.dry_run === false} onClick={() => run(false)}>{busy === 'commit' ? `Committing… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Commit'}</button>
+                        <button className={BTN_DANGER} disabled={!!busy || commitBlocked} onClick={() => run(false)}>{busy === 'commit' ? `Committing… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Commit'}</button>
                       </div>
+                      {resume && (
+                        <div role="alert" className="mt-2 rounded-md border border-blood/50 bg-ink p-2.5 text-[13px] text-body">
+                          <p><b className="text-blood">Commit stopped at row {resume.from + 1}.</b> {resume.error}</p>
+                          <p className="mt-1 text-muted">{resume.from === 0
+                            ? 'Nothing was saved.'
+                            : `${resume.saved} row(s) saved from rows 1–${resume.from}${resume.failed ? ` (${resume.failed} of those failed and were not saved)` : ''}. Nothing from row ${resume.from + 1} onward was saved.`}</p>
+                          <button className={`${BTN_DANGER} mt-2`} disabled={!!busy} onClick={() => run(false, resume.from)}>
+                            {busy === 'commit' ? `Resuming… ${progress ? `${progress.done}/${progress.total}` : ''}` : `Resume commit from row ${resume.from + 1}`}</button>
+                        </div>
+                      )}
                       {!!progress && progress.total > 0 && (
                         <div className="mt-2 h-1.5 rounded bg-[#2A2A2A]"><div className="h-1.5 rounded bg-gold transition-[width] duration-200 motion-reduce:transition-none" style={{ width: `${Math.round((100 * progress.done) / progress.total)}%` }} /></div>
                       )}
@@ -472,6 +514,20 @@ export default function AdminAssistant() {
                       </table>
                       </div>
                       {preview.rows.length > 10 && <p className="text-[12px] text-faint mt-1">Showing 10 of {preview.rows.length} rows.</p>}
+                      {seriesBlocking.length > 0 && (
+                        <div className="mt-2 rounded-md border border-gold/50 bg-ink p-2.5 text-[13px]">
+                          <p className="font-bold text-gold">{seriesBlocking.length} class(es) look like series classes but have no series tag</p>
+                          <ul className="mt-1 text-muted">
+                            {seriesBlocking.slice(0, 6).map((b) => <li key={b.name} className="[overflow-wrap:anywhere]">{b.name} · {b.rows} row(s)</li>)}
+                            {seriesBlocking.length > 6 && <li>…and {seriesBlocking.length - 6} more</li>}
+                          </ul>
+                          <p className="mt-1 text-faint">Tag them in the chat (e.g. &quot;class 9 is pro-am&quot;) and validate again, or confirm below.</p>
+                          <label className="mt-2 flex items-center gap-2 text-body cursor-pointer">
+                            <input type="checkbox" checked={seriesAck} onChange={(e) => setSeriesAck(e.target.checked)} className="h-4 w-4 accent-gold" />
+                            These classes are not series classes
+                          </label>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -7,7 +7,7 @@ const { needRole } = require('../lib/auth');
 const { bustCache, bustPublic } = require('../middleware/cache');
 const { bustVisibility, excludedClassTypes } = require('../lib/filters');
 const { canonCategoryKey, masterCategoryKeys, bustCategoryKeys } = require('../lib/categories');
-const { summarizeAssist, loadSeriesMap, applySeriesMap } = require('../lib/assist');
+const { summarizeAssist, loadSeriesMap, applySeriesMap, parseCsv, csvRuleRecords } = require('../lib/assist');
 const { suggestSeriesKey, seriesLike } = require('../lib/seriesKeys');
 
 module.exports = function mountAdminRoutes(app) {
@@ -152,25 +152,9 @@ module.exports = function mountAdminRoutes(app) {
       return res.status(400).json({ error: 'need {source_url} or {text}' });
     }
     // Deterministic CSV path: known headers incl. the 3 required columns.
-    const head = text.trim().split(/\r?\n/, 1)[0] || '';
-    const normH = (h) => String(h).trim().toLowerCase().replace(/\s+/g, '_');
-    const ALIAS = {
-      class: 'class_name', rider: 'rider_name', horse: 'horse_name',
-      finish_place: 'placing', place: 'placing', jump_faults: 'faults',
-      time_seconds: 'time', height: 'height_cm', series: 'series_key',
-      prize_money: 'prize', event: 'event_name', event_date: 'date_start',
-    };
-    const cols = head.split(',').map(normH).map((h) => ALIAS[h] || h);
-    const has = (...ks) => ks.some((k) => cols.includes(k));
-    if (has('class_name', 'class') && has('rider_name', 'rider') && has('horse_name', 'horse')) {
-      const lines = text.trim().split(/\r?\n/).slice(1);
-      const records = lines.filter((l) => l.trim()).map((l) => {
-        const cells = l.split(',');
-        const r = {};
-        cols.forEach((k, i) => { if (cells[i] !== undefined && cells[i] !== '') r[k] = cells[i].trim(); });
-        return r;
-      });
-      return res.json({ data: summarizeAssist('csv-rule', { filename: filename || null }, records, []) });
+    const csvRecords = csvRuleRecords(text);
+    if (csvRecords) {
+      return res.json({ data: summarizeAssist('csv-rule', { filename: filename || null }, csvRecords, []) });
     }
     // Deterministic EvoEvents path (no AI needed for these PDFs).
     const evo = await evoAssist(text, filename, req.authUser?.id);
@@ -223,6 +207,7 @@ module.exports = function mountAdminRoutes(app) {
           session: req.body.session,
           context: safeJson(req.body.context, null),
           file: req.file || null,
+          filename: typeof req.body.filename === 'string' ? req.body.filename.slice(0, FILENAME_MAX) : '',
           userId: req.authUser?.id || null,
         });
         res.json({ data: out });
@@ -249,20 +234,34 @@ module.exports = function mountAdminRoutes(app) {
     });
   }));
 
+  const FILENAME_MAX = 200;
+  const FILE_CONTENTS_PREFIX = 'File contents (';
+  // Earlier file dumps would eat the whole prompt budget — keep a short
+  // marker instead; the newest message is left as sent.
+  function omitOldFileContents(messages) {
+    return messages.map((m, i) => (
+      i < messages.length - 1 && m.role === 'user' && String(m.content || '').startsWith(FILE_CONTENTS_PREFIX)
+        ? { ...m, content: `[file contents omitted: ${String(m.content).slice(FILE_CONTENTS_PREFIX.length).split('):', 1)[0]}]` }
+        : m));
+  }
+
   function safeJson(v, fb) {
     try { const j = typeof v === 'string' ? JSON.parse(v) : v; return j ?? fb; } catch { return fb; }
   }
 
-  async function assistChat({ messages, session, context, file, userId }) {
+  async function assistChat({ messages, session, context, file, filename: sentName, userId }) {
     const { aiAgent, aiAvailable } = require('../lib/ai');
     const { TOOL_DEFS, runTool } = require('../lib/agentTools');
     const { equipeRecords } = require('../lib/equipe');
     const lastUser = [...(messages || [])].reverse().find((m) => m.role === 'user');
-    const text = String(lastUser?.content || '');
+    const raw = String(lastUser?.content || '');
+    // Browser-extracted files arrive as "File contents (name):\n<text>" —
+    // drop that label line so a CSV's first line is its header row.
+    const text = raw.startsWith(FILE_CONTENTS_PREFIX) ? raw.slice(raw.indexOf('\n') + 1) : raw;
     const url = text.match(/online\.equipe\.com\/shows\/(\d+)/);
 
     // 1. File attachment → extract text.
-    let fileText = '', filename = '';
+    let fileText = '', filename = file ? '' : String(sentName || '');
     if (file) {
       filename = file.originalname || 'upload';
       if (/\.pdf$/i.test(filename)) {
@@ -305,17 +304,8 @@ module.exports = function mountAdminRoutes(app) {
 
     // 3. Results text (pasted or from file) → csv-rule, evoevents-rule, else AI.
     if (blob.trim().length > 40) {
-      const head = blob.trim().split(/\r?\n/, 1)[0] || '';
-      const cols = head.split(',').map((h) => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
-      const has = (...ks) => ks.some((k) => cols.includes(k));
-      if (has('class_name', 'class') && has('rider_name', 'rider') && has('horse_name', 'horse')) {
-        const lines = blob.trim().split(/\r?\n/).slice(1);
-        const records = lines.filter((l) => l.trim()).map((l) => {
-          const cells = l.split(',');
-          const r = {};
-          cols.forEach((k, i) => { if (cells[i] !== undefined && cells[i] !== '') r[k] = cells[i].trim(); });
-          return r;
-        });
+      const records = csvRuleRecords(blob);
+      if (records) {
         return {
           reply: `That looks like a CSV with known headers — mapped ${records.length} rows directly (no AI needed). Check the summary, then validate & commit when ready.`,
           analysis: summarizeAssist('csv-rule', { filename: filename || null }, records, []),
@@ -369,7 +359,7 @@ module.exports = function mountAdminRoutes(app) {
     const { reply } = await aiAgent({
       session,
       system: `You are the EQIndex Import Assistant. You help an admin import show-jumping results. Capabilities: read Equipe show URLs (online.equipe.com/shows/ID) and EvoEvents results URLs (evoevents.co.nz/results/ID) directly — no PDF needed for those, map pasted results text or uploaded files (PDF/CSV/TXT/JSON) to canonical records, explain warnings (missing series_key means 0 series points, skipped rows), and guide the validate-then-commit flow. You have tools: use equipe_show for show links instead of guessing, events_list to help pick an import target, horses_search/riders_search to check whether names already exist, series_list for the exact series vocabulary (never invent a series_key). When the admin states a lasting preference (e.g. "class 9 is pro-am", "remember my venue is X"), store it with memory_save (series_map keys are lowercase class-name fragments); recall with memory_list when unsure. ${memLine} Rules: never claim anything is saved (only dry-run preview then human Commit saves); use tools when the answer needs real data, otherwise answer directly; keep replies short and practical. ${ctx}`,
-      messages: (messages || []).slice(-8),
+      messages: omitOldFileContents((messages || []).slice(-8)),
       tools: TOOL_DEFS,
       runTool,
       toolCtx: { userId },
@@ -419,24 +409,6 @@ module.exports = function mountAdminRoutes(app) {
   function normName(v) {
     return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
-  }
-  function parseCsv(text) {
-    const rows = [];
-    let cur = [''], q = false;
-    const push = () => { rows.push(cur); cur = ['']; };
-    for (let i = 0; i < text.length; i++) {
-      const c = text[i];
-      if (q) {
-        if (c === '"') { if (text[i + 1] === '"') { cur[cur.length - 1] += '"'; i++; } else q = false; }
-        else cur[cur.length - 1] += c;
-      } else if (c === '"') q = true;
-      else if (c === ',') cur.push('');
-      else if (c === '\n') push();
-      else if (c === '\r') { /* skip */ }
-      else cur[cur.length - 1] += c;
-    }
-    if (cur.length > 1 || cur[0] !== '') push();
-    return rows.filter((r) => r.some((x) => String(x).trim() !== ''));
   }
   const CLASS_TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
   const FORMATS = ['Two-phase', 'Jump-off', 'Speed', 'Power & Speed'];
