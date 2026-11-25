@@ -12,6 +12,8 @@ import s from '../orders.module.css';
 
 const nzd = (c) => `NZ$${(Number(c || 0) / 100).toFixed(2)}`;
 const PAID_STATUSES = ['paid', 'in_production', 'shipped', 'delivered'];
+// Same list as the API: the buyer can cancel until the proof is approved.
+const CANCEL_FROM = ['submitted', 'artwork_review', 'changes_requested', 'proof_sent'];
 const day = (d) => new Date(d).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' });
 const linkToken = () => new URLSearchParams(window.location.search).get('t') || '';
 const logoName = (v) => (String(v).startsWith('club:') ? 'Club logo' : String(v).startsWith('mlogo:') ? 'Your logo' : 'Sponsor logo');
@@ -84,6 +86,7 @@ export default function MerchOrderPage() {
                 <div className={s.row}><span>{o.delivery === 'pickup' ? 'Club pickup' : 'Courier'}</span><span>{q.shippingCents ? nzd(q.shippingCents) : 'Free'}</span></div>
                 <div className={`${s.row} ${s.total}`}><span>Total</span><span>{nzd(o.totalCents)}</span></div>
                 <p className={s.muted}>Includes {nzd(q.gstCents)} GST. {PAID_STATUSES.includes(o.status) ? 'Paid in full.' : 'Nothing is charged until you approve the artwork proof.'}</p>
+                {CANCEL_FROM.includes(o.status) && <CancelOrder order={o} onCancelled={reload} />}
               </div>
             </div>
           )}
@@ -91,6 +94,39 @@ export default function MerchOrderPage() {
       </main>
       <SiteFooter />
     </div>
+  );
+}
+
+// Two steps so a stray tap never cancels: ask, then confirm in place.
+function CancelOrder({ order, onCancelled }) {
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function cancel() {
+    setBusy(true);
+    setError('');
+    try {
+      const r = await fetch(`${API}/api/merch/orders/${encodeURIComponent(order.ref)}/cancel`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ t: linkToken() }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Could not cancel the order, try again.');
+      await onCancelled();
+    } catch (e) {
+      setError(e.message.charAt(0).toUpperCase() + e.message.slice(1));
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      {error && <p className={s.err} role="alert">{error}</p>}
+      <div className={s.actions}>
+        {!asking && <button type="button" className={s.ghost} onClick={() => setAsking(true)}>Cancel order</button>}
+        {asking && <button type="button" className={s.primary} disabled={busy} onClick={cancel}>{busy ? 'Cancelling…' : 'Yes, cancel this order'}</button>}
+        {asking && <button type="button" className={s.ghost} disabled={busy} onClick={() => { setAsking(false); setError(''); }}>Keep it</button>}
+      </div>
+    </>
   );
 }
 

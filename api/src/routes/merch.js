@@ -248,6 +248,16 @@ const NOTE_MAX = 1000;
 const CHANGE_NOTE_MIN = 3;
 const ARTWORK_LINK_SECONDS = 15 * 60;
 const canSendProof = (status) => PROOF_FROM.includes(status);
+// Unpaid orders can be cancelled, which releases their sponsor holds. The
+// buyer may cancel until the proof is approved (after that a Stripe page
+// may already be open), the admin until it is paid.
+const BUYER_CANCEL_FROM = ['submitted', 'artwork_review', 'changes_requested', 'proof_sent'];
+const ADMIN_CANCEL_FROM = [...BUYER_CANCEL_FROM, 'approved'];
+const canCancel = (status, isAdmin) => (isAdmin ? ADMIN_CANCEL_FROM : BUYER_CANCEL_FROM).includes(status);
+// A sponsor discount needs an account, and one account holds sponsor
+// budget on at most this many unpaid orders at once (H5: anonymous orders
+// could lock every merch budget without paying).
+const MAX_OPEN_SPONSOR_ORDERS = 3;
 const proofKey = (orderId, eventId) => `merch/proofs/${orderId}/${eventId}.jpg`;
 const proofPath = (ref, eventId, token) => `/api/merch/orders/${ref}/proofs/${eventId}?t=${token}`;
 
@@ -343,6 +353,31 @@ async function spendSponsorHolds(client, orderId) {
   }
 }
 
+// Cancel an unpaid order in one transaction: status, event, and every
+// held sponsor discount released. Returns false when the order moved on.
+async function cancelMerchOrder(order, { isAdmin, note, actorId }) {
+  if (!canCancel(order.status, isAdmin)) return false;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const moved = await client.query(
+      `UPDATE merch_orders SET status = 'cancelled', updated_at = NOW() WHERE id = $1 AND status = $2 RETURNING id`,
+      [order.id, order.status]);
+    if (!moved.rowCount) { await client.query('ROLLBACK'); return false; }
+    await client.query('INSERT INTO merch_order_events (order_id, status, note, actor_user_id) VALUES ($1, $2, $3, $4)',
+      [order.id, 'cancelled', note || (isAdmin ? 'Cancelled by Boss Media' : 'Cancelled by the buyer'), actorId || null]);
+    await client.query(
+      `UPDATE merch_sponsor_holds SET status = 'released', updated_at = NOW() WHERE order_id = $1 AND status = 'held'`, [order.id]);
+    await client.query('COMMIT');
+    return true;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 // Refunded: what the order spent goes back to each budget.
 async function releaseSponsorSpend(orderId) {
   const client = await pool.connect();
@@ -400,7 +435,14 @@ async function markMerchOrderPaid(req, session) {
   } finally {
     client.release();
   }
-  if (!moved.rowCount) return; // already paid (repeated webhook) or no longer approved
+  if (!moved.rowCount) {
+    // Paid after an admin cancelled it: the money is in, the order is not.
+    if (o.status === 'cancelled') {
+      console.error('[merch.pay] paid after cancel, refund it', { ref, session: session.id });
+      audit(req, 'merch.order.paid_after_cancel', 'merch_order', o.id, { ref, session: session.id, pi: session.payment_intent || null });
+    }
+    return; // already paid (repeated webhook) or no longer approved
+  }
   audit(req, 'merch.order.paid', 'merch_order', o.id, { ref, session: session.id, total_cents: o.total_cents });
   const t = require('../lib/emailTemplates');
   const { sendMail } = require('../lib/mailer');
@@ -569,6 +611,9 @@ module.exports = function mountMerchRoutes(app) {
     const { values: v, errors } = parseOrderInput(req.body, m);
     if (errors.length) return res.status(400).json({ error: errors.join('; ') });
 
+    if (v.sponsorLogoIds.length && !req.authUser) {
+      return res.status(401).json({ error: 'log in to use a sponsor discount', login: true });
+    }
     // Saved account logos ("My sponsor logos", shared with photos) work
     // only for their owner, same rule as photo checkout.
     if (v.personalLogoIds.length) {
@@ -595,6 +640,17 @@ module.exports = function mountMerchRoutes(app) {
         await client.query(
           `SELECT b.id FROM sponsor_budgets b JOIN sponsor_logos l ON l.sponsor_id = b.sponsor_id
            WHERE l.id = ANY($1::UUID[]) AND b.applies_to = 'merch' ORDER BY b.id FOR UPDATE OF b`, [v.sponsorLogoIds]);
+      }
+      if (v.sponsorLogoIds.length) {
+        await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [req.authUser.id]);
+        const open = await client.query(
+          `SELECT COUNT(DISTINCT o.id)::INT AS n FROM merch_orders o JOIN merch_sponsor_holds h ON h.order_id = o.id
+            WHERE o.buyer_user_id = $1 AND h.status = 'held' AND o.status = ANY($2::TEXT[])`,
+          [req.authUser.id, ADMIN_CANCEL_FROM]);
+        if (open.rows[0].n >= MAX_OPEN_SPONSOR_ORDERS) {
+          const e = new Error(`you already have ${MAX_OPEN_SPONSOR_ORDERS} unpaid orders with a sponsor discount, pay or cancel one first`);
+          e.status = 409; throw e;
+        }
       }
       const funded = await sponsorDiscounts(client, v.sponsorLogoIds, req.authUser?.id || null);
       if (v.sponsorLogoIds.some((id) => !funded[id])) {
@@ -751,6 +807,34 @@ module.exports = function mountMerchRoutes(app) {
     }
     audit(req, `merch.proof.${decision}`, 'merch_order', o.id, { ref: o.ref });
     res.json({ data: { status: decision } });
+  }));
+
+  // Buyer cancels their own unpaid order (token link or logged-in owner).
+  app.post('/api/merch/orders/:ref/cancel', asyncH(async (req, res) => {
+    if (await throttled(pool, req.ip, 'merch-cancel', 20)) return res.status(429).json({ error: 'too many tries, try again later' });
+    const found = await viewableOrder(req, { admin: false });
+    if (!found) return res.status(404).json({ error: 'order not found' });
+    const { o } = found;
+    if (!canCancel(o.status, false)) return res.status(409).json({ error: 'this order can no longer be cancelled, contact us' });
+    if (!(await cancelMerchOrder(o, { isAdmin: false, actorId: req.authUser?.id }))) {
+      return res.status(409).json({ error: 'the order changed, reload and try again' });
+    }
+    audit(req, 'merch.order.cancelled', 'merch_order', o.id, { ref: o.ref, by: 'buyer' });
+    res.json({ data: { status: 'cancelled' } });
+  }));
+
+  // Admin cancels any unpaid order (also an approved one waiting for payment).
+  app.post('/admin/merch/orders/:ref/cancel', needRole('ADMIN'), asyncH(async (req, res) => {
+    const ref = String(req.params.ref || '').toUpperCase();
+    const o = REF_RE.test(ref) ? (await pool.query('SELECT * FROM merch_orders WHERE ref = $1', [ref])).rows[0] : null;
+    if (!o) return res.status(404).json({ error: 'order not found' });
+    if (!canCancel(o.status, true)) return res.status(409).json({ error: 'paid orders are refunded in Stripe, not cancelled' });
+    const note = String(req.body?.note || '').trim().slice(0, NOTE_MAX) || null;
+    if (!(await cancelMerchOrder(o, { isAdmin: true, note, actorId: req.authUser.id }))) {
+      return res.status(409).json({ error: 'the order changed, reload and try again' });
+    }
+    audit(req, 'merch.order.cancelled', 'merch_order', o.id, { ref: o.ref, by: 'admin' });
+    res.json({ data: { status: 'cancelled' } });
   }));
 
   // Buyer pays an approved order: a Stripe Checkout session for the total
@@ -922,3 +1006,5 @@ module.exports.perItemSponsorCaps = perItemSponsorCaps;
 module.exports.splitSponsorDiscount = splitSponsorDiscount;
 module.exports.MERCH_BUDGET_LEFT_SQL = MERCH_BUDGET_LEFT_SQL;
 module.exports.parseFulfilment = parseFulfilment;
+module.exports.canCancel = canCancel;
+module.exports.MAX_OPEN_SPONSOR_ORDERS = MAX_OPEN_SPONSOR_ORDERS;

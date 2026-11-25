@@ -133,3 +133,21 @@ test('M7: a refund or chargeback undoes the money it paid out', () => {
   assert.equal((media.match(/await revokePayment\(req, /g) || []).length, 2, 'refund + dispute share one path');
   assert.ok(media.includes('await reversePurchase(pool, id, { reason, returnBalance })'), 'every revoked purchase is reversed');
 });
+
+test('H5: merch sponsor holds need an account and can be cancelled', () => {
+  const { canCancel, MAX_OPEN_SPONSOR_ORDERS } = require('./src/routes/merch.js');
+  for (const st of ['submitted', 'artwork_review', 'changes_requested', 'proof_sent']) {
+    assert.ok(canCancel(st, false), `buyer cancels ${st}`);
+    assert.ok(canCancel(st, true), `admin cancels ${st}`);
+  }
+  assert.ok(!canCancel('approved', false), 'buyer cannot cancel once a Stripe page may be open');
+  assert.ok(canCancel('approved', true), 'admin can cancel an unpaid approved order');
+  for (const st of ['paid', 'in_production', 'shipped', 'delivered', 'cancelled', 'refunded']) {
+    assert.ok(!canCancel(st, true), `${st} is never cancelled`);
+  }
+  assert.equal(MAX_OPEN_SPONSOR_ORDERS, 3);
+  const merch = src('src/routes/merch.js');
+  assert.ok(merch.includes("v.sponsorLogoIds.length && !req.authUser"), 'anonymous sponsor discount refused');
+  assert.ok(merch.includes("UPDATE merch_sponsor_holds SET status = 'released', updated_at = NOW() WHERE order_id = $1 AND status = 'held'"), 'cancel releases holds');
+  assert.ok(merch.includes("app.post('/api/merch/orders/:ref/cancel'") && merch.includes("app.post('/admin/merch/orders/:ref/cancel', needRole('ADMIN')"));
+});

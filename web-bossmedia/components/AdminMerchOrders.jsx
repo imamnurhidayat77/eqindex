@@ -13,6 +13,8 @@ import s from './AdminMerchOrders.module.css';
 const STATUSES = ['submitted', 'artwork_review', 'changes_requested', 'proof_sent', 'approved',
   'paid', 'in_production', 'shipped', 'delivered', 'cancelled', 'refunded'];
 const PROOF_FROM = ['submitted', 'artwork_review', 'changes_requested', 'proof_sent'];
+// Unpaid orders an admin may cancel; cancelling releases the sponsor hold.
+const CANCEL_FROM = [...PROOF_FROM, 'approved'];
 const PROOF_MAX_BYTES = 15 * 1024 * 1024;
 // After payment: the one next step and its button. Pickup orders are
 // collected at the club instead of shipped.
@@ -123,7 +125,42 @@ function OrderDetail({ orderRef, onChanged }) {
       {PROOF_FROM.includes(o.status) && <SendProof orderRef={o.ref} resend={o.status === 'proof_sent'} onSent={() => { load(); onChanged(); }} />}
       {FULFILMENT_STEPS[o.status] && <NextStep order={o} onMoved={() => { load(); onChanged(); }} />}
       {o.status === 'approved' && <p className="st-csub" style={{ marginTop: 12 }}>Proof approved. Waiting for the buyer to pay.</p>}
+      {CANCEL_FROM.includes(o.status) && <CancelOrder order={o} onCancelled={() => { load(); onChanged(); }} />}
     </div>
+  );
+}
+
+function CancelOrder({ order, onCancelled }) {
+  const notify = useNotify();
+  const [asking, setAsking] = useState(false);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function cancel(e) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await studioFetch(`/admin/merch/orders/${order.ref}/cancel`, { method: 'POST', body: { note } });
+      notify('Order cancelled, its sponsor discount is released');
+      onCancelled();
+    } catch (err) { notify(err.message, true); setBusy(false); }
+  }
+  if (!asking) {
+    return <div style={{ marginTop: 12 }}><button className="st-btn-ghost" type="button" onClick={() => setAsking(true)}>Cancel order</button></div>;
+  }
+  return (
+    <form className={s.send} onSubmit={cancel}>
+      <h4 className={s.h4}>Cancel {order.ref}</h4>
+      <label className={s.field}><span>Reason, shown on the order (optional)</span>
+        <input type="text" maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. No reply to the proof for two weeks" />
+      </label>
+      <p className={s.hint}>{order.status === 'approved'
+        ? 'If the buyer pays on a Stripe page that is already open, the payment is logged and you refund it in Stripe.'
+        : 'The buyer can no longer answer the proof or pay.'}</p>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button className="st-btn" type="submit" disabled={busy}>{busy ? 'Cancelling…' : 'Yes, cancel order'}</button>
+        <button className="st-btn-ghost" type="button" disabled={busy} onClick={() => setAsking(false)}>Keep it</button>
+      </div>
+    </form>
   );
 }
 

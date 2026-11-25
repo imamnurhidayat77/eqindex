@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { API } from '../lib/api';
 import { currentMerchSettings, isUploadSlot, merchOrderSettings, quoteMerchOrder } from '../lib/merch.mjs';
@@ -40,6 +41,8 @@ export default function MerchOrderForm({
   const [address, setAddress] = useState({ line1: '', line2: '', city: '', postcode: '' });
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [needLogin, setNeedLogin] = useState(false);
+  const pathname = usePathname();
   const [done, setDone] = useState(null);
   // Uploaded logo claims by upload key, so a retry never uploads twice.
   const claims = useRef({});
@@ -91,6 +94,7 @@ export default function MerchOrderForm({
     e.preventDefault();
     if (busy || done) return;
     setError('');
+    setNeedLogin(false);
     try {
       // Swap session-only upload URLs for server logo ids.
       const sent = { ...slots };
@@ -120,6 +124,7 @@ export default function MerchOrderForm({
       const r = await fetch(`${API}/api/merch/orders`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
+      if (r.status === 401) setNeedLogin(true);
       if (!r.ok) throw new Error(await readError(r, 'Could not send the order. Try again.'));
       const d = (await r.json()).data;
       rememberOrder(d.ref, d.token);
@@ -213,7 +218,11 @@ export default function MerchOrderForm({
         </>) : <p className={s.note}>Add a quantity to see the order total.</p>}
       </div>
 
-      {error && <p className={s.error} role="alert">{error}</p>}
+      {error && (
+        <p className={s.error} role="alert">
+          {error}{needLogin && <> <Link className={s.link} href={`/login?next=${encodeURIComponent(pathname || '/merch')}`}>Log in or create an account</Link></>}
+        </p>
+      )}
       <p className={s.note}>By sending you agree to our <Link href="/terms">terms</Link>.</p>
     </form>
   );
