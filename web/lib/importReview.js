@@ -9,6 +9,8 @@ export const ISSUE_LABELS = {
   new_horse: 'new horse',
   new_rider: 'new rider',
   new_class: 'new class',
+  similar_horse: 'similar horse exists',
+  similar_rider: 'similar rider exists',
 };
 
 const isFinished = (r) => (r.status || 'finished') === 'finished';
@@ -37,7 +39,7 @@ export function reviewGroups(records, preview) {
     if (result && !result.ok) issues.push('failed');
     if (blocking.has(record.class_name) && !record.series_key) issues.push('no_series');
     if (result?.ok) {
-      for (const f of ['new_horse', 'new_rider', 'new_class']) if (result.preview?.[f]) issues.push(f);
+      for (const f of ['new_horse', 'new_rider', 'new_class', 'similar_horse', 'similar_rider']) if (result.preview?.[f]) issues.push(f);
     }
     groups.get(key).rows.push({ index, record, result, issues });
   });

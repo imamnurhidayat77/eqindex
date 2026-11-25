@@ -9,7 +9,11 @@ import { reviewGroups, ISSUE_LABELS } from '../../../lib/importReview';
 const ISSUE_BADGE = {
   ungrounded: BADGE.red, failed: BADGE.red, no_series: BADGE.red, placing: BADGE.gray,
   new_horse: BADGE.blue, new_rider: BADGE.blue, new_class: BADGE.gray,
+  similar_horse: BADGE.gold, similar_rider: BADGE.gold,
 };
+// "similar_horse" → which record field a "Use X" click replaces.
+const SIMILAR_FIELD = { similar_horse: ['horse', 'horse_name'], similar_rider: ['rider', 'rider_name'] };
+const USE_BTN = 'rounded border border-gold/50 px-2 py-0.5 text-[12px] font-semibold text-gold bg-transparent cursor-pointer hover:bg-goldbg active:scale-[0.97] transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:active:scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold disabled:opacity-40 disabled:cursor-not-allowed';
 const CELL_INPUT = 'w-full min-w-0 rounded border border-transparent bg-transparent px-1.5 py-1 text-[13px] text-body hover:border-line focus:border-gold/60 focus:bg-ink focus:outline-none';
 const PLACE_INPUT_WIDTH = 'w-14';
 
@@ -131,7 +135,19 @@ export default function ReviewTable({ records, preview, seriesKeys, disabled, on
                       <tr>
                         <td colSpan={columns} className={`${TD} pt-0`}>
                           <div className="flex flex-wrap items-center gap-1 sm:pl-16">
-                            {issues.map((i) => <span key={i} className={`${badge(ISSUE_BADGE[i])} whitespace-nowrap`}>{ISSUE_LABELS[i]}</span>)}
+                            {issues.map((i) => {
+                              const sim = SIMILAR_FIELD[i] && result?.preview?.[i];
+                              if (!sim) return <span key={i} className={`${badge(ISSUE_BADGE[i])} whitespace-nowrap`}>{ISSUE_LABELS[i]}</span>;
+                              const [what, field] = SIMILAR_FIELD[i];
+                              return (
+                                <span key={i} className="inline-flex flex-wrap items-center gap-1">
+                                  <span className={`${badge(ISSUE_BADGE[i])} [overflow-wrap:anywhere]`}>{what} looks like “{sim.name}” ({Math.round(sim.score * 100)}%)</span>
+                                  <button type="button" className={USE_BTN} disabled={disabled}
+                                    aria-label={`Use existing ${what} ${sim.name} for row ${n}`}
+                                    onClick={() => onEdit(index, field, sim.name)}>Use {sim.name}</button>
+                                </span>
+                              );
+                            })}
                             {errors.length > 0 && <span className="text-[12px] text-blood [overflow-wrap:anywhere]">{errors.join('; ')}</span>}
                           </div>
                         </td>

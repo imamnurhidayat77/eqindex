@@ -48,3 +48,12 @@ test('withRecords recounts stats and keeps the rest of the analysis', () => {
   assert.deepEqual(next.stats, { rounds: 2, with_series: 1, finished: 3 });
   assert.deepEqual(next.warnings, ['w']);
 });
+
+test('reviewGroups flags similar existing horse/rider from the dry-run', () => {
+  const groups = reviewGroups([{ class_name: 'A', horse_name: 'Bela Rose', rider_name: 'Jon Smith', placing: '1' }], {
+    rows: [{ line: 1, ok: true, preview: { new_horse: true, new_rider: true,
+      similar_horse: { id: 'h', name: 'Bella Rose', score: 0.75 }, similar_rider: { id: 'r', name: 'John Smith', score: 0.62 } } }],
+    summary: {},
+  });
+  assert.deepEqual(groups[0].rows[0].issues, ['new_horse', 'new_rider', 'similar_horse', 'similar_rider']);
+});

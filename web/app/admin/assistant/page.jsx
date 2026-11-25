@@ -96,7 +96,8 @@ export default function AdminAssistant() {
   const [seriesAck, setSeriesAck] = useState(false);
   // Admin confirmed the AI-mapped names that were not found in the source.
   const [namesAck, setNamesAck] = useState(false);
-  // Partial commit: { from, saved, failed, error } — rows before `from` were committed.
+  // Partial commit: { from, saved, failed, error, batchId } — rows before `from` were committed.
+  // One batch id per Commit run (all chunks + Resume) so it can be undone as one import.
   const [resume, setResume] = useState(null);
   const [err, setErr] = useState('');
   const [drawer, setDrawer] = useState(true);
@@ -295,7 +296,7 @@ export default function AdminAssistant() {
   // reads committed rows, so a retried chunk never double-imports.
   const CHUNK = 50;
   const [progress, setProgress] = useState(null);
-  async function runChunked(records, dry, from = 0) {
+  async function runChunked(records, dry, from = 0, batchId = null) {
     const rows = [];
     const evAgg = {};
     const blocking = new Map();
@@ -312,9 +313,13 @@ export default function AdminAssistant() {
     };
     for (let i = from; i < records.length; i += CHUNK) {
       setProgress({ done: i, total: records.length, phase });
-      // `ungrounded` is a review-only flag, never part of the import record.
-      const body = { records: records.slice(i, i + CHUNK).map(({ ungrounded, ...r }) => r), dry_run: dry };
-      if (!dry && seriesAck) body.series_ack = true;
+      // `ungrounded` travels so the server can enforce the same name gate.
+      const body = { records: records.slice(i, i + CHUNK), dry_run: dry };
+      if (!dry) {
+        body.batch_id = batchId;
+        if (seriesAck) body.series_ack = true;
+        if (namesAck) body.names_ack = true;
+      }
       if (eventId === '__new__') {
         body.event = { name: evNew.name.trim(), date_start: evNew.date_start, date_end: evNew.date_start, venue: evNew.venue.trim() };
       } else {
@@ -346,7 +351,8 @@ export default function AdminAssistant() {
     if (eventId === '__new__' && (!evNew.name.trim() || !evNew.date_start)) { setErr('New event needs a name and start date.'); return; }
     setBusy(dry ? 'validate' : 'commit');
     try {
-      const d = await runChunked(analysis.records, dry, from);
+      const batchId = dry ? null : (resume?.batchId || crypto.randomUUID());
+      const d = await runChunked(analysis.records, dry, from, batchId);
       if (dry) {
         setPreview(d);
       } else {
@@ -354,12 +360,12 @@ export default function AdminAssistant() {
         const saved = (resume?.saved || 0) + d.summary.ok;
         const failed = (resume?.failed || 0) + d.summary.failed;
         if (d.failedAt !== undefined) {
-          setResume({ from: d.failedAt, saved, failed, error: d.error });
+          setResume({ from: d.failedAt, saved, failed, error: d.error, batchId });
         } else {
           const evNames = (d.summary.events || []).map((e) => e.name).join(', ');
           patchActive((c) => ({
             ...c, updatedAt: Date.now(),
-            msgs: [...c.msgs, { id: uid(), role: 'assistant', content: `✅ Imported **${saved}** rounds${evNames ? ` into ${evNames}` : ''}${failed ? ` (${failed} failed and were not saved)` : ''}. The review form is cleared; send a new link or file whenever ready.` }],
+            msgs: [...c.msgs, { id: uid(), role: 'assistant', content: `✅ Imported **${saved}** rounds${evNames ? ` into ${evNames}` : ''}${failed ? ` (${failed} failed and were not saved)` : ''}. The review form is cleared; send a new link or file whenever ready. Made a mistake? Undo this import from **Admin → Import → Undoable imports**.` }],
             analysis: null,
           }));
         }
@@ -528,7 +534,7 @@ export default function AdminAssistant() {
                           <p><b className="text-blood">Commit stopped at row {resume.from + 1}.</b> {resume.error}</p>
                           <p className="mt-1 text-muted">{resume.from === 0
                             ? 'Nothing was saved.'
-                            : `${resume.saved} row(s) saved from rows 1–${resume.from}${resume.failed ? ` (${resume.failed} of those failed and were not saved)` : ''}. Nothing from row ${resume.from + 1} onward was saved.`}</p>
+                            : `${resume.saved} row(s) saved from rows 1–${resume.from}${resume.failed ? ` (${resume.failed} of those failed and were not saved)` : ''}. Nothing from row ${resume.from + 1} onward was saved. Resume to finish, or undo the saved part from Admin → Import → Undoable imports.`}</p>
                           <button className={`${BTN_DANGER} mt-2`} disabled={!!busy} onClick={() => run(false, resume.from)}>
                             {busy === 'commit' ? `Resuming… ${progress ? `${progress.done}/${progress.total}` : ''}` : `Resume commit from row ${resume.from + 1}`}</button>
                         </div>

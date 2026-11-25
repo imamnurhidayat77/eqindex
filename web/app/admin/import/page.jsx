@@ -5,6 +5,7 @@ import { API } from '../../../lib/api';
 import { CARD, EMPTY, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
 import Dropdown from '../../../components/Dropdown';
 import { nzDay } from '../../../lib/dates';
+import ImportBatches from './ImportBatches';
 
 const SPEC = 'class_name, class_type, class_date, rider_name, horse_name, placing, faults, time, time_faults, height_cm, format, status, notes, series_key, breed, age, gender, sire, dam, breeder, country, region, rider_region, series_category, nationality, venue, venue_country, arena_type, event_name, date_start, date_end';
 
@@ -317,6 +318,7 @@ export default function AdminImport() {
         </section>
       )}
 
+      <ImportBatches />
       {!!history.length && (
         <section className={CARD}>
           <h2 className="text-[15px] font-bold mb-2">Import history</h2>
