@@ -16,13 +16,15 @@ const MOVED_LABELS = {
   training_records: 'training notes', correction_reports: 'correction reports', credit_bundles: 'credit bundles',
   claimed_photos: 'claimed photos',
 };
+const REMOVED_LABELS = { ranking_snapshots: 'old ranking snapshots', watchlist_items: 'duplicate follows' };
 const summary = (moved = {}) => Object.entries(moved).filter(([, n]) => n > 0)
-  .map(([k, n]) => `${n} ${MOVED_LABELS[k] || k}`).join(', ') || 'nothing to move';
+  .map(([k, n]) => `${n} ${MOVED_LABELS[k] || REMOVED_LABELS[k] || k}`).join(', ') || 'nothing to move';
 
 export default function MergeHorses() {
   const call = useAdminApi();
   const [groups, setGroups] = useState(null);
   const [history, setHistory] = useState([]);
+  const [hidden, setHidden] = useState([]);
   const [keep, setKeep] = useState({}); // group index -> horse id to keep
   const [dup, setDup] = useState(null);
   const [into, setInto] = useState(null);
@@ -34,9 +36,11 @@ export default function MergeHorses() {
 
   async function load() {
     try {
-      const [g, h] = await Promise.all([call('/admin/horses/duplicates'), call('/admin/horses/merges')]);
+      const [g, h, n] = await Promise.all([call('/admin/horses/duplicates'), call('/admin/horses/merges'),
+        call('/admin/horses/not-duplicates')]);
       setGroups(Array.isArray(g) ? g : []);
       setHistory(Array.isArray(h) ? h : []);
+      setHidden(Array.isArray(n) ? n : []);
     } catch (e) { setMsg(e.message); setGroups([]); }
   }
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
@@ -58,6 +62,25 @@ export default function MergeHorses() {
       await load();
     } catch (e) { setMsg(e.message); }
     setBusy(false); setConfirm(false);
+  }
+  async function markDifferent(g) {
+    setBusy(true); setMsg('');
+    try {
+      await call('/admin/horses/not-duplicates', { method: 'POST', body: JSON.stringify({ ids: g.map((h) => h.id) }) });
+      setMsg(`Marked ${g.map((h) => h.name).join(' and ')} as different horses. They won't be suggested again.`);
+      setPreview(null); setKeep({});
+      await load();
+    } catch (e) { setMsg(e.message); }
+    setBusy(false);
+  }
+  async function restorePair(p) {
+    setBusy(true); setMsg('');
+    try {
+      await call('/admin/horses/not-duplicates/restore', { method: 'POST', body: JSON.stringify({ a_id: p.a_id, b_id: p.b_id }) });
+      setMsg(`${p.a_name} and ${p.b_name} can be suggested as duplicates again.`);
+      await load();
+    } catch (e) { setMsg(e.message); }
+    setBusy(false);
   }
   async function doUndo() {
     setBusy(true); setMsg('');
@@ -103,18 +126,39 @@ export default function MergeHorses() {
                     </tbody>
                   </table>
                 </div>
-                {g.length === 2 && (
-                  <button disabled={busy} className={`${BTN} mt-2`}
-                    onClick={() => { const to = g.find((h) => h.id === keepId); const from = g.find((h) => h.id !== keepId); runPreview(from, to); }}>
-                    Preview merge
-                  </button>
-                )}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {g.length === 2 && (
+                    <button disabled={busy} className={BTN}
+                      onClick={() => { const to = g.find((h) => h.id === keepId); const from = g.find((h) => h.id !== keepId); runPreview(from, to); }}>
+                      Preview merge
+                    </button>
+                  )}
+                  <button disabled={busy} className={BTN} onClick={() => markDifferent(g)}>Not a duplicate</button>
+                </div>
                 {g.length > 2 && <p className="mt-2 text-[12px] text-muted">More than two records: merge them one pair at a time below.</p>}
               </div>
             );
           })}
         </div>
       </section>
+
+      {hidden.length > 0 && (
+        <section className={CARD}>
+          <h2 className={H2}>Marked as different horses</h2>
+          <p className="text-[13px] text-muted mb-2">These pairs are no longer suggested. Restore one if it was marked by mistake.</p>
+          <ul className="flex flex-col gap-1 text-[13px]">
+            {hidden.map((p) => (
+              <li key={`${p.a_id}|${p.b_id}`} className="flex flex-wrap items-center gap-2">
+                <Link className={LINK} href={`/horses/${p.a_slug || p.a_id}`} target="_blank">{p.a_name}</Link>
+                <span className="text-muted">and</span>
+                <Link className={LINK} href={`/horses/${p.b_slug || p.b_id}`} target="_blank">{p.b_name}</Link>
+                <span className="text-faint">· {fmtDay(p.created_at)}{p.marked_by ? ` · ${p.marked_by}` : ''}</span>
+                <button disabled={busy} className="text-[13px] text-sky hover:underline bg-none border-0 cursor-pointer" onClick={() => restorePair(p)}>Restore</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className={CARD}>
         <h2 className={H2}>Merge any two horses</h2>
@@ -137,7 +181,7 @@ export default function MergeHorses() {
           <ul className="mt-2 list-disc pl-5 text-[13px] text-muted">
             <li>Moves {summary(preview.data.moved)}.</li>
             {Object.keys(preview.data.filled || {}).length > 0 && <li>Fills empty fields on {preview.into.name}: {Object.keys(preview.data.filled).join(', ')}.</li>}
-            {Object.values(preview.data.removed || {}).some((n) => n > 0) && <li>Drops {summary(preview.data.removed)} that {preview.into.name} already had.</li>}
+            {Object.values(preview.data.removed || {}).some((n) => n > 0) && <li>Clears {summary(preview.data.removed)} of {preview.from.name}.</li>}
             <li>&ldquo;{preview.from.name}&rdquo; becomes a name alias, so future imports land on {preview.into.name}. Its old page link redirects.</li>
           </ul>
           <div className="mt-3 flex gap-2">

@@ -1312,7 +1312,63 @@ module.exports = function mountAdminRoutes(app) {
       SELECT k, json_agg(json_build_object('id', id, 'name', name, 'slug', slug, 'yob', year_of_birth,
         'sire', sire, 'dam', dam, 'rounds', rounds) ORDER BY rounds DESC, name) AS horses
       FROM h WHERE k <> '' GROUP BY k HAVING COUNT(*) > 1 ORDER BY k LIMIT 200`);
-    res.json({ data: rows.map((r) => r.horses) });
+    // Hide groups where an admin marked every pair as different horses.
+    let marked = new Set();
+    try {
+      const nd = await pool.query('SELECT a_id, b_id FROM horse_not_duplicates');
+      marked = new Set(nd.rows.map((r) => `${r.a_id}|${r.b_id}`));
+    } catch (e) {
+      if (e.code !== '42P01') throw e; // migration 115 not applied yet
+    }
+    const pairKey = (x, y) => (x < y ? `${x}|${y}` : `${y}|${x}`);
+    const open = rows.map((r) => r.horses).filter((g) =>
+      g.some((a, i) => g.slice(i + 1).some((b) => !marked.has(pairKey(a.id, b.id)))));
+    res.json({ data: open });
+  }));
+
+  // "Not a duplicate": remember that these horses are different, so the
+  // finder stops suggesting them. Reversible via /restore.
+  const notDupPairs = (ids) => {
+    const u = [...new Set(ids)].sort();
+    const out = [];
+    u.forEach((a, i) => u.slice(i + 1).forEach((b) => out.push([a, b])));
+    return out;
+  };
+  app.get('/admin/horses/not-duplicates', needRole('ADMIN'), asyncH(async (req, res) => {
+    try {
+      const { rows } = await pool.query(`
+        SELECT n.a_id, n.b_id, a.name AS a_name, a.slug AS a_slug, b.name AS b_name, b.slug AS b_slug,
+          n.created_at, u.name AS marked_by
+        FROM horse_not_duplicates n JOIN horses a ON a.id = n.a_id JOIN horses b ON b.id = n.b_id
+        LEFT JOIN users u ON u.id = n.marked_by ORDER BY n.created_at DESC LIMIT 200`);
+      res.json({ data: rows });
+    } catch (e) {
+      if (e.code === '42P01') return res.json({ data: [] });
+      throw e;
+    }
+  }));
+  app.post('/admin/horses/not-duplicates', needRole('ADMIN'), asyncH(async (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    if (ids.length < 2 || ids.length > 10 || !ids.every((id) => MERGE_UUID.test(id))) {
+      return res.status(400).json({ error: 'need {ids: [2-10 horse ids]}' });
+    }
+    const pairs = notDupPairs(ids);
+    for (const [a, b] of pairs) {
+      await pool.query(`INSERT INTO horse_not_duplicates (a_id, b_id, marked_by) VALUES ($1, $2, $3)
+        ON CONFLICT DO NOTHING`, [a, b, req.authUser?.id || null]);
+    }
+    audit(req, 'horse.not_duplicate', 'horses', ids[0], { ids });
+    res.json({ data: { pairs: pairs.length } });
+  }));
+  app.post('/admin/horses/not-duplicates/restore', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { a_id, b_id } = req.body || {};
+    if (!MERGE_UUID.test(String(a_id)) || !MERGE_UUID.test(String(b_id))) {
+      return res.status(400).json({ error: 'need {a_id, b_id}' });
+    }
+    const [a, b] = [String(a_id), String(b_id)].sort();
+    await pool.query('DELETE FROM horse_not_duplicates WHERE a_id = $1 AND b_id = $2', [a, b]);
+    audit(req, 'horse.not_duplicate_undo', 'horses', a, { a_id: a, b_id: b });
+    res.json({ data: { ok: true } });
   }));
 
   app.post('/admin/horses/merge', needRole('ADMIN'), asyncH(async (req, res) => {
