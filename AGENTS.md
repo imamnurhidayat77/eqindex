@@ -48,6 +48,17 @@
   patuhi motion rules (<300ms, tanpa `transition: all`, tanpa `scale(0)`,
   tanpa `ease-in` untuk UI), hormati `prefers-reduced-motion`, dan JANGAN
   sentuh `globals.css` (frozen) — polish scoped per komponen via CSS module.
+- Skill UI di `.claude/skills/` WAJIB di-load sesuai kasusnya setiap kerja
+  design/UI (Claude Code tidak membaca `.agents/skills/`):
+  - `microinteractions`: tombol, tab, toggle, tooltip, FAQ, drag, hold-to-confirm
+    (ambil timing/easing dari studinya, jangan karang sendiri).
+  - `break-ui`: setiap form/halaman baru atau yang diubah, sebelum bilang beres.
+  - `review-animations` / `improve-animations` / `choreograph`: setiap ada motion.
+  - `mobile-native` + `gestures`: layout mobile, sheet, swipe, galeri.
+  - `dithercn`: efek dither, HANYA di `web-bossmedia` (butuh React 19 +
+    Tailwind v4; `web/` tidak kompatibel).
+  - Warna/kontras: cek kontras ≥4.5:1 (colorfinch.com hanya tool web, bukan skill).
+  - Perintah `npx shadcn add` dari skill menambah kode ke app: cek diff-nya.
 
 ## Security (WAJIB — tidak bisa ditawar)
 
