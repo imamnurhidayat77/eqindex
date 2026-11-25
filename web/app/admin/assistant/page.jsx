@@ -347,6 +347,7 @@ export default function AdminAssistant() {
     setErr('');
     const analysis = active?.analysis;
     if (!analysis?.records?.length) { setErr('Nothing to import yet — ask me to read a link or file first.'); return; }
+    if (analysis.blocking) { setErr('This file could not be read reliably — import the EvoEvents results link instead.'); return; }
     if (eventId !== '__new__' && !eventId) { setErr('Pick a target event (rows without their own event need one).'); return; }
     if (eventId === '__new__' && (!evNew.name.trim() || !evNew.date_start)) { setErr('New event needs a name and start date.'); return; }
     setBusy(dry ? 'validate' : 'commit');
@@ -378,7 +379,9 @@ export default function AdminAssistant() {
   const analysis = active?.analysis || null;
   const seriesBlocking = (preview?.dry_run && preview.summary.series_blocking) || [];
   const ungroundedRows = (analysis?.records || []).filter((r) => r.ungrounded?.length);
-  const commitBlocked = !preview || preview.dry_run === false || !!resume
+  // Parser could not read the file reliably: nothing from it may be saved.
+  const fileBlocked = analysis?.blocking || null;
+  const commitBlocked = !!fileBlocked || !preview || preview.dry_run === false || !!resume
     || (seriesBlocking.length > 0 && !seriesAck) || (ungroundedRows.length > 0 && !namesAck);
   // Any edit or delete replaces the records, so the preview, acks and
   // resume state reset (effect above) and Commit needs a fresh Validate.
@@ -501,6 +504,12 @@ export default function AdminAssistant() {
                       {!!analysis.warnings.length && (
                         <ul className="text-[13px] text-gold mb-2">{analysis.warnings.slice(0, 4).map((w, i) => <li key={i}>{w}</li>)}</ul>
                       )}
+                      {fileBlocked && (
+                        <div role="alert" className="mb-2 rounded-md border border-blood/60 bg-redbg p-2.5 text-[13px] text-body [overflow-wrap:anywhere]">
+                          <p className="font-bold text-blood">This file cannot be imported as read</p>
+                          <p className="mt-1">{fileBlocked}</p>
+                        </div>
+                      )}
                       {ungroundedRows.length > 0 && (
                         <div className="mb-2 rounded-md border border-gold/50 bg-ink p-2.5 text-[13px]">
                           <p className="font-bold text-gold">{ungroundedRows.length} row(s) have names not found in the source text</p>
@@ -526,7 +535,7 @@ export default function AdminAssistant() {
                             options={[{ value: '', label: '— select —' }, { value: '__new__', label: '＋ New event…' },
                               ...events.map((e) => ({ value: e.id, label: `${e.name} · ${nzDay(e.date_start)}` }))]}
                             onSelect={(o) => setEventId(o.value)} /></label>
-                        <button className={BTN_PRIMARY} disabled={!!busy} onClick={() => run(true)}>{busy === 'validate' ? `Validating… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Validate & preview →'}</button>
+                        <button className={BTN_PRIMARY} disabled={!!busy || !!fileBlocked} onClick={() => run(true)}>{busy === 'validate' ? `Validating… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Validate & preview →'}</button>
                         <button className={BTN_DANGER} disabled={!!busy || commitBlocked} onClick={() => run(false)}>{busy === 'commit' ? `Committing… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Commit'}</button>
                       </div>
                       {resume && (
