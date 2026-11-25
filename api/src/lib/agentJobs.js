@@ -59,7 +59,7 @@ async function runAiMapJob(id) {
       },
     });
     const tagged = await applySeriesMap(records, job.user_id);
-    const { reply, analysis } = mapResultToReply({ records, dropped, prose, truncated, filename, tagged });
+    const { reply, analysis } = mapResultToReply({ records, dropped, prose, truncated, filename, tagged, sourceText: text });
     await pool.query(
       "UPDATE assistant_jobs SET status = 'done', output = $2, progress = NULL, updated_at = NOW() WHERE id = $1",
       [id, { reply, analysis }]);

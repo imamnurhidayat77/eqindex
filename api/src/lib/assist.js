@@ -3,6 +3,76 @@
 const pool = require('../db');
 const { autoTagRecords } = require('./seriesKeys');
 
+// Name key used for import matching: accents stripped, uppercase,
+// punctuation removed, spaces collapsed. Shared with routes/admin.js.
+function normName(v) {
+  return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// AI grounding gate: a mapped horse/rider name must appear in the source
+// text (spaces ignored, to survive PDF line splits; or every word present,
+// for "SURNAME Firstname" reordering). Flags rows with `ungrounded`
+// ['horse'|'rider'] and returns how many rows were flagged.
+function groundRecords(records, sourceText) {
+  // Newlines/tabs → spaces first: normName drops them, gluing "JOHN\n2" into one word.
+  const src = normName(String(sourceText || '').replace(/\s+/g, ' '));
+  const tight = src.replace(/ /g, '');
+  const words = new Set(src.split(' '));
+  const found = (name) => {
+    const n = normName(name);
+    return !n || tight.includes(n.replace(/ /g, '')) || n.split(' ').every((w) => words.has(w));
+  };
+  let flagged = 0;
+  for (const r of records) {
+    const miss = [];
+    if (!found(r.horse_name)) miss.push('horse');
+    if (!found(r.rider_name)) miss.push('rider');
+    if (miss.length) { r.ungrounded = miss; flagged++; } else delete r.ungrounded;
+  }
+  return flagged;
+}
+const ungroundedWarning = (n) => `${n} row(s) have names not found in the source text — check them before commit`;
+
+// Placing sanity per class (warnings only — ties are legal). Standard
+// competition ranking: each sorted placing must repeat the previous one
+// (tie) or equal its position (1,1,3 ok; 1,2,4 or 1,1,2 flagged).
+const MAX_PLACING_WARNINGS = 5;
+function placingWarnings(records) {
+  const byClass = new Map();
+  for (const r of records) {
+    if ((r.status || 'finished') !== 'finished') continue;
+    const p = parseInt(r.placing, 10);
+    if (!(p >= 1) || !r.class_name) continue;
+    const k = `${r.class_name}|${r.class_date || ''}`;
+    if (!byClass.has(k)) byClass.set(k, { name: r.class_name, places: [] });
+    byClass.get(k).places.push(p);
+  }
+  const odd = [];
+  for (const { name, places } of byClass.values()) {
+    const s = places.sort((a, b) => a - b);
+    if (s.some((p, i) => p !== i + 1 && p !== s[i - 1])) odd.push({ name, places: s });
+  }
+  const out = odd.slice(0, MAX_PLACING_WARNINGS).map(({ name, places }) => (
+    `Check placings in "${String(name).slice(0, 60)}": ${places.slice(0, 12).join(', ')}${places.length > 12 ? '…' : ''} (gap or unusual tie)`));
+  if (odd.length > MAX_PLACING_WARNINGS) out.push(`${odd.length - MAX_PLACING_WARNINGS} more class(es) have placings to check`);
+  return out;
+}
+
+// Remembered series patterns shorter than this match far too much
+// ("am" hits "Amateur", "Grand Slam"…) — rejected on save, ignored on load.
+const MIN_SERIES_PATTERN = 4;
+const isUsableSeriesPattern = (p) => String(p || '').trim().length >= MIN_SERIES_PATTERN;
+
+// Valid series keys from the registry, or null when the registry is empty
+// or unreadable (then nothing is rejected — the gate needs a source).
+async function loadSeriesKeys(db = pool) {
+  try {
+    const { rows } = await db.query('SELECT series_key FROM series_info');
+    return rows.length ? new Set(rows.map((r) => r.series_key)) : null;
+  } catch { return null; }
+}
+
 function summarizeAssist(type, meta, records, skipped) {
   // Built-in series auto-tag runs here so EVERY import flow (csv-rule,
   // evoevents-rule, ai, equipe, evoevents-fetch) gets it — remembered
@@ -20,6 +90,7 @@ function summarizeAssist(type, meta, records, skipped) {
     warnings.push(`Verify series link: "${v.name.slice(0, 60)}" mentions a series but matched no key (${v.rows} row(s)) — set a series_key or confirm non-series (scores 0 without one)`);
   }
   if (auto.verify.length > 5) warnings.push(`${auto.verify.length - 5} more class(es) need a series verdict`);
+  warnings.push(...placingWarnings(records));
   for (const [, name, why] of (skipped || []).slice(0, 8)) warnings.push(`skipped: ${String(name).slice(0, 50)} — ${why}`);
   return {
     detected: { type, ...meta },
@@ -83,15 +154,18 @@ function csvRuleRecords(text) {
 }
 
 // Load this admin's remembered series mappings: [{pattern, series_key}].
+// Too-short patterns and keys missing from series_info are skipped (kept
+// in the table, just no longer applied).
 async function loadSeriesMap(userId) {
   if (!userId) return [];
   try {
     const { rows } = await pool.query(
       'SELECT key, value FROM assistant_memory WHERE user_id = $1 AND kind = $2',
       [userId, 'series_map']);
+    const valid = await loadSeriesKeys();
     return rows
       .map((r) => ({ pattern: String(r.key || '').toLowerCase(), series_key: r.value?.series_key }))
-      .filter((m) => m.pattern && m.series_key);
+      .filter((m) => isUsableSeriesPattern(m.pattern) && m.series_key && (!valid || valid.has(m.series_key)));
   } catch { return []; }
 }
 
@@ -115,8 +189,9 @@ async function applySeriesMap(records, userId) {
 
 // Build the chat/job reply + analysis from mapped records (single
 // definition so sync chat, jobs and /assist read identically).
-function mapResultToReply({ records, dropped, prose, truncated, filename, tagged }) {
+function mapResultToReply({ records, dropped, prose, truncated, filename, tagged, sourceText }) {
   for (const r of records) delete r.start_order;
+  const ungrounded = sourceText ? groundRecords(records, sourceText) : 0;
   if (!records.length) {
     const say = prose
       ? `Here's what I made of ${filename || 'the text'}: ${prose.slice(0, 600)}${prose.length > 600 ? '…' : ''} — but I couldn't pull complete result rows (need class + rider + horse on each). Paste a couple of example rows so I can see the layout?`
@@ -127,6 +202,7 @@ function mapResultToReply({ records, dropped, prose, truncated, filename, tagged
   const warnings = [];
   if (dropped) warnings.push(`${dropped} row(s) dropped (missing class/rider/horse)`);
   if (truncated) warnings.push('File is very long — only the first ~72KB was mapped. Split the PDF by day/ring and send the rest separately.');
+  if (ungrounded) warnings.unshift(ungroundedWarning(ungrounded));
   if (tagged) warnings.push(`${tagged} row(s) tagged from your remembered series mappings`);
   warnings.push(...analysis.warnings);
   const noSeries = records.filter((r) => !r.series_key).length;
@@ -136,4 +212,7 @@ function mapResultToReply({ records, dropped, prose, truncated, filename, tagged
   };
 }
 
-module.exports = { summarizeAssist, loadSeriesMap, applySeriesMap, mapResultToReply, parseCsv, csvRuleRecords };
+module.exports = {
+  summarizeAssist, loadSeriesMap, applySeriesMap, mapResultToReply, parseCsv, csvRuleRecords,
+  normName, groundRecords, ungroundedWarning, placingWarnings, isUsableSeriesPattern, MIN_SERIES_PATTERN, loadSeriesKeys,
+};

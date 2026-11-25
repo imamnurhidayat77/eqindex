@@ -3,6 +3,7 @@
 // ONLY to the admin's own assistant_memory rows — never to results, events
 // or horses. Validate/preview/Commit stay human-driven via the UI buttons.
 const pool = require('../db');
+const { isUsableSeriesPattern, MIN_SERIES_PATTERN, loadSeriesKeys } = require('./assist');
 
 const SERIES_FALLBACK = [
   { series_key: 'pro-am-series', display_name: 'Pro Am' },
@@ -204,8 +205,13 @@ async function memory_save({ kind, key, value }, ctx) {
   const k = String(key || '').trim().toLowerCase().slice(0, 120);
   if (!k) return { error: 'need a key' };
   if (!value || typeof value !== 'object') return { error: 'need a value object' };
-  if (kind === 'series_map' && !String(value.series_key || '').trim()) {
-    return { error: 'series_map value needs {series_key}' };
+  if (kind === 'series_map') {
+    if (!String(value.series_key || '').trim()) return { error: 'series_map value needs {series_key}' };
+    if (!isUsableSeriesPattern(k)) return { error: `series_map key must be at least ${MIN_SERIES_PATTERN} characters (short fragments match too many classes)` };
+    const valid = await loadSeriesKeys();
+    if (valid && !valid.has(String(value.series_key).trim())) {
+      return { error: `unknown series_key ${String(value.series_key).trim().slice(0, 60)} — use series_list for valid keys` };
+    }
   }
   if (kind === 'note' && !String(value.text || '').trim()) return { error: 'note value needs {text}' };
   const v = kind === 'series_map'

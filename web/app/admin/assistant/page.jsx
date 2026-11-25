@@ -11,6 +11,8 @@ import Dropdown from '../../../components/Dropdown';
 import { nzDay } from '../../../lib/dates';
 
 const LS_KEY = 'eq-assistant-chats';
+// Matches the server's ungrounded-names warning (api/src/lib/assist.js).
+const NAMES_NOT_FOUND = 'names not found in the source text';
 const uid = () => Math.random().toString(36).slice(2);
 const QUICK = ['Import an Equipe or EvoEvents link', 'What formats can you read?', 'Why would a row score 0?'];
 const HELLO = 'Hi — send me an Equipe or EvoEvents results link, paste results text, or upload a file (PDF, CSV, TXT, JSON). I’ll map it and show a summary before anything is saved.';
@@ -89,6 +91,8 @@ export default function AdminAssistant() {
   const [preview, setPreview] = useState(null);
   // Admin confirmed the flagged series-like classes are not series classes.
   const [seriesAck, setSeriesAck] = useState(false);
+  // Admin confirmed the AI-mapped names that were not found in the source.
+  const [namesAck, setNamesAck] = useState(false);
   // Partial commit: { from, saved, failed, error } — rows before `from` were committed.
   const [resume, setResume] = useState(null);
   const [err, setErr] = useState('');
@@ -115,7 +119,7 @@ export default function AdminAssistant() {
   const active = chats.find((c) => c.id === activeId) || null;
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [active?.msgs?.length, busy]);
   // A preview (and any ack/resume) belongs to the exact records it checked.
-  useEffect(() => { setPreview(null); setSeriesAck(false); setResume(null); }, [activeId, active?.analysis]);
+  useEffect(() => { setPreview(null); setSeriesAck(false); setNamesAck(false); setResume(null); }, [activeId, active?.analysis]);
 
   function patchActive(fn) {
     setChats((prev) => prev.map((c) => (c.id === activeId ? fn(c) : c)));
@@ -303,7 +307,8 @@ export default function AdminAssistant() {
     };
     for (let i = from; i < records.length; i += CHUNK) {
       setProgress({ done: i, total: records.length, phase });
-      const body = { records: records.slice(i, i + CHUNK), dry_run: dry };
+      // `ungrounded` is a review-only flag, never part of the import record.
+      const body = { records: records.slice(i, i + CHUNK).map(({ ungrounded, ...r }) => r), dry_run: dry };
       if (!dry && seriesAck) body.series_ack = true;
       if (eventId === '__new__') {
         body.event = { name: evNew.name.trim(), date_start: evNew.date_start, date_end: evNew.date_start, venue: evNew.venue.trim() };
@@ -361,7 +366,23 @@ export default function AdminAssistant() {
 
   const analysis = active?.analysis || null;
   const seriesBlocking = (preview?.dry_run && preview.summary.series_blocking) || [];
-  const commitBlocked = !preview || preview.dry_run === false || !!resume || (seriesBlocking.length > 0 && !seriesAck);
+  const ungroundedRows = (analysis?.records || []).filter((r) => r.ungrounded?.length);
+  const commitBlocked = !preview || preview.dry_run === false || !!resume
+    || (seriesBlocking.length > 0 && !seriesAck) || (ungroundedRows.length > 0 && !namesAck);
+  // Dropping rows changes the records, so the preview resets (effect above).
+  function removeUngrounded() {
+    patchActive((c) => {
+      const records = c.analysis.records.filter((r) => !r.ungrounded?.length);
+      return {
+        ...c, updatedAt: Date.now(),
+        analysis: {
+          ...c.analysis, records,
+          warnings: c.analysis.warnings.filter((w) => !w.includes(NAMES_NOT_FOUND)),
+          stats: { ...c.analysis.stats, rounds: records.length, with_series: records.filter((r) => r.series_key).length },
+        },
+      };
+    });
+  }
   const isFresh = (active?.msgs || []).filter((m) => m.role === 'user').length === 0;
   const timeFmt = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 
@@ -458,6 +479,25 @@ export default function AdminAssistant() {
                         <span className="ml-2 text-[12px] text-muted font-semibold">{analysis.stats.rounds} rounds · {analysis.stats.with_series} with series</span></div>
                       {!!analysis.warnings.length && (
                         <ul className="text-[13px] text-gold mb-2">{analysis.warnings.slice(0, 4).map((w, i) => <li key={i}>{w}</li>)}</ul>
+                      )}
+                      {ungroundedRows.length > 0 && (
+                        <div className="mb-2 rounded-md border border-gold/50 bg-ink p-2.5 text-[13px]">
+                          <p className="font-bold text-gold">{ungroundedRows.length} row(s) have names not found in the source text</p>
+                          <p className="mt-0.5 text-faint">The AI may have misread or invented these. Check them against the file.</p>
+                          <ul className="mt-1 text-muted">
+                            {ungroundedRows.slice(0, 8).map((r, i) => (
+                              <li key={i} className="[overflow-wrap:anywhere]">{r.class_name || '–'} · <span className={r.ungrounded.includes('rider') ? 'text-blood' : ''}>{r.rider_name || '–'}</span> · <span className={r.ungrounded.includes('horse') ? 'text-blood' : ''}>{r.horse_name || '–'}</span></li>
+                            ))}
+                            {ungroundedRows.length > 8 && <li>…and {ungroundedRows.length - 8} more</li>}
+                          </ul>
+                          <div className="mt-2 flex flex-wrap items-center gap-3">
+                            <button className={BTN_DANGER} disabled={!!busy} onClick={removeUngrounded}>Remove these rows</button>
+                            <label className="flex items-center gap-2 text-body cursor-pointer">
+                              <input type="checkbox" checked={namesAck} onChange={(e) => setNamesAck(e.target.checked)} className="h-4 w-4 accent-gold" />
+                              I checked these names
+                            </label>
+                          </div>
+                        </div>
                       )}
                       <div className="flex flex-wrap gap-2 items-end">
                         <label className="text-xs text-muted flex flex-col gap-1 grow min-w-[200px]">Target event

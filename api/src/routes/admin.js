@@ -7,7 +7,10 @@ const { needRole } = require('../lib/auth');
 const { bustCache, bustPublic } = require('../middleware/cache');
 const { bustVisibility, excludedClassTypes } = require('../lib/filters');
 const { canonCategoryKey, masterCategoryKeys, bustCategoryKeys } = require('../lib/categories');
-const { summarizeAssist, loadSeriesMap, applySeriesMap, parseCsv, csvRuleRecords } = require('../lib/assist');
+const {
+  summarizeAssist, loadSeriesMap, applySeriesMap, parseCsv, csvRuleRecords,
+  normName, groundRecords, ungroundedWarning, loadSeriesKeys,
+} = require('../lib/assist');
 const { suggestSeriesKey, seriesLike } = require('../lib/seriesKeys');
 
 module.exports = function mountAdminRoutes(app) {
@@ -167,6 +170,8 @@ module.exports = function mountAdminRoutes(app) {
       }
       const { records, dropped, truncated } = await aiMapRecords({ text, hint: filename ? `Source file: ${filename}.` : '' });
       const warnings = dropped ? [`${dropped} row(s) dropped (missing class/rider/horse)`] : [];
+      const ungrounded = groundRecords(records, text);
+      if (ungrounded) warnings.unshift(ungroundedWarning(ungrounded));
       if (truncated) warnings.push('File is very long — only the first ~72KB was mapped. Split the file and send the rest separately.');
       return res.json({ data: { ...summarizeAssist('ai', { filename: filename || null }, records, []), warnings } });
     } catch (e) {
@@ -406,10 +411,6 @@ module.exports = function mountAdminRoutes(app) {
   // status (finished|E|R|W|DQ...), notes.
   // dry_run runs the SAME writes inside a rolled-back transaction: preview points
   // come from the real trigger, never a duplicated formula.
-  function normName(v) {
-    return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
-  }
   const CLASS_TYPES = ['Grand Prix', 'Premier', 'Open', 'Standard', 'Young Horse', 'Amateur', 'Pony'];
   const FORMATS = ['Two-phase', 'Jump-off', 'Speed', 'Power & Speed'];
   const STATUS_MAP = { E: 'eliminated', R: 'retired', W: 'withdrawn', DQ: 'disqualified', ELIM: 'eliminated', RET: 'retired', WD: 'withdrawn', NS: 'withdrawn', FINISHED: 'finished', ELIMINATED: 'eliminated', RETIRED: 'retired', WITHDRAWN: 'withdrawn', DISQUALIFIED: 'disqualified' };
@@ -507,6 +508,7 @@ module.exports = function mountAdminRoutes(app) {
       event_name: col('event_name', 'event'), date_start: col('date_start', 'event_date'), date_end: col('date_end'),
     };
     ci.series = col('series_key', 'series');
+    ci.suggested = col('series_suggested');
     for (const k of ['cls', 'rider', 'horse']) {
       if (ci[k] < 0) return res.status(400).json({ error: `missing required column for ${k} (class_name, rider_name, horse_name)` });
     }
@@ -614,6 +616,10 @@ module.exports = function mountAdminRoutes(app) {
       const heightMissing = new Set(); // new class names still without height
       // Remembered series mappings (per admin) fill gaps the name rules miss.
       const memMaps = await loadSeriesMap(req.authUser?.id).catch(() => []);
+      // Registry gate: explicit keys must exist; auto-suggested ones that
+      // don't are dropped (row stays, untagged). null = empty registry.
+      const validSeries = await loadSeriesKeys(); // pool, not client: a failed read must not abort the tx
+      const knownSeries = (k) => !validSeries || validSeries.has(k);
       const memHit = (cls) => {
         const name = String(cls || '').toLowerCase();
         const hit = memMaps.find((m) => name.includes(m.pattern));
@@ -686,6 +692,9 @@ module.exports = function mountAdminRoutes(app) {
           else if (['false', '0', 'no', 'n'].includes(wcRaw)) worldCup = false;
           else errs.push('is_world_cup must be true|false');
         }
+        const givenSeries = g(ci.series);
+        const givenSuggested = g(ci.suggested) === 'true';
+        if (givenSeries && !givenSuggested && !knownSeries(givenSeries)) errs.push(`unknown series_key ${givenSeries.slice(0, 60)}`);
         if (errs.length) { out.push({ line: li + 1, ok: false, errors: errs }); continue; }
 
         // per-row event (multi-event files) or the request target
@@ -751,9 +760,11 @@ module.exports = function mountAdminRoutes(app) {
         } else {
           enriched += await fillNull('riders', rId, rEn);
         }
-        const memKey = !g(ci.series) ? memHit(cls) : null;
-        const seriesKey = g(ci.series) || memKey || suggestSeriesKey(cls);
-        const seriesSuggested = !g(ci.series) && !!seriesKey;
+        const explicitSeries = givenSeries && knownSeries(givenSeries) ? givenSeries : '';
+        const memKey = !explicitSeries ? memHit(cls) : null;
+        const autoKey = !explicitSeries && !memKey ? suggestSeriesKey(cls) : null;
+        const seriesKey = explicitSeries || memKey || (autoKey && knownSeries(autoKey) ? autoKey : null);
+        const seriesSuggested = !explicitSeries && !!seriesKey;
         if (seriesSuggested) seriesTagged++;
         if (memKey) seriesMemory++;
         if (!seriesKey && cls && seriesLike(cls)) seriesVerify.set(cls, (seriesVerify.get(cls) || 0) + 1);
