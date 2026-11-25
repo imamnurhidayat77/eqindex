@@ -324,7 +324,7 @@ module.exports = function mountAdminRoutes(app) {
       if (evo) {
         const noSeries = evo.analysis.records.filter((r) => !r.series_key).length;
         return {
-          reply: `${evo.reply} ${noSeries ? `${noSeries} have no series — tell me which classes are series classes (e.g. "class 9 is pro-am") and I'll tag them. ` : ''}Review below, then validate & commit — nothing saved yet.`,
+          reply: `${evo.reply} ${noSeries ? `${noSeries} have no series — if any of those classes belong to a series, pick it in the Series column of the review table below (no series = 0 series points). ` : ''}Review below, then validate & commit — nothing saved yet.`,
           analysis: evo.analysis,
         };
       }

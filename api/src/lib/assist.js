@@ -207,7 +207,7 @@ function mapResultToReply({ records, dropped, prose, truncated, filename, tagged
   warnings.push(...analysis.warnings);
   const noSeries = records.filter((r) => !r.series_key).length;
   return {
-    reply: `Mapped ${records.length} rounds from ${filename || 'your text'}${dropped ? ` (${dropped} dropped)` : ''}${tagged ? ` (${tagged} series-tagged from memory)` : ''}. ${noSeries ? `${noSeries} have no series — tell me which classes are series classes (e.g. "class 9 is pro-am") and I'll tag them. ` : ''}Review below, then validate & commit — nothing saved yet.`,
+    reply: `Mapped ${records.length} rounds from ${filename || 'your text'}${dropped ? ` (${dropped} dropped)` : ''}${tagged ? ` (${tagged} series-tagged from memory)` : ''}. ${noSeries ? `${noSeries} have no series — if any of those classes belong to a series, pick it in the Series column of the review table below (no series = 0 series points). ` : ''}Review below, then validate & commit — nothing saved yet.`,
     analysis: { ...analysis, warnings },
   };
 }
