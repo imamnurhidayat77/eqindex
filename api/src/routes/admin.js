@@ -1,3 +1,4 @@
+const { randomUUID } = require('node:crypto');
 const pool = require('../db');
 const privacy = require('../privacy');
 const { asyncH } = require('../lib/async');
@@ -12,6 +13,9 @@ const {
   normName, groundRecords, ungroundedWarning, loadSeriesKeys,
 } = require('../lib/assist');
 const { suggestSeriesKey, seriesLike } = require('../lib/seriesKeys');
+const {
+  isBatchId, emptyCreated, similarNames, isUngroundedCell, fillIfNull, openBatch, closeBatch, undoBatch, UndoError,
+} = require('../lib/importBatch');
 
 module.exports = function mountAdminRoutes(app) {
   // ---- Rank snapshots: capture today's points ranks (idempotent per day) ----
@@ -462,8 +466,11 @@ module.exports = function mountAdminRoutes(app) {
   };
 
   app.post('/admin/import', needRole('ADMIN'), asyncH(async (req, res) => {
-    const { event_id, event, csv, records, filename, source, dry_run } = req.body || {};
+    const { event_id, event, csv, records, filename, source, dry_run, batch_id } = req.body || {};
     const src = ['CSV', 'MANUAL', 'ESNZ', 'EQUIPE', 'FEI'].includes(source) ? source : 'CSV';
+    if (batch_id !== undefined && batch_id !== null && !isBatchId(batch_id)) {
+      return res.status(400).json({ error: 'batch_id must be a UUID' });
+    }
     let grid, head;
     if (Array.isArray(records)) {
       if (!records.length) return res.status(400).json({ error: 'records is empty' });
@@ -512,6 +519,20 @@ module.exports = function mountAdminRoutes(app) {
     for (const k of ['cls', 'rider', 'horse']) {
       if (ci[k] < 0) return res.status(400).json({ error: `missing required column for ${k} (class_name, rider_name, horse_name)` });
     }
+    // Name gate (mirrors the review UI): rows whose AI-mapped names were not
+    // found in the source need an explicit names_ack before they are saved.
+    // The flag column itself is never written anywhere.
+    ci.ungrounded = col('ungrounded');
+    if (!dry_run && !req.body.names_ack && ci.ungrounded >= 0) {
+      const flagged = grid.slice(1).map((r, i) => ({ line: i + 2, value: r[ci.ungrounded] }))
+        .filter((x) => isUngroundedCell(x.value)).map(({ line, value }) => ({ line, fields: String(value) }));
+      if (flagged.length) {
+        return res.status(409).json({
+          error: `${flagged.length} row(s) have names not found in the source text — check them and confirm (names_ack) before commit`,
+          ungrounded: flagged,
+        });
+      }
+    }
     const num = (v) => { const t = String(v ?? '').trim(); if (!t) return null; const n = Number(t); return Number.isFinite(n) ? n : NaN; };
     const client = await pool.connect();
     try {
@@ -522,6 +543,17 @@ module.exports = function mountAdminRoutes(app) {
       // points trigger is disabled too (we insert the 0 placeholder; the
       // recalc stamps points + points_version). Transactional —
       // COMMIT/ROLLBACK restores both triggers automatically.
+      // Undo support (migration 117): a commit belongs to one batch; the
+      // browser reuses its id across chunks and Resume, else one per request.
+      const batchId = dry_run ? null : (batch_id || randomUUID());
+      const created = emptyCreated();
+      const fills = [];
+      if (batchId) {
+        const refusal = await openBatch(client, {
+          id: batchId, actorId: req.authUser?.id, actorName: req.authUser?.name, source: src, filename,
+        });
+        if (refusal) { await client.query('ROLLBACK'); return res.status(409).json({ error: refusal }); }
+      }
       await client.query('ALTER TABLE round_results DISABLE TRIGGER round_results_esnz_share_trg');
       await client.query('ALTER TABLE round_results DISABLE TRIGGER round_results_points_trg');
       const touchedClasses = new Set();
@@ -549,6 +581,7 @@ module.exports = function mountAdminRoutes(app) {
         if (!v) {
           v = (await client.query('INSERT INTO venues (name, normalized_name, region) VALUES ($1,$2,$3) RETURNING id',
             [String(name).trim(), nn, region || null])).rows[0];
+          created.venues.push(v.id);
         }
         return v.id;
       };
@@ -563,6 +596,7 @@ module.exports = function mountAdminRoutes(app) {
             [event.name, event.date_start, event.date_end || event.date_start, event.venue || 'Unknown',
              event.region || null, event.arena_type || null, season]);
           evId = ins.rows[0].id;
+          created.events.push(evId);
         }
       }
       // multi-event: rows may carry their own event_name + date_start
@@ -597,6 +631,7 @@ module.exports = function mountAdminRoutes(app) {
            VALUES ($1,$2,$3,$4,$5,$6,$7,'MANUAL') RETURNING id, name`,
           [rname, ds, de || ds, (hint && hint.venue) || 'Unknown',
            (hint && hint.region) || null, (hint && hint.arena) || null, seasonOf(ds)]);
+        created.events.push(ins.rows[0].id);
         return { id: ins.rows[0].id, name: ins.rows[0].name };
       };
       if (evId) {
@@ -606,7 +641,7 @@ module.exports = function mountAdminRoutes(app) {
         evNames[evId] = evRow.name;
         if (!evRow.venue_id) {
           const vid = await ensureVenue(evRow.venue, evRow.region);
-          if (vid) await client.query('UPDATE events SET venue_id = $2 WHERE id = $1', [evId, vid]);
+          if (vid) fills.push(...await fillIfNull(client, 'events', evId, { venue_id: vid }));
         }
       }
 
@@ -728,15 +763,11 @@ module.exports = function mountAdminRoutes(app) {
           const ef = (evFills[rEvId] ||= {});
           if (v && ef[k] === undefined) ef[k] = v;
         }
+        // fill-if-null, recorded so an undo can revert exactly these values
         const fillNull = async (table, id, obj) => {
-          const sets = Object.entries(obj).filter(([, v]) => v !== null && v !== undefined);
-          if (!sets.length) return 0;
-          const setSql = sets.map(([k], i) => `${k} = COALESCE(${k}, $${i + 2})`).join(', ');
-          const guard = sets.map(([k]) => `${k} IS NULL`).join(' OR ');
-          const res = await client.query(
-            `UPDATE ${table} SET ${setSql} WHERE id = $1 AND (${guard})`,
-            [id, ...sets.map(([, v]) => v)]);
-          return res.rowCount;
+          const changed = await fillIfNull(client, table, id, obj);
+          fills.push(...changed);
+          return changed.length ? 1 : 0;
         };
         let hId = horseCache.get(hn), rId = riderCache.get(rn);
         const newHorse = !hId, newRider = !rId;
@@ -747,6 +778,7 @@ module.exports = function mountAdminRoutes(app) {
              VALUES ($1,$2${hk.map((_, i) => `,$${i + 3}`).join('')}) RETURNING id`,
             [horse, hn, ...hk.map((k) => hEn[k])])).rows[0].id;
           horseCache.set(hn, hId);
+          created.horses.push(hId);
         } else {
           enriched += await fillNull('horses', hId, hEn);
         }
@@ -757,6 +789,7 @@ module.exports = function mountAdminRoutes(app) {
              VALUES ($1,$2${rk.map((_, i) => `,$${i + 3}`).join('')}) RETURNING id`,
             [rider, rn, ...rk.map((k) => rEn[k])])).rows[0].id;
           riderCache.set(rn, rId);
+          created.riders.push(rId);
         } else {
           enriched += await fillNull('riders', rId, rEn);
         }
@@ -788,25 +821,17 @@ module.exports = function mountAdminRoutes(app) {
             'INSERT INTO classes (event_id, name, class_date, height_cm, class_type, format, series_key, arena_name, arena_type, surface, start_time, is_world_cup, field_size, source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,\'MANUAL\') RETURNING id',
             [rEvId, cls, cdate || null, classHcm, ctype, fmt, seriesKey, cArenaName, cArenaType, cSurface, cStart, worldCup === true, fsize])).rows[0];
           classCache.set(ck, cRow);
+          created.classes.push(cRow.id);
         } else {
-          if (seriesKey && !cRow.series_key) {
-            await client.query('UPDATE classes SET series_key = $2 WHERE id = $1', [cRow.id, seriesKey]);
-            cRow.series_key = seriesKey;
-          }
+          if (seriesKey && !cRow.series_key) cRow.series_key = seriesKey;
+          fills.push(...await fillIfNull(client, 'classes', cRow.id, {
+            series_key: seriesKey || null, arena_name: cArenaName, arena_type: cArenaType,
+            surface: cSurface, start_time: cStart, field_size: fsize || null,
+          }));
           if (worldCup === true && !cRow.is_world_cup) {
             await client.query('UPDATE classes SET is_world_cup = true WHERE id = $1', [cRow.id]);
+            fills.push({ table: 'classes', id: cRow.id, column: 'is_world_cup', old: false, new: true });
             cRow.is_world_cup = true;
-          }
-          const fills = [];
-          if (cArenaName) fills.push(['arena_name', cArenaName]);
-          if (cArenaType) fills.push(['arena_type', cArenaType]);
-          if (cSurface) fills.push(['surface', cSurface]);
-          if (cStart) fills.push(['start_time', cStart]);
-          if (fsize) fills.push(['field_size', fsize]);
-          if (fills.length) {
-            await client.query(
-              `UPDATE classes SET ${fills.map(([k], i) => `${k} = COALESCE(${k}, $${i + 2})`).join(', ')} WHERE id = $1`,
-              [cRow.id, ...fills.map(([, v]) => v)]);
           }
         }
         let dupSet = dupCache.get(cRow.id);
@@ -826,11 +851,11 @@ module.exports = function mountAdminRoutes(app) {
           `INSERT INTO round_results (event_id, class_id, horse_id, rider_id, jump_faults, time_faults,
             total_faults, time_seconds, finish_place, clear_round, height_cm, status, notes, source, points,
             round2_faults, round2_time_seconds, jumpoff_faults, jumpoff_time_seconds, prize_money,
-            start_order, nominated_manual)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'MANUAL',0,$14,$15,$16,$17,$18,$19,$20) RETURNING id, points`,
+            start_order, nominated_manual, import_batch_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'MANUAL',0,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING id, points`,
           [rEvId, cRow.id, hId, rId, faults ?? 0, tf ?? 0, tot, tsec, place,
            status === 'finished' && tot === 0, hcm, status, g(ci.notes) || null, r2f, r2t, jof, jot, prize,
-           startOrder, nominated]);
+           startOrder, nominated, batchId]);
         dupSet.add(`${hId}|${rId}`);
         okCount++;
         bump(rEvId, rowEv.name, 'ok');
@@ -865,20 +890,14 @@ module.exports = function mountAdminRoutes(app) {
       // event-level enrichment from row columns (fill-if-null, first non-empty wins;
       // 'Unknown' venue counts as blank — it is the auto-created placeholder)
       for (const [eid, fill] of Object.entries(evFills)) {
-        const evSets = Object.entries(fill);
-        if (!evSets.length) continue;
-        const setSql = evSets.map(([k], i) => k === 'venue'
-          ? `venue = COALESCE(NULLIF(venue, 'Unknown'), $${i + 1})`
-          : `${k} = COALESCE(${k}, $${i + 1})`).join(', ');
-        const guard = evSets.map(([k]) => k === 'venue'
-          ? `(venue IS NULL OR venue = 'Unknown')` : `${k} IS NULL`).join(' OR ');
-        const evRes = await client.query(`UPDATE events SET ${setSql} WHERE id = $${evSets.length + 1} AND (${guard})`,
-          [...evSets.map(([, v]) => v), eid]);
-        enriched += evRes.rowCount;
+        if (!Object.keys(fill).length) continue;
+        const evChanged = await fillIfNull(client, 'events', eid, fill);
+        fills.push(...evChanged);
+        if (evChanged.length) enriched++;
         const evNow = (await client.query('SELECT venue, venue_id, region FROM events WHERE id = $1', [eid])).rows[0];
         if (evNow && !evNow.venue_id && evNow.venue) {
           const vid = await ensureVenue(evNow.venue, evNow.region);
-          if (vid) await client.query('UPDATE events SET venue_id = $2 WHERE id = $1', [eid, vid]);
+          if (vid) fills.push(...await fillIfNull(client, 'events', eid, { venue_id: vid }));
         }
       }
       const evList = Object.entries(perEvent).map(([id, v]) => ({ id, ...v }));
@@ -899,6 +918,17 @@ module.exports = function mountAdminRoutes(app) {
       };
       if (dry_run) {
         await client.query('ROLLBACK');
+        // "similar to an existing horse/rider" hints for new names (pool, after rollback)
+        const newOf = (flag, field) => out.filter((x) => x.ok && x.preview?.[flag]).map((x) => normName(x.preview[field]));
+        const [simHorse, simRider] = await Promise.all([
+          similarNames(pool, 'horses', newOf('new_horse', 'horse')),
+          similarNames(pool, 'riders', newOf('new_rider', 'rider')),
+        ]);
+        for (const x of out) {
+          if (!x.ok) continue;
+          if (x.preview.new_horse && simHorse.has(normName(x.preview.horse))) x.preview.similar_horse = simHorse.get(normName(x.preview.horse));
+          if (x.preview.new_rider && simRider.has(normName(x.preview.rider))) x.preview.similar_rider = simRider.get(normName(x.preview.rider));
+        }
         return res.json({ data: { dry_run: true, rows: out, summary } });
       }
       if (blocking.length && !req.body.series_ack) {
@@ -908,17 +938,20 @@ module.exports = function mountAdminRoutes(app) {
           verify: blocking,
         });
       }
+      const seriesAck = !!req.body.series_ack, namesAck = !!req.body.names_ack;
+      await closeBatch(client, batchId, {
+        ok: okCount, failed: summary.failed, seriesAck, namesAck, created, fills,
+      });
       for (const ev of evList) {
         await client.query(
           'INSERT INTO import_logs (actor, source, filename, event_id, rows_total, rows_ok, rows_failed) VALUES ($1,$2,$3,$4,$5,$6,$7)',
           [(req.authUser && req.authUser.name) || 'admin', src, filename || null, ev.id, ev.ok + ev.failed, ev.ok, ev.failed]);
-        audit(req, 'import.commit', 'event', ev.id, { ...summary, filename, event: ev.name });
+        audit(req, 'import.commit', 'event', ev.id, { ...summary, filename, event: ev.name, batch_id: batchId, series_ack: seriesAck, names_ack: namesAck });
       }
       await client.query('COMMIT');
       captureSnapshots();
-      captureSnapshots();
       bustCache('/events');
-      res.status(201).json({ data: { dry_run: false, rows: out, summary } });
+      res.status(201).json({ data: { dry_run: false, rows: out, summary, batch_id: batchId } });
     } catch (e) {
       try { await client.query('ROLLBACK'); } catch { /* noop */ }
       throw e;
@@ -1152,6 +1185,48 @@ module.exports = function mountAdminRoutes(app) {
       `SELECT l.*, e.name AS event_name FROM import_logs l
        LEFT JOIN events e ON e.id = l.event_id ORDER BY l.created_at DESC LIMIT 50`);
     res.json({ data: rows });
+  }));
+
+  // ---- Import batches (migration 117): undoable commits, newest first.
+  const BATCH_LIST_MAX = 50;
+  app.get('/admin/import-batches', needRole('ADMIN'), asyncH(async (req, res) => {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), BATCH_LIST_MAX);
+    const { rows } = await pool.query(
+      `SELECT b.id, b.actor_name, b.source, b.filename, b.status, b.rows_ok, b.rows_failed, b.chunks,
+              b.series_ack, b.names_ack, b.created_at, b.undone_at, b.undo_summary,
+              (SELECT COUNT(*)::INT FROM round_results r WHERE r.import_batch_id = b.id) AS results_now,
+              (SELECT string_agg(DISTINCT e.name, ', ') FROM round_results r JOIN events e ON e.id = r.event_id
+                WHERE r.import_batch_id = b.id) AS event_names
+         FROM import_batches b ORDER BY b.created_at DESC LIMIT $1`, [limit]);
+    res.json({ data: rows });
+  }));
+
+  // Undo one import batch. dry_run (default) runs the whole undo and rolls
+  // back, so the preview is exactly what Confirm will do.
+  app.post('/admin/imports/:id/undo', needRole('ADMIN'), asyncH(async (req, res) => {
+    if (!isBatchId(req.params.id)) return res.status(404).json({ error: 'import batch not found' });
+    const dryRun = req.body?.dry_run !== false;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const summary = await undoBatch(client, req.params.id, { actorId: req.authUser?.id });
+      if (dryRun || summary.already_undone) {
+        await client.query('ROLLBACK');
+        return res.json({ data: { dry_run: dryRun, ...summary } });
+      }
+      await client.query('COMMIT');
+      audit(req, 'import.undo', 'import_batch', req.params.id, summary);
+      captureSnapshots();
+      bustCache('/events');
+      bustPublic();
+      res.json({ data: { dry_run: false, ...summary } });
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch { /* noop */ }
+      if (e instanceof UndoError) return res.status(e.status).json({ error: e.message, ...(e.extra || {}) });
+      throw e;
+    } finally {
+      client.release();
+    }
   }));
 
 

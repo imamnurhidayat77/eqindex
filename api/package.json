@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test wallet-split.test.mjs logo-bake.test.mjs config.prod.test.mjs inbound.parse.test.mjs web-upload.test.mjs mailer.test.mjs email-templates.test.mjs merch-pay.test.mjs brand-publish.test.mjs community-brand.test.mjs merch-orders.test.mjs security-fixes.test.mjs import-assist.test.mjs",
+    "test": "node --test wallet-split.test.mjs logo-bake.test.mjs config.prod.test.mjs inbound.parse.test.mjs web-upload.test.mjs mailer.test.mjs email-templates.test.mjs merch-pay.test.mjs brand-publish.test.mjs community-brand.test.mjs merch-orders.test.mjs security-fixes.test.mjs import-assist.test.mjs import-batch.test.mjs",
     "test:smoke": "node --test smoke.test.mjs",
     "test:security": "node --test checkout.security.test.mjs",
     "test:race": "node --test checkout.race.test.mjs",
