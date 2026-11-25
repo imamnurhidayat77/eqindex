@@ -121,7 +121,11 @@ export default function AdminAssistant() {
     call('/admin/series').then((d) => setSeriesKeys((d || []).map((x) => x.series_key).filter(Boolean))).catch(() => {});
   }, []);
   useEffect(() => { if (ready) saveChats(chats); }, [chats, ready]);
-  useEffect(() => { saveChats(chats); }, [chats]);
+  // Self-heal: the active id must always name an existing chat, or send()
+  // silently does nothing while the empty welcome screen looks normal.
+  useEffect(() => {
+    if (ready && chats.length && !chats.some((c) => c.id === activeId)) setActiveId(chats[0].id);
+  }, [ready, chats, activeId]);
   const active = chats.find((c) => c.id === activeId) || null;
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [active?.msgs?.length, busy]);
   // A preview (and any ack/resume) belongs to the exact records it checked.
@@ -137,15 +141,11 @@ export default function AdminAssistant() {
     setDrawer(false);
     setTimeout(() => ta.current?.focus(), 50);
   }
+  // The self-heal effect above re-points activeId when the active chat goes.
   function removeChat(id) {
     setChats((prev) => {
       const next = prev.filter((c) => c.id !== id);
-      if (activeId === id) setActiveId(next[0]?.id || null);
-      if (!next.length) {
-        const c = { id: uid(), title: 'New conversation', updatedAt: Date.now(), msgs: [{ id: uid(), role: 'assistant', content: HELLO }], analysis: null };
-        return [c];
-      }
-      return next;
+      return next.length ? next : [freshChat()];
     });
   }
 

@@ -38,3 +38,13 @@ describe('scoring versions: one mutation at a time', () => {
   });
 });
 
+
+describe('import assistant: a chat is always active', () => {
+  const s = src('app/admin/assistant/page.jsx');
+  test('deleting chats never leaves activeId pointing at nothing', () => {
+    // Bug seen live: deleting the last chat set activeId to null, so the
+    // send button looked enabled but send() returned silently.
+    assert.ok(!/setActiveId\([^)]*\|\|\s*null\)/.test(s), 'no setActiveId(... || null)');
+    assert.match(s, /!chats\.some\(\(c\) => c\.id === activeId\)\) setActiveId\(chats\[0\]\.id\)/, 'self-heal effect present');
+  });
+});
