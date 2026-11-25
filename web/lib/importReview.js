@@ -49,7 +49,9 @@ export const DUPLICATE_ERROR = 'duplicate of an existing round';
 // records: analysis.records. preview: the latest dry-run for THESE records
 // (rows carry 1-based `line` = record index + 1), or null.
 // Returns [{ key, name, date, rows: [{ index, record, result, issues, info }], issueCount, failedCount }].
-export function reviewGroups(records, preview) {
+// acks: { seriesAck, namesAck } — issues the admin already confirmed are
+// no longer counted (the yellow boxes above the table hold the decision).
+export function reviewGroups(records, preview, { seriesAck = false, namesAck = false } = {}) {
   const results = new Map((preview?.rows || []).map((r) => [r.line - 1, r]));
   const blocking = new Set((preview?.summary?.series_blocking || []).map((b) => b.name));
   const groups = new Map();
@@ -58,9 +60,9 @@ export function reviewGroups(records, preview) {
     if (!groups.has(key)) groups.set(key, { key, name: record.class_name || '', date: record.class_date || '', rows: [] });
     const result = results.get(index) || null;
     const issues = [], info = [];
-    if (record.ungrounded?.length) issues.push('ungrounded');
+    if (record.ungrounded?.length && !namesAck) issues.push('ungrounded');
     if (result && !result.ok) issues.push('failed');
-    if (blocking.has(record.class_name) && !record.series_key) issues.push('no_series');
+    if (blocking.has(record.class_name) && !record.series_key && !seriesAck) issues.push('no_series');
     if (result?.ok) {
       // A suggestion already taken (name now equals it) is no longer an issue.
       for (const [f, field] of [['similar_horse', 'horse_name'], ['similar_rider', 'rider_name']]) {
@@ -89,4 +91,15 @@ export function withRecords(analysis, records) {
     records,
     stats: { ...analysis.stats, rounds: records.length, with_series: records.filter((r) => r.series_key).length },
   };
+}
+
+// Why Commit is locked, in the order the admin must act; null = unlocked.
+export function commitLockReason({ fileBlocked, preview, resume, seriesBlockingCount = 0, seriesAck, ungroundedCount = 0, namesAck }) {
+  if (fileBlocked) return 'File could not be read reliably';
+  if (resume) return 'Resume the stopped commit below';
+  if (!preview || preview.dry_run === false) return 'Validate first';
+  if (preview.stale) return 'Rows changed — validate again';
+  if (ungroundedCount > 0 && !namesAck) return 'Check the flagged names';
+  if (seriesBlockingCount > 0 && !seriesAck) return 'Confirm the series classes';
+  return null;
 }

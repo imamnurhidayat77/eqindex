@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { placingsLookWrong, oddPlacings, reviewGroups, withRecords, failureSummary } from '../importReview.js';
+import { placingsLookWrong, oddPlacings, reviewGroups, withRecords, failureSummary, commitLockReason } from '../importReview.js';
 
 test('placingsLookWrong: ties allowed, gaps and impossible ties flagged', () => {
   assert.equal(placingsLookWrong([3, 1, 1]), false);
@@ -88,4 +88,23 @@ test('a similar-name suggestion already taken is no longer an issue', () => {
   assert.deepEqual(before[0].rows[0].issues, ['similar_horse']);
   const after = reviewGroups([{ class_name: 'A', horse_name: 'triple star galaxy (chb blue) ', rider_name: 'R' }], preview);
   assert.deepEqual(after[0].rows[0].issues, []);
+});
+
+test('acknowledged series classes and checked names stop counting as issues', () => {
+  const records = [{ class_name: 'Mini Prix', horse_name: 'H', rider_name: 'R', ungrounded: ['horse'] }];
+  const preview = { rows: [{ line: 1, ok: true, preview: {} }], summary: { series_blocking: [{ name: 'Mini Prix', rows: 1 }] } };
+  assert.deepEqual(reviewGroups(records, preview)[0].rows[0].issues, ['ungrounded', 'no_series']);
+  assert.deepEqual(reviewGroups(records, preview, { seriesAck: true, namesAck: true })[0].rows[0].issues, []);
+});
+
+test('commitLockReason names the next thing to do, null when Commit may run', () => {
+  const fresh = { dry_run: true };
+  assert.equal(commitLockReason({ preview: null }), 'Validate first');
+  assert.equal(commitLockReason({ preview: { ...fresh, stale: true } }), 'Rows changed — validate again');
+  assert.equal(commitLockReason({ preview: fresh, seriesBlockingCount: 2 }), 'Confirm the series classes');
+  assert.equal(commitLockReason({ preview: fresh, seriesBlockingCount: 2, seriesAck: true }), null);
+  assert.equal(commitLockReason({ preview: fresh, ungroundedCount: 1 }), 'Check the flagged names');
+  assert.equal(commitLockReason({ preview: fresh, resume: { from: 50 } }), 'Resume the stopped commit below');
+  assert.equal(commitLockReason({ preview: fresh, fileBlocked: 'x' }), 'File could not be read reliably');
+  assert.equal(commitLockReason({ preview: { dry_run: false } }), 'Validate first');
 });

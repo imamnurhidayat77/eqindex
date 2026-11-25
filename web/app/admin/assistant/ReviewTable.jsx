@@ -41,8 +41,8 @@ function EditCell({ value, label, onSave, required = false, className = '' }) {
   );
 }
 
-export default function ReviewTable({ records, preview, seriesKeys, disabled, onEdit, onReplace, onDelete }) {
-  const groups = useMemo(() => reviewGroups(records, preview), [records, preview]);
+export default function ReviewTable({ records, preview, seriesKeys, disabled, onEdit, onReplace, onDelete, seriesAck = false, namesAck = false }) {
+  const groups = useMemo(() => reviewGroups(records, preview, { seriesAck, namesAck }), [records, preview, seriesAck, namesAck]);
   const issueRows = groups.reduce((n, g) => n + g.issueCount, 0);
   // null = automatic: filter on whenever something needs a look.
   const [onlyIssues, setOnlyIssues] = useState(null);

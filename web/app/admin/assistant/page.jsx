@@ -9,7 +9,7 @@ import { CARD, H1, SUB, BTN_PRIMARY, BTN_DANGER } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
 import Dropdown from '../../../components/Dropdown';
 import { nzDay } from '../../../lib/dates';
-import { withRecords } from '../../../lib/importReview';
+import { withRecords, commitLockReason } from '../../../lib/importReview';
 import ReviewTable from './ReviewTable';
 
 const LS_KEY = 'eq-assistant-chats';
@@ -391,8 +391,11 @@ export default function AdminAssistant() {
   const ungroundedRows = (analysis?.records || []).filter((r) => r.ungrounded?.length);
   // Parser could not read the file reliably: nothing from it may be saved.
   const fileBlocked = analysis?.blocking || null;
-  const commitBlocked = !!fileBlocked || !preview || preview.stale || preview.dry_run === false || !!resume
-    || (seriesBlocking.length > 0 && !seriesAck) || (ungroundedRows.length > 0 && !namesAck);
+  const lockReason = commitLockReason({
+    fileBlocked, preview, resume, seriesBlockingCount: seriesBlocking.length, seriesAck,
+    ungroundedCount: ungroundedRows.length, namesAck,
+  });
+  const commitBlocked = !!lockReason;
   // Edits keep the (now stale) preview; deletes shift row positions, so the
   // preview is dropped entirely (effect above).
   function setRecords(fn, { edit = false } = {}) {
@@ -553,6 +556,9 @@ export default function AdminAssistant() {
                         <button className={BTN_PRIMARY} disabled={!!busy || !!fileBlocked} onClick={() => run(true)}>{busy === 'validate' ? `Validating… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Validate & preview →'}</button>
                         <button className={BTN_DANGER} disabled={!!busy || commitBlocked} onClick={() => run(false)}>{busy === 'commit' ? `Committing… ${progress ? `${progress.done}/${progress.total}` : ''}` : 'Commit'}</button>
                       </div>
+                      {lockReason && !busy && (
+                        <p className="mt-1 text-right text-[12px] text-faint" aria-live="polite">Commit locked: {lockReason}</p>
+                      )}
                       {resume && (
                         <div role="alert" className="mt-2 rounded-md border border-blood/50 bg-ink p-2.5 text-[13px] text-body">
                           <p><b className="text-blood">Commit stopped at row {resume.from + 1}.</b> {resume.error}</p>
@@ -582,7 +588,8 @@ export default function AdminAssistant() {
                         <span className="ml-2 text-[12px] text-muted font-semibold">{preview.summary.ok} ok · {preview.summary.failed} failed</span></div>
                       {preview.stale && (
                         <p role="status" className="mb-1.5 rounded-md border border-gold/50 bg-ink px-2.5 py-1.5 text-[13px] text-gold">
-                          You changed rows since this preview — the checks below are from the last Validate. Validate again before Commit.
+                          You changed rows since this preview — the checks below are from the last Validate. Validate again before Commit.{' '}
+                          <button type="button" className="font-bold underline underline-offset-2 bg-transparent border-0 p-0 text-gold cursor-pointer disabled:opacity-50" disabled={!!busy} onClick={() => run(true)}>Validate now</button>
                         </p>
                       )}
                       {seriesBlocking.length > 0 && (
@@ -603,7 +610,8 @@ export default function AdminAssistant() {
                   )}
                   {analysis?.records?.length > 0 && (
                     <ReviewTable key={activeId} records={analysis.records} preview={preview} seriesKeys={seriesKeys}
-                      disabled={!!busy} onEdit={editRecord} onReplace={replaceName} onDelete={deleteRecord} />
+                      disabled={!!busy} onEdit={editRecord} onReplace={replaceName} onDelete={deleteRecord}
+                      seriesAck={seriesAck} namesAck={namesAck} />
                   )}
                 </div>
               )}

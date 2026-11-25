@@ -58,6 +58,8 @@ describe('import assistant: acks and edits keep the Validate preview', () => {
   });
   test('row edits mark the preview stale and Commit waits for a new Validate', () => {
     assert.match(s, /setRecords\([\s\S]*?\{ edit: true \}\)/);
-    assert.match(s, /commitBlocked = [^;]*preview\.stale/);
+    // stale → locked is unit-tested in importReview.test.mjs (commitLockReason)
+    assert.match(s, /const commitBlocked = !!lockReason;/);
+    assert.match(s, /commitLockReason\(\{[\s\S]*?preview,/);
   });
 });
