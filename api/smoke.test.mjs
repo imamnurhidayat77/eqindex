@@ -1,6 +1,8 @@
 // API smoke test: verifies every endpoint family responds with the expected
 // shape against a running API (default http://localhost:3001).
 // Usage: API_BASE=http://localhost:3001 npm run test:smoke
+// WRITES to the database behind API_BASE (registers/logs in test users), so
+// it is NOT part of `npm test`. Never point it at a shared or production DB.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
