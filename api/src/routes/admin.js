@@ -135,14 +135,14 @@ module.exports = function mountAdminRoutes(app) {
     if (source_url) {
       const m = String(source_url).match(/online\.equipe\.com\/shows\/(\d+)/);
       const em = String(source_url).match(/evoevents\.co\.nz\/results\/(\d+)/);
-      if (!m && !em) return res.status(400).json({ error: 'Auto-read supports Equipe show URLs (online.equipe.com/shows/…) and EvoEvents results URLs (evoevents.co.nz/results/…). For anything else, paste the results text.' });
+      if (!m && !em) return res.status(400).json({ error: 'Auto-read supports Equipe show URLs (online.equipe.com/shows/…). For EvoEvents and anything else, upload the results PDF or paste the results text.' });
       if (em) {
         const { evoeventsRecords } = require('../lib/evoeventsFetch');
         let out;
         try {
           out = await evoeventsRecords(em[1]);
         } catch (e) {
-          return res.status(502).json({ error: `Could not read EvoEvents event: ${e.message}` });
+          return res.status(502).json({ error: e.signIn ? e.message : `Could not read EvoEvents event: ${e.message}` });
         }
         return res.json({ data: summarizeAssist('evoevents', { meeting: out.meeting }, out.records, out.skipped) });
       }
@@ -306,7 +306,8 @@ module.exports = function mountAdminRoutes(app) {
       };
     }
 
-    // 2b. EvoEvents link → deterministic fetch (no PDF needed).
+    // 2b. EvoEvents link → deterministic fetch. Since EvoEvents put results
+    // behind sign-in this answers with the PDF route (see evoeventsFetch).
     const evoUrl = text.match(/evoevents\.co\.nz\/results\/(\d+)/);
     if (evoUrl) {
       const { evoeventsRecords } = require('../lib/evoeventsFetch');
@@ -314,7 +315,7 @@ module.exports = function mountAdminRoutes(app) {
       try {
         out = await evoeventsRecords(evoUrl[1]);
       } catch (e) {
-        return { reply: `I couldn't read that EvoEvents page: ${e.message}. Check the link, or upload the results PDF instead.`, analysis: null };
+        return { reply: e.signIn ? e.message : `I couldn't read that EvoEvents page: ${e.message}. Check the link, or upload the results PDF instead.`, analysis: null };
       }
       return {
         reply: `${out.meeting} (${out.event.date_start} → ${out.event.date_end}): ${out.records.length} rounds across the show-jumping classes. ${out.skipped.length ? `${out.skipped.length} skipped. ` : ''}Have a look at the summary below — if it looks right, load it into the editor, validate, then commit. Nothing is saved yet.`,
@@ -379,7 +380,7 @@ module.exports = function mountAdminRoutes(app) {
       : 'No remembered series mappings for this admin yet.';
     const { reply } = await aiAgent({
       session,
-      system: `You are the EQIndex Import Assistant. You help an admin import show-jumping results. Capabilities: read Equipe show URLs (online.equipe.com/shows/ID) and EvoEvents results URLs (evoevents.co.nz/results/ID) directly — no PDF needed for those, map pasted results text or uploaded files (PDF/CSV/TXT/JSON) to canonical records, explain warnings (missing series_key means 0 series points, skipped rows), and guide the validate-then-commit flow. You have tools: use equipe_show for show links instead of guessing, events_list to help pick an import target, horses_search/riders_search to check whether names already exist, series_list for the exact series vocabulary (never invent a series_key). When the admin states a lasting preference (e.g. "class 9 is pro-am", "remember my venue is X"), store it with memory_save (series_map keys are lowercase class-name fragments); recall with memory_list when unsure. ${memLine} Rules: never claim anything is saved (only dry-run preview then human Commit saves); use tools when the answer needs real data, otherwise answer directly; keep replies short and practical. ${ctx}`,
+      system: `You are the EQIndex Import Assistant. You help an admin import show-jumping results. Capabilities: read Equipe show URLs (online.equipe.com/shows/ID) directly; EvoEvents results now require sign-in, so for EvoEvents ask the admin to open the results while signed in, Print → Save as PDF and upload the PDF (never suggest an EvoEvents link); map pasted results text or uploaded files (PDF/CSV/TXT/JSON) to canonical records, explain warnings (missing series_key means 0 series points, skipped rows), and guide the validate-then-commit flow. You have tools: use equipe_show for Equipe links instead of guessing, events_list to help pick an import target, horses_search/riders_search to check whether names already exist, series_list for the exact series vocabulary (never invent a series_key). When the admin states a lasting preference (e.g. "class 9 is pro-am", "remember my venue is X"), store it with memory_save (series_map keys are lowercase class-name fragments); recall with memory_list when unsure. ${memLine} Rules: never claim anything is saved (only dry-run preview then human Commit saves); use tools when the answer needs real data, otherwise answer directly; keep replies short and practical. ${ctx}`,
       messages: omitOldFileContents((messages || []).slice(-8)),
       tools: TOOL_DEFS,
       runTool,

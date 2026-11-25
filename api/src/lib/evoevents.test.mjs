@@ -167,7 +167,7 @@ test('safety gate: a class title the parser misses blocks the file (structural, 
   const broken = WEB_EXPORT.replace('295  Intro Pony 70cm 274.2.5.1 special 2 phase  ✓  Approved  Hide', '295  Intro Pony 70cm 274.2.5.1 special 2 phase');
   const { blocking } = parseEvoEvents(broken);
   assert.match(blocking, /did not match a class title|could not read/);
-  assert.match(blocking, /evoevents\.co\.nz\/results/);
+  assert.match(blocking, /Do not commit this file/);
   assert.doesNotMatch(blocking, /of \d+ classes with results/); // no more "42 of 6" style counts
   // and a file whose titles are all unreadable is refused outright
   const none = WEB_EXPORT.replace(/  ✓  Approved  Hide|  Hide$/gm, '').replace(/✓  Approved/g, '');

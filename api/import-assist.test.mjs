@@ -71,3 +71,15 @@ test('series memory patterns need at least 4 characters', () => {
   assert.equal(isUsableSeriesPattern('  pro '), false);
   assert.equal(isUsableSeriesPattern('pro-am'), true);
 });
+
+test('EvoEvents sign-in wall (403) becomes plain PDF advice, flagged for callers', async () => {
+  const { evoeventsRecords, SIGN_IN_MESSAGE } = require('./src/lib/evoeventsFetch.js');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('Sign in to see results', { status: 403 });
+  try {
+    await assert.rejects(() => evoeventsRecords('2135887670'), (e) => e.signIn === true && e.message === SIGN_IN_MESSAGE);
+    assert.match(SIGN_IN_MESSAGE, /Save as PDF/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

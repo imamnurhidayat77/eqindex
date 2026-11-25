@@ -11,11 +11,21 @@ const MAX_CLASSES = 80;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Since 18 Oct 2026 EvoEvents shows results only to signed-in users (an
+// anti-scraping measure). We do not work around that login: admins print
+// the results to PDF while signed in and upload the PDF instead.
+const SIGN_IN_MESSAGE = 'EvoEvents now requires sign-in to view results. Open the results while signed in, Print → Save as PDF, and upload the PDF here.';
+
 async function fetchText(url) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), 60000);
   try {
     const res = await fetch(url, { headers: UA, signal: ctl.signal });
+    if (res.status === 401 || res.status === 403) {
+      const e = new Error(SIGN_IN_MESSAGE);
+      e.signIn = true;
+      throw e;
+    }
     if (!res.ok) throw new Error(`EvoEvents fetch failed (${res.status})`);
     return await res.text();
   } finally { clearTimeout(t); }
@@ -196,4 +206,4 @@ async function evoeventsRecords(eventId, { seriesMap = {}, dateStart = null, dat
   };
 }
 
-module.exports = { evoeventsRecords };
+module.exports = { evoeventsRecords, SIGN_IN_MESSAGE };

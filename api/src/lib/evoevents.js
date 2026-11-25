@@ -531,7 +531,7 @@ function parseEvoEvents(text) {
   if (missedSections) problems.push(`${missedSections} results table(s) sit under a class title I could not read`);
   if (strayApprovals) problems.push(`${strayApprovals} approved class section(s) did not match a class title`);
   const blocking = problems.length
-    ? `Parsed ${classesFound} classes, but ${problems.join(' and ')} — rows may be under the wrong class. Do not commit this file: import the EvoEvents results link instead (evoevents.co.nz/results/<id>), which reads the results directly.`
+    ? `Parsed ${classesFound} classes, but ${problems.join(' and ')} — rows may be under the wrong class. Do not commit this file: send it to the EQIndex team (its layout is new to the reader) or ask the organiser for their official results PDF or CSV.`
     : null;
 
   // Web-page exports mark approved classes; elsewhere approval is unknown.

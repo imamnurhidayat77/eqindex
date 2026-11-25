@@ -16,10 +16,10 @@ const LS_KEY = 'eq-assistant-chats';
 // Matches the server's ungrounded-names warning (api/src/lib/assist.js).
 const NAMES_NOT_FOUND = 'names not found in the source text';
 const uid = () => Math.random().toString(36).slice(2);
-const QUICK = ['Import an Equipe or EvoEvents link', 'What formats can you read?', 'Why would a row score 0?'];
-const HELLO = 'Hi — send me an Equipe or EvoEvents results link, paste results text, or upload a file (PDF, CSV, TXT, JSON). I’ll map it and show a summary before anything is saved.';
+const QUICK = ['How do I import EvoEvents results?', 'What formats can you read?', 'Why would a row score 0?'];
+const HELLO = 'Hi — send me an Equipe show link, paste results text, or upload a file (PDF, CSV, TXT, JSON). For EvoEvents, open the results while signed in, Print → Save as PDF and upload it. I’ll map it and show a summary before anything is saved.';
 const SUGGESTIONS = [
-  ['🔗', 'Import a show', 'Paste an Equipe or EvoEvents link and I’ll pull every class — no PDF needed.'],
+  ['🔗', 'Import a show', 'Paste an Equipe link and I’ll pull every class. EvoEvents: upload the results PDF.'],
   ['📄', 'Upload results', 'Drop a PDF or CSV from the organiser.'],
   ['❓', 'Ask about scoring', 'Why a row scores 0, what a series needs…'],
 ];
@@ -360,7 +360,7 @@ export default function AdminAssistant() {
     setErr('');
     const analysis = active?.analysis;
     if (!analysis?.records?.length) { setErr('Nothing to import yet — ask me to read a link or file first.'); return; }
-    if (analysis.blocking) { setErr('This file could not be read reliably — import the EvoEvents results link instead.'); return; }
+    if (analysis.blocking) { setErr('This file could not be read reliably — see the red message above.'); return; }
     if (eventId !== '__new__' && !eventId) { setErr('Pick a target event (rows without their own event need one).'); return; }
     if (eventId === '__new__' && (!evNew.name.trim() || !evNew.date_start)) { setErr('New event needs a name and start date.'); return; }
     setBusy(dry ? 'validate' : 'commit');
