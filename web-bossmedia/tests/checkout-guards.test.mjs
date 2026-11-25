@@ -46,7 +46,8 @@ describe('pre-book: no event-less cart items (PreBookClient)', () => {
       'ghost button must not duplicate the event gate');
   });
   test('stepper reports the real step for AT', () => {
-    assert.match(s, /aria-current=\{[^}]*step[^}]*\}/);
+    assert.match(s, /<StepProgress [^>]*current=\{/);
+    assert.match(src('components/StepProgress.jsx'), /aria-current=\{[^}]*step[^}]*\}/);
   });
 });
 

@@ -1,4 +1,5 @@
 import PageShell from '../../components/PageShell';
+import s from './faq.module.css';
 
 export const metadata = { title: 'Help & FAQ' };
 
@@ -15,7 +16,7 @@ export default function FaqPage() {
   return (
     <PageShell eyebrow="Support" title="FAQ." intro="Short answers, no fine print.">
       {QA.map(([q, a]) => (
-        <details key={q} className="card-dark" style={{ marginBottom: 10 }}>
+        <details key={q} className={`card-dark ${s.item}`} style={{ marginBottom: 10 }}>
           <summary>{q}</summary>
           <p className="faq-a">{a}</p>
         </details>

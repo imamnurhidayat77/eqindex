@@ -16,8 +16,11 @@ on coarse pointers, hover-motion gating, transitions ≤300ms with
 Guarded by `tests/mobile-css.test.mjs`. Not done: `viewport-fit=cover` was
 skipped on purpose (with the default fit Safari already keeps fixed bars out
 of the home-indicator zone, and `cover` would push content under the notch in
-landscape), `100svh` swaps, overscroll on modals, pre-book `maxLength`, and
-the section 4 microinteractions.
+landscape), `100svh` swaps, overscroll on modals, StoryViewer swipe.
+Second pass: pre-book `maxLength`/`autocomplete` matched to the API caps
+(`tests/prebook-limits.test.mjs`), hold-to-confirm on every `danger`
+ConfirmModal, sliding step line on pre-book, smooth FAQ open via
+`::details-content` (lite version of the faq-panel study, no shared panel).
 
 What is already good: no `transition: all`, no `scale(0)`, no `ease-in`, a
 global `prefers-reduced-motion` kill switch (`globals.css:1053`), keyboard

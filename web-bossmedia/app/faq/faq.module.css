@@ -1,0 +1,14 @@
+/* Answers open and close with their real height (240ms ease-out, the
+   open/close timing from microinteractions.dev/faq-panel). Native <details>
+   keeps find-in-page and keyboard support. Browsers without
+   ::details-content just open instantly, as before. */
+.item { interpolate-size: allow-keywords; }
+.item::details-content {
+  block-size: 0;
+  overflow: clip;
+  transition: block-size 240ms cubic-bezier(.23, 1, .32, 1), content-visibility 240ms allow-discrete;
+}
+.item[open]::details-content { block-size: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .item::details-content { transition: none; }
+}

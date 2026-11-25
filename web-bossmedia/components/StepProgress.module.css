@@ -1,0 +1,16 @@
+.list { position: relative; }
+/* 1px wide, scaled to the step's width: a move is a single transform. */
+.line {
+  position: absolute;
+  left: 0;
+  bottom: 0; /* just above the border: -1px would add a scrollbar where the list scrolls on mobile */
+  width: 1px;
+  height: 2px;
+  background: #fff;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.list[data-ready] .line { transition: transform 250ms cubic-bezier(.23, 1, .32, 1); }
+@media (prefers-reduced-motion: reduce) {
+  .list[data-ready] .line { transition: none; }
+}

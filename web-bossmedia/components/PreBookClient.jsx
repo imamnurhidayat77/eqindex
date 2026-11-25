@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useMemo, useRef, useState } from 'react';
 import SearchSelect from './SearchSelect';
 import DateField from './DateField';
+import StepProgress from './StepProgress';
 import { API } from '../lib/api';
 import { addToCart } from '../lib/cart';
 import { checkoutBase, nzd, stripeCheckoutUrl } from '../lib/figma-data';
@@ -13,6 +14,9 @@ import { useAuthed } from '../lib/use-authed';
 import { safeError } from '../lib/errors';
 
 // reel_products.coverage is 'ring' | 'full' (migration 060).
+const STEPS = ['01 Coverage', '02 Rider details', '03 Review'];
+// Mirrors the server caps in api prepareReelOrder, which truncate silently.
+const MAX_LEN = { name: 120, className: 160, backNumber: 40, phone: 40, musicTitle: 160 };
 const COVERAGE_LABEL = { ring: 'In the ring', full: 'Warm-up, ring and behind the scenes' };
 const coverageText = (p) => [COVERAGE_LABEL[p.coverage], p.includes_raw ? 'Raw footage included' : null].filter(Boolean).join(' · ');
 
@@ -159,11 +163,7 @@ export default function PreBookClient({ events, products }) {
           </div>
           <p>Tell us where and when you’re riding. We’ll be there to capture the moments that matter.</p>
         </div>
-        <div className="booking-progress" aria-label="Booking progress">
-          <span className={event ? '' : 'active'} aria-current={event ? undefined : 'step'}>01 Coverage</span>
-          <span className={event && !added ? 'active' : ''} aria-current={event && !added ? 'step' : undefined}>02 Rider details</span>
-          <span className={added ? 'active' : ''} aria-current={added ? 'step' : undefined}>03 Review</span>
-        </div>
+        <StepProgress label="Booking progress" steps={STEPS} current={!event ? 0 : added ? 2 : 1} />
         <div className="booking-layout">
           <form className="booking-form" ref={formRef} onSubmit={onSubmit}>
             <section>
@@ -203,12 +203,12 @@ export default function PreBookClient({ events, products }) {
                 <div><h2>Rider details</h2><p>Help our photographer find you on the day.</p></div>
               </div>
               <div className="booking-fields">
-                <label className="booking-field"><span>Rider name</span><input name="rider" required placeholder="e.g. Amelia Green" /></label>
-                <label className="booking-field"><span>Horse</span><input name="horse" required placeholder="e.g. Apollo" /></label>
-                <label className="booking-field"><span>Class</span><input name="className" placeholder="e.g. 1.30m Grand Prix" /></label>
-                <label className="booking-field"><span>Back number</span><input name="backNumber" placeholder="e.g. 214" /></label>
+                <label className="booking-field"><span>Rider name</span><input name="rider" required maxLength={MAX_LEN.name} autoComplete="name" autoCapitalize="words" placeholder="e.g. Amelia Green" /></label>
+                <label className="booking-field"><span>Horse</span><input name="horse" required maxLength={MAX_LEN.name} autoComplete="off" autoCapitalize="words" placeholder="e.g. Apollo" /></label>
+                <label className="booking-field"><span>Class</span><input name="className" maxLength={MAX_LEN.className} placeholder="e.g. 1.30m Grand Prix" /></label>
+                <label className="booking-field"><span>Back number</span><input name="backNumber" maxLength={MAX_LEN.backNumber} inputMode="numeric" autoComplete="off" placeholder="e.g. 214" /></label>
                 <label className="booking-field"><span>Competition date</span><DateField name="date" key={event?.id || 'none'} defaultValue={(event?.date_start || '').slice(0, 10)} /></label>
-                <label className="booking-field"><span>Phone</span><input name="phone" required type="tel" placeholder="+64" /></label>
+                <label className="booking-field"><span>Phone</span><input name="phone" required type="tel" maxLength={MAX_LEN.phone} autoComplete="tel" placeholder="+64" /></label>
                 {!user && <label className="booking-field"><span>Email for receipt</span><input name="email" required type="email" autoComplete="email" placeholder="you@example.nz" /></label>}
               </div>
             </section>
@@ -229,7 +229,7 @@ export default function PreBookClient({ events, products }) {
               {music === 'title' && (
                 <label className="booking-field full" style={{ marginBottom: 22 }}>
                   <span>Track title</span>
-                  <input name="musicTitle" placeholder="Artist — Title" />
+                  <input name="musicTitle" maxLength={MAX_LEN.musicTitle} placeholder="Artist — Title" />
                 </label>
               )}
               <label className="booking-field full booking-notes">

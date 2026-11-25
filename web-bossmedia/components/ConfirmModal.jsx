@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusTrap } from '../lib/focus-trap';
+import HoldConfirmButton from './HoldConfirmButton';
 
 // Controlled confirm modal — deliberately context-free. The parent owns
 // `open` state, so open=true always paints: no promise chain or provider
@@ -38,10 +39,17 @@ export default function ConfirmModal({
         )}
         <div className="st-modal-actions">
           <button type="button" className="st-btn-ghost" onClick={() => onCancel?.()}>{cancelLabel}</button>
-          <button type="button" className={danger ? 'st-btn st-btn-danger-fill' : 'st-btn'}
-            disabled={busy} onClick={() => submit(prompt ? input : undefined)}>
-            {busy ? 'Working…' : confirmLabel}
-          </button>
+          {danger && !prompt ? (
+            // Destructive: a press-and-hold, so a stray tap cannot fire it.
+            <HoldConfirmButton className="st-btn st-btn-danger-fill" disabled={busy}
+              label={busy ? 'Working…' : `Hold to ${confirmLabel.toLowerCase()}`}
+              onConfirm={() => submit(undefined)} />
+          ) : (
+            <button type="button" className={danger ? 'st-btn st-btn-danger-fill' : 'st-btn'}
+              disabled={busy} onClick={() => submit(prompt ? input : undefined)}>
+              {busy ? 'Working…' : confirmLabel}
+            </button>
+          )}
         </div>
       </div>
     </div>
