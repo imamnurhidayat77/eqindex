@@ -19,6 +19,7 @@ const MANAGE_GROUPS = [
   ]},
   { title: 'Records', items: [
     ['/admin/horses', '♞', 'Horses'],
+    ['/admin/horses/merge', '⇄', 'Merge horses'],
     ['/admin/riders', '◉', 'Riders'],
     ['/admin/events', '▦', 'Events'],
     ['/admin/classes', '◫', 'Classes'],

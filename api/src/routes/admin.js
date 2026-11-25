@@ -1321,6 +1321,87 @@ module.exports = function mountAdminRoutes(app) {
     res.json({ ok: true });
   }));
 
+  // ---- Merge duplicate horses (migration 113). merge_horse() does all the
+  // re-pointing in one transaction and stores an exact undo record. A
+  // preview runs the same function and rolls back, so its numbers are real.
+  const MERGE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const humanMergeError = (e) => (e && e.code === 'P0001' ? e.message : null);
+
+  app.get('/admin/horses/duplicates', needRole('ADMIN'), asyncH(async (req, res) => {
+    // Same name ignoring case, spaces and punctuation, or differing only by a
+    // trailing stud/country suffix (NZ, GNZ, MVNZ...). Candidates only: an
+    // admin decides.
+    const { rows } = await pool.query(`
+      WITH h AS (
+        SELECT h.id, h.name, h.slug, h.year_of_birth, h.sire, h.dam,
+          regexp_replace(regexp_replace(lower(h.name), '\\s+(nz|gnz|msnz|mvnz|nzph|z|aus)$', ''), '[^a-z0-9]', '', 'g') AS k,
+          (SELECT COUNT(*) FROM round_results r WHERE r.horse_id = h.id)::INT AS rounds
+        FROM horses h)
+      SELECT k, json_agg(json_build_object('id', id, 'name', name, 'slug', slug, 'yob', year_of_birth,
+        'sire', sire, 'dam', dam, 'rounds', rounds) ORDER BY rounds DESC, name) AS horses
+      FROM h WHERE k <> '' GROUP BY k HAVING COUNT(*) > 1 ORDER BY k LIMIT 200`);
+    res.json({ data: rows.map((r) => r.horses) });
+  }));
+
+  app.post('/admin/horses/merge', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { from_id, into_id } = req.body || {};
+    const dryRun = req.body?.dry_run !== false;
+    if (!MERGE_UUID.test(String(from_id)) || !MERGE_UUID.test(String(into_id))) {
+      return res.status(400).json({ error: 'need {from_id, into_id} horse ids' });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const names = (await client.query('SELECT id, name FROM horses WHERE id = ANY($1::uuid[])', [[from_id, into_id]])).rows;
+      const out = (await client.query('SELECT merge_horse($1, $2, $3) AS r', [from_id, into_id, req.authUser?.id || null])).rows[0].r;
+      if (dryRun) {
+        await client.query('ROLLBACK');
+        return res.json({ data: { ...out, merge_id: null, dry_run: true, names } });
+      }
+      await client.query('COMMIT');
+      audit(req, 'horse.merge', 'horses', into_id, { from_id, merge_id: out.merge_id, moved: out.moved });
+      bustCache('/horses'); bustCache('/rankings'); bustPublic();
+      res.json({ data: { ...out, dry_run: false, names } });
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      const msg = humanMergeError(e);
+      if (msg) return res.status(409).json({ error: msg });
+      throw e;
+    } finally {
+      client.release();
+    }
+  }));
+
+  app.get('/admin/horses/merges', needRole('ADMIN'), asyncH(async (req, res) => {
+    const { rows } = await pool.query(`
+      SELECT m.id, m.from_id, m.into_id, m.from_row->>'name' AS from_name, h.name AS into_name, h.slug AS into_slug,
+        jsonb_array_length(COALESCE(m.moved->'round_results', '[]')) AS rounds_moved,
+        m.created_at, m.undone_at, u.name AS merged_by
+      FROM horse_merges m LEFT JOIN horses h ON h.id = m.into_id LEFT JOIN users u ON u.id = m.merged_by
+      ORDER BY m.created_at DESC LIMIT 100`);
+    res.json({ data: rows });
+  }));
+
+  app.post('/admin/horses/merges/:id/undo', needRole('ADMIN'), asyncH(async (req, res) => {
+    if (!MERGE_UUID.test(String(req.params.id))) return res.status(400).json({ error: 'bad merge id' });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const out = (await client.query('SELECT unmerge_horse($1, $2) AS r', [req.params.id, req.authUser?.id || null])).rows[0].r;
+      await client.query('COMMIT');
+      audit(req, 'horse.unmerge', 'horses', out.restored, { merge_id: req.params.id });
+      bustCache('/horses'); bustCache('/rankings'); bustPublic();
+      res.json({ data: out });
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      const msg = humanMergeError(e);
+      if (msg) return res.status(409).json({ error: msg });
+      throw e;
+    } finally {
+      client.release();
+    }
+  }));
+
   app.delete('/admin/riders/:id', needRole('ADMIN'), asyncH(async (req, res) => {
     const n = (await pool.query('SELECT COUNT(*)::INT AS n FROM round_results WHERE rider_id = $1', [req.params.id])).rows[0].n;
     if (n > 0) return res.status(409).json({ error: `rider has ${n} rounds — delete results first` });

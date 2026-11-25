@@ -90,7 +90,8 @@ export default async function HorseProfile({ params, searchParams }) {
   const divisions = scoring?.data?.params?.divisions?.length ? scoring.data.params.divisions : DEFAULT_DIVS;
   if (!p?.data) notFound();
   const { data: h, stats: s, history = [] } = p;
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(params.id) && h.slug && h.slug !== params.id) {
+  // UUID links and old slugs of merged horses both land on the current slug.
+  if (h.slug && h.slug !== params.id) {
     const { redirect } = await import('next/navigation');
     redirect(`/horses/${h.slug}`);
   }
