@@ -108,3 +108,12 @@ test('commitLockReason names the next thing to do, null when Commit may run', ()
   assert.equal(commitLockReason({ preview: fresh, fileBlocked: 'x' }), 'File could not be read reliably');
   assert.equal(commitLockReason({ preview: { dry_run: false } }), 'Validate first');
 });
+
+test('provisional rows are info (not issues) and need their own confirmation', () => {
+  const g = reviewGroups([{ class_name: 'A', horse_name: 'H', rider_name: 'R', results_approved: false }], null);
+  assert.deepEqual(g[0].rows[0].info, ['provisional']);
+  assert.deepEqual(g[0].rows[0].issues, []);
+  const fresh = { dry_run: true };
+  assert.equal(commitLockReason({ preview: fresh, provisionalCount: 3 }), 'Confirm provisional results');
+  assert.equal(commitLockReason({ preview: fresh, provisionalCount: 3, provisionalAck: true }), null);
+});

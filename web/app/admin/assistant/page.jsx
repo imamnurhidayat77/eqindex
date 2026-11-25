@@ -96,6 +96,8 @@ export default function AdminAssistant() {
   const [seriesAck, setSeriesAck] = useState(false);
   // Admin confirmed the AI-mapped names that were not found in the source.
   const [namesAck, setNamesAck] = useState(false);
+  // Admin chose to import classes the organiser has not approved yet.
+  const [provisionalAck, setProvisionalAck] = useState(false);
   // Partial commit: { from, saved, failed, error, batchId } — rows before `from` were committed.
   // One batch id per Commit run (all chunks + Resume) so it can be undone as one import.
   const [resume, setResume] = useState(null);
@@ -138,7 +140,7 @@ export default function AdminAssistant() {
       setPreview((p) => (p ? { ...p, stale: true } : p));
       return;
     }
-    setPreview(null); setSeriesAck(false); setNamesAck(false); setResume(null);
+    setPreview(null); setSeriesAck(false); setNamesAck(false); setProvisionalAck(false); setResume(null);
   }, [activeId, active?.analysis]);
 
   function patchActive(fn) {
@@ -329,6 +331,7 @@ export default function AdminAssistant() {
         body.batch_id = batchId;
         if (seriesAck) body.series_ack = true;
         if (namesAck) body.names_ack = true;
+        if (provisionalAck) body.provisional_ack = true;
       }
       if (eventId === '__new__') {
         body.event = { name: evNew.name.trim(), date_start: evNew.date_start, date_end: evNew.date_start, venue: evNew.venue.trim() };
@@ -389,11 +392,13 @@ export default function AdminAssistant() {
   const analysis = active?.analysis || null;
   const seriesBlocking = (preview?.dry_run && preview.summary.series_blocking) || [];
   const ungroundedRows = (analysis?.records || []).filter((r) => r.ungrounded?.length);
+  const provisionalClasses = analysis?.provisional || [];
   // Parser could not read the file reliably: nothing from it may be saved.
   const fileBlocked = analysis?.blocking || null;
   const lockReason = commitLockReason({
     fileBlocked, preview, resume, seriesBlockingCount: seriesBlocking.length, seriesAck,
     ungroundedCount: ungroundedRows.length, namesAck,
+    provisionalCount: provisionalClasses.length, provisionalAck,
   });
   const commitBlocked = !!lockReason;
   // Edits keep the (now stale) preview; deletes shift row positions, so the
@@ -526,6 +531,20 @@ export default function AdminAssistant() {
                         <div role="alert" className="mb-2 rounded-md border border-blood/60 bg-redbg p-2.5 text-[13px] text-body [overflow-wrap:anywhere]">
                           <p className="font-bold text-blood">This file cannot be imported as read</p>
                           <p className="mt-1">{fileBlocked}</p>
+                        </div>
+                      )}
+                      {provisionalClasses.length > 0 && (
+                        <div className="mb-2 rounded-md border border-gold/50 bg-ink p-2.5 text-[13px]">
+                          <p className="font-bold text-gold">{provisionalClasses.length} class(es) are provisional — the organiser has not approved these results yet</p>
+                          <p className="mt-0.5 text-faint">Placings and times may still change. Importing now means re-checking later (or undoing and importing again).</p>
+                          <ul className="mt-1 text-muted">
+                            {provisionalClasses.slice(0, 6).map((c) => <li key={c.name} className="[overflow-wrap:anywhere]">{c.name} · {c.rows} row(s)</li>)}
+                            {provisionalClasses.length > 6 && <li>…and {provisionalClasses.length - 6} more</li>}
+                          </ul>
+                          <label className="mt-2 flex items-center gap-2 text-body cursor-pointer">
+                            <input type="checkbox" checked={provisionalAck} onChange={(e) => setProvisionalAck(e.target.checked)} className="h-4 w-4 accent-gold" />
+                            Import provisional results anyway
+                          </label>
                         </div>
                       )}
                       {ungroundedRows.length > 0 && (

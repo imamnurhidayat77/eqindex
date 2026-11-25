@@ -11,7 +11,7 @@ export const ISSUE_LABELS = {
 };
 // Neutral facts from the dry-run: shown as badges, never counted as issues
 // (a new show is full of new horses — flagging them hid the real problems).
-export const INFO_LABELS = { new_horse: 'new horse', new_rider: 'new rider', new_class: 'new class' };
+export const INFO_LABELS = { new_horse: 'new horse', new_rider: 'new rider', new_class: 'new class', provisional: 'provisional' };
 
 const isFinished = (r) => (r.status || 'finished') === 'finished';
 const sameText = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
@@ -71,6 +71,7 @@ export function reviewGroups(records, preview, { seriesAck = false, namesAck = f
       }
       for (const f of Object.keys(INFO_LABELS)) if (result.preview?.[f]) info.push(f);
     }
+    if (record.results_approved === false) info.push('provisional');
     groups.get(key).rows.push({ index, record, result, issues, info });
   });
   return [...groups.values()].map((g) => {
@@ -94,12 +95,13 @@ export function withRecords(analysis, records) {
 }
 
 // Why Commit is locked, in the order the admin must act; null = unlocked.
-export function commitLockReason({ fileBlocked, preview, resume, seriesBlockingCount = 0, seriesAck, ungroundedCount = 0, namesAck }) {
+export function commitLockReason({ fileBlocked, preview, resume, seriesBlockingCount = 0, seriesAck, ungroundedCount = 0, namesAck, provisionalCount = 0, provisionalAck }) {
   if (fileBlocked) return 'File could not be read reliably';
   if (resume) return 'Resume the stopped commit below';
   if (!preview || preview.dry_run === false) return 'Validate first';
   if (preview.stale) return 'Rows changed — validate again';
   if (ungroundedCount > 0 && !namesAck) return 'Check the flagged names';
   if (seriesBlockingCount > 0 && !seriesAck) return 'Confirm the series classes';
+  if (provisionalCount > 0 && !provisionalAck) return 'Confirm provisional results';
   return null;
 }
