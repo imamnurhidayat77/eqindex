@@ -572,7 +572,7 @@ export default function AdminAssistant() {
                             {seriesBlocking.slice(0, 6).map((b) => <li key={b.name} className="[overflow-wrap:anywhere]">{b.name} · {b.rows} row(s)</li>)}
                             {seriesBlocking.length > 6 && <li>…and {seriesBlocking.length - 6} more</li>}
                           </ul>
-                          <p className="mt-1 text-faint">Pick a series for them in the table below (or tag them in the chat, e.g. &quot;class 9 is pro-am&quot;) and validate again, or confirm here.</p>
+                          <p className="mt-1 text-faint">Pick a series for them in the table below and validate again, or confirm here.</p>
                           <label className="mt-2 flex items-center gap-2 text-body cursor-pointer">
                             <input type="checkbox" checked={seriesAck} onChange={(e) => setSeriesAck(e.target.checked)} className="h-4 w-4 accent-gold" />
                             These classes are not series classes

@@ -2,7 +2,7 @@
 // Review table for the Import Assistant: every mapped record, grouped by
 // class, with inline fixes. Edits go through onEdit/onDelete, which replace
 // the analysis records — the page then drops the stale dry-run preview.
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { TABLE, TH, TD, NUM, badge, BADGE } from '../../../lib/tokens';
 import { reviewGroups, failureSummary, ISSUE_LABELS, INFO_LABELS, DUPLICATE_ERROR } from '../../../lib/importReview';
 
@@ -56,6 +56,9 @@ export default function ReviewTable({ records, preview, seriesKeys, disabled, on
   // Default open: with a filter on, only groups holding what it shows
   // (failed rows first); a click on a group header overrides per group.
   const [toggled, setToggled] = useState(() => new Map());
+  // A new Validate result starts from the defaults again (failed / issue
+  // groups open), whatever was collapsed by hand before.
+  useEffect(() => { setToggled(new Map()); setErrorFilter(null); }, [preview]);
   const defaultOpen = (g) => {
     if (errorRows) return true;
     if (!filtered) return true;
