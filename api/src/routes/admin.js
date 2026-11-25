@@ -193,11 +193,18 @@ module.exports = function mountAdminRoutes(app) {
     const parsed = parseEvoEvents(blob);
     if (!parsed.records.length) return null;
     const tagged = await applySeriesMap(parsed.records, userId);
-    const warnings = [...parsed.warnings];
+    const analysis = summarizeAssist('evoevents-rule', { filename: filename || null }, parsed.records, []);
+    const warnings = [...parsed.warnings, ...analysis.warnings];
     if (tagged) warnings.push(`${tagged} row(s) tagged from your remembered series mappings`);
+    if (parsed.blocking) {
+      return {
+        reply: `I could not read ${filename || 'this file'} reliably: ${parsed.blocking}`,
+        analysis: { ...analysis, warnings, blocking: parsed.blocking },
+      };
+    }
     return {
       reply: `Read ${filename || 'your file'} directly — ${parsed.records.length} rounds across ${parsed.classesFound} classes, no AI needed.`,
-      analysis: { ...summarizeAssist('evoevents-rule', { filename: filename || null }, parsed.records, []), warnings },
+      analysis: { ...analysis, warnings },
     };
   }
 
@@ -322,6 +329,7 @@ module.exports = function mountAdminRoutes(app) {
       }
       const evo = await evoAssist(blob, filename, userId);
       if (evo) {
+        if (evo.analysis.blocking) return { reply: evo.reply, analysis: evo.analysis };
         const noSeries = evo.analysis.records.filter((r) => !r.series_key).length;
         return {
           reply: `${evo.reply} ${noSeries ? `${noSeries} have no series — if any of those classes belong to a series, pick it in the Series column of the review table below (no series = 0 series points). ` : ''}Review below, then validate & commit — nothing saved yet.`,

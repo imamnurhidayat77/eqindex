@@ -21,7 +21,21 @@ const TIMETABLE_MARK = /\b(Sat|Sun)\b|out of|Finished|\(Planned\)|Scheduled|\bRI
 // the Hide/Sponsored evidence + non-row guards below keep it precise.
 const RULES_NUM = /(?:Art\w*\s*:?\s*)?\d{3}(?:\.\d)?(?:\.\d)?/i;
 // A bare "12  Hide  View full" line after a title carries the class number.
-const HIDE_LINE = /^\d*\s*Hide\s+View full/i;
+// Newer exports print just "277  Hide" (no "View full").
+const HIDE_LINE = /^\d*\s*Hide(\s+View full|\s*$)/i;
+// Title line that ends in its own section marker: "… Art 238.2.2  ✓  Approved  Hide".
+const HIDE_END = /\sHide(\s+View full)?\s*$/i;
+// Approval badge newer exports put after the title ("✓  Approved").
+const APPROVED_TAIL = /\s+✓?\s*Approved\s*$/i;
+// Web-page exports ("FIRST ROUND / FINAL ROUND" tables) print round 2 in
+// the same row: place, time, time pen, jump pen, total for round 1, then
+// "Rnd 1 Place, Rnd 2 Time, Rnd 2 TP, Rnd 2 JP, Rnd 2 Total".
+const ROUND1_RESULT_COLS = 5;
+const ROUND2_ROW_NUMS = 10;
+// One per class that has results in web-page exports — the safety gate
+// compares this count with the classes actually parsed.
+const RESULTS_APPROVED = /Results approved/gi;
+const RESULTS_APPROVED_LINE = /Results approved/i;
 // Two Titlecase words, neither shouty — very likely a person's name.
 const PERSON_LIKE = /^[A-Z][a-z'-]+ [A-Z][a-z'-]+$/;
 
@@ -66,7 +80,7 @@ function cleanTitle(raw) {
   name = name.replace(/\s+(Kindly\s+)?Sponsor\w*(\s+by)?\s+(.+?)\s+((?:Art\w*\s*:?\s*)\d[\d.\s]*)$/i, ' $4');
   // Trailing sponsor clause: "… A5 Kindly Sponsored by Float Factory" → "… A5".
   name = name.replace(/\s+(Kindly\s+)?Sponsor\w*(\s+by)?\s.*$/i, '');
-  name = name.replace(/\s+Hide\s+View full\s*$/i, '').trim();
+  name = name.replace(/\s+Hide(\s+View full)?\s*$/i, '').replace(APPROVED_TAIL, '').trim();
   name = name.replace(/\s+Per Series Conditions\.?\s*$/i, '')
     .replace(/\s+As per series conditions\.?\s*$/i, '').trim();
   const lead = name.match(/^(\d+)\s+(.+)$/);
@@ -99,7 +113,7 @@ function isTitleBlock(lines, li) {
   // Same-line sponsor mention is sufficient evidence (timetable sponsor
   // lines always carry day/entries markers and are excluded above).
   if (/Sponsor/i.test(trimmed) && !/^Sponsored by /i.test(trimmed)) return true;
-  if (/Hide\s+View full/i.test(trimmed)) return true;
+  if (/Hide\s+View full/i.test(trimmed) || HIDE_END.test(trimmed)) return true;
   for (let k = 1; k <= 4; k++) {
     if (HIDE_LINE.test((lines[li + k] || '').trim())) return true;
   }
@@ -122,9 +136,17 @@ function parseEvoEvents(text) {
 
   let inResults = false;
   let mode = null; // 'single' | 'double'
+  let round2Cols = false; // header carries "Rnd 2 Time …" columns
   let titleTail = false; // just after a title: skip until the table header
   let currentTitle = null;
   let titlesDetected = 0;
+  // Rows emitted under a title whose own "Results approved" marker never
+  // came (e.g. an empty class swallowing the next class's rows).
+  let approvedForTitle = false;
+  let titleClosed = false; // "No entries or results" seen for this title
+  let rowsWithoutApproval = 0;
+  // Approval markers not directly after a recognised title: a title was missed.
+  let strayApprovals = 0;
   let hideMarkers = 0;
   let orphans = []; // rows parsed before any title (assigned to next title)
   let pendH = [], pendR = [], pendSingles = [];
@@ -157,6 +179,7 @@ function parseEvoEvents(text) {
   };
 
   const emit = (rec) => {
+    if (!approvedForTitle) rowsWithoutApproval++;
     if (currentTitle) {
       rec.class_name = currentTitle;
       records.push(rec);
@@ -233,6 +256,8 @@ function parseEvoEvents(text) {
     finalizePending();
     currentTitle = titleText;
     titlesDetected++;
+    approvedForTitle = false;
+    titleClosed = false;
     flushOrphans(titleText);
     pendH = []; pendR = []; pendSingles = [];
     titleTail = true;
@@ -243,6 +268,13 @@ function parseEvoEvents(text) {
     if (!line.trim()) continue;
     const trimmed = line.trim();
     if (/Hide\s+View full/i.test(trimmed)) hideMarkers++;
+    if (/^No entries or results/i.test(trimmed)) {
+      approvedForTitle = false;
+      titleClosed = true;
+    } else if (RESULTS_APPROVED_LINE.test(trimmed)) {
+      if (titleTail && !titleClosed && currentTitle) approvedForTitle = true;
+      else strayApprovals++;
+    }
 
     // Section boundaries.
     if (/PRELIMINARY TIMETABLE|ARENA TIMETABLES|Timetable for |Live Scoring/i.test(trimmed)) {
@@ -269,6 +301,7 @@ function parseEvoEvents(text) {
       inResults = true;
       titleTail = false;
       mode = /Rnd 1|JO Time/i.test(trimmed) ? 'double' : 'single';
+      round2Cols = /Rnd 2 Time/i.test(trimmed);
       pendH = []; pendR = []; pendSingles = [];
       continue;
     }
@@ -282,6 +315,10 @@ function parseEvoEvents(text) {
         if (prev && !TIMETABLE_MARK.test(prev) && !/Back No|RESULTS/i.test(prev)) raw = `${prev} ${trimmed}`;
       }
       let name = cleanTitle(raw);
+      // Newer exports print the class number on its own line BEFORE a title
+      // that ends in "Hide" ("276" / "JAN DAVIS … ✓ Approved  Hide").
+      const prevLine = (rawLines[li - 1] || '').trim();
+      if (!/^\d+\s/.test(name) && HIDE_END.test(trimmed) && /^\d+$/.test(prevLine)) name = `${prevLine} ${name}`;
       for (let k = 1; k <= 3; k++) {
         const nxt = (rawLines[li + k] || '').trim();
         const mNum = nxt.match(/^(\d+)\s*(Hide.*)?$/i);
@@ -317,7 +354,7 @@ function parseEvoEvents(text) {
     const tabbed = /^\t/.test(line);
     const fields = splitFields(line);
 
-    const handleRow = (texts, nums, flatStatus) => {
+    const handleRow = (texts, nums, flatStatus, round2Status = null) => {
       const names = mergeNames(texts);
       let status = flatStatus || null;
       if (!status) {
@@ -339,7 +376,14 @@ function parseEvoEvents(text) {
         rec.time = nums.length > 1 ? nums[1] : null;
         Object.assign(rec, parsePenalties(nums.slice(2, 5)));
         if (mode === 'double' && nums.length > 5) rec.format = 'Jump-off';
+        if (round2Cols && !round2Status && nums.length === ROUND2_ROW_NUMS) {
+          rec.round2_time = nums[6];
+          rec.round2_faults = nums[9];
+        }
       }
+      // Eliminated/retired in round 2 only: the round-1 result and official
+      // placing stand; the round-2 outcome is kept as a note.
+      if (round2Status) rec.notes = `Round 2: ${round2Status}`;
       linesSinceFlush = 0;
       if (!rec.horse_name || !rec.rider_name) {
         const hasHorse = !!rec.horse_name, hasRider = !!rec.rider_name;
@@ -361,8 +405,11 @@ function parseEvoEvents(text) {
       // A status code (R/E/W/DQ) sitting in its own column isNumericTok but
       // not numeric — without this it would be silently dropped and the row
       // misread as finished.
-      const rowStatus = rest.map((f) => STATUS_WORD[String(f).toUpperCase()]).find(Boolean) || null;
-      handleRow(texts, nums, rowStatus);
+      const resultToks = rest.filter(isNumericTok);
+      const statusAt = resultToks.findIndex((f) => STATUS_WORD[String(f).toUpperCase()]);
+      const rowStatus = statusAt >= 0 ? STATUS_WORD[String(resultToks[statusAt]).toUpperCase()] : null;
+      if (round2Cols && statusAt >= ROUND1_RESULT_COLS) handleRow(texts, nums, null, rowStatus);
+      else handleRow(texts, nums, rowStatus);
       continue;
     }
     const flat = fields.length <= 1 ? parseFlatRow(line) : null;
@@ -439,6 +486,12 @@ function parseEvoEvents(text) {
     ambiguous += pendH.length + pendR.length + pendSingles.length;
   }
 
+  // Web-page exports escape apostrophes SQL-style ("Grace O''Leary"); names
+  // are final only now (trailing fragments may extend them after emit).
+  for (const r of records) {
+    for (const k of ['horse_name', 'rider_name']) if (typeof r[k] === 'string') r[k] = r[k].replace(/''/g, "'");
+  }
+
   const classesFound = classSizes.size;
   if (dropped) warnings.push(`${dropped} row(s) skipped (missing class/rider/horse)`);
   if (ambiguous) warnings.push(`${ambiguous} name fragment(s) could not be paired confidently — check split names`);
@@ -451,7 +504,16 @@ function parseEvoEvents(text) {
     warnings.push(`timetable lists ~${classesExpected} classes but only ${classesFound} had rows (the rest may be empty or not yet run)`);
   }
 
-  return { records, dropped, ambiguous, warnings, classesExpected, classesFound };
+  // Safety gate: a web-page export marks every class that has results.
+  // Fewer parsed classes means rows were filed under the wrong class
+  // (seen live: 4 of 30) — refuse rather than misfile.
+  const resultsSections = (src.match(RESULTS_APPROVED) || []).length;
+  const misfiled = resultsSections > 0 && (rowsWithoutApproval > 0 || strayApprovals > 0);
+  const blocking = resultsSections > classesFound || misfiled
+    ? `Parsed ${classesFound} of ${resultsSections} classes with results${rowsWithoutApproval && resultsSections ? ` and ${rowsWithoutApproval} row(s) sit under a class with no results of its own` : ''} — the file layout was not fully understood, so rows may be under the wrong class. Do not commit this file: import the EvoEvents results link instead (evoevents.co.nz/results/<id>), which reads the results directly.`
+    : null;
+
+  return { records, dropped, ambiguous, warnings, classesExpected, classesFound, resultsSections, blocking };
 }
 
 module.exports = { parseEvoEvents, looksEvoEvents, isTitleBlock };
