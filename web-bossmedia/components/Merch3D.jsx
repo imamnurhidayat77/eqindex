@@ -612,11 +612,17 @@ function useGarmentDrag(anchors, { refW, selectedPos, onSelectPos, onShift, onDr
       if (tip) tip.style.opacity = '0';
       document.body.style.cursor = '';
     };
+    // The canvas allows vertical page scroll on touch (touch-action: pan-y).
+    // While a logo is being dragged, block that scroll so the drag is not
+    // cancelled when the finger moves up or down.
+    const onTouchMove = (ev) => { if (drag.current) ev.preventDefault(); };
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerleave', onLeave);
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
     return () => {
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerleave', onLeave);
+      el.removeEventListener('touchmove', onTouchMove);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gl, camera, controls]);

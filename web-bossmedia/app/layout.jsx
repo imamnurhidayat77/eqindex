@@ -22,7 +22,8 @@ export const metadata = {
   },
   twitter: { card: 'summary_large_image', images: [OG_IMAGE] },
 };
-export const viewport = { width: 'device-width', initialScale: 1 };
+// themeColor matches the dark header so the phone status bar blends in.
+export const viewport = { width: 'device-width', initialScale: 1, themeColor: '#080808' };
 
 export default function RootLayout({ children }) {
   return (

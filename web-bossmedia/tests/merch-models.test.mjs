@@ -33,3 +33,10 @@ test('no merch component preloads models at import time', () => {
     assert.doesNotMatch(src, /useGLTF\.preload\(/, `${f} preloads a model`);
   }
 });
+
+// Phones: a vertical swipe over the 3D stage must scroll the page, not spin
+// the model. !important beats the inline touch-action OrbitControls writes.
+test('3D canvas lets vertical swipes scroll the page', () => {
+  const css = readFileSync(join(ROOT, 'components/MerchClient.module.css'), 'utf8');
+  assert.match(css, /\.gl canvas \{[^}]*touch-action: pan-y !important/);
+});
