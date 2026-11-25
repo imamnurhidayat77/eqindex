@@ -285,8 +285,9 @@ const STOP_WORDS = new Set(['a', 'p', 'and', 'show', 'jumping', 'the', 'of', 'sj
 function words(s) { return norm(s).split(' ').filter((w) => w.length > 1 && !STOP_WORDS.has(w)); }
 
 // Pick the EQIndex event a column refers to: its date range must cover the
-// column's day/month (±1 day); among those, most shared name words, then
-// the latest. confidence 'name' = date + a shared word, 'date' = date only.
+// column's day/month (±1 day); an exact cover beats the tolerance, then
+// most shared name words, then the latest. confidence 'name' = date + a
+// shared word, 'date' = date only.
 // ourEvents: [{ id, name, date_start: 'YYYY-MM-DD', date_end }]
 const DAY_MS = 86400000;
 function matchEvent(label, ourEvents) {
@@ -301,13 +302,13 @@ function matchEvent(label, ourEvents) {
       const d = Date.UTC(y, p.month - 1, p.day);
       if (d >= start - DAY_MS && d <= end + DAY_MS) {
         const shared = p.words.filter((w) => words(e.name).includes(w)).length;
-        hits.push({ e, shared, start });
+        hits.push({ e, shared, start, exact: d >= start && d <= end ? 1 : 0 });
         break;
       }
     }
   }
   if (!hits.length) return null;
-  hits.sort((a, b) => b.shared - a.shared || b.start - a.start);
+  hits.sort((a, b) => b.exact - a.exact || b.shared - a.shared || b.start - a.start);
   return { event: hits[0].e, confidence: hits[0].shared ? 'name' : 'date' };
 }
 

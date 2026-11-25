@@ -62,3 +62,12 @@ test('matchEvent picks the event covering that day, preferring shared name words
   assert.equal(dateOnly.confidence, 'date'); // same day, no shared word: flagged as uncertain
   assert.equal(matchEvent('No date here', ours), null);
 });
+
+test('matchEvent prefers an event that covers the exact day over a ±1 day neighbour', () => {
+  // Same show entered twice (18th and 19th): the column 18/09 is the 18th.
+  const ours = [
+    { id: 'a', name: 'Feilding IA&P Spring Show', date_start: '2026-09-19', date_end: '2026-09-19' },
+    { id: 'b', name: 'Feilding IA&P Spring Show 2026', date_start: '2026-09-18', date_end: '2026-09-18' },
+  ];
+  assert.equal(matchEvent('Feilding 18/09', ours).event.id, 'b');
+});
