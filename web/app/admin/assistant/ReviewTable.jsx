@@ -2,7 +2,7 @@
 // Review table for the Import Assistant: every mapped record, grouped by
 // class, with inline fixes. Edits go through onEdit/onDelete, which replace
 // the analysis records — the page then drops the stale dry-run preview.
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { TABLE, TH, TD, NUM, badge, BADGE } from '../../../lib/tokens';
 import { reviewGroups, failureSummary, ISSUE_LABELS, INFO_LABELS, DUPLICATE_ERROR } from '../../../lib/importReview';
 
@@ -14,7 +14,7 @@ const FAILURE_CHIP = 'rounded-full border px-2.5 py-1 text-[12px] cursor-pointer
 const DUPLICATE_HINT = 'Every failure is a duplicate: that horse and rider already have a round in the same class — either earlier in this file (often a second round or day listed under the same class name) or from an earlier import of this event. Duplicates are never saved twice.';
 // "similar_horse" → which record field a "Use X" click replaces.
 const SIMILAR_FIELD = { similar_horse: ['horse', 'horse_name'], similar_rider: ['rider', 'rider_name'] };
-const USE_BTN = 'rounded border border-gold/50 px-2 py-0.5 text-[12px] font-semibold text-gold bg-transparent cursor-pointer hover:bg-goldbg active:scale-[0.97] transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:active:scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold disabled:opacity-40 disabled:cursor-not-allowed';
+const USE_BTN = 'text-left [overflow-wrap:anywhere] rounded border border-gold/50 px-2 py-0.5 text-[12px] font-semibold text-gold bg-transparent cursor-pointer hover:bg-goldbg active:scale-[0.97] transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:active:scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-gold disabled:opacity-40 disabled:cursor-not-allowed';
 const CELL_INPUT = 'w-full min-w-0 rounded border border-transparent bg-transparent px-1.5 py-1 text-[13px] text-body hover:border-line focus:border-gold/60 focus:bg-ink focus:outline-none';
 const PLACE_INPUT_WIDTH = 'w-14';
 
@@ -58,7 +58,12 @@ export default function ReviewTable({ records, preview, seriesKeys, disabled, on
   const [toggled, setToggled] = useState(() => new Map());
   // A new Validate result starts from the defaults again (failed / issue
   // groups open), whatever was collapsed by hand before.
-  useEffect(() => { setToggled(new Map()); setErrorFilter(null); }, [preview]);
+  const scroller = useRef(null);
+  useEffect(() => {
+    setToggled(new Map());
+    setErrorFilter(null);
+    if (scroller.current) scroller.current.scrollLeft = 0; // Place column in view
+  }, [preview]);
   const defaultOpen = (g) => {
     if (errorRows) return true;
     if (!filtered) return true;
@@ -100,7 +105,7 @@ export default function ReviewTable({ records, preview, seriesKeys, disabled, on
           {errorRows && <p className="mt-1.5 text-faint">Showing only “{errorFilter}” rows — click it again to show everything.</p>}
         </div>
       )}
-      <div className="max-h-[480px] overflow-auto rounded-md border border-line">
+      <div ref={scroller} className="max-h-[480px] overflow-auto rounded-md border border-line">
         <table className={TABLE}>
           <thead className="sticky top-0 z-10 bg-card">
             <tr>
@@ -142,11 +147,11 @@ export default function ReviewTable({ records, preview, seriesKeys, disabled, on
                         <EditCell value={r.placing} label={`Placing, row ${n}`} className={`${PLACE_INPUT_WIDTH} text-right tabular-nums`}
                           onSave={(v) => onEdit(index, 'placing', v)} />
                       </td>
-                      <td className={`${cell} min-w-[150px] w-[30%]`}>
+                      <td className={`${cell} w-[27%] min-w-[120px]`}>
                         <EditCell value={r.rider_name} label={`Rider, row ${n}`} required onSave={(v) => onEdit(index, 'rider_name', v)}
                           className={r.ungrounded?.includes('rider') ? 'text-blood' : ''} />
                       </td>
-                      <td className={`${cell} min-w-[150px] w-[30%]`}>
+                      <td className={`${cell} w-[27%] min-w-[120px]`}>
                         <EditCell value={r.horse_name} label={`Horse, row ${n}`} required onSave={(v) => onEdit(index, 'horse_name', v)}
                           className={r.ungrounded?.includes('horse') ? 'text-blood' : ''} />
                       </td>
@@ -154,7 +159,7 @@ export default function ReviewTable({ records, preview, seriesKeys, disabled, on
                       <td className={cell}>
                         <select aria-label={`Series, row ${n}`} value={r.series_key || ''} disabled={disabled}
                           onChange={(e) => onEdit(index, 'series_key', e.target.value)}
-                          className="max-w-[180px] rounded border border-line bg-ink px-1.5 py-1 text-[13px] text-body focus:border-gold/60 focus:outline-none">
+                          className="w-full min-w-[96px] max-w-[150px] rounded border border-line bg-ink px-1.5 py-1 text-[13px] text-body focus:border-gold/60 focus:outline-none">
                           <option value="">— none —</option>
                           {r.series_key && !seriesKeys.includes(r.series_key) && <option value={r.series_key}>{r.series_key}</option>}
                           {seriesKeys.map((k) => <option key={k} value={k}>{k}</option>)}
