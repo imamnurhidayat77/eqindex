@@ -6,11 +6,11 @@ const { roundFiltersVis, visSql } = require('../lib/filters');
 const { EMAIL_RE, needRole, ownOrAdmin } = require('../lib/auth');
 const { throttled } = require('../lib/ratelimit');
 const { audit } = require('../lib/audit');
-const { budgetKindOf, notOwnSponsorSql } = require('../lib/wallet');
+const { budgetKindOf, notOwnSponsorSql, PHOTO_BUDGET_LEFT_SQL } = require('../lib/wallet');
 const { MERCH_BUDGET_LEFT_SQL } = require('./merch');
 // Budget left for sponsor listings: merch budgets also subtract the
 // discounts live merch orders hold (migration 111).
-const budgetLeftSql = (kind) => (kind === 'merch' ? MERCH_BUDGET_LEFT_SQL : '(b.agreed_cents - b.spent_cents)');
+const budgetLeftSql = (kind) => (kind === 'merch' ? MERCH_BUDGET_LEFT_SQL : PHOTO_BUDGET_LEFT_SQL);
 const { resolveId } = require('../lib/resolve');
 const { canonCategoryKey, masterCategoryKeys } = require('../lib/categories');
 const { seriesCountFor } = require('./scoring');

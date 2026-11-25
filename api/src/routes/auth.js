@@ -134,6 +134,12 @@ module.exports = function mountAuthRoutes(app) {
   // then proves possession via /auth/mfa/verify).
   app.post('/auth/mfa/setup', asyncH(async (req, res) => {
     if (!mfaAllowed(req, res)) return;
+    // Re-running setup would replace a working secret and switch MFA off
+    // without the password. Turning it off (password) comes first.
+    const cur = await pool.query('SELECT totp_verified_at FROM users WHERE id = $1', [req.authUser.id]);
+    if (cur.rows[0]?.totp_verified_at) {
+      return res.status(409).json({ error: 'two-factor is already on — turn it off with your password first' });
+    }
     const secret = totp.generateSecret();
     await pool.query(
       'UPDATE users SET totp_secret = $1, totp_verified_at = NULL WHERE id = $2',

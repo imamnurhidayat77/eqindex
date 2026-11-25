@@ -43,12 +43,15 @@ function csrfGuard(req, res, next) {
   const allowed = allowedOrigins();
   if (originAllowed(origin, allowed)) return next();
   if (!allowed.length && process.env.NODE_ENV !== 'production') return next();
-  if (!origin) {
+  // "Origin: null" (sandboxed iframes, data: pages) or an unparseable value
+  // is a browser hiding where it came from: never let it through.
+  if (!raw) {
     // No Origin/Referer: only non-browser clients (curl, tests, scripts).
-    // Browsers always send one — except multipart form posts, which are
-    // CORS-simple and need no preflight, so require it there.
+    // A browser that says it is cross-site is refused; multipart posts are
+    // CORS-simple, so a browser must name its origin there.
+    const site = String(req.headers['sec-fetch-site'] || '');
     const ct = String(req.headers['content-type'] || '');
-    if (!ct.startsWith('multipart/')) return next();
+    if (site !== 'cross-site' && site !== 'same-site' && !ct.startsWith('multipart/')) return next();
   }
   console.error('[csrf] refused', { origin: origin || '(none)', path: req.path });
   return res.status(403).json({ error: 'cross-site request refused' });

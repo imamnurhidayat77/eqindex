@@ -76,6 +76,13 @@ async function resolvePurchaseContext(pool, purchase) {
   }
 }
 
+// Pure: the platform keeps gross minus both payouts, minus the part of the
+// buyer's discount that no sponsor budget funds (applied = billed later).
+function platformFeeAfterDiscount(grossCents, split, discountCents, appliedCents) {
+  const unfunded = Math.max(0, (Number(discountCents) || 0) - (Number(appliedCents) || 0));
+  return grossCents - split.photographerPayout - split.organizerPayout - unfunded;
+}
+
 // Record the immutable split for a paid purchase and credit the organizer
 // wallet. Idempotent: no-ops when platform_fee_cents is already set.
 // Must be called right after the pending -> paid transition.
@@ -91,23 +98,19 @@ async function recordPurchaseSplit(pool, purchaseId, { rates } = {}) {
   const gross = row.original_amount_cents || row.amount_cents;
   const discount = row.sponsor_budget_id ? Math.max(0, gross - row.amount_cents) : 0;
   const split = computeSplit(gross, platform, organizer, !!ctx.organizer_id);
-  split.platformFee = gross - split.photographerPayout - split.organizerPayout - discount;
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query(
-      `UPDATE purchases SET platform_fee_cents = $2, photographer_payout_cents = $3,
-          organizer_payout_cents = $4, organizer_id = $5
-        WHERE id = $1 AND platform_fee_cents IS NULL`,
-      [purchaseId, split.platformFee, split.photographerPayout, split.organizerPayout, ctx.organizer_id]
-    );
+    // What the sponsor will be billed for. Checkout reserved it, so this is
+    // normally the whole discount; a paused or overrun budget funds less.
+    let applied = 0;
     if (row.sponsor_budget_id && discount > 0) {
       // Lock the budget so concurrent paid purchases can't overspend it.
       const b = await client.query('SELECT * FROM sponsor_budgets WHERE id = $1 FOR UPDATE', [row.sponsor_budget_id]);
       if (b.rows.length && b.rows[0].status === 'active') {
         const remaining = Number(b.rows[0].agreed_cents) - Number(b.rows[0].spent_cents);
-        const applied = Math.min(discount, Math.max(0, remaining));
+        applied = Math.min(discount, Math.max(0, remaining));
         await client.query('UPDATE sponsor_budgets SET spent_cents = spent_cents + $2 WHERE id = $1', [row.sponsor_budget_id, applied]);
         await client.query(
           `INSERT INTO sponsored_redemptions (purchase_id, budget_id, discount_cents)
@@ -116,6 +119,13 @@ async function recordPurchaseSplit(pool, purchaseId, { rates } = {}) {
         );
       }
     }
+    split.platformFee = platformFeeAfterDiscount(gross, split, discount, applied);
+    await client.query(
+      `UPDATE purchases SET platform_fee_cents = $2, photographer_payout_cents = $3,
+          organizer_payout_cents = $4, organizer_id = $5
+        WHERE id = $1 AND platform_fee_cents IS NULL`,
+      [purchaseId, split.platformFee, split.photographerPayout, split.organizerPayout, ctx.organizer_id]
+    );
     if (split.organizerPayout > 0 && ctx.organizer_user_id) {
       const cur = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [ctx.organizer_user_id]);
       if (cur.rows.length) {
@@ -274,6 +284,35 @@ function cappedSponsorDiscount(discountCents, priceCents) {
 const notOwnSponsorSql = (buyerParam) =>
   `NOT EXISTS (SELECT 1 FROM sponsors own WHERE own.id = b.sponsor_id AND own.user_id = ${buyerParam}::UUID)`;
 
+// Photo budget left (alias b): agreed - spent - discounts held by open
+// checkouts. An unpaid checkout stops holding after PHOTO_HOLD_HOURS, the
+// same age at which expireHolds releases wallet holds and Stripe sessions end.
+const PHOTO_HOLD_HOURS = 24;
+const PHOTO_BUDGET_LEFT_SQL = `(b.agreed_cents - b.spent_cents - COALESCE((SELECT SUM(GREATEST(0, h.original_amount_cents - h.amount_cents))
+  FROM purchases h WHERE h.sponsor_budget_id = b.id AND h.status = 'pending'
+    AND h.created_at > NOW() - INTERVAL '${PHOTO_HOLD_HOURS} hours'), 0))`;
+
+// Reserve sponsor discounts for rows about to be inserted as pending, in
+// the caller's transaction. Locks each budget (id order, no deadlocks) and
+// refuses with 409 when open checkouts already hold what is left, so N
+// parallel checkouts can never all take the last discount.
+// items: [{ budgetId, originalCents, amount }]
+async function reserveSponsorDiscounts(client, items) {
+  const need = {};
+  for (const it of items || []) {
+    if (!it?.budgetId || !it.originalCents) continue;
+    need[it.budgetId] = (need[it.budgetId] || 0) + Math.max(0, it.originalCents - it.amount);
+  }
+  for (const id of Object.keys(need).sort()) {
+    await client.query('SELECT id FROM sponsor_budgets WHERE id = $1 FOR UPDATE', [id]);
+    const { rows } = await client.query(
+      `SELECT ${PHOTO_BUDGET_LEFT_SQL} AS left_cents FROM sponsor_budgets b WHERE b.id = $1`, [id]);
+    if (!rows.length || Number(rows[0].left_cents) < need[id]) {
+      throw Object.assign(new Error('the sponsor discount just ran out — reload to see the current price'), { status: 409 });
+    }
+  }
+}
+
 // SQL guard every "is this budget spendable" query shares (alias b).
 const SPONSOR_BUDGET_LIVE_SQL = "b.status = 'active' AND (b.ends_on IS NULL OR b.ends_on >= CURRENT_DATE)";
 // A budget funds either photo or merchandise discounts (migration 109).
@@ -351,6 +390,96 @@ async function releaseLateOrganizerShares(pool, eventId, { rates } = {}) {
   }
 }
 
+// Pure: what undoing one refunded or charged-back purchase moves. The
+// organizer gives back its share (only what is still in its wallet, the
+// rest is a shortfall for an admin), an unbilled sponsor discount is
+// released, a billed one is left for a manual credit note, and the buyer
+// gets their wallet cents back only on a refund (never on a chargeback,
+// where the bank already returned the card part).
+function planReversal({ organizerPayout, organizerBalance, balanceUsed, redemption, returnBalance }) {
+  const owed = Math.max(0, Number(organizerPayout) || 0);
+  const take = Math.min(owed, Math.max(0, Number(organizerBalance) || 0));
+  const disc = Math.max(0, Number(redemption?.discount_cents) || 0);
+  return {
+    organizerDebit: take,
+    organizerShortfall: owed - take,
+    sponsorRelease: redemption && !redemption.bill_id ? disc : 0,
+    sponsorBilled: redemption && redemption.bill_id ? disc : 0,
+    buyerCredit: returnBalance ? Math.max(0, Number(balanceUsed) || 0) : 0,
+  };
+}
+
+// Undo the money side effects of a purchase that just went paid -> refunded
+// (Stripe refund or dispute). Photographer payouts already drop out because
+// settlement only sums status = 'paid'. Idempotent per purchase.
+async function reversePurchase(pool, purchaseId, { reason, returnBalance = false } = {}) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const p = await client.query(
+      `SELECT id, status, organizer_id, organizer_payout_cents, buyer_user_id, balance_used_cents
+         FROM purchases WHERE id = $1 FOR UPDATE`, [purchaseId]);
+    const row = p.rows[0];
+    const seen = await client.query(
+      `SELECT 1 FROM wallet_transactions WHERE purchase_id = $1 AND reason LIKE 'reversal:%' LIMIT 1`, [purchaseId]);
+    if (!row || row.status !== 'refunded' || seen.rows.length) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    const note = `reversal: ${reason || 'payment reversed'}`;
+    let orgUser = null, orgBalance = 0;
+    if (row.organizer_id && Number(row.organizer_payout_cents) > 0) {
+      const o = await client.query(
+        `SELECT u.id, u.balance_cents FROM organizers o JOIN users u ON u.id = o.user_id
+          WHERE o.id = $1 FOR UPDATE OF u`, [row.organizer_id]);
+      if (o.rows.length) { orgUser = o.rows[0].id; orgBalance = Number(o.rows[0].balance_cents); }
+    }
+    const red = await client.query(
+      'SELECT budget_id, discount_cents, bill_id FROM sponsored_redemptions WHERE purchase_id = $1 FOR UPDATE', [purchaseId]);
+    const plan = planReversal({
+      organizerPayout: orgUser ? row.organizer_payout_cents : 0,
+      organizerBalance: orgBalance,
+      balanceUsed: row.buyer_user_id ? row.balance_used_cents : 0,
+      redemption: red.rows[0] || null,
+      returnBalance,
+    });
+    if (plan.organizerDebit > 0) {
+      const after = orgBalance - plan.organizerDebit;
+      await client.query('UPDATE users SET balance_cents = $2 WHERE id = $1', [orgUser, after]);
+      await client.query(
+        `INSERT INTO wallet_transactions (user_id, kind, amount_cents, balance_after_cents, purchase_id, reason)
+         VALUES ($1, 'adjust', $2, $3, $4, $5)`, [orgUser, -plan.organizerDebit, after, purchaseId, note]);
+    }
+    if (plan.sponsorRelease > 0) {
+      const bid = red.rows[0].budget_id;
+      await client.query('SELECT id FROM sponsor_budgets WHERE id = $1 FOR UPDATE', [bid]);
+      await client.query('UPDATE sponsor_budgets SET spent_cents = GREATEST(0, spent_cents - $2) WHERE id = $1', [bid, plan.sponsorRelease]);
+      await client.query('DELETE FROM sponsored_redemptions WHERE purchase_id = $1 AND bill_id IS NULL', [purchaseId]);
+    }
+    if (plan.buyerCredit > 0) {
+      const b = await client.query('SELECT balance_cents FROM users WHERE id = $1 FOR UPDATE', [row.buyer_user_id]);
+      if (b.rows.length) {
+        const after = Number(b.rows[0].balance_cents) + plan.buyerCredit;
+        await client.query('UPDATE users SET balance_cents = $2 WHERE id = $1', [row.buyer_user_id, after]);
+        await client.query(
+          `INSERT INTO wallet_transactions (user_id, kind, amount_cents, balance_after_cents, purchase_id, reason)
+           VALUES ($1, 'refund', $2, $3, $4, $5)`, [row.buyer_user_id, plan.buyerCredit, after, purchaseId, note]);
+      }
+    }
+    await client.query('COMMIT');
+    if (plan.organizerShortfall > 0 || plan.sponsorBilled > 0) {
+      console.error('[reversal] needs an admin', { purchaseId, ...plan });
+    }
+    return plan;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
 module.exports = { computeSplit, getRates, resolvePurchaseContext, recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds,
   ORGANIZER_CLAIM_DAYS, lateOrganizerShare, releaseLateOrganizerShares,
-  MAX_SPONSOR_DISCOUNT_RATE, cappedSponsorDiscount, SPONSOR_BUDGET_LIVE_SQL, SPONSOR_BUDGET_KINDS, budgetKindOf, notOwnSponsorSql };
+  MAX_SPONSOR_DISCOUNT_RATE, cappedSponsorDiscount, SPONSOR_BUDGET_LIVE_SQL,
+  PHOTO_HOLD_HOURS, PHOTO_BUDGET_LEFT_SQL, reserveSponsorDiscounts, platformFeeAfterDiscount, planReversal, reversePurchase, SPONSOR_BUDGET_KINDS, budgetKindOf, notOwnSponsorSql };

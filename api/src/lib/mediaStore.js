@@ -3,7 +3,13 @@
 //   R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
 // Optional: R2_PUBLIC_BASE (public CDN base for previews/thumbs).
 // Layout: {originals,previews,thumbs}/{event_id}/{media_id}.{ext}
+// Optional: R2_PRIVATE_BUCKET for everything that is not a preview/thumb.
 // Throws a clear error when unconfigured (P0 wires config only; P1 uploads).
+//
+// SECURITY: R2 public access (r2.dev or a public custom domain) opens the
+// WHOLE bucket, and original keys are guessable from preview keys. So only
+// previews/thumbs may live in the public bucket: originals, baked logo
+// variants, branded files and merch artwork go to R2_PRIVATE_BUCKET.
 const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
@@ -14,6 +20,29 @@ function cfg() {
     throw new Error('media storage unconfigured (need R2_ENDPOINT/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET)');
   }
   return { R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET };
+}
+
+// Key layouts: <kind>/<event>/<file> or <namespace>/<kind>/<event>/<file>.
+const PUBLIC_KINDS = new Set(['previews', 'thumbs']);
+function isPublicKey(key) {
+  const parts = String(key || '').split('/');
+  if (parts.length === 3) return PUBLIC_KINDS.has(parts[0]);
+  if (parts.length === 4) return PUBLIC_KINDS.has(parts[1]);
+  return false;
+}
+
+let warnedNoPrivate = false;
+function bucketFor(key) {
+  const { R2_BUCKET } = cfg();
+  if (isPublicKey(key)) return R2_BUCKET;
+  const priv = process.env.R2_PRIVATE_BUCKET;
+  if (!priv) {
+    // Fallback keeps the app working until the private bucket exists, but
+    // originals stay exposed: shout once.
+    if (!warnedNoPrivate) { warnedNoPrivate = true; console.error('[media] R2_PRIVATE_BUCKET unset: private files share the public bucket'); }
+    return R2_BUCKET;
+  }
+  return priv;
 }
 
 function s3() {
@@ -40,8 +69,7 @@ const keyFor = (kind, eventId, mediaId, ext, namespace) => {
 };
 
 async function putBuffer(key, body, contentType) {
-  const { R2_BUCKET } = cfg();
-  await s3().send(new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, Body: body, ContentType: contentType }));
+  await s3().send(new PutObjectCommand({ Bucket: bucketFor(key), Key: key, Body: body, ContentType: contentType }));
   return key;
 }
 
@@ -50,8 +78,7 @@ async function putBuffer(key, body, contentType) {
 // attachment) instead of inline display — the browser then downloads
 // without navigating away from the page. Previews/thumbs omit it.
 async function signedDownloadUrl(key, seconds = 900, downloadName = null) {
-  const { R2_BUCKET } = cfg();
-  const params = { Bucket: R2_BUCKET, Key: key };
+  const params = { Bucket: bucketFor(key), Key: key };
   if (downloadName) {
     const safe = String(downloadName).replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 120);
     params.ResponseContentDisposition = `attachment; filename="${safe}"`;
@@ -64,10 +91,9 @@ async function signedDownloadUrl(key, seconds = 900, downloadName = null) {
 // this URL with Content-Type set, then calls POST /admin/media/:id/finalize.
 // DEPLOY: the R2 bucket needs a CORS rule allowing PUT from the web origin.
 async function presignedPutUrl(key, contentType, seconds = 900) {
-  const { R2_BUCKET } = cfg();
   return getSignedUrl(
     s3(),
-    new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, ContentType: contentType }),
+    new PutObjectCommand({ Bucket: bucketFor(key), Key: key, ContentType: contentType }),
     { expiresIn: seconds }
   );
 }
@@ -75,16 +101,14 @@ async function presignedPutUrl(key, contentType, seconds = 900) {
 // Stream an object back (finalize reads the original without buffering it;
 // R2 egress is $0 so API-side processing costs nothing extra).
 async function getStream(key) {
-  const { R2_BUCKET } = cfg();
-  const out = await s3().send(new GetObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+  const out = await s3().send(new GetObjectCommand({ Bucket: bucketFor(key), Key: key }));
   if (!out.Body) throw new Error(`storage object missing: ${key}`);
   return { stream: out.Body, size: Number(out.ContentLength) || null, contentType: out.ContentType || null };
 }
 
 async function headKey(key) {
-  const { R2_BUCKET } = cfg();
   try {
-    const out = await s3().send(new HeadObjectCommand({ Bucket: R2_BUCKET, Key: key }));
+    const out = await s3().send(new HeadObjectCommand({ Bucket: bucketFor(key), Key: key }));
     return { size: Number(out.ContentLength) || 0, contentType: out.ContentType || '' };
   } catch {
     return null;
@@ -110,11 +134,19 @@ function publicUrlOrPassthrough(key) {
 async function deleteKeys(keys) {
   const list = (keys || []).filter(Boolean);
   if (!list.length) return 0;
-  const { R2_BUCKET } = cfg();
-  const out = await s3().send(new DeleteObjectsCommand({
-    Bucket: R2_BUCKET, Delete: { Objects: list.map((Key) => ({ Key })) },
-  }));
-  return (out.Deleted || []).length;
+  const byBucket = new Map();
+  for (const key of list) {
+    const b = bucketFor(key);
+    byBucket.set(b, [...(byBucket.get(b) || []), key]);
+  }
+  let deleted = 0;
+  for (const [Bucket, keys] of byBucket) {
+    const out = await s3().send(new DeleteObjectsCommand({
+      Bucket, Delete: { Objects: keys.map((Key) => ({ Key })) },
+    }));
+    deleted += (out.Deleted || []).length;
+  }
+  return deleted;
 }
 
-module.exports = { keyFor, putBuffer, signedDownloadUrl, presignedPutUrl, getStream, headKey, publicUrl, publicUrlOrPassthrough, deleteKeys };
+module.exports = { keyFor, isPublicKey, bucketFor, putBuffer, signedDownloadUrl, presignedPutUrl, getStream, headKey, publicUrl, publicUrlOrPassthrough, deleteKeys };

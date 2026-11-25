@@ -4,7 +4,7 @@ const { asyncH } = require('../lib/async');
 const { EMAIL_RE, needRole } = require('../lib/auth');
 const { throttled } = require('../lib/ratelimit');
 const { audit } = require('../lib/audit');
-const { recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds, cappedSponsorDiscount, SPONSOR_BUDGET_LIVE_SQL, notOwnSponsorSql } = require('../lib/wallet');
+const { recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds, cappedSponsorDiscount, SPONSOR_BUDGET_LIVE_SQL, notOwnSponsorSql, PHOTO_BUDGET_LEFT_SQL, reserveSponsorDiscounts, reversePurchase } = require('../lib/wallet');
 const { resolveId } = require('../lib/resolve');
 const { sendMail } = require('../lib/mailer');
 const { APP_URL } = require('../config');
@@ -178,6 +178,17 @@ async function ownPhotographer(poolQ, authUser, requestedId) {
 
 // Row-level ownership for reads/mutations: non-ADMIN photographers only
 // touch their own rows (ADMIN → null = unscoped). Missing profile is 403.
+// True when authUser may change this pricing row: ADMIN always, a
+// photographer only their own. Missing rows read as "not yours".
+const PRICING_TABLES = ['packages', 'credit_packs'];
+async function ownsPricingRow(table, id, authUser) {
+  if (!PRICING_TABLES.includes(table)) throw new Error('unknown pricing table');
+  const own = await ownPhotographerId(pool, authUser);
+  if (!own) return true;
+  const { rows } = await pool.query(`SELECT photographer_id FROM ${table} WHERE id = $1`, [id]);
+  return !!rows.length && rows[0].photographer_id === own;
+}
+
 async function ownPhotographerId(poolQ, authUser) {
   if (!authUser || authUser.role === 'ADMIN') return null;
   const { rows } = await poolQ.query(
@@ -2033,7 +2044,7 @@ module.exports = function mountMediaRoutes(app) {
       const best = await pool.query(
         `SELECT b.id, b.discount_cents FROM sponsor_budgets b
          WHERE ${SPONSOR_BUDGET_LIVE_SQL} AND b.applies_to = 'photo' AND b.discount_cents > 0
-           AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
+           AND ${PHOTO_BUDGET_LEFT_SQL} >= b.discount_cents
            AND (b.event_id IS NULL OR b.event_id = $2)
            AND b.sponsor_id IN (SELECT sponsor_id FROM sponsor_logos WHERE id = ANY($1::UUID[]))
            AND ${notOwnSponsorSql('$3')}
@@ -2141,6 +2152,7 @@ module.exports = function mountMediaRoutes(app) {
           await client.query('ROLLBACK');
           return res.status(404).json({ error: 'account not found' });
         }
+        await reserveSponsorDiscounts(client, [{ budgetId, originalCents, amount }]);
         const ins = await client.query(
           `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig, design_class, design_subject, design_result)
             VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING id`,
@@ -2184,6 +2196,7 @@ module.exports = function mountMediaRoutes(app) {
           return res.status(200).json({ data: { purchase_id: prior.id, checkout_url: null, reused: true, pending: true } });
         }
       }
+      await reserveSponsorDiscounts(client, [{ budgetId, originalCents, amount }]);
       const { rows } = await client.query(
         `INSERT INTO purchases (media_id, package_id, buyer_email, buyer_user_id, license_tier, amount_cents, currency, status, idempotency_key, balance_used_cents, stripe_amount_cents, original_amount_cents, sponsor_budget_id, logo_template, logo_theme, logo_variant, logo_sig, design_class, design_subject, design_result)
           VALUES ($1, $2, $3, $4, $5, $6, 'NZD', 'pending', $7, 0, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) RETURNING id`,
@@ -2341,7 +2354,7 @@ module.exports = function mountMediaRoutes(app) {
           const best = await q.query(
             `SELECT b.id, b.discount_cents FROM sponsor_budgets b
               WHERE ${SPONSOR_BUDGET_LIVE_SQL} AND b.applies_to = 'photo' AND b.discount_cents > 0
-                AND (b.agreed_cents - b.spent_cents) >= b.discount_cents
+                AND ${PHOTO_BUDGET_LEFT_SQL} >= b.discount_cents
                 AND (b.event_id IS NULL OR b.event_id = $2)
                 AND b.sponsor_id IN (SELECT sponsor_id FROM sponsor_logos WHERE id = ANY($1::UUID[]))
                 AND ${notOwnSponsorSql('$3')}
@@ -2605,6 +2618,7 @@ module.exports = function mountMediaRoutes(app) {
           await client.query('ROLLBACK');
           return res.status(409).json({ error: 'insufficient balance for this checkout' });
         }
+        await reserveSponsorDiscounts(client, splits);
         let running = Number(locked.rows[0].balance_cents);
         for (const p of splits) {
           const { rows } = await client.query(
@@ -2657,6 +2671,7 @@ module.exports = function mountMediaRoutes(app) {
           return res.status(409).json({ error: 'a checkout for this cart is already in progress — finish it or wait a minute and retry', pending: true });
         }
       }
+    await reserveSponsorDiscounts(client, priced);
     for (const p of priced) {
       try {
         const { rows } = await client.query(
@@ -2847,6 +2862,7 @@ module.exports = function mountMediaRoutes(app) {
         await client.query('ROLLBACK');
         return res.status(409).json({ error: 'insufficient balance for this checkout' });
       }
+      await reserveSponsorDiscounts(client, splits);
       let running = Number(locked.rows[0].balance_cents);
       for (const p of splits) {
         if (p.kind === 'reel') {
@@ -3028,39 +3044,71 @@ module.exports = function mountMediaRoutes(app) {
       if (!pi) return ok();
       if (refunded !== null && total !== null && refunded < total) {
         console.error('[webhook] partial refund, keeping paid', { pi, refunded, total });
+        audit(req, 'media.refund.partial', 'payment', String(pi), { refunded, total });
         return ok();
       }
-      let sessionId = null;
-      try {
-        const sessions = await stripe().checkout.sessions.list({ payment_intent: String(pi), limit: 1 });
-        sessionId = sessions.data[0]?.id || null;
-      } catch (e) { console.error('[webhook] session lookup failed:', e.message); }
-      const done = await pool.query(
-        `UPDATE purchases SET status = 'refunded'
-          WHERE status = 'paid' AND (stripe_payment_intent = $1 OR ($2::TEXT IS NOT NULL AND stripe_session_id = $2))
-          RETURNING id`,
-        [String(pi), sessionId]
-      );
-      if (!done.rows.length) await require('./merch').markMerchOrderRefunded(req, pi);
-      if (done.rows.length) {
-        audit(req, 'media.refund', 'purchase', done.rows.map((r) => r.id).join(','), { pi });
-        // Freeze service products tied to refunded purchases. Photo/package
-        // entitlements already gate on status='paid'; credit bundles and reel
-        // orders get an explicit status flip so no stale 'active' row lingers.
-        const ids = done.rows.map((r) => r.id);
-        await pool.query(
-          `UPDATE credit_bundles SET status = 'cancelled'
-            WHERE purchase_id = ANY($1::UUID[]) AND status <> 'cancelled'`, [ids]
-        ).catch(() => {});
-        await pool.query(
-          `UPDATE reel_orders SET status = 'cancelled'
-            WHERE purchase_id = ANY($1::UUID[]) AND status NOT IN ('delivered', 'cancelled')`, [ids]
-        ).catch(() => {});
-      }
+      await revokePayment(req, pi, { reason: `stripe refund ${pi}`, returnBalance: true });
+      return ok();
+    }
+    // Chargeback: the bank takes the money the moment a dispute opens, so
+    // the sale is revoked and its money undone right away. A won dispute
+    // brings the money back but is restored by an admin (logged below).
+    if (event.type === 'charge.dispute.created') {
+      const d = event.data.object || {};
+      if (!d.payment_intent) return ok();
+      await revokePayment(req, d.payment_intent, { reason: `stripe dispute ${d.id || ''}`.trim(), returnBalance: false });
+      return ok();
+    }
+    if (event.type === 'charge.dispute.closed') {
+      const d = event.data.object || {};
+      console.error('[webhook] dispute closed', { id: d.id, status: d.status, pi: d.payment_intent });
+      audit(req, `media.dispute.${d.status || 'closed'}`, 'payment', String(d.payment_intent || ''), { dispute: d.id });
       return ok();
     }
     return ok();
   }));
+
+  // Revoke everything a Stripe payment bought (refund or dispute): flip its
+  // purchases paid -> refunded, freeze service rows, undo organizer share,
+  // sponsor spend and wallet use. Merch orders take their own path.
+  async function revokePayment(req, pi, { reason, returnBalance }) {
+    let sessionId = null;
+    try {
+      const sessions = await stripe().checkout.sessions.list({ payment_intent: String(pi), limit: 1 });
+      sessionId = sessions.data[0]?.id || null;
+    } catch (e) { console.error('[webhook] session lookup failed:', e.message); }
+    const done = await pool.query(
+      `UPDATE purchases SET status = 'refunded'
+        WHERE status = 'paid' AND (stripe_payment_intent = $1 OR ($2::TEXT IS NOT NULL AND stripe_session_id = $2))
+        RETURNING id`,
+      [String(pi), sessionId]
+    );
+    if (!done.rows.length) await require('./merch').markMerchOrderRefunded(req, pi);
+    if (done.rows.length) {
+      audit(req, 'media.refund', 'purchase', done.rows.map((r) => r.id).join(','), { pi });
+      // Freeze service products tied to refunded purchases. Photo/package
+      // entitlements already gate on status='paid'; credit bundles and reel
+      // orders get an explicit status flip so no stale 'active' row lingers.
+      const ids = done.rows.map((r) => r.id);
+      await pool.query(
+        `UPDATE credit_bundles SET status = 'cancelled'
+          WHERE purchase_id = ANY($1::UUID[]) AND status <> 'cancelled'`, [ids]
+      ).catch(() => {});
+      await pool.query(
+        `UPDATE reel_orders SET status = 'cancelled'
+          WHERE purchase_id = ANY($1::UUID[]) AND status NOT IN ('delivered', 'cancelled')`, [ids]
+      ).catch(() => {});
+      for (const id of ids) {
+        try {
+          const plan = await reversePurchase(pool, id, { reason, returnBalance });
+          if (plan) audit(req, 'media.refund.reversed', 'purchase', id, { pi: String(pi), ...plan });
+        } catch (e) {
+          console.error('[webhook] reversal failed', { id, err: e.message });
+          audit(req, 'media.refund.reverse_failed', 'purchase', id, { pi: String(pi), err: e.message });
+        }
+      }
+    }
+  }
 
   // ---- Moment badges: suggest win/clear/debut from round_results ----
   // POST /admin/media/:id/suggest-moment
@@ -4339,20 +4387,24 @@ module.exports = function mountMediaRoutes(app) {
       who = { col: 'rider_id', id: rid, name: r.rows[0]?.name || 'rider' };
     }
     const photographer = await ownPhotographer(pool, req.authUser, req.body?.photographer_id);
+    // A photographer's bundle only holds their own photos (ADMIN: all).
+    const ownPkg = req.authUser.role === 'ADMIN' ? null : photographer.id;
     const items = who
       ? await pool.query(
         `SELECT m.id, COALESCE(pp.price_cents, t.price_cents, 0) AS price_cents FROM media m
           LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, CASE WHEN m.kind = 'reel' THEN 'reel' ELSE 'web' END)
           LEFT JOIN photographer_prices pp ON pp.photographer_id = m.photographer_id AND pp.tier_id = t.id
-          WHERE m.status = 'published' AND m.source = 'studio' AND m.event_id = $1 AND m.${who.col} = $2`,
-        [event_id, who.id]
+          WHERE m.status = 'published' AND m.source = 'studio' AND m.event_id = $1 AND m.${who.col} = $2
+            AND ($3::UUID IS NULL OR m.photographer_id = $3)`,
+        [event_id, who.id, ownPkg]
       )
       : await pool.query(
         `SELECT m.id, COALESCE(pp.price_cents, t.price_cents, 0) AS price_cents FROM media m
           LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, CASE WHEN m.kind = 'reel' THEN 'reel' ELSE 'web' END)
           LEFT JOIN photographer_prices pp ON pp.photographer_id = m.photographer_id AND pp.tier_id = t.id
-          WHERE m.status = 'published' AND m.source = 'studio' AND m.event_id = $1`,
-        [event_id]
+          WHERE m.status = 'published' AND m.source = 'studio' AND m.event_id = $1
+            AND ($2::UUID IS NULL OR m.photographer_id = $2)`,
+        [event_id, ownPkg]
       );
     if (!items.rows.length) return res.status(409).json({ error: who ? 'no published photos for this event × subject' : 'no published photos for this event' });
     const sum = items.rows.reduce((s, x) => s + Number(x.price_cents), 0);
@@ -4387,13 +4439,17 @@ module.exports = function mountMediaRoutes(app) {
       `SELECT pk.*, e.name AS event_name,
           (SELECT COUNT(*)::INT FROM package_items WHERE package_id = pk.id) AS items
         FROM packages pk LEFT JOIN events e ON e.id = pk.event_id
-        ORDER BY pk.created_at DESC LIMIT 100`
+        WHERE ($1::UUID IS NULL OR pk.photographer_id = $1)
+        ORDER BY pk.created_at DESC LIMIT 100`, [await ownPhotographerId(pool, req.authUser)]
     );
     res.json({ data: rows });
   }));
 
   // ---- Global shop settings (whole-event package price, etc.) ----
   const SETTING_KEYS = ['event_package_price_cents', 'platform_commission_rate', 'organizer_share_rate'];
+  // All three are platform-wide: the whole-event price applies to every
+  // photographer's events, so one photographer must not set it for all.
+  const ADMIN_ONLY_SETTINGS = SETTING_KEYS;
   app.get('/admin/settings', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const { rows } = await pool.query(
       `SELECT key, value FROM admin_settings WHERE key = ANY($1)`, [SETTING_KEYS]);
@@ -4407,8 +4463,8 @@ module.exports = function mountMediaRoutes(app) {
     // SECURITY: commission rates move real money between photographer /
     // platform / organizer. A photographer could otherwise zero the platform
     // or organizer share and pocket the difference (payout = remainder).
-    if ((key === 'platform_commission_rate' || key === 'organizer_share_rate') && req.authUser.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'changing commission rates requires ADMIN' });
+    if (ADMIN_ONLY_SETTINGS.includes(key) && req.authUser.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'changing platform prices and commission rates requires ADMIN' });
     }
     const v = String(value ?? '').trim();
     if (key === 'event_package_price_cents' && v !== '') {
@@ -4603,14 +4659,19 @@ module.exports = function mountMediaRoutes(app) {
     }
     if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
     vals.push(req.params.id);
+    vals.push(await ownPhotographerId(pool, req.authUser));
     const { rows } = await pool.query(
-      `UPDATE packages SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
+      `UPDATE packages SET ${sets.join(', ')} WHERE id = $${vals.length - 1}
+          AND ($${vals.length}::UUID IS NULL OR photographer_id = $${vals.length}) RETURNING *`, vals);
     if (!rows.length) return res.status(404).json({ error: 'package not found' });
     audit(req, 'package.edit', 'package', req.params.id, { fields: sets.map((s) => s.split(' = ')[0]) });
     res.json({ data: rows[0] });
   }));
 
   app.delete('/admin/packages/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+    if (!(await ownsPricingRow('packages', req.params.id, req.authUser))) {
+      return res.status(404).json({ error: 'package not found' });
+    }
     const paid = await pool.query(
       `SELECT COUNT(*)::INT AS n FROM purchases WHERE status = 'paid' AND package_id = $1`,
       [req.params.id]);
@@ -5172,7 +5233,7 @@ module.exports = function mountMediaRoutes(app) {
     const { media_id, sponsor_logo_ids, design_tags } = req.body || {};
     if (!media_id || !UUID_RE.test(String(media_id))) return res.status(400).json({ error: 'need {media_id}' });
     const m = await pool.query(
-      `SELECT id, kind, status, event_id, horse_id, rider_id FROM media WHERE id = $1`, [String(media_id)]);
+      `SELECT id, kind, status, event_id, horse_id, rider_id, photographer_id FROM media WHERE id = $1`, [String(media_id)]);
     if (!m.rows.length || m.rows[0].status !== 'published' || m.rows[0].kind !== 'photo') {
       return res.status(404).json({ error: 'photo not found' });
     }
@@ -5238,14 +5299,16 @@ module.exports = function mountMediaRoutes(app) {
       const locked = await client.query(
         `SELECT cb.id, cb.slots_total FROM credit_bundles cb
           LEFT JOIN purchases pu ON pu.id = cb.purchase_id
+          JOIN credit_packs cp ON cp.id = cb.pack_id
           WHERE cb.status = 'active' AND cb.buyer_user_id = $1
+            AND (cp.event_id IS NULL OR cp.photographer_id = $5)
             AND (pu.status = 'paid' OR cb.purchase_id IS NULL)
             AND cb.event_id = $2
             AND ((cb.rider_id IS NOT NULL AND cb.rider_id = $3)
               OR (cb.horse_id IS NOT NULL AND cb.horse_id = $4))
           ORDER BY cb.created_at LIMIT 20
           FOR UPDATE OF cb`,
-        [req.authUser.id, media.event_id, media.rider_id, media.horse_id]
+        [req.authUser.id, media.event_id, media.rider_id, media.horse_id, media.photographer_id]
       );
       // Statement 2: recount AFTER holding the lock (fresh snapshot — sees
       // redemptions committed by unlocks that finished while we waited).
@@ -5318,11 +5381,18 @@ module.exports = function mountMediaRoutes(app) {
   app.get('/admin/credit-packs', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
     const params = [];
     let where = '';
+    const conds = [];
     if (req.query.event_id) {
       if (!UUID_RE.test(String(req.query.event_id))) return res.status(400).json({ error: 'bad event_id' });
       params.push(String(req.query.event_id));
-      where = `WHERE cp.event_id = $1`;
+      conds.push(`cp.event_id = $${params.length}`);
     }
+    const own = await ownPhotographerId(pool, req.authUser);
+    if (own) {
+      params.push(own);
+      conds.push(`cp.photographer_id = $${params.length}`);
+    }
+    if (conds.length) where = `WHERE ${conds.join(' AND ')}`;
     const { rows } = await pool.query(
       `SELECT cp.*, e.name AS event_name,
           (SELECT COUNT(*)::INT FROM credit_bundles WHERE pack_id = cp.id AND status <> 'cancelled') AS bundles
@@ -5349,6 +5419,9 @@ module.exports = function mountMediaRoutes(app) {
       const ev = await pool.query('SELECT id FROM events WHERE id = $1', [String(b.event_id)]);
       if (!ev.rows.length) return res.status(404).json({ error: 'event not found' });
       eventId = String(b.event_id);
+    }
+    if (!eventId && req.authUser.role !== 'ADMIN') {
+      return res.status(403).json({ error: 'a pack for every event is a platform price: pick one of your events' });
     }
     const photographer = await ownPhotographer(pool, req.authUser, b.photographer_id);
     const { rows } = await pool.query(
@@ -5403,14 +5476,19 @@ module.exports = function mountMediaRoutes(app) {
     }
     if (!sets.length) return res.status(400).json({ error: 'nothing to update' });
     vals.push(req.params.id);
+    vals.push(await ownPhotographerId(pool, req.authUser));
     const { rows } = await pool.query(
-      `UPDATE credit_packs SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
+      `UPDATE credit_packs SET ${sets.join(', ')} WHERE id = $${vals.length - 1}
+          AND ($${vals.length}::UUID IS NULL OR photographer_id = $${vals.length}) RETURNING *`, vals);
     if (!rows.length) return res.status(404).json({ error: 'credit pack not found' });
     audit(req, 'creditpack.edit', 'credit_pack', req.params.id, { fields: sets.map((s) => s.split(' = ')[0]) });
     res.json({ data: rows[0] });
   }));
 
   app.delete('/admin/credit-packs/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
+    if (!(await ownsPricingRow('credit_packs', req.params.id, req.authUser))) {
+      return res.status(404).json({ error: 'credit pack not found' });
+    }
     const live = await pool.query(
       `SELECT COUNT(*)::INT AS n FROM credit_bundles WHERE pack_id = $1 AND status <> 'cancelled'`,
       [req.params.id]);
