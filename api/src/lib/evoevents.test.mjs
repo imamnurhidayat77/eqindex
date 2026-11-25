@@ -162,16 +162,90 @@ test('web-page export: round 2 columns map to round2_*, round-2 eliminations kee
   assert.equal(cahlua.status, 'eliminated'); // round-1 elimination stays a status
 });
 
-test('safety gate: fewer parsed classes than "Results approved" sections blocks the file', () => {
+test('safety gate: a class title the parser misses blocks the file (structural, no approval needed)', () => {
+  // Strip the 295 title's markers: its rows would fall under the empty 291.
   const broken = WEB_EXPORT.replace('295  Intro Pony 70cm 274.2.5.1 special 2 phase  ✓  Approved  Hide', '295  Intro Pony 70cm 274.2.5.1 special 2 phase');
-  // The unrecognised 295 title lets its rows fall under the empty class 291:
-  // class counts still match (4 = 4), but those rows have no approval marker.
-  const { classesFound, resultsSections, blocking } = parseEvoEvents(broken);
-  assert.equal(classesFound, 4);
-  assert.equal(resultsSections, 4);
-  assert.match(blocking, /13 row\(s\) sit under a class with no results of its own/);
+  const { blocking } = parseEvoEvents(broken);
+  assert.match(blocking, /did not match a class title|could not read/);
   assert.match(blocking, /evoevents\.co\.nz\/results/);
-  // and a file whose titles are all missing is refused outright
+  assert.doesNotMatch(blocking, /of \d+ classes with results/); // no more "42 of 6" style counts
+  // and a file whose titles are all unreadable is refused outright
   const none = WEB_EXPORT.replace(/  ✓  Approved  Hide|  Hide$/gm, '').replace(/✓  Approved/g, '');
   assert.ok(parseEvoEvents(none).blocking);
+});
+
+// Excerpt of another EvoEvents results web page (public results, Show
+// Jumping Canterbury Labour Weekend 2026): provisional classes next to an
+// approved one, and a class number printed as "45  SJ map  Hide".
+const PROVISIONAL_EXPORT = [
+  "Results  /  Show Jumping Canterbury Forelock.Ai by Waimakariri Farm Labour Weekend Jumping Carnival",
+  "Show Jumping Canterbury Forelock.Ai by Waimakariri Farm",
+  "\t‹ Event details",
+  "Labour Weekend Jumping Carnival — Results",
+  "25 Oct 2026 – 26 Oct 2026 · 117 classes",
+  "↻  Refresh",
+  "SHOW JUMPING",
+  "1  Open Horse 1.20m Article 238.2.1 A2  Hide",
+  "\tRESULTS (PRELIMINARY IF LIVE)",
+  "Back No  Horse  Rider  Est Time  Place  SJ Time  SJ Time Pen  SJ Jump Pen  SJ Total",
+  "\tJ1 JOHN LAWSON",
+  "195  Haupouri Dakota NZPH  Molly Buist Brown  1  69.92  0  0  0",
+  "28  Cascade  Lucinda Askin  2  76.29  0  0  0",
+  "106  Miss Skyfall  Hayley Morris  3  76.38  0  0  0",
+  "65  Double J Sunshine  Katharine Coleman  4  76.76  0  0  0",
+  "161  My Lion Heart  Danielle Guiver  5  78.12  0  0  0",
+  "159  Haupouri Chantilly NZPH  Amy Mcmullan  6  78.6  0  0  0",
+  "242  Schweppes Xtreme  Francesca Bishell  7  80.41  0  0  0",
+  "36  Sienna MVNZ  Grace Percy  8  82.16  0  0  0",
+  "",
+  "\tRESULTS (PRELIMINARY IF LIVE)",
+  "Back No  Horse  Rider  Est Time  Place  SJ Time  SJ Time Pen  SJ Jump Pen  SJ Total",
+  "NZPH 7 Year Old Breeders Series in conj with DJ Hewitt Builders 1.30m art 238.2.2  ✓  Approved",
+  "44  Hide",
+  "Sponsored by DJ Hewitt Builders",
+  "✓  Results approved, 26 Oct, 11:03am",
+  "FIRST ROUND RESULTS  FINAL ROUND RESULTS (PRELIMINARY IF LIVE)",
+  "Back No  Horse  Rider  Est Time  Place  SJ Time  SJ Time Pen  SJ Jump Pen  SJ Total  Rnd 1 Place  Rnd 2 Time  Rnd 2 TP  Rnd 2 JP  Rnd 2 Total",
+  "195  SLE Limoncello  Molly Buist Brown  1  90.64  0  4  4  1",
+  "280  Beaumont Ivan  Jessica Hore  2  92.42  3  8  8  2",
+  "Equus Elite Horse Championship 1.25m Art 238.2.2",
+  "45  SJ map  Hide",
+  "Sponsored by Equus Elite",
+  "",
+  "Show Jumping course map",
+  "FIRST ROUND RESULTS  FINAL ROUND RESULTS (PRELIMINARY IF LIVE)",
+  "Back No  Horse  Rider  Est Time  Place  SJ Time  SJ Time Pen  SJ Jump Pen  SJ Total  Rnd 1 Place  Rnd 2 Time  Rnd 2 TP  Rnd 2 JP  Rnd 2 Total",
+  "195  Haupouri Dakota NZPH  Molly Buist Brown  1  85.93  0  0  0  3  43.15  0  0  0",
+  "43  LT Holst Diamond Queen  Becky Pinfold  2  84.65  0  0  0  1  44.62  0  0  0",
+  "195  Vali  Molly Buist Brown  3  88.26  0  0  0  7  41.27  0  4  4",
+  "211  PL Fox D''Amour  Maygen Gubb  4  87.27  0  0  0  4  42  0  4  4",
+  "169  McMillans Swipe Right  Zara Hazledine  5  84.84  0  0  0  2  46.2  0  4  4",
+  "240  Dublin VWNZ  Grace Roy  6  87.51  0  0  0  5  47.33  0  4  4",
+  "21  Delphine NZPH  Cara Quinn  7  88.14  0  0  0  6  54.17  0  4  4",
+  "65  Double J Sunshine  Katharine Coleman  8  78.8  0  4  4  8",
+  "20  Global PH Florence  Peita Milne  9  85.27  0  4  4  9",
+  "193  Endeavour T  Harriet Gardner  10  93.03  1  4  5  10",
+  "184  LT Holst Chief  Sonya Benison  11  82.82  0  8  8  11",
+].join('\n');
+
+test('provisional web export: not blocked, approval kept per row, provisional classes listed', () => {
+  const { records, blocking, provisional } = parseEvoEvents(PROVISIONAL_EXPORT);
+  assert.equal(blocking, null); // missing "Results approved" is not a misfile
+  const counts = Object.fromEntries(Object.entries(byClass(records)).map(([k, v]) => [k.split(' ')[0], [v.length, v[0].results_approved]]));
+  assert.deepEqual(counts, { 1: [8, false], 44: [2, true], 45: [11, false] });
+  assert.deepEqual(provisional.map((p) => [p.name.split(' ')[0], p.rows]), [['1', 8], ['45', 11]]);
+});
+
+test('"45  SJ map  Hide" carries the class number; missing it would be caught', () => {
+  const { records } = parseEvoEvents(PROVISIONAL_EXPORT);
+  assert.ok(records.some((r) => r.class_name === '45 Equus Elite Horse Championship 1.25m Art 238.2.2' && r.horse_name === 'Haupouri Dakota NZPH'));
+  // Without the number line the title is unreadable: rows would join class 44 → refused.
+  const noNumber = PROVISIONAL_EXPORT.replace('45  SJ map  Hide', 'SJ map');
+  assert.ok(parseEvoEvents(noNumber).blocking);
+});
+
+test('files without approval markers carry no approval state', () => {
+  const { records, provisional } = parseEvoEvents(text);
+  assert.equal(records[0].results_approved, undefined);
+  assert.deepEqual(provisional, []);
 });

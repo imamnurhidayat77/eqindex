@@ -22,7 +22,8 @@ const TIMETABLE_MARK = /\b(Sat|Sun)\b|out of|Finished|\(Planned\)|Scheduled|\bRI
 const RULES_NUM = /(?:Art\w*\s*:?\s*)?\d{3}(?:\.\d)?(?:\.\d)?/i;
 // A bare "12  Hide  View full" line after a title carries the class number.
 // Newer exports print just "277  Hide" (no "View full").
-const HIDE_LINE = /^\d*\s*Hide(\s+View full|\s*$)/i;
+// A course-map link may sit between them: "45  SJ map  Hide".
+const HIDE_LINE = /^\d*\s*(?:SJ map\s+)?Hide(\s+View full|\s*$)/i;
 // Title line that ends in its own section marker: "… Art 238.2.2  ✓  Approved  Hide".
 const HIDE_END = /\sHide(\s+View full)?\s*$/i;
 // Approval badge newer exports put after the title ("✓  Approved").
@@ -36,6 +37,9 @@ const ROUND2_ROW_NUMS = 10;
 // compares this count with the classes actually parsed.
 const RESULTS_APPROVED = /Results approved/gi;
 const RESULTS_APPROVED_LINE = /Results approved/i;
+// Lines only a class title carries (rules article, section marker, approval
+// badge) — never a result row, sponsor line or judge line.
+const TITLEISH = /\sHide\s*$|✓\s*Approved\b|\bArt\w*\s*:?\s*\d{3}|\b\d{3}\.\d\.\d/i;
 // Two Titlecase words, neither shouty — very likely a person's name.
 const PERSON_LIKE = /^[A-Z][a-z'-]+ [A-Z][a-z'-]+$/;
 
@@ -144,7 +148,12 @@ function parseEvoEvents(text) {
   // came (e.g. an empty class swallowing the next class's rows).
   let approvedForTitle = false;
   let titleClosed = false; // "No entries or results" seen for this title
-  let rowsWithoutApproval = 0;
+  // Structural misfile signal (works with or without approval markers):
+  // after a class has rows, a title-like line that was NOT taken as a title
+  // and then a new results table = a class we failed to recognise.
+  let rowsInClass = 0;
+  let titleishSinceRows = false;
+  let missedSections = 0;
   // Approval markers not directly after a recognised title: a title was missed.
   let strayApprovals = 0;
   let hideMarkers = 0;
@@ -179,7 +188,9 @@ function parseEvoEvents(text) {
   };
 
   const emit = (rec) => {
-    if (!approvedForTitle) rowsWithoutApproval++;
+    rec.approvedTitle = approvedForTitle; // temp: resolved after the loop
+    rowsInClass++;
+    titleishSinceRows = false;
     if (currentTitle) {
       rec.class_name = currentTitle;
       records.push(rec);
@@ -258,6 +269,8 @@ function parseEvoEvents(text) {
     titlesDetected++;
     approvedForTitle = false;
     titleClosed = false;
+    rowsInClass = 0;
+    titleishSinceRows = false;
     flushOrphans(titleText);
     pendH = []; pendR = []; pendSingles = [];
     titleTail = true;
@@ -289,6 +302,10 @@ function parseEvoEvents(text) {
       inResults = false; mode = null; titleTail = false;
       continue;
     }
+    if (/RESULTS|FIRST ROUND|Back No/i.test(trimmed)) {
+      if (rowsInClass > 0 && titleishSinceRows) missedSections++;
+      titleishSinceRows = false;
+    }
     if (/RESULTS|FIRST ROUND/i.test(trimmed) && !/Back No/i.test(trimmed)) {
       finalizePending();
       inResults = true;
@@ -308,7 +325,9 @@ function parseEvoEvents(text) {
 
     // Class title (works inside and outside results: the first title of
     // the day prints before its RESULTS block, after the timetable).
-    if (isTitleBlock(rawLines, li)) {
+    const isTitle = isTitleBlock(rawLines, li);
+    if (!isTitle && rowsInClass > 0 && TITLEISH.test(trimmed)) titleishSinceRows = true;
+    if (isTitle) {
       let raw = trimmed;
       if (/^[-–]\s/.test(trimmed) && li > 0) {
         const prev = (rawLines[li - 1] || '').trim();
@@ -321,7 +340,7 @@ function parseEvoEvents(text) {
       if (!/^\d+\s/.test(name) && HIDE_END.test(trimmed) && /^\d+$/.test(prevLine)) name = `${prevLine} ${name}`;
       for (let k = 1; k <= 3; k++) {
         const nxt = (rawLines[li + k] || '').trim();
-        const mNum = nxt.match(/^(\d+)\s*(Hide.*)?$/i);
+        const mNum = nxt.match(/^(\d+)\s*((?:SJ map\s+)?Hide.*)?$/i);
         if (mNum && !/^\d+\s/.test(name)) {
           name = `${mNum[1]} ${name}`;
           li += k;
@@ -508,12 +527,27 @@ function parseEvoEvents(text) {
   // Fewer parsed classes means rows were filed under the wrong class
   // (seen live: 4 of 30) — refuse rather than misfile.
   const resultsSections = (src.match(RESULTS_APPROVED) || []).length;
-  const misfiled = resultsSections > 0 && (rowsWithoutApproval > 0 || strayApprovals > 0);
-  const blocking = resultsSections > classesFound || misfiled
-    ? `Parsed ${classesFound} of ${resultsSections} classes with results${rowsWithoutApproval && resultsSections ? ` and ${rowsWithoutApproval} row(s) sit under a class with no results of its own` : ''} — the file layout was not fully understood, so rows may be under the wrong class. Do not commit this file: import the EvoEvents results link instead (evoevents.co.nz/results/<id>), which reads the results directly.`
+  const problems = [];
+  if (missedSections) problems.push(`${missedSections} results table(s) sit under a class title I could not read`);
+  if (strayApprovals) problems.push(`${strayApprovals} approved class section(s) did not match a class title`);
+  const blocking = problems.length
+    ? `Parsed ${classesFound} classes, but ${problems.join(' and ')} — rows may be under the wrong class. Do not commit this file: import the EvoEvents results link instead (evoevents.co.nz/results/<id>), which reads the results directly.`
     : null;
 
-  return { records, dropped, ambiguous, warnings, classesExpected, classesFound, resultsSections, blocking };
+  // Web-page exports mark approved classes; elsewhere approval is unknown.
+  const provisional = new Map();
+  for (const r of records) {
+    if (resultsSections) {
+      r.results_approved = r.approvedTitle;
+      if (!r.approvedTitle) provisional.set(r.class_name, (provisional.get(r.class_name) || 0) + 1);
+    }
+    delete r.approvedTitle;
+  }
+
+  return {
+    records, dropped, ambiguous, warnings, classesExpected, classesFound, resultsSections, blocking,
+    provisional: [...provisional].map(([name, rows]) => ({ name, rows })),
+  };
 }
 
 module.exports = { parseEvoEvents, looksEvoEvents, isTitleBlock };

@@ -195,6 +195,10 @@ module.exports = function mountAdminRoutes(app) {
     const tagged = await applySeriesMap(parsed.records, userId);
     const analysis = summarizeAssist('evoevents-rule', { filename: filename || null }, parsed.records, []);
     const warnings = [...parsed.warnings, ...analysis.warnings];
+    if (parsed.provisional.length) {
+      warnings.unshift(`${parsed.provisional.length} of ${parsed.classesFound} classes are provisional (not approved by the organiser yet) — results may still change`);
+      analysis.provisional = parsed.provisional;
+    }
     if (tagged) warnings.push(`${tagged} row(s) tagged from your remembered series mappings`);
     if (parsed.blocking) {
       return {
@@ -531,6 +535,7 @@ module.exports = function mountAdminRoutes(app) {
     // found in the source need an explicit names_ack before they are saved.
     // The flag column itself is never written anywhere.
     ci.ungrounded = col('ungrounded');
+    ci.approved = col('results_approved');
     if (!dry_run && !req.body.names_ack && ci.ungrounded >= 0) {
       const flagged = grid.slice(1).map((r, i) => ({ line: i + 2, value: r[ci.ungrounded] }))
         .filter((x) => isUngroundedCell(x.value)).map(({ line, value }) => ({ line, fields: String(value) }));
@@ -538,6 +543,17 @@ module.exports = function mountAdminRoutes(app) {
         return res.status(409).json({
           error: `${flagged.length} row(s) have names not found in the source text — check them and confirm (names_ack) before commit`,
           ungrounded: flagged,
+        });
+      }
+    }
+    // Provisional gate: rows from classes the organiser has not approved yet
+    // need provisional_ack (results may still change after import).
+    if (!dry_run && !req.body.provisional_ack && ci.approved >= 0) {
+      const provisionalRows = grid.slice(1).filter((r) => String(r[ci.approved]).trim() === 'false').length;
+      if (provisionalRows) {
+        return res.status(409).json({
+          error: `${provisionalRows} row(s) are provisional (not approved by the organiser yet) — confirm importing provisional results (provisional_ack) before commit`,
+          provisional_rows: provisionalRows,
         });
       }
     }
@@ -954,7 +970,7 @@ module.exports = function mountAdminRoutes(app) {
         await client.query(
           'INSERT INTO import_logs (actor, source, filename, event_id, rows_total, rows_ok, rows_failed) VALUES ($1,$2,$3,$4,$5,$6,$7)',
           [(req.authUser && req.authUser.name) || 'admin', src, filename || null, ev.id, ev.ok + ev.failed, ev.ok, ev.failed]);
-        audit(req, 'import.commit', 'event', ev.id, { ...summary, filename, event: ev.name, batch_id: batchId, series_ack: seriesAck, names_ack: namesAck });
+        audit(req, 'import.commit', 'event', ev.id, { ...summary, filename, event: ev.name, batch_id: batchId, series_ack: seriesAck, names_ack: namesAck, provisional_ack: !!req.body.provisional_ack });
       }
       await client.query('COMMIT');
       captureSnapshots();
