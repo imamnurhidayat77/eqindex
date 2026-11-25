@@ -41,7 +41,7 @@ function EditCell({ value, label, onSave, required = false, className = '' }) {
   );
 }
 
-export default function ReviewTable({ records, preview, seriesKeys, disabled, onEdit, onDelete }) {
+export default function ReviewTable({ records, preview, seriesKeys, disabled, onEdit, onReplace, onDelete }) {
   const groups = useMemo(() => reviewGroups(records, preview), [records, preview]);
   const issueRows = groups.reduce((n, g) => n + g.issueCount, 0);
   // null = automatic: filter on whenever something needs a look.
@@ -60,6 +60,7 @@ export default function ReviewTable({ records, preview, seriesKeys, disabled, on
   // groups open), whatever was collapsed by hand before.
   const scroller = useRef(null);
   useEffect(() => {
+    if (preview?.stale) return; // an edit, not a new Validate: keep the view
     setToggled(new Map());
     setErrorFilter(null);
     if (scroller.current) scroller.current.scrollLeft = 0; // Place column in view
@@ -73,6 +74,8 @@ export default function ReviewTable({ records, preview, seriesKeys, disabled, on
   const toggle = (g) => setToggled((prev) => new Map(prev).set(g.key, !isOpen(g)));
   const pickError = (message) => { setErrorFilter((cur) => (cur === message ? null : message)); setToggled(new Map()); };
   const hasPoints = !!preview?.dry_run;
+  // Rows sharing a name: one "Use" click fixes all of them.
+  const sameName = (field, value) => records.filter((x) => x[field] === value).length;
   const columns = hasPoints ? 7 : 6;
 
   return (
@@ -184,7 +187,7 @@ export default function ReviewTable({ records, preview, seriesKeys, disabled, on
                                   <span className={`${badge(ISSUE_BADGE[i])} [overflow-wrap:anywhere]`}>{what} looks like “{sim.name}” ({Math.round(sim.score * 100)}%)</span>
                                   <button type="button" className={USE_BTN} disabled={disabled}
                                     aria-label={`Use existing ${what} ${sim.name} for row ${n}`}
-                                    onClick={() => onEdit(index, field, sim.name)}>Use {sim.name}</button>
+                                    onClick={() => onReplace(field, r[field], sim.name)}>Use {sim.name}{sameName(field, r[field]) > 1 ? ` (${sameName(field, r[field])} rows)` : ''}</button>
                                 </span>
                               );
                             })}

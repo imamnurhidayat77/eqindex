@@ -14,6 +14,7 @@ export const ISSUE_LABELS = {
 export const INFO_LABELS = { new_horse: 'new horse', new_rider: 'new rider', new_class: 'new class' };
 
 const isFinished = (r) => (r.status || 'finished') === 'finished';
+const sameText = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
 
 // Standard competition ranking: each sorted placing repeats the previous one
 // (a tie) or equals its position. 1,1,3 is fine; 1,2,4 and 1,1,2 are not.
@@ -61,7 +62,11 @@ export function reviewGroups(records, preview) {
     if (result && !result.ok) issues.push('failed');
     if (blocking.has(record.class_name) && !record.series_key) issues.push('no_series');
     if (result?.ok) {
-      for (const f of ['similar_horse', 'similar_rider']) if (result.preview?.[f]) issues.push(f);
+      // A suggestion already taken (name now equals it) is no longer an issue.
+      for (const [f, field] of [['similar_horse', 'horse_name'], ['similar_rider', 'rider_name']]) {
+        const sim = result.preview?.[f];
+        if (sim && sameText(sim.name, record[field]) === false) issues.push(f);
+      }
       for (const f of Object.keys(INFO_LABELS)) if (result.preview?.[f]) info.push(f);
     }
     groups.get(key).rows.push({ index, record, result, issues, info });

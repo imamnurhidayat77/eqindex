@@ -128,8 +128,18 @@ export default function AdminAssistant() {
   }, [ready, chats, activeId]);
   const active = chats.find((c) => c.id === activeId) || null;
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [active?.msgs?.length, busy]);
-  // A preview (and any ack/resume) belongs to the exact records it checked.
-  useEffect(() => { setPreview(null); setSeriesAck(false); setNamesAck(false); setResume(null); }, [activeId, active?.analysis]);
+  // A preview belongs to the records it checked. A new mapping, chat switch
+  // or row delete drops it (and the acks/resume); an in-place edit only
+  // marks it stale — issues stay visible, Commit waits for a new Validate.
+  const keepStalePreview = useRef(false);
+  useEffect(() => {
+    if (keepStalePreview.current) {
+      keepStalePreview.current = false;
+      setPreview((p) => (p ? { ...p, stale: true } : p));
+      return;
+    }
+    setPreview(null); setSeriesAck(false); setNamesAck(false); setResume(null);
+  }, [activeId, active?.analysis]);
 
   function patchActive(fn) {
     setChats((prev) => prev.map((c) => (c.id === activeId ? fn(c) : c)));
@@ -381,11 +391,12 @@ export default function AdminAssistant() {
   const ungroundedRows = (analysis?.records || []).filter((r) => r.ungrounded?.length);
   // Parser could not read the file reliably: nothing from it may be saved.
   const fileBlocked = analysis?.blocking || null;
-  const commitBlocked = !!fileBlocked || !preview || preview.dry_run === false || !!resume
+  const commitBlocked = !!fileBlocked || !preview || preview.stale || preview.dry_run === false || !!resume
     || (seriesBlocking.length > 0 && !seriesAck) || (ungroundedRows.length > 0 && !namesAck);
-  // Any edit or delete replaces the records, so the preview, acks and
-  // resume state reset (effect above) and Commit needs a fresh Validate.
-  function setRecords(fn) {
+  // Edits keep the (now stale) preview; deletes shift row positions, so the
+  // preview is dropped entirely (effect above).
+  function setRecords(fn, { edit = false } = {}) {
+    keepStalePreview.current = edit;
     patchActive((c) => (c.analysis ? { ...c, updatedAt: Date.now(), analysis: withRecords(c.analysis, fn(c.analysis.records)) } : c));
   }
   // Source text is not kept client-side, so an edited name keeps its
@@ -396,7 +407,11 @@ export default function AdminAssistant() {
       const next = { ...r, [field]: value };
       if (value === '') delete next[field];
       return next;
-    }));
+    }), { edit: true });
+  }
+  // "Use <existing name>": fix every row that carries the same new name.
+  function replaceName(field, from, to) {
+    setRecords((records) => records.map((r) => (r[field] === from ? { ...r, [field]: to } : r)), { edit: true });
   }
   function deleteRecord(index) {
     setRecords((records) => records.filter((_, i) => i !== index));
@@ -565,6 +580,11 @@ export default function AdminAssistant() {
                     <div className="mt-2 border-t border-gold/30 pt-2">
                       <div className="mb-1 text-[14px] font-bold">{preview.dry_run ? 'Preview (nothing saved)' : 'Import result'}
                         <span className="ml-2 text-[12px] text-muted font-semibold">{preview.summary.ok} ok · {preview.summary.failed} failed</span></div>
+                      {preview.stale && (
+                        <p role="status" className="mb-1.5 rounded-md border border-gold/50 bg-ink px-2.5 py-1.5 text-[13px] text-gold">
+                          You changed rows since this preview — the checks below are from the last Validate. Validate again before Commit.
+                        </p>
+                      )}
                       {seriesBlocking.length > 0 && (
                         <div className="mt-2 rounded-md border border-gold/50 bg-ink p-2.5 text-[13px]">
                           <p className="font-bold text-gold">{seriesBlocking.length} class(es) look like series classes but have no series tag</p>
@@ -583,7 +603,7 @@ export default function AdminAssistant() {
                   )}
                   {analysis?.records?.length > 0 && (
                     <ReviewTable key={activeId} records={analysis.records} preview={preview} seriesKeys={seriesKeys}
-                      disabled={!!busy} onEdit={editRecord} onDelete={deleteRecord} />
+                      disabled={!!busy} onEdit={editRecord} onReplace={replaceName} onDelete={deleteRecord} />
                   )}
                 </div>
               )}

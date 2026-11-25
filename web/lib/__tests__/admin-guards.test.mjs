@@ -48,3 +48,16 @@ describe('import assistant: a chat is always active', () => {
     assert.match(s, /!chats\.some\(\(c\) => c\.id === activeId\)\) setActiveId\(chats\[0\]\.id\)/, 'self-heal effect present');
   });
 });
+
+describe('import assistant: acks and edits keep the Validate preview', () => {
+  const s = src('app/admin/assistant/page.jsx');
+  test('the preview reset effect does not depend on the ack checkboxes', () => {
+    const effect = s.match(/useEffect\(\(\) => \{\n    if \(keepStalePreview\.current\)[\s\S]*?\}, \[([^\]]*)\]\);/);
+    assert.ok(effect, 'reset effect found');
+    assert.doesNotMatch(effect[1], /seriesAck|namesAck/);
+  });
+  test('row edits mark the preview stale and Commit waits for a new Validate', () => {
+    assert.match(s, /setRecords\([\s\S]*?\{ edit: true \}\)/);
+    assert.match(s, /commitBlocked = [^;]*preview\.stale/);
+  });
+});

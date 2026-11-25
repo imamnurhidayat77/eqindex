@@ -81,3 +81,11 @@ test('failureSummary groups failed rows by message, most frequent first', () => 
   assert.deepEqual([...s[0].indexes], [1, 2]);
   assert.deepEqual(failureSummary(null), []);
 });
+
+test('a similar-name suggestion already taken is no longer an issue', () => {
+  const preview = { rows: [{ line: 1, ok: true, preview: { new_horse: true, similar_horse: { id: 'h', name: 'Triple Star Galaxy (CHB Blue)', score: 0.68 } } }], summary: {} };
+  const before = reviewGroups([{ class_name: 'A', horse_name: 'Triple Star Galaxy', rider_name: 'R' }], preview);
+  assert.deepEqual(before[0].rows[0].issues, ['similar_horse']);
+  const after = reviewGroups([{ class_name: 'A', horse_name: 'triple star galaxy (chb blue) ', rider_name: 'R' }], preview);
+  assert.deepEqual(after[0].rows[0].issues, []);
+});
