@@ -5,10 +5,12 @@
 // The assistant never writes anything itself: validate → preview → commit.
 import { useEffect, useRef, useState } from 'react';
 import { API } from '../../../lib/api';
-import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, BTN_PRIMARY, BTN_DANGER, badge, BADGE } from '../../../lib/tokens';
+import { CARD, H1, SUB, BTN_PRIMARY, BTN_DANGER } from '../../../lib/tokens';
 import { useAdminApi } from '../../../components/useAdminApi';
 import Dropdown from '../../../components/Dropdown';
 import { nzDay } from '../../../lib/dates';
+import { withRecords } from '../../../lib/importReview';
+import ReviewTable from './ReviewTable';
 
 const LS_KEY = 'eq-assistant-chats';
 // Matches the server's ungrounded-names warning (api/src/lib/assist.js).
@@ -86,6 +88,7 @@ export default function AdminAssistant() {
   const [extracting, setExtracting] = useState(false);
   const [busy, setBusy] = useState(null);
   const [events, setEvents] = useState([]);
+  const [seriesKeys, setSeriesKeys] = useState([]);
   const [eventId, setEventId] = useState('');
   const [evNew, setEvNew] = useState({ name: '', date_start: '', venue: '' });
   const [preview, setPreview] = useState(null);
@@ -113,6 +116,8 @@ export default function AdminAssistant() {
     }
     setReady(true);
     fetch(`${API}/events?limit=100&include_empty=1`).then((r) => r.json()).then((j) => setEvents(j.data || [])).catch(() => {});
+    // Series picker for the review table; without it the select only offers "none".
+    call('/admin/series').then((d) => setSeriesKeys((d || []).map((x) => x.series_key).filter(Boolean))).catch(() => {});
   }, []);
   useEffect(() => { if (ready) saveChats(chats); }, [chats, ready]);
   useEffect(() => { saveChats(chats); }, [chats]);
@@ -369,18 +374,28 @@ export default function AdminAssistant() {
   const ungroundedRows = (analysis?.records || []).filter((r) => r.ungrounded?.length);
   const commitBlocked = !preview || preview.dry_run === false || !!resume
     || (seriesBlocking.length > 0 && !seriesAck) || (ungroundedRows.length > 0 && !namesAck);
-  // Dropping rows changes the records, so the preview resets (effect above).
+  // Any edit or delete replaces the records, so the preview, acks and
+  // resume state reset (effect above) and Commit needs a fresh Validate.
+  function setRecords(fn) {
+    patchActive((c) => (c.analysis ? { ...c, updatedAt: Date.now(), analysis: withRecords(c.analysis, fn(c.analysis.records)) } : c));
+  }
+  // Source text is not kept client-side, so an edited name keeps its
+  // ungrounded flag; the "I checked these names" ack covers it.
+  function editRecord(index, field, value) {
+    setRecords((records) => records.map((r, i) => {
+      if (i !== index) return r;
+      const next = { ...r, [field]: value };
+      if (value === '') delete next[field];
+      return next;
+    }));
+  }
+  function deleteRecord(index) {
+    setRecords((records) => records.filter((_, i) => i !== index));
+  }
   function removeUngrounded() {
     patchActive((c) => {
-      const records = c.analysis.records.filter((r) => !r.ungrounded?.length);
-      return {
-        ...c, updatedAt: Date.now(),
-        analysis: {
-          ...c.analysis, records,
-          warnings: c.analysis.warnings.filter((w) => !w.includes(NAMES_NOT_FOUND)),
-          stats: { ...c.analysis.stats, rounds: records.length, with_series: records.filter((r) => r.series_key).length },
-        },
-      };
+      const next = withRecords(c.analysis, c.analysis.records.filter((r) => !r.ungrounded?.length));
+      return { ...c, updatedAt: Date.now(), analysis: { ...next, warnings: next.warnings.filter((w) => !w.includes(NAMES_NOT_FOUND)) } };
     });
   }
   const isFresh = (active?.msgs || []).filter((m) => m.role === 'user').length === 0;
@@ -535,25 +550,6 @@ export default function AdminAssistant() {
                     <div className="mt-2 border-t border-gold/30 pt-2">
                       <div className="mb-1 text-[14px] font-bold">{preview.dry_run ? 'Preview (nothing saved)' : 'Import result'}
                         <span className="ml-2 text-[12px] text-muted font-semibold">{preview.summary.ok} ok · {preview.summary.failed} failed</span></div>
-                      <div className="overflow-x-auto">
-                      <table className={TABLE}>
-                        <thead><tr><th className={TH}>Rider</th><th className={TH}>Horse</th><th className={TH}>Class</th><th className={`${TH} ${NUM}`}>Pts</th><th className={TH}>Flags</th></tr></thead>
-                        <tbody>
-                          {preview.rows.slice(0, 10).map((r, i) => (
-                            <tr key={i}>
-                              <td className={TD}>{r.preview?.rider || '–'}</td>
-                              <td className={TD}>{r.preview?.horse || '–'}</td>
-                              <td className={`${TD} text-muted`}>{r.preview?.class || '–'}</td>
-                              <td className={`${TD} ${NUM}`}><b className={r.ok ? 'text-gold' : 'text-faint'}>{r.ok ? r.preview.points : '–'}</b></td>
-                              <td className={TD}>{r.ok
-                                ? <>{r.preview.new_horse && <span className={badge(BADGE.blue)}>new horse</span>}{' '}{r.preview.new_rider && <span className={badge(BADGE.blue)}>new rider</span>}{' '}{r.preview.new_class && <span className={badge(BADGE.gray)}>new class</span>}</>
-                                : <span className={badge(BADGE.red)}>{(r.errors || []).join('; ')}</span>}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      </div>
-                      {preview.rows.length > 10 && <p className="text-[12px] text-faint mt-1">Showing 10 of {preview.rows.length} rows.</p>}
                       {seriesBlocking.length > 0 && (
                         <div className="mt-2 rounded-md border border-gold/50 bg-ink p-2.5 text-[13px]">
                           <p className="font-bold text-gold">{seriesBlocking.length} class(es) look like series classes but have no series tag</p>
@@ -561,7 +557,7 @@ export default function AdminAssistant() {
                             {seriesBlocking.slice(0, 6).map((b) => <li key={b.name} className="[overflow-wrap:anywhere]">{b.name} · {b.rows} row(s)</li>)}
                             {seriesBlocking.length > 6 && <li>…and {seriesBlocking.length - 6} more</li>}
                           </ul>
-                          <p className="mt-1 text-faint">Tag them in the chat (e.g. &quot;class 9 is pro-am&quot;) and validate again, or confirm below.</p>
+                          <p className="mt-1 text-faint">Pick a series for them in the table below (or tag them in the chat, e.g. &quot;class 9 is pro-am&quot;) and validate again, or confirm here.</p>
                           <label className="mt-2 flex items-center gap-2 text-body cursor-pointer">
                             <input type="checkbox" checked={seriesAck} onChange={(e) => setSeriesAck(e.target.checked)} className="h-4 w-4 accent-gold" />
                             These classes are not series classes
@@ -569,6 +565,10 @@ export default function AdminAssistant() {
                         </div>
                       )}
                     </div>
+                  )}
+                  {analysis?.records?.length > 0 && (
+                    <ReviewTable key={activeId} records={analysis.records} preview={preview} seriesKeys={seriesKeys}
+                      disabled={!!busy} onEdit={editRecord} onDelete={deleteRecord} />
                   )}
                 </div>
               )}
