@@ -195,8 +195,8 @@ function boardFromTable(table) {
     const total = parseFloat(String(cells[ti] || '').replace(',', '.'));
     const row = { rider, horse: hoi >= 0 ? (cells[hoi] || '').trim() : '', total: Number.isFinite(total) ? total : 0, cells: {} };
     events.forEach((ev, i) => {
-      const v = parseFloat(String(cells[width - events.length + i] || '').replace(',', '.'));
-      if (ev && Number.isFinite(v) && v > 0) row.cells[ev] = v;
+      const pts = cellPoints(cells[width - events.length + i]);
+      if (ev && pts.length) row.cells[ev] = pts;
     });
     rows.push(row);
   }
@@ -230,6 +230,9 @@ async function fetchOfficialBoard(url) {
       Accept: 'text/html,application/xhtml+xml',
     },
   });
+  if (res.status === 401 || res.status === 403) {
+    throw Object.assign(new Error('The board needs sign-in (EvoEvents now hides results from logged-out visitors). Open it while signed in, then copy the whole table (Cmd+A, Cmd+C) and paste it below, or save the page (Cmd+S) and upload the .html file.'), { status: 422 });
+  }
   if (!res.ok) throw Object.assign(new Error(`official board fetch failed (${res.status})`), { status: 502 });
   const html = await res.text();
   const title = (html.match(/<title>([\s\S]*?)<\/title>/i) || [])[1] || '';
@@ -240,16 +243,72 @@ async function fetchOfficialBoard(url) {
   throw Object.assign(new Error('no results table found on that page (paste the board text instead)'), { status: 422 });
 }
 
+// "8", "4/2" (two horses), "" → [8], [4, 2], []
+function cellPoints(cell) {
+  return String(cell ?? '').split('/').map((x) => parseFloat(x.replace(',', '.'))).filter((v) => Number.isFinite(v) && v > 0);
+}
+
+// Pasted board: a saved EvoEvents page (HTML), a table copied from the
+// browser (tab-separated — includes columns scrolled out of view), or
+// plain "Name points" lines (totals only, no per-show columns).
 function parseOfficialText(text) {
+  const src = String(text || '');
+  const tables = /<table/i.test(src)
+    ? tablesFromHtml(src)
+    : [src.split(/\r?\n/).filter((l) => l.includes('\t')).map((l) => l.split('\t').map((c) => c.trim()))];
+  for (const t of tables) {
+    if (t.length < 2) continue;
+    const board = boardFromTable(t);
+    if (board) return board;
+  }
   // Tolerant: lines like "Lucy Fell ... 122" or "1. Lucy Fell 122".
   // Without a table we take trailing number as total; events unknown.
   const rows = [];
-  for (const line of String(text || '').split(/\r?\n/)) {
+  for (const line of src.split(/\r?\n/)) {
     const m = line.trim().match(/^(?:\d+[.)]\s*)?([A-Za-z'’\-][A-Za-z'’\-.\s]{1,60}?)\s+(\d+(?:\.\d+)?)\s*$/);
     if (m) rows.push({ rider: m[1].trim(), horse: '', total: Number(m[2]), cells: {} });
   }
-  if (!rows.length) throw Object.assign(new Error('could not parse any rider rows — paste "Name points" lines'), { status: 422 });
+  if (!rows.length) throw Object.assign(new Error('could not read the board — paste the whole table copied from the page, upload the saved page, or paste "Name points" lines'), { status: 422 });
   return { events: [], rows };
+}
+
+// Official show column → day/month + name words: "Wairarapa A&P 1/11",
+// "Otago 1710" (slash missing on the board), "WHS & SJW 8/11".
+function parseEventLabel(label) {
+  const t = String(label || '').trim();
+  let m = t.match(/^(.*?)\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*$/);
+  if (!m) m = t.match(/^(.*?)\s+(\d{1,2})(\d{2})\s*$/);
+  if (!m) return { name: t, day: null, month: null, words: words(t) };
+  return { name: m[1].trim(), day: Number(m[2]), month: Number(m[3]), words: words(m[1]) };
+}
+const STOP_WORDS = new Set(['a', 'p', 'and', 'show', 'jumping', 'the', 'of', 'sj', 'horse', 'association', 'club', 'inc']);
+function words(s) { return norm(s).split(' ').filter((w) => w.length > 1 && !STOP_WORDS.has(w)); }
+
+// Pick the EQIndex event a column refers to: its date range must cover the
+// column's day/month (±1 day); among those, most shared name words, then
+// the latest. confidence 'name' = date + a shared word, 'date' = date only.
+// ourEvents: [{ id, name, date_start: 'YYYY-MM-DD', date_end }]
+const DAY_MS = 86400000;
+function matchEvent(label, ourEvents) {
+  const p = parseEventLabel(label);
+  if (!p.day) return null;
+  const hits = [];
+  for (const e of ourEvents) {
+    const start = Date.parse(e.date_start);
+    const end = Date.parse(e.date_end || e.date_start);
+    if (!Number.isFinite(start)) continue;
+    for (const y of [new Date(start).getUTCFullYear(), new Date(end).getUTCFullYear()]) {
+      const d = Date.UTC(y, p.month - 1, p.day);
+      if (d >= start - DAY_MS && d <= end + DAY_MS) {
+        const shared = p.words.filter((w) => words(e.name).includes(w)).length;
+        hits.push({ e, shared, start });
+        break;
+      }
+    }
+  }
+  if (!hits.length) return null;
+  hits.sort((a, b) => b.shared - a.shared || b.start - a.start);
+  return { event: hits[0].e, confidence: hits[0].shared ? 'name' : 'date' };
 }
 
 // ---- alias-aware name matching ----
@@ -300,16 +359,19 @@ async function ourSeriesTotals(seriesKey) {
   const cfg = (cfgQ.rows[0]?.series || {})[seriesKey] || {};
   const infoQ = await pool.query('SELECT best_of FROM series_info WHERE series_key = $1', [seriesKey]).catch(() => ({ rows: [] }));
   const { rows } = await pool.query(
-    `SELECT r.name AS rider, h.name AS horse, e.name AS event, SUM(rr.points)::INT AS pts
+    `SELECT r.name AS rider, h.name AS horse, e.id AS event_id, SUM(rr.points)::INT AS pts
      FROM round_results rr JOIN classes c ON c.id = rr.class_id
      JOIN riders r ON r.id = rr.rider_id JOIN horses h ON h.id = rr.horse_id
      JOIN events e ON e.id = rr.event_id
-     WHERE c.series_key = $1 GROUP BY r.name, h.name, e.name`, [seriesKey]);
-  // Per-rider event scores (combos merged, mirroring the public board).
+     WHERE c.series_key = $1 GROUP BY r.name, h.name, e.id`, [seriesKey]);
+  // Per-rider event scores (combos merged, mirroring the public board), and
+  // per rider per event (one entry per horse) for the show-by-show diff.
   const byRider = {};
+  const perEvent = {};
   for (const row of rows) {
     const entry = (byRider[row.rider] ||= { scores: [] });
     entry.scores.push(row.pts);
+    ((perEvent[row.rider] ||= {})[row.event_id] ||= []).push(row.pts);
   }
   // bestOf: seriesCountFor needs held-class count; approximate with distinct
   // event-rounds present (same spirit: cap runaway totals, never hide all).
@@ -320,14 +382,31 @@ async function ourSeriesTotals(seriesKey) {
     const s = v.scores.sort((a, b) => b - a);
     totals[rider] = (n ? s.slice(0, n) : s).reduce((a, b) => a + b, 0);
   }
-  return { totals, bestOf: n };
+  return { totals, bestOf: n, perEvent, seriesEvents: new Set(rows.map((r) => r.event_id)) };
 }
 
 async function diffSeriesBoard(seriesKey, official) {
   const ours = await ourSeriesTotals(seriesKey);
   const aliases = await loadAliases();
   const ourKeys = new Map(Object.keys(ours.totals).map((r) => [norm(r), r]));
-  const out = { series: seriesKey, bestOf: ours.bestOf, matched: 0, uncertain: [], missingHere: [], extraHere: [], deltas: [] };
+  const out = { series: seriesKey, bestOf: ours.bestOf, matched: 0, uncertain: [], missingHere: [], extraHere: [], deltas: [], events: [], eventDeltas: [] };
+  // Which official shows exist here, and whether they carry this series.
+  if (official.events?.length) {
+    const { rows: evRows } = await pool.query(
+      `SELECT id, name, date_start::TEXT AS date_start, COALESCE(date_end, date_start)::TEXT AS date_end
+         FROM events WHERE date_start >= NOW() - INTERVAL '18 months'`);
+    for (const label of official.events) {
+      const hit = matchEvent(label, evRows);
+      const riders = (official.rows || []).filter((r) => r.cells?.[label]?.length).length;
+      out.events.push({
+        label,
+        officialRiders: riders,
+        ours: hit ? { id: hit.event.id, name: hit.event.name, date_start: hit.event.date_start } : null,
+        confidence: hit?.confidence || null,
+        status: !hit ? 'missing' : (ours.seriesEvents.has(hit.event.id) ? 'ok' : 'no_series_results'),
+      });
+    }
+  }
   const seen = new Set();
   for (const o of official.rows || []) {
     const m = matchRider(o.rider, ourKeys, aliases);
@@ -341,6 +420,17 @@ async function diffSeriesBoard(seriesKey, official) {
     else out.matched++;
     const diff = o.total - (ours.totals[ourKeys.get(m.key)] || 0);
     if (diff !== 0) out.deltas.push({ rider: ourKeys.get(m.key), ours: ours.totals[ourKeys.get(m.key)] || 0, official: o.total, diff });
+    // Show by show: official cell vs our points at the matched event.
+    const mine = ours.perEvent[ourKeys.get(m.key)] || {};
+    for (const ev of out.events) {
+      const off = o.cells?.[ev.label] || [];
+      const our = ev.ours ? (mine[ev.ours.id] || []) : [];
+      const sum = (a) => a.reduce((x, y) => x + y, 0);
+      if (!off.length && !our.length) continue;
+      if (sum(off) !== sum(our)) {
+        out.eventDeltas.push({ rider: ourKeys.get(m.key), event: ev.label, official: off.join('/') || '–', ours: our.join('/') || '–' });
+      }
+    }
   }
   for (const [k, display] of ourKeys) {
     if (!seen.has(k) && (ours.totals[display] || 0) > 0) out.extraHere.push({ rider: display, ours: ours.totals[display] });
@@ -353,4 +443,5 @@ module.exports = {
   listUntaggedClasses, tagClasses,
   listHeightSpecs, upsertHeightSpec, applyHeightSpecs,
   fetchOfficialBoard, parseOfficialText, diffSeriesBoard, ourSeriesTotals,
+  cellPoints, parseEventLabel, matchEvent, boardFromTable,
 };

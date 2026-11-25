@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { API } from '../../../lib/api';
-import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN, BTN_PRIMARY } from '../../../lib/tokens';
+import { CARD, H1, SUB, TABLE, TABLEWRAP, TD, TH, NUM, INP, BTN, BTN_PRIMARY, badge, BADGE } from '../../../lib/tokens';
 import { ConfirmDialog } from '../../../components/Modal';
 import { useAdminApi } from '../../../components/useAdminApi';
 import { TableRowsSk } from '../../../components/Skeletons';
@@ -31,6 +31,7 @@ export default function AdminSeriesReview() {
   const [checkUrl, setCheckUrl] = useState('');
   const [checkText, setCheckText] = useState('');
   const [diff, setDiff] = useState(null);
+  const [boardFile, setBoardFile] = useState('');
   const [initial, setInitial] = useState(true);
   // Bulk: tick classes, pick one series (or non-series), confirm once.
   const [sel, setSel] = useState(() => new Set());
@@ -115,6 +116,21 @@ export default function AdminSeriesReview() {
       load();
     } catch (e) { setMsg(e.message); }
     setBusy(false);
+  }
+
+  // Saved board page (Cmd+S while signed in): keep only its tables — the
+  // rest of the page is noise and can be megabytes.
+  async function loadBoardFile(f) {
+    if (!f) return;
+    try {
+      const html = await f.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const tables = [...doc.querySelectorAll('table')].map((t) => t.outerHTML);
+      if (!tables.length) { setMsg(`No table found in ${f.name} — save the board page itself (Cmd+S) while signed in.`); return; }
+      setCheckText(tables.join('\n'));
+      setBoardFile(`${f.name} · ${tables.length} table(s)`);
+      setMsg('');
+    } catch { setMsg(`Could not read ${f.name}.`); }
   }
 
   async function runCheck() {
@@ -265,7 +281,7 @@ export default function AdminSeriesReview() {
       {tab === 'official' && (
         <section className={CARD}>
           <h2 className="text-[14px] font-bold mb-1">Cross-check against the official board</h2>
-          <p className="text-[13px] text-muted mb-3">Paste an EvoEvents resultClass URL (per-series links on the ESNZ leaderboards page) or paste the board text as "Name points" lines. Differences come back for human verdict — never auto-applied.</p>
+          <p className="text-[13px] text-muted mb-3">EvoEvents boards now need sign-in, so open the board in your browser while signed in, then either copy the whole table (Cmd+A, Cmd+C) and paste it below, or save the page (Cmd+S) and upload it. Both include columns you have to scroll to see. Differences come back for human verdict — never auto-applied.</p>
           <div className="grid gap-2.5 mb-3" style={{ maxWidth: 640 }}>
             <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Our series
               <select value={checkSeries} onChange={(e) => setCheckSeries(e.target.value)} className={INP}>
@@ -275,9 +291,14 @@ export default function AdminSeriesReview() {
             <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Official board URL (optional)
               <input value={checkUrl} onChange={(e) => setCheckUrl(e.target.value)} placeholder="https://www.evoevents.co.nz/resultClass/…"
                 className="rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" /></label>
-            <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">…or paste board text
-              <textarea value={checkText} onChange={(e) => setCheckText(e.target.value)} rows={5} spellCheck={false}
-                placeholder={'Lucy Fell 122\nMichelle Wakeling 113'}
+            <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">Saved board page (.html)
+              <input type="file" accept=".html,.htm,text/html" onChange={(e) => { loadBoardFile(e.target.files?.[0]); e.target.value = ''; }}
+                className="text-[13px] text-body normal-case tracking-normal file:mr-3 file:rounded-md file:border file:border-line file:bg-card2 file:px-3 file:py-1.5 file:text-body file:cursor-pointer" />
+              {boardFile && <span className="normal-case tracking-normal text-[12px] text-moss">Loaded {boardFile}</span>}
+            </label>
+            <label className="flex flex-col gap-1 text-[11px] uppercase tracking-wide text-faint">…or paste the copied table
+              <textarea value={checkText} onChange={(e) => { setCheckText(e.target.value); setBoardFile(''); }} rows={5} spellCheck={false}
+                placeholder={'Paste the table copied from the board page (Cmd+A, Cmd+C)\n…or "Name points" lines: Lucy Fell 122'}
                 className="rounded-md border border-line bg-ink px-2.5 py-2 text-[13px] font-mono text-body placeholder:text-faint focus:border-gold/60 focus:outline-none" /></label>
           </div>
           <button onClick={runCheck} disabled={busy} className={BTN_PRIMARY}>{busy ? 'Comparing…' : 'Compare boards'}</button>
@@ -288,6 +309,53 @@ export default function AdminSeriesReview() {
                 {diff.bestOf ? <span> · best {diff.bestOf} applied both sides</span> : null}
                 {diff.uncertain?.length ? <span> · <b className="text-gold">{diff.uncertain.length} uncertain name match(es)</b></span> : null}
               </p>
+              {!!diff.events?.length && (
+                <>
+                  <h3 className="font-bold text-[13px] mt-3 mb-1">Shows on the official board</h3>
+                  <p className="text-[12px] text-faint mb-1">
+                    {diff.events.filter((e) => e.status === 'missing').length} not imported ·{' '}
+                    {diff.events.filter((e) => e.status === 'no_series_results').length} imported without this series ·{' '}
+                    {diff.events.filter((e) => e.status === 'ok').length} with series results
+                  </p>
+                  <div className={TABLEWRAP}>
+                    <table className={TABLE}>
+                      <thead><tr><th className={TH}>Official show</th><th className={TH}>EQIndex event</th><th className={TH}>Status</th><th className={`${TH} ${NUM}`}>Riders with pts</th></tr></thead>
+                      <tbody>{diff.events.map((e) => (
+                        <tr key={e.label}>
+                          <td className={`${TD} whitespace-nowrap`}>{e.label}</td>
+                          <td className={`${TD} [overflow-wrap:anywhere]`}>{e.ours ? <>{e.ours.name} <span className="text-faint">· {nzDay(e.ours.date_start)}</span>{e.confidence === 'date' && <span className="text-gold"> · date match only, check</span>}</> : <span className="text-faint">–</span>}</td>
+                          <td className={`${TD} whitespace-nowrap`}>{e.status === 'ok'
+                            ? <span className={badge(BADGE.green)}>has series results</span>
+                            : e.status === 'no_series_results'
+                              ? <span className={badge(BADGE.gold)}>imported, no series results</span>
+                              : <span className={badge(BADGE.red)}>not imported</span>}</td>
+                          <td className={`${TD} ${NUM}`}>{e.officialRiders}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                  <p className="text-[12px] text-faint mt-1">“Imported, no series results”: the show is in EQIndex but its classes are not tagged to this series — tag them in the Untagged tab.</p>
+                </>
+              )}
+              {!!diff.eventDeltas?.length && (
+                <>
+                  <h3 className="font-bold text-[13px] mt-3 mb-1">Points per show that differ ({diff.eventDeltas.length})</h3>
+                  <div className={TABLEWRAP}>
+                    <table className={TABLE}>
+                      <thead><tr><th className={TH}>Rider</th><th className={TH}>Show</th><th className={`${TH} ${NUM}`}>Official</th><th className={`${TH} ${NUM}`}>EQIndex</th></tr></thead>
+                      <tbody>{diff.eventDeltas.slice(0, 200).map((d, i) => (
+                        <tr key={i}>
+                          <td className={TD}>{d.rider}</td>
+                          <td className={`${TD} whitespace-nowrap text-muted`}>{d.event}</td>
+                          <td className={`${TD} ${NUM}`}>{d.official}</td>
+                          <td className={`${TD} ${NUM} ${d.ours === '–' ? 'text-blood' : 'text-gold'}`}>{d.ours}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                  {diff.eventDeltas.length > 200 && <p className="text-[12px] text-faint mt-1">Showing 200 of {diff.eventDeltas.length}.</p>}
+                </>
+              )}
               {!!diff.deltas?.length && (
                 <>
                   <h3 className="font-bold text-[13px] mt-3 mb-1">Point differences</h3>
@@ -314,7 +382,7 @@ export default function AdminSeriesReview() {
                   <ul className="space-y-1 text-muted">{diff.uncertain.slice(0, 20).map((d, i) => <li key={i}>{d.official} ↔ {d.ours}</li>)}</ul>
                 </>
               )}
-              {!diff.deltas?.length && !diff.missingHere?.length && !diff.extraHere?.length && (
+              {!diff.deltas?.length && !diff.missingHere?.length && !diff.extraHere?.length && !diff.eventDeltas?.length && !diff.events?.some((e) => e.status !== 'ok') && (
                 <p className="text-gold font-bold">Boards agree.</p>
               )}
             </div>
