@@ -894,7 +894,7 @@ const FRAMING = {
   // Tuned on the client's horse (horse-client.glb, 1.70 tall, ears at
   // y 1.70, z 0.86).
   horse: { pos: [3.4, 1.5, 3.9], target: [0, 0.92, 0] },
-  bonnet: { pos: [0.85, 1.7, 2.05], target: [0, 1.54, 0.8] },
+  bonnet: { pos: [0.9, 1.92, 2.0], target: [0, 1.72, 0.75] },
   // Bonnet on its own (studio file, centred at y 1.63, z 0.83, ~0.27 wide).
   bonnetSolo: { pos: [0.5, 1.72, 1.54], target: [0, 1.63, 0.82] },
   // Fitted gear without the horse: per-size frames (the bonnet reuses
@@ -1050,8 +1050,8 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
   );
   // Product-only framing for horse gear; the horse keeps its wide frame.
   const framing = !isHorse ? FRAMING.studio
-    : model === 'ear-bonnet' ? (showHorse ? FRAMING.bonnet : FRAMING.bonnetSolo)
-    : showHorse ? FRAMING.horse
+    : model === 'ear-bonnet' ? FRAMING.bonnetSolo
+    : horseOn ? FRAMING.horse
     : model === 'saddle-blanket' ? FRAMING.gearBlanket : FRAMING.gearRug;
   // Shared garment props (every product component takes the same set).
   const gp = {
@@ -1075,9 +1075,9 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
         <button type="button" className={s.viewBtn} aria-pressed={view.angle === Math.PI} onClick={() => setView(Math.PI)}>Back</button>
         <button type="button" className={s.viewBtn} aria-pressed={view.angle === -Math.PI / 2} onClick={() => setView(-Math.PI / 2)}>Left</button>
         <button type="button" className={s.viewBtn} aria-pressed={view.angle === Math.PI / 2} onClick={() => setView(Math.PI / 2)}>Right</button>
-        {isHorse && (
-          <button type="button" className={s.viewBtn} aria-pressed={showHorse} onClick={() => setShowHorse((v) => !v)}>
-            {showHorse ? 'Hide horse' : 'Show horse'}
+        {canShowHorse && (
+          <button type="button" className={s.viewBtn} aria-pressed={horseOn} onClick={() => setShowHorse((v) => !v)}>
+            {horseOn ? 'Hide horse' : 'Show horse'}
           </button>
         )}
         <button type="button" className={s.viewBtn} aria-pressed={spin} onClick={() => setSpin((v) => !v)}>
@@ -1109,6 +1109,9 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
           )}
           <Suspense fallback={null}>
             {isHorse ? (
+  // The ear bonnet is shown on its own for now (Imam: no horse for it).
+  const canShowHorse = isHorse && model !== 'ear-bonnet';
+  const horseOn = showHorse && canShowHorse;
               <SceneErrorBoundary
                 fallback={model === 'ear-bonnet'
                   ? <BonnetGarment {...gp} />
@@ -1116,10 +1119,9 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
               >
                 <GearShiftContext.Provider value={clean ? null : effShift}>
                   <GearSlotContext.Provider value={gearLayer}>
-                    {showHorse
+                    {horseOn
                       ? <HorseScene productId={model} color={color} slots={slots} zoom={zoom} aspects={aspects} />
-                      // The bonnet is shown on its own (Imam: no horse head);
-                      // "Show horse" puts it on the full horse.
+                      // "Show horse" puts the gear on the full horse.
                       : <FittedGear productId={model} color={color} slots={slots} valid={valid} zoom={zoom} aspects={aspects} />}
                   </GearSlotContext.Provider>
                 </GearShiftContext.Provider>

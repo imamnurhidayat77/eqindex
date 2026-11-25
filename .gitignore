@@ -30,3 +30,6 @@ openscreen-demo-plan.md
 backup-*/
 updates/
 merch-check*.png
+
+# Local Claude Code settings
+.claude/settings.local.json

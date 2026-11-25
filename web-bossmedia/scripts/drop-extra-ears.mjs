@@ -3,7 +3,8 @@
 // file by collapsing it onto its base. Gear file in metres, horse faces +z, y up.
 //   EARS=yBase,yTip node scripts/drop-extra-ears.mjs in.glb out.glb
 // yTip: height where the four sock tops are still apart. yBase: where the
-// socks meet the cap. The front ear on each side is the extra one.
+// socks meet the cap. The front ear on each side is the extra one, or
+// the back one with DROP=back.
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, EXTMeshoptCompression } from '@gltf-transform/extensions';
 import { prune, compactPrimitive } from '@gltf-transform/functions';
@@ -61,7 +62,7 @@ console.log('ear tops', tips.map((t) => `${t.m}@x${t.x.toFixed(3)},z${t.z.toFixe
 const big = tips.map((t, i) => i).filter((i) => tips[i].m > 20);
 const drop = new Set();
 for (const side of [1, -1]) {
-  const s2 = big.filter((i) => Math.sign(tips[i].x) === side).sort((p, q) => tips[q].z - tips[p].z);
+  const s2 = big.filter((i) => Math.sign(tips[i].x) === side).sort((p, q) => (tips[q].z - tips[p].z) * (process.env.DROP === 'back' ? -1 : 1));
   if (s2.length > 1) drop.add(s2[0]);
 }
 const label = new Map(comp);
@@ -89,18 +90,44 @@ const centre = (side) => {
   return c.map((x) => x / m);
 };
 const C = { 1: centre(1), '-1': centre(-1) };
+// Plane through each base ring (least squares y = a x + b z + c), so the
+// closed base follows the slope of the cap instead of rising to a point.
+const plane = (side) => {
+  let sxx = 0, sxz = 0, szz = 0, sx = 0, sz = 0, sxy = 0, szy = 0, sy = 0, m = 0;
+  for (const v of ring) {
+    if (Math.sign(P[v * 3]) !== side) continue;
+    const x = P[v * 3], y = P[v * 3 + 1], z = P[v * 3 + 2];
+    sxx += x * x; sxz += x * z; szz += z * z; sx += x; sz += z; sxy += x * y; szy += z * y; sy += y; m++;
+  }
+  // solve the 3x3 normal equations by Cramer's rule
+  const A = [[sxx, sxz, sx], [sxz, szz, sz], [sx, sz, m]], B = [sxy, szy, sy];
+  const det = (M) => M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
+  const D = det(A);
+  const col = (k) => A.map((row, i) => row.map((q, j) => (j === k ? B[i] : q)));
+  return [det(col(0)) / D, det(col(1)) / D, det(col(2)) / D];
+};
+const PL = { 1: plane(1), '-1': plane(-1) };
+const SHRINK = +(process.env.EAR_SHRINK || 0.5);
 const out = Float32Array.from(P);
+const NOR = prim.getAttribute('NORMAL') ? Float32Array.from(prim.getAttribute('NORMAL').getArray()) : null;
 let moved = 0;
 for (let i = 0; i < n; i++) {
   if (!ear.has(W[i])) continue;
-  const c = C[Math.sign(P[i * 3])];
-  out.set(c, i * 3);
+  const sd = Math.sign(P[i * 3]);
+  const c = C[sd], [a, b, k] = PL[sd];
+  // pull the footprint in toward the ring centre, then drop onto the plane
+  const x = c[0] + (P[i * 3] - c[0]) * SHRINK, z = c[2] + (P[i * 3 + 2] - c[2]) * SHRINK;
+  out.set([x, a * x + b * z + k - 0.002, z], i * 3);
+  // the sock normals point every way and light the lid grey: use the plane's
+  if (NOR) { const l = Math.hypot(a, 1, b); NOR.set([-a / l, 1 / l, -b / l], i * 3); }
   moved++;
 }
+if (NOR) prim.getAttribute('NORMAL').setArray(NOR);
 prim.getAttribute('POSITION').setArray(out);
 const I = [];
 let removed = 0;
-// Drop the triangles that collapsed to nothing.
+// Triangles wholly inside the ear now lie flat under the lid: drop them,
+// the lid is the band of triangles that cross the base ring.
 for (let t = 0; t < idx.length; t += 3) {
   if (ear.has(W[idx[t]]) && ear.has(W[idx[t + 1]]) && ear.has(W[idx[t + 2]])) { removed++; continue; }
   I.push(idx[t], idx[t + 1], idx[t + 2]);

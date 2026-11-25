@@ -587,8 +587,8 @@ function EarBonnetGLB({ color, slots, valid, zoom, aspects, fitted }) {
 const BONNET_ZONES_ON_HORSE = [
   // On the horse of the client's Tripo "horse wearing the bonnet" file.
   { face: '+z', slots: ['forehead'], size: 0.05, at: [1.76] },
-  { face: '+x', slots: ['ear-left'], size: 0.024, at: [1.9, 1.0] },
-  { face: '-x', slots: ['ear-right'], size: 0.024, at: [1.9, 1.0] },
+  { face: '+x', slots: ['ear-left'], size: 0.024, at: [1.92, 0.85] },
+  { face: '-x', slots: ['ear-right'], size: 0.024, at: [1.92, 0.85] },
 ];
 
 const BONNET_STUDIO = '/models/horse/ear-bonnet-studio.glb';

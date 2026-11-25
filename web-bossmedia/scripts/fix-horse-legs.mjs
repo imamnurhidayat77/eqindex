@@ -92,6 +92,53 @@ for (const h of [16, 28]) {
     if (best && Math.abs(best.z - z) < 15 && !pairs.some(([p, q]) => (p === best || q === best) && q.stub)) pairs.push([best, { v: c.v, x, z, stub: true }]);
   }
 }
+// A short front stub can be a whole second lower leg: its own forearm runs
+// behind and inside the kept one up to the elbow, and the two tubes share
+// one skin, so the back of the forearm is the stub's skin. Cutting below
+// the knee leaves that tube as a plate hanging behind the leg. Slice by
+// slice above the cut, split the leg's vertices into the two tubes
+// (2-means seeded from the slice below) and pull the stub's vertices onto
+// the kept tube's circle, fading out where the tubes reach the body.
+const stubPull = new Map(); // vertex -> [x, z]
+const smooth = (t) => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
+function dropStubForearm(hm, keep, drop) {
+  const side = Math.sign(keep.x);
+  const step = 0.5;
+  const up = +process.env.STUB_UP || 9.5;
+  let ck = [keep.x, keep.z], cs = [drop.x, drop.z];
+  for (let y = hm - 1; y < hm + up; y += step) {
+    const vs = [];
+    for (let v = 0; v < n; v++) {
+      const vy = P[v * 3 + 1];
+      if (vy < y || vy >= y + step || Math.sign(P[v * 3]) !== side) continue;
+      const x = P[v * 3], z = P[v * 3 + 2];
+      if (Math.min(Math.hypot(x - ck[0], z - ck[1]), Math.hypot(x - cs[0], z - cs[1])) > 7) continue;
+      vs.push(v);
+    }
+    const isK = (v) => Math.hypot(P[v * 3] - ck[0], P[v * 3 + 2] - ck[1]) <= Math.hypot(P[v * 3] - cs[0], P[v * 3 + 2] - cs[1]);
+    for (let it = 0; it < 6; it++) {
+      const sk = [0, 0, 0], ss = [0, 0, 0];
+      for (const v of vs) { const acc = isK(v) ? sk : ss; acc[0] += P[v * 3]; acc[1] += P[v * 3 + 2]; acc[2]++; }
+      if (sk[2]) ck = [sk[0] / sk[2], sk[1] / sk[2]];
+      if (ss[2]) cs = [ss[0] / ss[2], ss[1] / ss[2]];
+    }
+    // kept tube radius: its far side (away from the stub) is untouched
+    const ux = cs[0] - ck[0], uz = cs[1] - ck[1], ul = Math.hypot(ux, uz) || 1;
+    const far = vs.filter((v) => ((P[v * 3] - ck[0]) * ux + (P[v * 3 + 2] - ck[1]) * uz) / ul < 0)
+      .map((v) => Math.hypot(P[v * 3] - ck[0], P[v * 3 + 2] - ck[1])).sort((a, b) => a - b);
+    const rk = far.length ? far[Math.floor(far.length * 0.75)] : 3;
+    const e = 1 - smooth((y - hm - (up - 4)) / 4);
+    if (process.env.DEBUG) console.log('  slice', y.toFixed(1), 'keep', ck.map((q) => q.toFixed(1)).join(','), 'stub', cs.map((q) => q.toFixed(1)).join(','), 'rk', rk.toFixed(1), 'e', e.toFixed(2));
+    for (const v of vs) {
+      const x = P[v * 3], z = P[v * 3 + 2];
+      const d = Math.hypot(x - ck[0], z - ck[1]);
+      if (d <= rk) continue;
+      const k = (d - e * (d - rk)) / d;
+      stubPull.set(v, [ck[0] + (x - ck[0]) * k, ck[1] + (z - ck[1]) * k]);
+    }
+  }
+  return 0;
+}
 let removed = 0;
 const slim = [];
 for (const [a, b] of pairs) {
@@ -117,19 +164,22 @@ for (const [a, b] of pairs) {
   const offs = zs.map((q) => Math.abs(q[1] - kz)).sort((a, b) => a - b);
   const offx = zs.map((q) => Math.abs(q[0] - kx)).sort((a, b) => a - b);
   const keepIds = new Set(); for (const t of cut.below) if (cut.f(W[I[t]]) === cut.f(W[keep.v])) for (let k = 0; k < 3; k++) keepIds.add(W[I[t + k]]);
-  slim.push({ keepIds, hind, hm, kx, kz, R: offs[Math.floor(offs.length * 0.95)], Rx: offx[Math.floor(offx.length * 0.95)], mz: (keep.z + drop.z) / 2, dir: Math.sign(drop.z - keep.z), band: hind ? 10 : 9 });
+  slim.push({ keepIds, hind, hm, kx, kz, R: offs[Math.floor(offs.length * 0.95)], Rx: offx[Math.floor(offx.length * 0.95)], mz: (keep.z + drop.z) / 2, dir: Math.sign(drop.z - keep.z), band: hind ? 10 : 9, stub: !!drop.stub, dx: drop.x - keep.x, dz: drop.z - keep.z });
   console.log(hind ? 'hind' : 'front', drop.stub ? '(short extra leg)' : '', 'split at', hm.toFixed(2), 'keep', keep.z.toFixed(1), 'drop', drop.z.toFixed(1), 'tris', gone.size);
   const next = [];
   for (let t = 0; t < I.length; t += 3) if (!gone.has(t)) next.push(I[t], I[t + 1], I[t + 2]);
   removed += gone.size;
   I = next;
+  if (drop.stub && process.env.STUB_NOTAPER) removed += dropStubForearm(hm, keep, drop);
 }
 
 // Above the split the leg is still two legs wide: pull the side the
 // extra leg grew from back in to the kept leg's depth, fading out upward.
 const pos = Float32Array.from(P);
-const smooth = (t) => { t = Math.min(1, Math.max(0, t)); return t * t * (3 - 2 * t); };
+const stubMoved = new Set();
+for (const [v, [x, z]] of stubPull) { pos[v * 3] = x; pos[v * 3 + 2] = z; stubMoved.add(W[v]); }
 for (const L of slim) {
+  if (L.stub && process.env.STUB_NOTAPER) continue; // done by dropStubForearm
   if (L.hind) {
     // hind: the extra leg leaves forward of the hock, pull that side back in
     for (let v = 0; v < n; v++) {
@@ -162,6 +212,39 @@ for (const L of slim) {
     const sx = Math.min(1, (L.Rx + (rx - L.Rx) * t) / rx), sz = Math.min(1, (L.R + (rz - L.R) * t) / rz);
     for (const v of vs) { pos[v * 3] = tx + (P[v * 3] - cx) * sx; pos[v * 3 + 2] = tz + (P[v * 3 + 2] - cz) * sz; }
   }
+}
+// The pull piles the stub's skin onto the kept leg's radius, which leaves
+// a crease that reads as a plate. Relax those vertices (and one ring
+// around them) toward their neighbours, kept triangles only.
+if (stubMoved.size) {
+  // W holds welded ids, not vertex indices: keep one position per id.
+  const rep = new Map();
+  for (let v = 0; v < n; v++) if (!rep.has(W[v])) rep.set(W[v], v);
+  const nb = new Map();
+  for (let t = 0; t < I.length; t += 3) for (let k = 0; k < 3; k++) {
+    const a = W[I[t + k]], b = W[I[t + (k + 1) % 3]];
+    (nb.get(a) || nb.set(a, new Set()).get(a)).add(b);
+    (nb.get(b) || nb.set(b, new Set()).get(b)).add(a);
+  }
+  const zone = new Set(stubMoved);
+  for (const v of stubMoved) for (const u of nb.get(v) || []) zone.add(u);
+  const xz = (id) => [pos[rep.get(id) * 3], pos[rep.get(id) * 3 + 2]];
+  const iters = +process.env.STUB_RELAX || 15;
+  for (let it = 0; it < iters; it++) {
+    const nxt = new Map();
+    for (const id of zone) {
+      const ns = nb.get(id);
+      if (!ns || !ns.size) continue;
+      let cx = 0, cz = 0;
+      for (const u of ns) { const [x, z] = xz(u); cx += x; cz += z; }
+      const [x, z] = xz(id);
+      // x and z only: heights stay, so the sock line does not move
+      nxt.set(id, [(x + cx / ns.size) / 2, (z + cz / ns.size) / 2]);
+    }
+    for (const [id, [x, z]] of nxt) { const v = rep.get(id); pos[v * 3] = x; pos[v * 3 + 2] = z; }
+  }
+  // UV-seam twins follow their representative
+  for (let v = 0; v < n; v++) if (zone.has(W[v])) { const r = rep.get(W[v]); pos[v * 3] = pos[r * 3]; pos[v * 3 + 2] = pos[r * 3 + 2]; }
 }
 prim.getAttribute('POSITION').setArray(pos);
 
