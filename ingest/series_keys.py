@@ -11,19 +11,24 @@ RULES = [
     (re.compile(r'\bgrand\s*prix\b'), 'grand-prix-series'),
     (re.compile(r'young\s*rider'), 'young-rider-series'),
     (re.compile(r'junior\s*rider'), 'junior-rider-series'),
-    (re.compile(r'\bpro[-\s]?am\b'), 'pro-am-series'),
-    (re.compile(r'amateur'), 'amateur-rider-series'),
+    # "Pro Am", "Pro-Am", "Pro Amateur", "Pro-Amateur" (2026-27 class names)
+    (re.compile(r'\bpro[-\s]?am(?:ateur)?\b'), 'pro-am-series'),
+    # Amateur Rider series only: "Junior/Amateur", "Junior - Amateur" and
+    # "Global Amateur Tour" are other series (Python lookbehind must be
+    # fixed-width, so the junior prefix is checked in suggest_series_key).
+    (re.compile(r'amateur(?!\s*tour)'), 'amateur-rider-series'),
     (re.compile(r'\btertiary\b'), 'tertiary-series'),
     (re.compile(r'premier\s*league'), 'premier-league-series'),
 ]
 
-YOUNG_HORSE = re.compile(r'young\s*horse|breeding')
+YOUNG_HORSE = re.compile(r'young\s*horse|breed(?:ing|ers?)')
+JUNIOR_AMATEUR = re.compile(r'junior\s*[-/]?\s*amateur')
 YOUNG_AGE = re.compile(r'\b([567])\s*(?:y\.?o\.?|year[-\s]*old)\b')
 YOUNG_SERIES = {'5': 'five-yo-series', '6': 'six-yo-series', '7': 'seven-yo-series'}
 
 LIKE = re.compile(
     r'series|grand\s*prix|mini\s*prix|pro[-\s]?am|young\s*rider|junior\s*rider'
-    r'|amateur|tertiary|premier\s*league|young\s*horse|breeding|futurity'
+    r'|amateur|tertiary|premier\s*league|young\s*horse|breed(?:ing|ers?)|futurity'
     r'|equitation|hoyq|top of the south|main-event', re.I)
 
 
@@ -39,6 +44,8 @@ def suggest_series_key(class_name):
     if HUNTER.search(n):
         return None
     for rx, key in RULES:
+        if key == 'amateur-rider-series' and JUNIOR_AMATEUR.search(n):
+            continue
         if rx.search(n):
             return key
     if YOUNG_HORSE.search(n):

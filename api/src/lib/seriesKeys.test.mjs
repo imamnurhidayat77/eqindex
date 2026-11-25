@@ -54,3 +54,26 @@ test('autoTagRecords tags confident, lists verify, keeps explicit', () => {
   assert.equal(verify.length, 1);
   assert.match(verify[0].name, /HOYQ/);
 });
+
+// Real 2026-27 class names found by comparing with the ESNZ annual series board.
+test('Pro Amateur is Pro-Am; junior/amateur and amateur tour are not Amateur Rider', () => {
+  const cases = {
+    '7 Seahorse Supplements Pro Amateur Rider Series 1.20-1.30m Art238.2.2': 'pro-am-series',
+    '1007 SEAHORSE SUPPLEMENTS Pro-Amateur Rider Series 1.20-1.30m Article 238.2.2': 'pro-am-series',
+    '5 Seahorse Supplements Pro Am Rider 1.20m - 1.30m Art 238 2.2': 'pro-am-series',
+    '6 Dunstan Horsefeeds Amateur Series in conj with CSJ Horsetrucks 1.10-1.20 Art 238.2.2': 'amateur-rider-series',
+    '28 Dunstan Horse Feeds Amateur Rider Series.1.10-1.20m Art 238 2.2': 'amateur-rider-series',
+    '26 EQUI-LISE Junior/Amateur 1.10-1.20m ART: 238.2.2': null,
+    '10 South Island Junior Amateur Series 1.10m - 1.20m Article 238.2.2': null,
+    '7 Still Waters Sport Horses South Island Junior - Amateur Series 1.10m - 1.20m *EquiLise South Island Series*': null,
+    '47 Global Amateur Tour Open Horse 1.15m Article 238.2.2 IJO': null,
+  };
+  for (const [name, key] of Object.entries(cases)) assert.equal(suggestSeriesKey(name), key, name);
+  assert.equal(seriesLike('26 EQUI-LISE Junior/Amateur 1.10-1.20m'), true); // still asks for a verdict
+});
+
+test('breeders series map by age', () => {
+  assert.equal(suggestSeriesKey('44 NZPH 7 Year Old Breeders Series in conj with DJ Hewitt Builders 1.30m art 238.2.2'), 'seven-yo-series');
+  assert.equal(suggestSeriesKey('East Coast Performance Horses 5 Year Old Breeders Series'), 'five-yo-series');
+  assert.equal(suggestSeriesKey('New Zealand Warmblood Association 6 Year Old Breeders Series'), 'six-yo-series');
+});

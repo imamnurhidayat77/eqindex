@@ -10,19 +10,23 @@ const RULES = [
   [/\bgrand\s*prix\b/, 'grand-prix-series'],
   [/young\s*rider/, 'young-rider-series'],
   [/junior\s*rider/, 'junior-rider-series'],
-  [/\bpro[-\s]?am\b/, 'pro-am-series'],
-  [/amateur/, 'amateur-rider-series'],
+  // "Pro Am", "Pro-Am", "Pro Amateur", "Pro-Amateur" (2026-27 class names)
+  [/\bpro[-\s]?am(?:ateur)?\b/, 'pro-am-series'],
+  // Amateur Rider series only: "Junior/Amateur", "Junior - Amateur" (EquiLise
+  // South Island series) and "Global Amateur Tour" are other series.
+  [/(?<!junior\s*[-/]?\s*)amateur(?!\s*tour)/, 'amateur-rider-series'],
   [/\btertiary\b/, 'tertiary-series'],
   [/premier\s*league/, 'premier-league-series'],
 ];
 
-const YOUNG_HORSE = /young\s*horse|breeding/;
+// "Young Horse Series", "Breeding", and the breeders' series ("NZPH 7 Year Old Breeders Series")
+const YOUNG_HORSE = /young\s*horse|breed(?:ing|ers?)/;
 const YOUNG_AGE = /\b([567])\s*(?:y\.?o\.?|year[-\s]*old)\b/;
 const YOUNG_SERIES = { 5: 'five-yo-series', 6: 'six-yo-series', 7: 'seven-yo-series' };
 
 // Mentions a series-like concept but with no confident mapping — needs a
 // human verdict (set a key or confirm non-series), never silent.
-const LIKE = /series|grand\s*prix|mini\s*prix|pro[-\s]?am|young\s*rider|junior\s*rider|amateur|tertiary|premier\s*league|young\s*horse|breeding|futurity|equitation|hoyq|top of the south|main-event/i;
+const LIKE = /series|grand\s*prix|mini\s*prix|pro[-\s]?am|young\s*rider|junior\s*rider|amateur|tertiary|premier\s*league|young\s*horse|breed(?:ing|ers?)|futurity|equitation|hoyq|top of the south|main-event/i;
 
 function suggestSeriesKey(className) {
   const n = String(className || '').toLowerCase();
