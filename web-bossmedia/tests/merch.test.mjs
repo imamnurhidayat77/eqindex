@@ -347,6 +347,49 @@ test('a new product reuses a built-in model with its own name, price and slots',
   setMerchCatalog([]);
 });
 
+test('admin-placed slots: new spots need a pose and then price and validate like any slot', async () => {
+  const { poseFromHit, slotPose } = await import('../lib/merch.mjs');
+  setMerchCatalog([]);
+  const data = merchProductData(merchProduct('jacket'));
+  const pose = poseFromHit([0.1, 0.5, 0.2], [0, 0, 1]);
+  const extra = { id: 'hem-left', label: 'Left hem', widthMm: 60, heightMm: 30, premiumCents: 300, active: true };
+  // No pose: refused, the 3D view would have nowhere to draw it.
+  assert.ok(parseMerchProduct({ id: 'jacket', ...data, slotList: [...data.slotList, extra] }).errors.some((e) => e.includes('hem-left')));
+  assert.ok(parseMerchProduct({ id: 'jacket', ...data, slotList: [...data.slotList, { ...extra, place: { product: { ...pose, x: 'a' } } }] }).errors.length);
+  assert.ok(parseMerchProduct({ id: 'jacket', ...data, slotList: [...data.slotList, { ...extra, place: { moon: pose } }] }).errors.length);
+  assert.ok(parseMerchProduct({ id: 'jacket', ...data, slotList: [...data.slotList, { ...extra, id: 'Bad Id', place: { product: pose } }] }).errors.length);
+  const row = { ...data, slotList: [...data.slotList, { ...extra, place: { product: pose } }] };
+  assert.deepEqual(setMerchCatalog([{ id: 'jacket', data: merchProductData(parseMerchProduct({ id: 'jacket', ...row }).product) }]), []);
+  assert.ok(merchPositions('jacket').some((p) => p.id === 'hem-left' && p.widthMm === 60));
+  assert.deepEqual(slotPose('jacket', 'hem-left', 'product'), pose);
+  assert.equal(slotPose('jacket', 'hem-left', 'horse'), null);
+  assert.ok(slotSizeUnits('jacket', 'hem-left', 1).w > 0);
+  // Same quote path as the server: the premium is charged, a sponsor discounts.
+  const q = quoteMerch('jacket', { 'hem-left': 'club:x' });
+  assert.equal(q.totalCents, 14900 + 300);
+  const sq = quoteMerch('jacket', { 'hem-left': 'sponsor-a' }, { strict: true, discountFor: () => 700 });
+  assert.equal(sq.discountCents, 700);
+  setMerchCatalog([]);
+  assert.ok(!merchPositions('jacket').some((p) => p.id === 'hem-left'));
+  // Rugs are also drawn on the horse: a new spot needs that pose too.
+  const rug = merchProductData(merchProduct('rug-warm'));
+  const spot = { ...extra, id: 'neck', place: { product: pose } };
+  assert.ok(parseMerchProduct({ id: 'rug-warm', ...rug, slotList: [...rug.slotList, spot] }).errors.some((e) => e.includes('Show horse')));
+  assert.deepEqual(parseMerchProduct({ id: 'rug-warm', ...rug, slotList: [...rug.slotList, { ...spot, place: { product: pose, horse: pose } }] }).errors, []);
+});
+
+test('poseFromHit faces the slot out of the surface, upright', async () => {
+  const { poseFromHit } = await import('../lib/merch.mjs');
+  for (const n of [[0, 0, 1], [1, 0, 0], [-0.6, 0.3, -0.74], [0, 1, 0], [0.2, -0.97, 0.1]]) {
+    const len = Math.hypot(...n);
+    const p = poseFromHit([0, 0, 0], n);
+    const f = slotFrame(p.rx, p.ry, p.rz);
+    f.normal.forEach((c, i) => assert.ok(Math.abs(c - n[i] / len) < 1e-3, `normal ${n}`));
+    // Up is never tilted sideways on a wall: no horizontal right axis drift.
+    if (Math.abs(n[1] / len) < 0.95) assert.ok(Math.abs(f.right[1]) < 1e-3, `right stays level for ${n}`);
+  }
+});
+
 test('new product checks: id, model and own 3D file', () => {
   setMerchCatalog([]);
   const ok = newMerchProductDraft('rug-pro', 'rug-warm');

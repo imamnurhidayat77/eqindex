@@ -564,7 +564,12 @@ module.exports = function mountMerchRoutes(app) {
     const current = m.merchProduct(String(req.params.id || ''));
     if (!current) return res.status(404).json({ error: 'product not found' });
     // The model is fixed once a product exists: its slots and orders depend on it.
-    const { product, errors } = m.parseMerchProduct({ ...(req.body || {}), id: current.id, model: current.model });
+    // An admin-added slot is never dropped, only turned off: old orders name it.
+    const body = { ...(req.body || {}) };
+    const sent = Array.isArray(body.slotList) ? body.slotList : [];
+    const kept = current.slotList.filter((x) => x.place && !sent.some((y) => y?.id === x.id)).map((x) => ({ ...x, active: false }));
+    if (kept.length) body.slotList = [...sent, ...kept];
+    const { product, errors } = m.parseMerchProduct({ ...body, id: current.id, model: current.model });
     if (!product) return res.status(400).json({ error: errors.join('; ') });
     const data = m.merchProductData(product);
     await pool.query(

@@ -7,7 +7,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { SlotFrameDecal, Sticker, slotRegion, useLogoAspects, useValidLogos } from './MerchDecals';
 import { HorseScene } from './HorseStage';
 import { FittedGear } from './HorseGear';
-import { buildHoverTargets, canonicalFit, clampLogoOffset, clampShift, isHorseProduct, merchModel, merchPositions, riderModelFile, slotFrame, slotSizeUnits } from '../lib/merch.mjs';
+import { buildHoverTargets, canonicalFit, clampLogoOffset, clampShift, isHorseProduct, merchCatalogVersion, merchModel, merchPositions, poseFromHit, riderModelFile, slotFrame, slotPose, slotSizeUnits } from '../lib/merch.mjs';
 import { GearShiftContext, GearSlotContext } from './HorseGear';
 import { GARMENT_WIDTH_MM } from '../lib/merch-config.mjs';
 import s from './MerchClient.module.css';
@@ -350,11 +350,11 @@ function usePoloButtons(geometry, on) {
     return out;
   }, [geometry, on]);
 }
-export function TopGLB({ file, productId, color, slots, valid, zoom, shift, onShift, selectedPos, onSelectPos, draggingPos, onDragging, onDragVis, tipRef, posLabels, aspects, clean, hotspots, buttons }) {
+export function TopGLB({ file, productId, color, slots, valid, zoom, shift, onShift, selectedPos, onSelectPos, draggingPos, onDragging, onDragVis, tipRef, posLabels, aspects, clean, hotspots, buttons, onPlace, onMoveSlot }) {
   const { geometry, material } = useCanonicalModel(file, color, Boolean(buttons));
   const refW = 1; // canonical width by construction
-  const anchors = useSlotAnchors(DECALS['top-glb'], { productId, slots, valid, zoom, aspects, shift, refW });
-  const gdrag = useGarmentDrag(anchors, { refW, onSelectPos, onShift, onDragging, onDragVis, tipRef, posLabels, selectedPos });
+  const anchors = useSlotAnchors(DECALS['top-glb'], { productId, slots, valid, zoom, aspects, shift, refW, space: 'product' });
+  const gdrag = useGarmentDrag(anchors, { refW, onSelectPos, onShift, onDragging, onDragVis, tipRef, posLabels, selectedPos, onPlace, onMoveSlot, space: 'product' });
   const poloButtons = usePoloButtons(geometry, Boolean(buttons));
   if (!geometry) return null;
   return (
@@ -427,7 +427,7 @@ function capSlotDef(geometry, ray, depth) {
   return { x, y, z, rx: e.x, ry: e.y, rz: e.z, depth };
 }
 
-export function CapGLB({ productId = 'cap', color, slots, valid, zoom, shift, onShift, selectedPos, onSelectPos, draggingPos, onDragging, onDragVis, tipRef, posLabels, aspects, clean, hotspots }) {
+export function CapGLB({ productId = 'cap', color, slots, valid, zoom, shift, onShift, selectedPos, onSelectPos, draggingPos, onDragging, onDragVis, tipRef, posLabels, aspects, clean, hotspots, onPlace, onMoveSlot }) {
   const { geometry, material } = useClientModel(CAP_FILE, color);
   const capW = useMemo(() => {
     if (!geometry) return 0.66;
@@ -446,8 +446,8 @@ export function CapGLB({ productId = 'cap', color, slots, valid, zoom, shift, on
     }
     return out;
   }, [geometry, capW]);
-  const anchors = useSlotAnchors(defs, { productId, slots, valid, zoom, aspects, shift, refW: capW });
-  const gdrag = useGarmentDrag(anchors, { refW: capW, onSelectPos, onShift, onDragging, onDragVis, tipRef, posLabels, selectedPos });
+  const anchors = useSlotAnchors(defs, { productId, slots, valid, zoom, aspects, shift, refW: capW, space: 'product' });
+  const gdrag = useGarmentDrag(anchors, { refW: capW, onSelectPos, onShift, onDragging, onDragVis, tipRef, posLabels, selectedPos, onPlace, onMoveSlot, space: 'product' });
   if (!geometry) return null;
   return (
     <group position={[0, -0.3, 0]} scale={1.6}>
@@ -515,18 +515,25 @@ const DECALS = {
 };
 
 // Slot records for one garment: only the slots this product offers, each
-// sized from its print area in mm (slotSizeUnits).
-function useSlotAnchors(defs, { productId, slots, valid, zoom, aspects, shift, refW }) {
+// sized from its print area in mm (slotSizeUnits). `space` names the mesh
+// the defs live in (SLOT_SPACES): an admin-placed pose there wins over the
+// code default and is the only pose of an admin-added slot. Procedural
+// fallbacks pass none, their units differ.
+function useSlotAnchors(defs, { productId, slots, valid, zoom, aspects, shift, refW, space }) {
   const validKey = valid.join('|');
+  const version = merchCatalogVersion();
   return useMemo(() => {
-    const allow = new Set(merchPositions(productId).map((p) => p.id));
-    const own = Object.fromEntries(Object.entries(defs || {}).filter(([k]) => allow.has(k)));
+    const own = {};
+    for (const { id } of merchPositions(productId)) {
+      const d = (space && slotPose(productId, id, space)) || defs?.[id];
+      if (d) own[id] = d;
+    }
     return buildHoverTargets(own, {
       slots, ok: new Set(valid), zoom, aspects, shift, refW,
       slotSize: (pos) => slotSizeUnits(productId, pos, refW),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defs, productId, slots, validKey, zoom, aspects, shift, refW]);
+  }, [defs, productId, slots, validKey, zoom, aspects, shift, refW, space, version]);
 }
 
 const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -560,16 +567,20 @@ function pickSlot(anchors, p, cam) {
 // snaps to the centre lines. One commit on release = one undo step.
 const SNAP_IN = 0.03;
 const SNAP_OUT = 0.06;
+// Admin spot drag: snap to the centre line within 1.2% of the garment width.
+const SLOT_SNAP = 0.012;
 
-function useGarmentDrag(anchors, { refW, selectedPos, onSelectPos, onShift, onDragging, onDragVis, tipRef, posLabels }) {
+function useGarmentDrag(anchors, { refW, selectedPos, onSelectPos, onShift, onDragging, onDragVis, tipRef, posLabels, onPlace, onMoveSlot, space }) {
   const controls = useThree((st) => st.controls);
   const gl = useThree((st) => st.gl);
   const camera = useThree((st) => st.camera);
   const drag = useRef(null);
+  const movingSlot = useRef(false); // admin spot drag in progress
   const meshRef = useRef(null);
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
   const live = useRef({});
-  live.current = { anchors, refW, selectedPos, onSelectPos, onShift, onDragging, onDragVis, tipRef, posLabels };
+  live.current = { anchors, refW, selectedPos, onSelectPos, onShift, onDragging, onDragVis, tipRef, posLabels, place: space && onPlace ? (pose) => onPlace(pose, space) : null,
+    moveSlot: space && onMoveSlot ? (pos, pose, done) => onMoveSlot(pos, pose, space, done) : null };
   const camDir = () => {
     const th = controls ? controls.getAzimuthalAngle() : 0;
     const ph = controls ? controls.getPolarAngle() : Math.PI / 2;
@@ -586,14 +597,20 @@ function useGarmentDrag(anchors, { refW, selectedPos, onSelectPos, onShift, onDr
     return hits.length ? m.worldToLocal(hits[0].point.clone()) : null;
   };
   const showTip = (clientX, clientY, hit) => {
-    const { tipRef, posLabels } = live.current;
-    document.body.style.cursor = !hit ? '' : hit.id ? 'grab' : 'pointer';
+    const { tipRef, posLabels, place } = live.current;
+    if (place) {
+      // Admin placing a slot: the whole surface is a target.
+      document.body.style.cursor = hit ? 'crosshair' : '';
+      if (tipRef?.current) tipRef.current.style.opacity = '0';
+      return;
+    }
+    document.body.style.cursor = !hit ? '' : hit.id || live.current.moveSlot ? 'grab' : 'pointer';
     const el = tipRef?.current;
     if (!el) return;
     if (!hit) { el.style.opacity = '0'; return; }
     const rect = gl.domElement.getBoundingClientRect();
     el.firstChild.textContent = posLabels?.[hit.pos] || hit.pos;
-    el.lastChild.textContent = hit.id ? 'Drag to move' : 'Click to add a logo';
+    el.lastChild.textContent = live.current.moveSlot ? 'Drag to move the spot' : hit.id ? 'Drag to move' : 'Click to add a logo';
     el.style.transform = `translate(${Math.round(clientX - rect.left + 14)}px,${Math.round(clientY - rect.top + 12)}px)`;
     el.style.opacity = '1';
   };
@@ -605,7 +622,7 @@ function useGarmentDrag(anchors, { refW, selectedPos, onSelectPos, onShift, onDr
     const onMove = (ev) => {
       if (ev.buttons !== 0) return;
       const p = hitAt(ev.clientX, ev.clientY);
-      showTip(ev.clientX, ev.clientY, p ? pickSlot(live.current.anchors, p, camDir()) : null);
+      showTip(ev.clientX, ev.clientY, live.current.place ? p : p && pickSlot(live.current.anchors, p, camDir()));
     };
     const onLeave = () => {
       const tip = live.current.tipRef?.current;
@@ -615,7 +632,7 @@ function useGarmentDrag(anchors, { refW, selectedPos, onSelectPos, onShift, onDr
     // The canvas allows vertical page scroll on touch (touch-action: pan-y).
     // While a logo is being dragged, block that scroll so the drag is not
     // cancelled when the finger moves up or down.
-    const onTouchMove = (ev) => { if (drag.current) ev.preventDefault(); };
+    const onTouchMove = (ev) => { if (drag.current || movingSlot.current) ev.preventDefault(); };
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerleave', onLeave);
     el.addEventListener('touchmove', onTouchMove, { passive: false });
@@ -674,18 +691,69 @@ function useGarmentDrag(anchors, { refW, selectedPos, onSelectPos, onShift, onDr
         if (drag.current === d) live.current.onDragVis?.(d.pos, { x: d.nx, y: d.ny });
       });
     };
+    // Admin: drag a whole spot over the surface. Each move re-casts the
+    // garment and re-derives the pose there (centre line snap on front and
+    // back faces); one commit on release = one undo step.
+    const startSlotMove = (e, pos) => {
+      e.stopPropagation();
+      if (controls) controls.enabled = false;
+      const g = e.eventObject;
+      const rect = gl.domElement.getBoundingClientRect();
+      const sd = { pose: null, raf: 0 };
+      movingSlot.current = true;
+      document.body.style.cursor = 'grabbing';
+      const onMove = (ev) => {
+        const ndc = new THREE.Vector2(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
+        raycaster.setFromCamera(ndc, camera);
+        const h = raycaster.intersectObject(g, false)[0];
+        if (!h?.face) return; // off the garment: hold the last spot
+        const local = g.worldToLocal(h.point.clone()).toArray();
+        const n = h.face.normal.toArray();
+        const rw = live.current.refW || 1;
+        if (Math.abs(n[2]) > 0.7 && Math.abs(local[0]) < SLOT_SNAP * rw) local[0] = 0;
+        sd.pose = poseFromHit(local, n);
+        if (sd.raf) cancelAnimationFrame(sd.raf);
+        sd.raf = requestAnimationFrame(() => live.current.moveSlot?.(pos, sd.pose, false));
+      };
+      const finish = (commit) => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onCancel);
+        if (sd.raf) cancelAnimationFrame(sd.raf);
+        movingSlot.current = false;
+        if (controls) controls.enabled = true;
+        document.body.style.cursor = '';
+        live.current.moveSlot?.(pos, commit ? sd.pose : null, true);
+      };
+      const onUp = () => finish(true);
+      const onCancel = () => finish(false);
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onCancel);
+    };
     return {
       props: {
         ref: (o) => { meshRef.current = o; },
         onPointerDown: (e) => {
           const tipEl = live.current.tipRef?.current;
           if (tipEl) tipEl.style.opacity = '0';
+          if (live.current.place) {
+            // Cast against the garment itself, never a logo decal on it.
+            const g = e.eventObject;
+            raycaster.set(e.ray.origin, e.ray.direction);
+            const h = raycaster.intersectObject(g, false)[0];
+            if (!h?.face) return;
+            e.stopPropagation();
+            live.current.place(poseFromHit(g.worldToLocal(h.point.clone()).toArray(), h.face.normal.toArray()));
+            return;
+          }
           const m = e.object;
           const p0 = m.worldToLocal(e.point.clone());
           const hit = pickSlot(live.current.anchors, p0, camDir());
           if (!hit) return; // empty space: orbit as usual
           const { selectedPos, onSelectPos, onDragging, refW: rw } = live.current;
           if (hit.pos !== selectedPos) onSelectPos?.(hit.pos);
+          if (live.current.moveSlot) { startSlotMove(e, hit.pos); return; }
           if (!hit.id) return; // empty slot: selected, nothing to drag
           e.stopPropagation();
           if (controls) controls.enabled = false;
@@ -752,10 +820,10 @@ function SlotStickers({ anchors, depth, selectedPos, draggingPos, clean, hotspot
 // wrap the cloth, press-and-drag on the 3D model, print-area outline.
 // The gear GLBs are in metres, so the garment width in mm sets refW and
 // the print areas come out at their real size on the rug.
-function GearSlotLayer({ geometry, material, defs, productId, slots, valid, zoom, aspects, shift, onShift, selectedPos, onSelectPos, draggingPos, onDragging, onDragVis, tipRef, posLabels, clean, hotspots }) {
+function GearSlotLayer({ geometry, material, defs, productId, slots, valid, zoom, aspects, shift, onShift, selectedPos, onSelectPos, draggingPos, onDragging, onDragVis, tipRef, posLabels, clean, hotspots, onPlace, onMoveSlot, space }) {
   const refW = (GARMENT_WIDTH_MM[merchModel(productId)] || 1000) / 1000;
-  const anchors = useSlotAnchors(defs, { productId, slots, valid, zoom, aspects, shift, refW });
-  const gdrag = useGarmentDrag(anchors, { refW, selectedPos, onSelectPos, onShift, onDragging, onDragVis, tipRef, posLabels });
+  const anchors = useSlotAnchors(defs, { productId, slots, valid, zoom, aspects, shift, refW, space });
+  const gdrag = useGarmentDrag(anchors, { refW, selectedPos, onSelectPos, onShift, onDragging, onDragVis, tipRef, posLabels, onPlace, onMoveSlot, space });
   return (
     <mesh geometry={geometry} material={material} {...gdrag.props}>
       <SlotStickers anchors={anchors} depth={Math.max(0.15 * refW, 0.08)} selectedPos={selectedPos} draggingPos={draggingPos} clean={clean} hotspots={hotspots} geometry={geometry} />
@@ -906,9 +974,13 @@ const FRAMING = {
 
 // Camera azimuth that looks straight at a slot (null: no sideways facing,
 // e.g. a slot on top of a flat blanket).
-function slotAzimuth(model, pos) {
+function slotAzimuth(productId, pos) {
+  const model = merchModel(productId);
+  const placed = slotPose(productId, pos, 'product');
   let n = null;
-  if (model === 'cap') {
+  if (placed) {
+    n = slotFrame(placed.rx, placed.ry, placed.rz).normal;
+  } else if (model === 'cap') {
     const r = CAP_RAYS[pos];
     if (r) n = [-r.dir[0], -r.dir[1], -r.dir[2]];
   } else {
@@ -988,7 +1060,7 @@ function HorseLights() {
   );
 }
 
-export default function Merch3D({ productId, color, slots, zoom, shift, onShift, selectedPos, onSelectPos, switching, stageRef, clean, hotspots, onAspects, onReady, onUndo, onRedo, canUndo, canRedo }) {
+export default function Merch3D({ productId, color, slots, zoom, shift, onShift, selectedPos, onSelectPos, switching, stageRef, clean, hotspots, onAspects, onReady, onUndo, onRedo, canUndo, canRedo, onPlace, onMoveSlot }) {
   const [spin, setSpin] = useState(false);
   const [draggingPos, setDraggingPos] = useState(null);
   // Transient pointer offset while a logo is being dragged: visuals follow
@@ -1023,7 +1095,7 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
     if (!selectedPos || prev === null || prev === selectedPos) return;
     const angle = isHorseProduct(productId)
       ? (selectedPos === 'back' ? Math.PI : null)
-      : slotAzimuth(merchModel(productId), selectedPos);
+      : slotAzimuth(productId, selectedPos);
     if (angle !== null) setFace({ angle, n: Date.now() });
   }, [selectedPos, productId]);
   // 3D branches follow the product's model: a new product reuses one.
@@ -1037,6 +1109,9 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
   })();
   const kind = model === 'jacket' ? 'jacket' : model === 'polo' ? 'polo' : 'tee';
   const isHorse = isHorseProduct(productId);
+  // The ear bonnet is shown on its own for now (Imam: no horse for it).
+  const canShowHorse = isHorse && model !== 'ear-bonnet';
+  const horseOn = showHorse && canShowHorse;
   const topFile = riderModelFile(productId);
   const filledIds = useMemo(() => [...new Set(Object.values(slots).filter(Boolean).map(String))], [slots]);
   const valid = useValidLogos(filledIds);
@@ -1057,9 +1132,10 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
   const gp = {
     productId, color, slots, valid, zoom, shift: effShift, onShift,
     onDragging: setDraggingPos, onDragVis, draggingPos, tipRef, posLabels,
-    selectedPos, onSelectPos, aspects, clean, hotspots,
+    selectedPos, onSelectPos, aspects, clean, hotspots, onPlace, onMoveSlot,
   };
-  const gearLayer = { Layer: GearSlotLayer, props: gp };
+  // Studio = the item alone, horse = worn: two meshes, two slot poses.
+  const gearLayer = { Layer: GearSlotLayer, props: { ...gp, space: horseOn ? 'horse' : 'product' } };
   const bumpZoom = (dir) => setZoomReq({ dir, n: Date.now() });
   const goFullscreen = () => {
     const el = stageRef?.current;
@@ -1109,9 +1185,6 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
           )}
           <Suspense fallback={null}>
             {isHorse ? (
-  // The ear bonnet is shown on its own for now (Imam: no horse for it).
-  const canShowHorse = isHorse && model !== 'ear-bonnet';
-  const horseOn = showHorse && canShowHorse;
               <SceneErrorBoundary
                 fallback={model === 'ear-bonnet'
                   ? <BonnetGarment {...gp} />

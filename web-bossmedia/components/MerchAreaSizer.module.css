@@ -1,0 +1,83 @@
+/* Print area pad: a millimetre grid with the area box centred on it. */
+.pad {
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --amber: #ffc400;
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 190px;
+  overflow: hidden;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  background-color: #0c0c0c;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: var(--grid) var(--grid);
+  background-position: center;
+  touch-action: none;
+}
+.box {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 8px;
+  min-height: 8px;
+  border: 1.5px dashed var(--amber);
+  border-radius: 4px;
+  background: rgba(255, 196, 0, 0.1);
+}
+/* Size changes from keys and presets settle; a drag tracks 1:1. */
+.pad:not([data-dragging]) .box { transition: width 200ms var(--ease), height 200ms var(--ease); }
+.dims {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.handle { position: absolute; display: grid; place-items: center; outline: 0; touch-action: none; }
+/* 12 px hit areas straddling the edges, 24 px for a finger. */
+.e { top: 0; bottom: 0; right: -6px; width: 12px; cursor: ew-resize; }
+.s { left: 0; right: 0; bottom: -6px; height: 12px; cursor: ns-resize; }
+.se { right: -11px; bottom: -11px; width: 22px; height: 22px; cursor: nwse-resize; }
+@media (pointer: coarse) {
+  .e { right: -12px; width: 24px; }
+  .s { bottom: -12px; height: 24px; }
+  .se { right: -16px; bottom: -16px; width: 32px; height: 32px; }
+}
+/* Edge grips stay visible (three handles read as three), brighten on hover. */
+.grip {
+  border-radius: 999px;
+  border: 1.5px solid #0c0c0c;
+  background: var(--amber);
+  opacity: 0.75;
+  transition: opacity 100ms ease-out, transform 100ms var(--ease);
+}
+.e .grip { width: 6px; height: 24px; max-height: 70%; }
+.s .grip { height: 6px; width: 24px; max-width: 70%; }
+@media (hover: hover) and (pointer: fine) {
+  .handle:hover .grip { opacity: 1; transform: scale(1.15); transition-delay: 60ms; transition-duration: 120ms; }
+}
+.handle:active .grip, .pad[data-dragging] .grip { opacity: 1; }
+.handle:focus-visible .grip { opacity: 1; transition: none; background: #fff; }
+.knob {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 2px solid #0c0c0c;
+  background: var(--amber);
+  transition: transform 100ms var(--ease);
+}
+.se:active .knob { transform: scale(0.9); }
+.se:focus-visible .knob { background: #fff; outline: 2px solid var(--amber); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .pad:not([data-dragging]) .box, .grip, .knob { transition: none; }
+}
+@media (forced-colors: active) {
+  .box, .grip, .knob { border-color: CanvasText; background: Canvas; }
+}

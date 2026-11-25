@@ -174,7 +174,33 @@ const HEX_RE = /^#[0-9a-f]{6}$/;
 const PRODUCT_ID_RE = /^[a-z0-9][a-z0-9-]{1,39}$/;
 // Own GLB for a product on a rider-top model (any shirt-shaped mesh fits).
 const TOP_FILE_RE = /^\/models\/rider\/[a-z0-9-]+\.glb$/;
-const CATALOG_LIMITS = { colors: 12, sizes: 12, cents: 1000000, mmMin: 10, mmMax: 2000, premiumCents: 100000 };
+const CATALOG_LIMITS = { colors: 12, sizes: 12, cents: 1000000, mmMin: 10, mmMax: 2000, premiumCents: 100000, slots: 16 };
+const SLOT_ID_RE = /^[a-z0-9][a-z0-9-]{1,29}$/;
+// Where an admin put a slot on the 3D model, per view: 'product' is the
+// item on its own, 'horse' the horse gear worn on the horse. Each is a
+// pose in that mesh's own units (see poseFromHit), over the code default.
+export const SLOT_SPACES = ['product', 'horse'];
+const POSE_KEYS = ['x', 'y', 'z', 'rx', 'ry', 'rz'];
+const POSE_LIMIT = 10; // model units and radians stay well inside this
+
+// Stored slot place → { product?, horse? } (rounded), null when absent,
+// false when present but malformed.
+function parseSlotPlace(v) {
+  if (v == null) return null;
+  if (typeof v !== 'object' || Array.isArray(v)) return false;
+  const out = {};
+  for (const [space, pose] of Object.entries(v)) {
+    if (!SLOT_SPACES.includes(space) || !pose || typeof pose !== 'object') return false;
+    const clean = {};
+    for (const k of POSE_KEYS) {
+      const n = Number(pose[k]);
+      if (!Number.isFinite(n) || Math.abs(n) > POSE_LIMIT) return false;
+      clean[k] = Math.round(n * 10000) / 10000;
+    }
+    out[space] = clean;
+  }
+  return Object.keys(out).length ? out : null;
+}
 
 // `colors` (hex list) is what the designer and the order checks read.
 const withColors = (p) => ({ ...p, colors: p.colorList.map((c) => c.hex) });
@@ -194,10 +220,13 @@ function defaultProduct(p, sort) {
 
 const DEFAULT_CATALOG = new Map(MERCH_PRODUCTS.map((p, i) => [p.id, defaultProduct(p, i)]));
 let catalog = DEFAULT_CATALOG;
+let catalogVersion = 0;
 
 // Checks one admin edit (or stored row) of a known product. Returns
 // { product, errors }; product is null when anything is wrong.
-export function parseMerchProduct(input) {
+// `draft` (admin preview only) lets a new horse-gear spot show before it is
+// placed on the horse too.
+export function parseMerchProduct(input, { draft = false } = {}) {
   const b = input || {};
   const id = String(b.id || '');
   // A built-in product is its own model; a new one names the model it reuses.
@@ -253,10 +282,18 @@ export function parseMerchProduct(input) {
   }
   const known = new Set(base.slotList.map((x) => x.id));
   const slotList = [];
-  for (const x of Array.isArray(b.slotList) ? b.slotList : []) {
+  const rawSlots = Array.isArray(b.slotList) ? b.slotList : [];
+  if (rawSlots.length > CATALOG_LIMITS.slots) errors.push(`logo spots: at most ${CATALOG_LIMITS.slots}`);
+  for (const x of rawSlots.slice(0, CATALOG_LIMITS.slots)) {
     const id = String(x?.id || '');
-    if (!known.has(id)) { errors.push(`unknown logo spot ${id.slice(0, 30)}`); continue; }
+    if (!SLOT_ID_RE.test(id)) { errors.push(`logo spot id ${id.slice(0, 30)}: 2 to 30 lowercase letters, digits or dashes`); continue; }
     if (slotList.some((y) => y.id === id)) { errors.push(`logo spot ${id} listed twice`); continue; }
+    const place = parseSlotPlace(x.place);
+    if (place === false) { errors.push(`${id} position on the model is not valid`); continue; }
+    // A spot the model does not know only exists where an admin placed it.
+    if (!known.has(id) && !place?.product) { errors.push(`${id}: click the 3D model to place this logo spot`); continue; }
+    // Worn horse gear is a second mesh: a new spot must exist there too.
+    if (!draft && !known.has(id) && HORSE_VIEW_MODELS.has(model) && !place.horse) { errors.push(`${id}: place it with Show horse on as well`); continue; }
     slotList.push({
       id,
       label: text(x.label, `${id} label`, 1, 30),
@@ -264,6 +301,7 @@ export function parseMerchProduct(input) {
       heightMm: whole(x.heightMm, `${id} height (mm)`, CATALOG_LIMITS.mmMin, CATALOG_LIMITS.mmMax),
       premiumCents: whole(x.premiumCents ?? 0, `${id} extra price (cents)`, 0, CATALOG_LIMITS.premiumCents),
       active: x.active !== false,
+      ...(place ? { place } : {}),
     });
   }
   // A slot the row does not mention (added to the code later) starts off.
@@ -299,6 +337,7 @@ export function newMerchProductDraft(id, model) {
 // defaults. A row that fails the checks keeps the default; its id is
 // returned so the caller can log it.
 export function setMerchCatalog(rows) {
+  catalogVersion += 1;
   const next = new Map(DEFAULT_CATALOG);
   const rejected = [];
   for (const r of Array.isArray(rows) ? rows : []) {
@@ -308,6 +347,48 @@ export function setMerchCatalog(rows) {
   }
   catalog = next;
   return rejected;
+}
+
+// Admin preview only (browser): show an unsaved edit in the 3D view.
+export function previewMerchProduct(product) {
+  catalogVersion += 1;
+  catalog = new Map(catalog).set(product.id, product);
+}
+// Bumps on every catalog change, so 3D memos can depend on it.
+export const merchCatalogVersion = () => catalogVersion;
+
+// Admin pose of a slot in one view (SLOT_SPACES), or null for the code default.
+export function slotPose(productId, slotId, space) {
+  return catalog.get(String(productId))?.slotList.find((s) => s.id === String(slotId))?.place?.[space] || null;
+}
+
+// Slot pose from a click on the mesh (point + face normal, mesh-local):
+// normal out of the surface, "up" as close to world up as the surface
+// allows (same frame the horse gear zones use). Euler order XYZ, so
+// slotFrame(rx, ry, rz) gives the same axes back.
+export function poseFromHit(point, normal) {
+  const len = Math.hypot(...normal) || 1;
+  const n = normal.map((c) => c / len);
+  const worldUp = Math.abs(n[1]) > 0.95 ? [0, 0, -1] : [0, 1, 0];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  let r = cross(worldUp, n);
+  const rl = Math.hypot(...r) || 1;
+  r = r.map((c) => c / rl);
+  const u = cross(n, r);
+  // Rotation matrix columns r, u, n → XYZ Euler (three.js setFromRotationMatrix).
+  const m13 = n[0];
+  const ry = Math.asin(Math.max(-1, Math.min(1, m13)));
+  let rx;
+  let rz;
+  if (Math.abs(m13) < 0.9999999) {
+    rx = Math.atan2(-n[1], n[2]);
+    rz = Math.atan2(-u[0], r[0]);
+  } else {
+    rx = Math.atan2(u[2], u[1]);
+    rz = 0;
+  }
+  const round = (v) => Math.round(v * 10000) / 10000;
+  return { x: round(point[0]), y: round(point[1]), z: round(point[2]), rx: round(rx), ry: round(ry), rz: round(rz) };
 }
 
 // Catalog order; `all` includes hidden products (admin, old orders).
@@ -481,6 +562,8 @@ export function buildHoverTargets(defs, { slots, ok, zoom, aspects, shift, refW,
 // can switch stage mood without statically importing three.js.
 export const HORSE_PRODUCTS = new Set(['saddle-blanket', 'ear-bonnet', 'rug-light', 'rug-warm']);
 export const isHorseProduct = (productId) => HORSE_PRODUCTS.has(merchModel(productId));
+// Horse gear the store also shows worn (the ear bonnet is shown alone).
+const HORSE_VIEW_MODELS = new Set(['saddle-blanket', 'rug-light', 'rug-warm']);
 
 // The GLB a rider top is drawn with: the product's own file, else its model's.
 export function riderModelFile(productId) {

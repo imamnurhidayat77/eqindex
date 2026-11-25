@@ -49,6 +49,11 @@ export default function AdminPage() {
 function AdminBody() {
   const { user, state } = useStudioUser();
   const [section, setSection] = useState('commission');
+  // ?section=catalog: back links from a merch product page land on its list.
+  useEffect(() => {
+    const want = new URLSearchParams(window.location.search).get('section');
+    if (SECTIONS.some(([key]) => key === want)) setSection(want);
+  }, []);
   if (state === 'loading') return <p className="empty-note">Loading…</p>;
   if (state !== 'ok' || user?.role !== 'ADMIN') {
     return (
