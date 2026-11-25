@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { placingsLookWrong, reviewGroups, withRecords } from '../importReview.js';
+import { placingsLookWrong, oddPlacings, reviewGroups, withRecords, failureSummary } from '../importReview.js';
 
 test('placingsLookWrong: ties allowed, gaps and impossible ties flagged', () => {
   assert.equal(placingsLookWrong([3, 1, 1]), false);
@@ -28,11 +28,12 @@ test('reviewGroups groups by class + date and collects row issues', () => {
     summary: { series_blocking: [{ name: 'B Series', rows: 1 }] },
   };
   const groups = reviewGroups(records, preview);
-  assert.deepEqual(groups.map((g) => [g.name, g.rows.length, g.issueCount]), [['A', 2, 2], ['B Series', 1, 1], ['C', 3, 2]]);
+  assert.deepEqual(groups.map((g) => [g.name, g.rows.length, g.issueCount, g.failedCount]), [['A', 2, 2, 1], ['B Series', 1, 1, 0], ['C', 3, 1, 0]]);
   assert.deepEqual(groups[0].rows[0].issues, ['ungrounded']);
   assert.deepEqual(groups[0].rows[1].issues, ['failed']);
-  assert.deepEqual(groups[1].rows[0].issues, ['no_series', 'new_horse']);
-  assert.deepEqual(groups[2].rows.map((r) => r.issues), [['placing'], ['placing'], []]); // gap 1,3; eliminated ignored
+  assert.deepEqual(groups[1].rows[0].issues, ['no_series']); // "new horse" is info, not an issue
+  assert.deepEqual(groups[1].rows[0].info, ['new_horse']);
+  assert.deepEqual(groups[2].rows.map((r) => r.issues), [[], ['placing'], []]); // only the 3 after 1 is odd; eliminated ignored
   assert.equal(groups[2].rows[2].index, 5);
 });
 
@@ -55,5 +56,28 @@ test('reviewGroups flags similar existing horse/rider from the dry-run', () => {
       similar_horse: { id: 'h', name: 'Bella Rose', score: 0.75 }, similar_rider: { id: 'r', name: 'John Smith', score: 0.62 } } }],
     summary: {},
   });
-  assert.deepEqual(groups[0].rows[0].issues, ['new_horse', 'new_rider', 'similar_horse', 'similar_rider']);
+  assert.deepEqual(groups[0].rows[0].issues, ['similar_horse', 'similar_rider']);
+  assert.deepEqual(groups[0].rows[0].info, ['new_horse', 'new_rider']);
+});
+
+test('oddPlacings flags only the rows that break the ranking', () => {
+  assert.deepEqual(oddPlacings([1, 2, 3]), []);
+  assert.deepEqual(oddPlacings([1, 1, 3]), []);
+  assert.deepEqual(oddPlacings([1, 2, 4]), [2]);
+  // two rounds listed under one class name: 1,1,2,2,3,3 — one flag per step, not every row
+  assert.equal(oddPlacings([1, 2, 3, 1, 2, 3]).length, 2);
+});
+
+test('failureSummary groups failed rows by message, most frequent first', () => {
+  const s = failureSummary({ rows: [
+    { line: 1, ok: true },
+    { line: 2, ok: false, errors: ['duplicate of an existing round'] },
+    { line: 3, ok: false, errors: ['duplicate of an existing round'] },
+    { line: 4, ok: false, errors: ['rider_name required', 'placing must be a positive integer'] },
+    { line: 5, ok: false },
+  ] });
+  assert.deepEqual(s.map((x) => [x.message, x.count]), [
+    ['duplicate of an existing round', 2], ['rider_name required', 1], ['placing must be a positive integer', 1], ['failed', 1]]);
+  assert.deepEqual([...s[0].indexes], [1, 2]);
+  assert.deepEqual(failureSummary(null), []);
 });
