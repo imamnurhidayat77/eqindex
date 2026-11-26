@@ -8,7 +8,7 @@ export const metadata = { title: { default: 'Admin', template: '%s · Admin · E
 
 async function currentUser() {
   try {
-    const token = cookies().get('eq_session')?.value;
+    const token = (await cookies()).get('eq_session')?.value;
     if (!token) return null;
     const res = await fetch(`${API}/auth/me`, {
       headers: { cookie: `eq_session=${token}` }, cache: 'no-store',

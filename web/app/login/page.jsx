@@ -24,7 +24,7 @@ function LoginForm() {
   // Render a loading screen (never the "Already logged in" card) until
   // the destination commits and this page unmounts.
   const [done, setDone] = useState(false);
-  // NOTE: no router.prefetch here — while logged out the middleware would
+  // NOTE: no router.prefetch here — while logged out the proxy would
   // just prefetch the login redirect, wasting the warmup.
   // Already authenticated (landed here via back button / stale link):
   // forward instead of stranding on a dead-end card.

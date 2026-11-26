@@ -54,7 +54,9 @@ async function EventWall({ event, kind }) {
   );
 }
 
-export default async function PhotoRoute({ params, searchParams }) {
+export default async function PhotoRoute(props) {
+  const params = await props.params;
+  const searchParams = await props.searchParams;
   // Photo/reel detail lives on Boss Media now — send buyers straight there.
   if (isUuid(params.id)) redirect(bossPhotoUrl(params.id));
   const ev = await getEntityJSON(`/events/${params.id}`);

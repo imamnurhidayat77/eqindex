@@ -9,7 +9,7 @@ function safeNext(v) {
     ? v : '/';
 }
 
-export async function middleware(req) {
+export async function proxy(req) {
   const { pathname, search } = req.nextUrl;
   // Logged-in visitors have no business on login/register — bounce them forward.
   if (pathname === '/login' || pathname === '/register') {

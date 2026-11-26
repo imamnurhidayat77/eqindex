@@ -2,6 +2,9 @@
 const API_URL = process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 module.exports = {
+  // The project root AGENTS.md governs agents; keep `next dev` from writing
+  // its own copy into this folder.
+  agentRules: false,
   async rewrites() {
     return [
       // Same-origin API proxy: browser calls /api/* (first-party cookies,

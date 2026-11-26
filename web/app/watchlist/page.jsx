@@ -94,7 +94,7 @@ function lastOuting(history, now) {
 
 export default async function Watchlist() {
   const now = Date.now();
-  const token = cookies().get('eq_session')?.value;
+  const token = (await cookies()).get('eq_session')?.value;
   let watch = { data: [] };
   try {
     watch = await getPrivateJSON('/watchlist', token);

@@ -15,12 +15,14 @@ export const revalidate = 30;
 
 const pct1 = (v) => `${Number(v).toFixed(1)}%`;
 
-export async function generateMetadata({ params }) {
+export async function generateMetadata(props) {
+  const params = await props.params;
   const a = await getEntityJSON(`/events/${params.id}/analytics`).catch(() => null);
   return { title: a?.event?.name || 'Event' };
 }
 
-export default async function EventDetail({ params }) {
+export default async function EventDetail(props) {
+  const params = await props.params;
   const a = await getEntityJSON(`/events/${params.id}/analytics`);
   if (!a?.event) notFound();
   const e = a.event;

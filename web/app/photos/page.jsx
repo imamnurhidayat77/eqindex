@@ -3,7 +3,8 @@ import { bossPhotosUrl } from '../../lib/bossmedia';
 
 // The EQIndex gallery now lives on Boss Media — keep any filtered view
 // working by passing the same query through.
-export default function PhotosRedirect({ searchParams }) {
+export default async function PhotosRedirect(props) {
+  const searchParams = await props.searchParams;
   const sp = searchParams || {};
   redirect(bossPhotosUrl({
     ...(sp.kind ? { kind: sp.kind } : {}),
