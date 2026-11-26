@@ -306,7 +306,7 @@ function merchProofReady({ name, ref, productLabel, note, link, proofUrl }) {
       eyebrow: `ORDER ${escHtml(ref)}`,
       title: 'Your artwork proof is ready.',
       body: p(`Hi ${escHtml(firstName(name))}, here is the proof for your ${escHtml(productLabel)} order.`) +
-        `<a href="${link}"><img src="${proofUrl}" width="540" alt="Artwork proof for order ${escHtml(ref)}" style="display:block;width:100%;max-width:540px;height:auto;border:1px solid #dddddd;border-radius:8px;margin:8px 0;"></a>` +
+        (proofUrl ? `<a href="${link}"><img src="${proofUrl}" width="540" alt="Artwork proof for order ${escHtml(ref)}" style="display:block;width:100%;max-width:540px;height:auto;border:1px solid #dddddd;border-radius:8px;margin:8px 0;"></a>` : '') +
         (note ? p(`<strong>Note from us:</strong> ${escHtml(note)}`) : '') +
         p('Approve it, or tell us what to change. <strong>You pay only after you approve it.</strong>') +
         btn(link, 'Review my proof') +

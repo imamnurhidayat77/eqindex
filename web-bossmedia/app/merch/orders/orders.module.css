@@ -14,18 +14,12 @@
 .total { font-size: 20px; color: #FFC400; font-weight: 800; border-top: 1px solid #2c2c2c; padding-top: 8px; }
 .gold { color: #FFC400; }
 /* Artwork proof card */
-.proof { max-width: 760px; margin-bottom: 16px; }
-.proofLink { display: block; border-radius: 8px; overflow: hidden; background: #fff; border: 1px solid #2c2c2c; }
-.proofLink:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
-.proofImg { display: block; width: 100%; height: auto; max-height: 70vh; object-fit: contain; }
-.note { margin: 0; color: #ddd; line-height: 1.6; overflow-wrap: anywhere; }
 .ok { margin: 0; padding: 10px 12px; background: #14210f; border-left: 2px solid #7fae5c; color: #cfe3bd; line-height: 1.6; }
 .err { margin: 0; color: #e08a8a; font-size: 12px; }
 .answer { display: grid; gap: 10px; }
 .field { display: grid; gap: 6px; color: #bbb; }
 .field textarea { width: 100%; padding: 10px 12px; background: #141414; color: #fff; border: 1px solid #333; border-radius: 8px; font: inherit; resize: vertical; }
 .field textarea:focus-visible { outline: 2px solid #FFC400; outline-offset: 1px; }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .primary, .ghost { min-height: 44px; padding: 0 18px; border-radius: 8px; font-weight: 800; font-size: 14px; cursor: pointer; transition: background 150ms ease-out, border-color 150ms ease-out, transform 150ms ease-out; }
 .primary { background: #FFC400; color: #101010; border: 0; }
 .primary:hover { background: #ffd24d; }
@@ -110,3 +104,28 @@
   .orderMeta { white-space: normal; }
 }
 @media (prefers-reduced-motion: reduce) { .order, .chev, .primaryLink { transition: none; } }
+/* Artwork proof: viewer left, decision right */
+.proof { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 20px; align-items: start; margin-bottom: 16px; padding: 18px; }
+.proofView { display: grid; gap: 8px; min-width: 0; }
+.proofLink { display: block; height: clamp(320px, 62vh, 640px); padding: 10px; border-radius: 10px; overflow: hidden; background: #161616; border: 1px solid #2c2c2c; }
+.proofLink:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+.proofImg { display: block; }
+.proofPdf { display: block; width: 100%; height: clamp(360px, 70vh, 760px); border: 1px solid #2c2c2c; border-radius: 10px; background: #fff; }
+.proofOpen { justify-self: start; color: #bbb; font-size: 12px; font-weight: 700; text-decoration: none; }
+.proofOpen:hover { color: #FFC400; }
+.proofSide { display: grid; gap: 12px; align-content: start; position: sticky; top: 96px; }
+.proofEyebrow { margin: 0; color: #888; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.proofTitle { margin: 0; color: #fff; font-size: 22px; line-height: 1.15; font-weight: 800; }
+.proofTitle[data-state='waiting'] { color: #FFC400; }
+.proofTitle[data-state='approved'] { color: #b9dc9c; }
+.note { display: grid; gap: 4px; margin: 0; padding: 10px 12px; border-radius: 8px; background: #161616; color: #ddd; line-height: 1.5; overflow-wrap: anywhere; }
+.note strong { color: #888; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.proofActions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.fine { margin: 0; color: #888; font-size: 12px; }
+@media (max-width: 900px) {
+  .proof { grid-template-columns: minmax(0, 1fr); }
+  .proofSide { position: static; }
+  .proofLink { height: auto; max-height: 70vh; aspect-ratio: 4 / 3; }
+}
+@media (max-width: 420px) { .proofActions { grid-template-columns: 1fr; } }

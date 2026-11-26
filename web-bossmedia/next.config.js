@@ -43,6 +43,9 @@ module.exports = {
       // https: extra allows the browser's direct-to-R2 video PUTs (venue-QR
       // and studio reel flows both use presigned URLs, never the API proxy).
       "connect-src 'self' https: blob:",
+      // Merch PDF proofs open inline: same-origin from the API proxy, and
+      // blob: for the admin's preview before sending.
+      "frame-src 'self' blob:",
       "frame-ancestors 'none'",
     ].join('; ');
     return [{
@@ -54,6 +57,14 @@ module.exports = {
         { key: 'X-Frame-Options', value: 'DENY' },
         { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
         { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+      ],
+    }, {
+      // A merch proof (PDF) is shown inside its own order page, so only this
+      // path may be framed, and only by this site. Later rules win.
+      source: '/api/merch/orders/:ref/proofs/:eventId',
+      headers: [
+        { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+        { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
       ],
     }];
   },

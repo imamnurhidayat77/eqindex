@@ -168,42 +168,59 @@ function ProofCard({ order, onAnswered }) {
     setBusy(false);
   }
 
+  const src = `${API}${proof.proofPath}`;
+  const pdf = proof.proofKind === 'pdf';
+  const title = answer?.status === 'approved' ? 'Proof approved'
+    : answer?.status === 'changes_requested' ? 'Changes requested'
+      : 'Check your artwork proof';
   return (
-    <div className={`${s.card} ${s.proof}`}>
-      <h2 className={s.h2}>Artwork proof</h2>
-      <p className={s.muted}>Sent {day(proof.at)}. This is how your logos will be printed.</p>
-      <a href={`${API}${proof.proofPath}`} target="_blank" rel="noreferrer" className={s.proofLink}>
-        <SmartImage src={`${API}${proof.proofPath}`} alt={`Artwork proof for order ${order.ref}`} className={s.proofImg}
-          width={1200} height={900} unoptimized priority />
-      </a>
-      {proof.note && <p className={s.note}><strong>Note from us:</strong> {proof.note}</p>}
-      {answer?.status === 'approved' && <p className={s.ok}>You approved this proof on {day(answer.at)}.</p>}
-      {answer?.status === 'changes_requested' && (
-        <>
-          <p className={s.note}><strong>You asked for changes:</strong> {answer.note}</p>
-          <p className={s.muted}>We will send you a new proof by email.</p>
-        </>
-      )}
-      {waiting && (
-        <div className={s.answer}>
-          {asking && (
-            <label className={s.field}>
-              <span>What should we change?</span>
-              <textarea rows={3} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)}
-                placeholder="e.g. Make the back logo bigger and move the club name lower" />
-            </label>
-          )}
-          {error && <p className={s.err} role="alert">{error}</p>}
-          <div className={s.actions}>
-            {!asking && <button type="button" className={s.primary} disabled={busy} onClick={() => send('approve')}>{busy ? 'Sending…' : 'Approve proof'}</button>}
-            {!asking && <button type="button" className={s.ghost} disabled={busy} onClick={() => setAsking(true)}>Request changes</button>}
-            {asking && <button type="button" className={s.primary} disabled={busy} onClick={() => send('changes')}>{busy ? 'Sending…' : 'Send change request'}</button>}
-            {asking && <button type="button" className={s.ghost} disabled={busy} onClick={() => { setAsking(false); setError(''); }}>Cancel</button>}
+    <section className={`${s.card} ${s.proof}`} aria-label="Artwork proof">
+      <div className={s.proofView}>
+        {pdf ? (
+          <iframe src={src} title={`Artwork proof for order ${order.ref} (PDF)`} className={s.proofPdf} />
+        ) : (
+          <a href={src} target="_blank" rel="noreferrer" className={s.proofLink} aria-label="Open the proof full size">
+            <SmartImage src={src} alt={`Artwork proof for order ${order.ref}`} className={s.proofImg}
+              width={1200} height={900} unoptimized priority style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </a>
+        )}
+        <a href={src} target="_blank" rel="noreferrer" className={s.proofOpen}>
+          {pdf ? 'Open the PDF in a new tab ↗' : 'View full size ↗'}
+        </a>
+      </div>
+      <div className={s.proofSide}>
+        <p className={s.proofEyebrow}>Artwork proof · sent {day(proof.at)}</p>
+        <h2 className={s.proofTitle} data-state={answer?.status || (waiting ? 'waiting' : '')}>{title}</h2>
+        <p className={s.muted}>This is exactly how your logos will be printed. Check names, colours and positions.</p>
+        {proof.note && <p className={s.note}><strong>Note from us</strong>{proof.note}</p>}
+        {answer?.status === 'approved' && <p className={s.ok}>You approved this proof on {day(answer.at)}.</p>}
+        {answer?.status === 'changes_requested' && (
+          <>
+            <p className={s.note}><strong>You asked for</strong>{answer.note}</p>
+            <p className={s.muted}>We will send you a new proof by email.</p>
+          </>
+        )}
+        {waiting && (
+          <div className={s.answer}>
+            {asking && (
+              <label className={s.field}>
+                <span>What should we change?</span>
+                <textarea rows={4} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} autoFocus
+                  placeholder="e.g. Make the back logo bigger and move the club name lower" />
+              </label>
+            )}
+            {error && <p className={s.err} role="alert">{error}</p>}
+            <div className={s.proofActions}>
+              {!asking && <button type="button" className={s.primary} disabled={busy} onClick={() => send('approve')}>{busy ? 'Sending…' : 'Approve proof'}</button>}
+              {!asking && <button type="button" className={s.ghost} disabled={busy} onClick={() => setAsking(true)}>Request changes</button>}
+              {asking && <button type="button" className={s.primary} disabled={busy} onClick={() => send('changes')}>{busy ? 'Sending…' : 'Send change request'}</button>}
+              {asking && <button type="button" className={s.ghost} disabled={busy} onClick={() => { setAsking(false); setError(''); }}>Cancel</button>}
+            </div>
+            <p className={s.fine}>Approving locks the design for printing. You pay only after approving.</p>
           </div>
-          <p className={s.muted}>Approving locks the design for printing. You pay only after approving.</p>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </section>
   );
 }
 

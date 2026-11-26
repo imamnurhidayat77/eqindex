@@ -248,6 +248,9 @@ const ORDER_STATUSES = ['submitted', 'artwork_review', 'changes_requested', 'pro
 const PROOF_FROM = ['submitted', 'artwork_review', 'changes_requested', 'proof_sent'];
 const PROOF_MAX_BYTES = 15 * 1024 * 1024;
 const PROOF_MIMES = ['image/png', 'image/jpeg', 'image/webp'];
+// A PDF proof is kept as sent (vector artwork stays sharp); images are
+// re-encoded to a bounded JPEG.
+const PROOF_PDF = 'application/pdf';
 const PROOF_MAX_PX = 2400;
 const NOTE_MAX = 1000;
 const CHANGE_NOTE_MIN = 3;
@@ -263,7 +266,9 @@ const canCancel = (status, isAdmin) => (isAdmin ? ADMIN_CANCEL_FROM : BUYER_CANC
 // budget on at most this many unpaid orders at once (H5: anonymous orders
 // could lock every merch budget without paying).
 const MAX_OPEN_SPONSOR_ORDERS = 3;
-const proofKey = (orderId, eventId) => `merch/proofs/${orderId}/${eventId}.jpg`;
+const proofKey = (orderId, eventId, kind = 'image') => `merch/proofs/${orderId}/${eventId}.${kind === 'pdf' ? 'pdf' : 'jpg'}`;
+// Whether a proof event holds a PDF (no column for it: the stored key says).
+const proofKind = async (orderId, eventId) => ((await mediaStore.headKey(proofKey(orderId, eventId, 'pdf'))) ? 'pdf' : 'image');
 const proofPath = (ref, eventId, token) => `/api/merch/orders/${ref}/proofs/${eventId}?t=${token}`;
 
 // Link token for mails sent after the order (the buyer's own token is only
@@ -299,12 +304,14 @@ function parseProofResponse(body) {
   return { decision, note };
 }
 
-// Timeline for the order page. Proof events carry their image link.
-function publicEvents(o, events) {
+// Timeline for the order page. Proof events carry their file link and
+// kind ('image' or 'pdf', from kinds[eventId]).
+function publicEvents(o, events, kinds = {}) {
   const token = mailToken(o);
   return events.map((e) => ({
     id: String(e.id), status: e.status, note: e.note, at: e.created_at,
     proofPath: e.status === 'proof_sent' ? proofPath(o.ref, e.id, token) : null,
+    proofKind: e.status === 'proof_sent' ? kinds[String(e.id)] || 'image' : null,
   }));
 }
 
@@ -741,7 +748,9 @@ module.exports = function mountMerchRoutes(app) {
       pool.query('SELECT size, qty FROM merch_order_lines WHERE order_id = $1 ORDER BY size', [o.id]),
       pool.query('SELECT id, status, note, created_at FROM merch_order_events WHERE order_id = $1 ORDER BY created_at, id', [o.id]),
     ]);
-    const data = { ...publicOrder(o, lines.rows), events: publicEvents(o, events.rows) };
+    const proofs = events.rows.filter((e) => e.status === 'proof_sent');
+    const kinds = Object.fromEntries(await Promise.all(proofs.map(async (e) => [String(e.id), await proofKind(o.id, e.id)])));
+    const data = { ...publicOrder(o, lines.rows), events: publicEvents(o, events.rows, kinds) };
     if (isAdmin) {
       const logos = await pool.query(`SELECT id, r2_key, width, height FROM merch_order_logos WHERE order_id = $1 AND r2_key <> ''`, [o.id]);
       data.artwork = await Promise.all(logos.rows.map(async (l) => ({
@@ -807,9 +816,12 @@ module.exports = function mountMerchRoutes(app) {
     if (!found || !/^\d{1,18}$/.test(eventId)) return res.status(404).json({ error: 'proof not found' });
     const ev = await pool.query(`SELECT id FROM merch_order_events WHERE id = $1 AND order_id = $2 AND status = 'proof_sent'`, [eventId, found.o.id]);
     if (!ev.rowCount) return res.status(404).json({ error: 'proof not found' });
+    const kind = await proofKind(found.o.id, eventId);
     let obj;
-    try { obj = await mediaStore.getStream(proofKey(found.o.id, eventId)); } catch { return res.status(404).json({ error: 'proof not found' }); }
-    res.setHeader('Content-Type', 'image/jpeg');
+    try { obj = await mediaStore.getStream(proofKey(found.o.id, eventId, kind)); } catch { return res.status(404).json({ error: 'proof not found' }); }
+    res.setHeader('Content-Type', kind === 'pdf' ? PROOF_PDF : 'image/jpeg');
+    if (kind === 'pdf') res.setHeader('Content-Disposition', `inline; filename="${found.o.ref}-proof.pdf"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, max-age=3600');
     obj.stream.pipe(res);
   }));
@@ -986,14 +998,15 @@ module.exports = function mountMerchRoutes(app) {
     if (!o) return res.status(404).json({ error: 'order not found' });
     if (!canSendProof(o.status)) return res.status(409).json({ error: `a proof cannot be sent while the order is ${o.status}` });
     const f = req.file;
-    if (!f?.buffer?.length) return res.status(400).json({ error: 'choose a PNG, JPEG or WebP proof up to 15 MB' });
+    if (!f?.buffer?.length) return res.status(400).json({ error: 'choose a PDF, PNG, JPEG or WebP proof up to 15 MB' });
     const { fileTypeFromBuffer } = await import('file-type');
     const real = (await fileTypeFromBuffer(f.buffer).catch(() => null))?.mime || '';
-    if (!PROOF_MIMES.includes(real)) return res.status(400).json({ error: 'proof must be a real PNG, JPEG or WebP image' });
-    const jpeg = await require('sharp')(f.buffer).rotate()
+    const kind = real === PROOF_PDF ? 'pdf' : 'image';
+    if (kind === 'image' && !PROOF_MIMES.includes(real)) return res.status(400).json({ error: 'proof must be a real PDF, PNG, JPEG or WebP file' });
+    const body = kind === 'pdf' ? f.buffer : await require('sharp')(f.buffer).rotate()
       .resize(PROOF_MAX_PX, PROOF_MAX_PX, { fit: 'inside', withoutEnlargement: true })
       .flatten({ background: '#ffffff' }).jpeg({ quality: 86 }).toBuffer().catch(() => null);
-    if (!jpeg) return res.status(400).json({ error: 'proof image could not be read' });
+    if (!body) return res.status(400).json({ error: 'proof image could not be read' });
     const note = str(req.body?.note, NOTE_MAX) || null;
 
     const client = await pool.connect();
@@ -1008,7 +1021,7 @@ module.exports = function mountMerchRoutes(app) {
         `INSERT INTO merch_order_events (order_id, status, note, actor_user_id) VALUES ($1, 'proof_sent', $2, $3) RETURNING id`,
         [o.id, note, req.authUser?.id || null])).rows[0].id;
       try {
-        await mediaStore.putBuffer(proofKey(o.id, eventId), jpeg, 'image/jpeg');
+        await mediaStore.putBuffer(proofKey(o.id, eventId, kind), body, kind === 'pdf' ? PROOF_PDF : 'image/jpeg');
       } catch {
         const e = new Error('proof storage unavailable, try again shortly'); e.status = 502; throw e;
       }
@@ -1027,7 +1040,8 @@ module.exports = function mountMerchRoutes(app) {
     try {
       const t = require('../lib/emailTemplates').merchProofReady({
         name: o.buyer_name, ref: o.ref, productLabel: o.quote?.product?.label || o.product_id, note, link,
-        proofUrl: `${APP_URL}/api${proofPath(o.ref, eventId, token)}`,
+        // Inboxes cannot show a PDF inline: the button carries a PDF proof.
+        proofUrl: kind === 'pdf' ? null : `${APP_URL}/api${proofPath(o.ref, eventId, token)}`,
       });
       await require('../lib/mailer').sendMail({ to: o.buyer_email, subject: t.subject, text: t.text, html: t.html });
     } catch (e) {

@@ -51,6 +51,9 @@ test('merch proof mails escape notes and say what happened', () => {
   const ready = t.merchProofReady(...samples.merchProofReady);
   assert.ok(!ready.html.includes('<b>moved</b>'), 'note is escaped');
   assert.ok(ready.html.includes('http://x/p.jpg'), 'thumbnail');
+  const pdf = t.merchProofReady({ ...samples.merchProofReady[0], proofUrl: null });
+  assert.ok(!pdf.html.includes('<img'), 'a PDF proof has no inline thumbnail');
+  assert.ok(pdf.html.includes('Review my proof'), 'the button still carries it');
   assert.match(t.merchProofAnswered({ ...samples.merchProofAnswered[0], approved: true }).subject, /proof approved$/);
   assert.match(t.merchProofAnswered(...samples.merchProofAnswered).subject, /changes requested$/);
 });

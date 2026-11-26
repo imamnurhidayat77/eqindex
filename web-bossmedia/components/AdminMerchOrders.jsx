@@ -174,7 +174,13 @@ export function AdminMerchOrderDetail({ orderRef }) {
                       <time className={s.muted} dateTime={e.at}>{day(e.at)}</time>
                     </div>
                     {e.note && <p className={s.note}>{e.note}</p>}
-                    {e.proofPath && (
+                    {e.proofPath && e.proofKind === 'pdf' && (
+                      <a href={`${API}${e.proofPath}`} target="_blank" rel="noreferrer" className={s.pdfCard}>
+                        <span className={s.pdfBadge} aria-hidden="true">PDF</span>
+                        <span>Proof {o.ref}<small className={s.muted}>Open in a new tab ↗</small></span>
+                      </a>
+                    )}
+                    {e.proofPath && e.proofKind !== 'pdf' && (
                       <a href={`${API}${e.proofPath}`} target="_blank" rel="noreferrer" className={s.thumbLink} aria-label={`Open the proof sent ${day(e.at)}`}>
                         <SmartImage src={`${API}${e.proofPath}`} alt={`Proof sent ${day(e.at)}`} className={s.thumb} width={320} height={240} unoptimized
                           style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
@@ -229,7 +235,7 @@ function CancelOrder({ order, onCancelled }) {
 
 // Drop or pick the proof, see it before it goes to the buyer. The server
 // re-checks type and size; this only saves a round trip.
-const PROOF_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const PROOF_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
 const mb = (n) => `${(n / 1024 / 1024).toFixed(n < 1024 * 1024 ? 2 : 1)} MB`;
 
 function SendProof({ orderRef, resend, onSent }) {
@@ -245,11 +251,12 @@ function SendProof({ orderRef, resend, onSent }) {
 
   function pick(f) {
     if (!f) return;
-    if (!PROOF_TYPES.includes(f.type)) { setError('Use a PNG, JPEG or WebP image.'); return; }
+    if (!PROOF_TYPES.includes(f.type)) { setError('Use a PDF, PNG, JPEG or WebP file.'); return; }
     if (f.size > PROOF_MAX_BYTES) { setError(`That file is ${mb(f.size)}. The proof must be 15 MB or smaller.`); return; }
     setError('');
     setFile(f);
     const url = URL.createObjectURL(f);
+    if (f.type === 'application/pdf') { setPreview({ url, pdf: true }); return; }
     const img = new Image();
     img.onload = () => setPreview({ url, w: img.naturalWidth, h: img.naturalHeight });
     img.onerror = () => { URL.revokeObjectURL(url); setFile(null); setError('That image could not be read. Try another file.'); };
@@ -285,12 +292,16 @@ function SendProof({ orderRef, resend, onSent }) {
         onChange={(e) => pick(e.target.files?.[0])} />
       {preview ? (
         <div className={s.proofPreview}>
-          <a href={preview.url} target="_blank" rel="noreferrer" className={s.proofImgLink} aria-label="Open the proof full size">
-            <SmartImage src={preview.url} alt="Proof to send" width={preview.w} height={preview.h} unoptimized className={s.proofImg} />
-          </a>
+          {preview.pdf ? (
+            <iframe src={preview.url} title="PDF proof to send" className={s.proofPdf} />
+          ) : (
+            <a href={preview.url} target="_blank" rel="noreferrer" className={s.proofImgLink} aria-label="Open the proof full size">
+              <SmartImage src={preview.url} alt="Proof to send" width={preview.w} height={preview.h} unoptimized className={s.proofImg} />
+            </a>
+          )}
           <div className={s.proofMeta}>
             <span className={s.proofName} title={file.name}>{file.name}</span>
-            <small className={s.muted}>{preview.w}×{preview.h}px · {mb(file.size)}</small>
+            <small className={s.muted}>{preview.pdf ? 'PDF' : `${preview.w}×${preview.h}px`} · {mb(file.size)}</small>
             <div className={s.proofActions}>
               <label htmlFor={`proof-${orderRef}`} className={s.smallBtn}>Replace</label>
               <button type="button" className={s.smallBtn} onClick={clear}>Remove</button>
@@ -304,7 +315,7 @@ function SendProof({ orderRef, resend, onSent }) {
           onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files?.[0]); }}>
           <span className={s.dropIcon} aria-hidden="true">↑</span>
           <span className={s.dropTitle}>Drop the proof here or <u>browse</u></span>
-          <small className={s.muted}>PNG, JPEG or WebP, up to 15 MB</small>
+          <small className={s.muted}>PDF, PNG, JPEG or WebP, up to 15 MB</small>
         </label>
       )}
       {error && <p className={s.err} role="alert">{error}</p>}

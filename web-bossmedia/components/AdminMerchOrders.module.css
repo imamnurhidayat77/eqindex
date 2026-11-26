@@ -103,3 +103,10 @@
 .thumbLink:hover .thumbHint, .thumbLink:focus-visible .thumbHint { opacity: 1; }
 @media (hover: none) { .thumbHint { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .thumbHint { transition: none; } }
+.proofPdf { display: block; width: 100%; height: clamp(260px, 42vh, 420px); border: 0; border-radius: 8px; background: #fff; }
+.pdfCard { display: flex; align-items: center; gap: 12px; width: fit-content; max-width: 100%; padding: 10px 14px 10px 10px; border: 1px solid #333; border-radius: 10px; background: #161616; color: #fff; font-size: 13px; font-weight: 700; text-decoration: none; }
+.pdfCard span:last-child { display: grid; gap: 2px; }
+.pdfCard small { font-weight: 600; }
+.pdfCard:hover { border-color: #666; }
+.pdfCard:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+.pdfBadge { display: grid; place-items: center; width: 40px; height: 48px; border-radius: 6px; background: #e5484d; color: #fff; font-size: 11px; font-weight: 900; letter-spacing: 0.04em; }
