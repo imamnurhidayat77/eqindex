@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { ORDER_STEPS, orderStatusLabel, orderStepIndex } from '../merch-order-status.mjs';
+import { ORDER_STEPS, orderComplete, orderStatusLabel, orderStepIndex, orderSteps } from '../merch-order-status.mjs';
 
 const MIGRATION = new URL('../../../db/migrations/108_merch_orders.sql', import.meta.url);
 test('every db status has a buyer label', { skip: !existsSync(MIGRATION) && 'db folder not next to web-bossmedia' }, () => {
@@ -15,7 +15,9 @@ test('steps progress in order and end states are off the track', () => {
   assert.equal(orderStepIndex('submitted'), 0);
   assert.equal(orderStepIndex('changes_requested'), 0);
   assert.equal(orderStepIndex('paid'), 3);
+  assert.equal(orderStepIndex('shipped'), ORDER_STEPS.length - 2);
   assert.equal(orderStepIndex('delivered'), ORDER_STEPS.length - 1);
+  assert.ok(orderComplete('delivered') && !orderComplete('shipped'));
   assert.equal(orderStepIndex('cancelled'), -1);
 });
 
@@ -25,3 +27,9 @@ test('club pickup orders read as collected, not shipped', () => {
   assert.equal(orderStatusLabel('paid', 'pickup'), orderStatusLabel('paid'));
 });
 
+
+test('pickup tracker says ready to collect and collected', () => {
+  const labels = orderSteps('pickup').map((st) => st.label);
+  assert.deepEqual(labels.slice(-2), ['Ready to collect', 'Collected']);
+  assert.deepEqual(orderSteps('courier').slice(-2).map((st) => st.label), ['On its way', 'Delivered']);
+});

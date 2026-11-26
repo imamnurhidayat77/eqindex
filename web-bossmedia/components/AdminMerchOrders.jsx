@@ -40,6 +40,9 @@ const NEXT = {
   in_production: { text: 'Ship or hand over', act: true },
   shipped: { text: 'Confirm delivered', act: true },
 };
+// Payment events store the Stripe reference (kept for the audit trail);
+// people read what happened instead.
+const eventNote = (e) => (e.status === 'paid' && /^Stripe (pi|cs)_/.test(e.note || '') ? 'Paid by card through Stripe' : e.note);
 const orderHref = (ref) => `/studio/admin/merch/orders/${encodeURIComponent(ref)}`;
 
 export default function AdminMerchOrders() {
@@ -173,7 +176,7 @@ export function AdminMerchOrderDetail({ orderRef }) {
                       <strong>{statusName(e.status)}</strong>
                       <time className={s.muted} dateTime={e.at}>{day(e.at)}</time>
                     </div>
-                    {e.note && <p className={s.note}>{e.note}</p>}
+                    {e.note && <p className={s.note}>{eventNote(e)}</p>}
                     {e.proofFiles?.length > 0 && (
                       <ul className={s.proofThumbs} aria-label="Proof files">
                         {e.proofFiles.map((f, n) => (

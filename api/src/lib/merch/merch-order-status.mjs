@@ -5,8 +5,18 @@ export const ORDER_STEPS = [
   { id: 'approved', label: 'Approved', statuses: ['approved'] },
   { id: 'paid', label: 'Paid', statuses: ['paid'] },
   { id: 'production', label: 'In production', statuses: ['in_production'] },
-  { id: 'shipped', label: 'On its way', statuses: ['shipped', 'delivered'] },
+  { id: 'shipped', label: 'On its way', statuses: ['shipped'] },
+  { id: 'delivered', label: 'Delivered', statuses: ['delivered'] },
 ];
+// Club pickup orders are collected, not shipped.
+const PICKUP_STEP_LABELS = { shipped: 'Ready to collect', delivered: 'Collected' };
+
+// The tracker steps for an order, with pickup wording where it applies.
+export const orderSteps = (delivery) => ORDER_STEPS.map((st) => (
+  delivery === 'pickup' && PICKUP_STEP_LABELS[st.id] ? { ...st, label: PICKUP_STEP_LABELS[st.id] } : st));
+
+// The order is finished: its last step reads as done, not as in progress.
+export const orderComplete = (status) => status === 'delivered';
 
 const LABELS = {
   submitted: 'Received, waiting for artwork check',

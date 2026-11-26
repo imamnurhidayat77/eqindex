@@ -41,7 +41,7 @@
 .pill[data-tone='good'] { background: rgba(127, 174, 92, 0.16); color: #b9dc9c; }
 .pill[data-tone='off'] { background: #222; color: #aaa; }
 .sub { margin: 8px 0 20px; color: #999; font-size: 14px; }
-.track { list-style: none; margin: 0 0 16px; padding: 16px 18px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); background: #101010; border: 1px solid rgba(255,255,255,0.09); border-radius: 12px; }
+.track { list-style: none; margin: 0 0 16px; padding: 16px 18px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); background: #101010; border: 1px solid rgba(255,255,255,0.09); border-radius: 12px; }
 .track li { position: relative; display: grid; justify-items: center; gap: 8px; text-align: center; }
 /* connector to the previous step */
 .track li + li::before { content: ''; position: absolute; top: 13px; right: 50%; left: -50%; height: 2px; background: #2c2c2c; }
@@ -59,8 +59,8 @@
   .side { position: static; }
 }
 @media (max-width: 560px) {
-  .track { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 14px; }
-  .track li:nth-child(4)::before { display: none; }
+  .track { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 14px; }
+  .track li:nth-child(5)::before { display: none; }
 }
 /* Orders list */
 .count { padding: 4px 10px; border-radius: 999px; background: #1c1c1c; color: #bbb; font-size: 12px; font-weight: 700; }
@@ -76,7 +76,7 @@
 .orderTop { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .orderRef { font-size: 16px; letter-spacing: 0.01em; }
 .orderMeta { color: #999; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; max-width: 260px; }
+.bar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; max-width: 260px; }
 .bar span { height: 4px; border-radius: 2px; background: #2a2a2a; }
 .bar span[data-on] { background: #FFC400; }
 .orderEnd { display: flex; align-items: center; gap: 14px; }

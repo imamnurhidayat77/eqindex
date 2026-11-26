@@ -7,7 +7,7 @@ import { SiteFooter, SiteHeader } from '../../../../components/figma';
 import SmartImage from '../../../../components/SmartImage';
 import { API } from '../../../../lib/api';
 import { merchColorName, merchProduct } from '../../../../lib/merch.mjs';
-import { ORDER_STEPS, orderStatusLabel, orderStepIndex } from '../../../../lib/merch-order-status.mjs';
+import { orderComplete, orderStatusLabel, orderStepIndex, orderSteps } from '../../../../lib/merch-order-status.mjs';
 import { useDocumentTitle } from '../../../../lib/use-document-title';
 import s from '../orders.module.css';
 
@@ -61,12 +61,15 @@ export default function MerchOrderPage() {
           )}
           {o && step >= 0 && (
             <ol className={s.track} aria-label="Order progress">
-              {ORDER_STEPS.map((st, i) => (
-                <li key={st.id} data-state={i < step ? 'done' : i === step ? 'now' : 'todo'} aria-current={i === step ? 'step' : undefined}>
-                  <span className={s.trackDot} aria-hidden="true">{i < step ? '✓' : i + 1}</span>
+              {orderSteps(o.delivery).map((st, i) => {
+                const done = i < step || (i === step && orderComplete(o.status));
+                return (
+                <li key={st.id} data-state={done ? 'done' : i === step ? 'now' : 'todo'} aria-current={i === step ? 'step' : undefined}>
+                  <span className={s.trackDot} aria-hidden="true">{done ? '✓' : i + 1}</span>
                   <span className={s.trackLabel}>{st.label}</span>
                 </li>
-              ))}
+                );
+              })}
             </ol>
           )}
           {o?.status === 'approved' && <PayCard order={o} onConfirmed={reload} />}
