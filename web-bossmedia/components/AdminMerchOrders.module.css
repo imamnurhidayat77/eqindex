@@ -1,26 +1,66 @@
-/* Admin > Merch orders. globals.css is frozen. */
+/* Admin > Merch orders (list + order page). globals.css is frozen. */
 .muted { color: #999; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .filter { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: #bbb; }
-.status { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid #444; font-size: 11px; white-space: nowrap; color: #ccc; }
-.status[data-status='submitted'], .status[data-status='changes_requested'] { border-color: #6b5326; color: #e3b95c; }
-.status[data-status='proof_sent'] { border-color: #2f4d63; color: #8fc3e8; }
-.status[data-status='approved'] { border-color: #3f5a2c; color: #a9d38a; }
-.h3 { margin: 0 0 12px; font-size: 16px; color: #fff; }
-.h4 { margin: 0; font-size: 14px; color: #fff; }
-.grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; align-items: start; }
-@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
-.facts { margin: 0; display: grid; gap: 6px; font-size: 13px; }
+.summary { color: #bbb; font-size: 13px; }
+.status { display: inline-block; padding: 3px 10px; border-radius: 999px; border: 1px solid #444; font-size: 12px; font-weight: 700; white-space: nowrap; color: #ccc; }
+.status[data-status='submitted'], .status[data-status='artwork_review'], .status[data-status='changes_requested'] { border-color: #6b5326; color: #e3b95c; background: rgba(227, 185, 92, 0.08); }
+.status[data-status='proof_sent'] { border-color: #2f4d63; color: #8fc3e8; background: rgba(143, 195, 232, 0.08); }
+.status[data-status='approved'], .status[data-status='paid'], .status[data-status='in_production'] { border-color: #3f5a2c; color: #a9d38a; background: rgba(169, 211, 138, 0.08); }
+.status[data-status='shipped'], .status[data-status='delivered'] { border-color: #2f5a4c; color: #8fd3bb; }
+.status[data-status='cancelled'], .status[data-status='refunded'] { color: #999; }
+.table td { vertical-align: middle; }
+.refLink { color: #fff; font-weight: 800; text-decoration: none; }
+.refLink:hover { color: #FFC400; }
+.refLink:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.next { color: #888; font-size: 13px; white-space: nowrap; }
+.next[data-act] { color: #FFC400; font-weight: 700; }
+
+/* Order page */
+.page { display: grid; gap: 14px; }
+.back { display: inline-flex; align-items: center; min-height: 32px; width: fit-content; color: #a3a3a3; font-size: 13px; font-weight: 600; text-decoration: none; }
+.back:hover { color: #fff; }
+.head { display: grid; gap: 6px; }
+.headRow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.title { margin: 0; color: #fff; font-size: 26px; letter-spacing: -0.01em; }
+.sub { margin: 0; color: #a3a3a3; font-size: 14px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr); gap: 16px; align-items: start; }
+.side { display: grid; gap: 12px; min-width: 0; }
+.panel { display: grid; gap: 10px; padding: 16px; background: #101010; border: 1px solid rgba(255,255,255,0.09); border-radius: 12px; min-width: 0; }
+.panelAct { border-color: rgba(255, 196, 0, 0.45); }
+.label { color: #7c7c7c; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.09em; }
+.nextTitle { margin: 0; color: #fff; font-size: 17px; font-weight: 800; }
+.panelAct .nextTitle { color: #FFC400; }
+.facts { margin: 0; display: grid; gap: 8px; font-size: 13px; }
 .facts div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; }
 .facts dt { color: #888; }
-.facts dd { margin: 0; color: #eee; overflow-wrap: anywhere; }
+.facts dd { margin: 0; color: #eee; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .facts a { color: #FFC400; }
-.links { display: grid; gap: 4px; }
+.totalRow { padding-top: 8px; border-top: 1px solid #2c2c2c; }
+.totalRow dt, .totalRow dd { color: #fff; font-weight: 800; }
+.artwork { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid #2c2c2c; }
+.links { display: flex; flex-wrap: wrap; gap: 8px; }
+.fileLink { display: inline-flex; align-items: baseline; gap: 6px; min-height: 36px; padding: 8px 12px; border: 1px solid #333; border-radius: 8px; color: #fff; font-size: 13px; font-weight: 700; text-decoration: none; }
+.fileLink small { color: #888; font-weight: 600; }
+.fileLink:hover { border-color: #666; }
+.fileLink:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
 .timeline { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 2px solid #2c2c2c; display: grid; gap: 12px; font-size: 13px; color: #ddd; }
 .note { margin: 4px 0 0; color: #bbb; white-space: pre-wrap; overflow-wrap: anywhere; }
 .thumbLink { display: inline-block; margin-top: 6px; border-radius: 6px; overflow: hidden; border: 1px solid #333; background: #fff; }
 .thumbLink:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
 .thumb { display: block; width: 160px; height: auto; }
-.send { display: grid; gap: 10px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #2c2c2c; max-width: 560px; }
+.send { display: grid; gap: 10px; }
+.h4 { margin: 0; font-size: 14px; color: #fff; }
 .field { display: grid; gap: 6px; font-size: 13px; color: #bbb; }
-.field textarea { width: 100%; font: inherit; resize: vertical; }
+.field input[type='text'], .field textarea { width: 100%; min-height: 40px; padding: 8px 12px; background: #0b0b0b; color: #fff; border: 1px solid #333; border-radius: 8px; font: inherit; }
+.field textarea { resize: vertical; }
+.field input[type='file'] { width: 100%; padding: 14px 12px; border: 1px dashed #444; border-radius: 8px; background: #0b0b0b; color: #bbb; font: inherit; font-size: 13px; cursor: pointer; }
+.field input[type='file']::file-selector-button { margin-right: 12px; padding: 6px 12px; border: 0; border-radius: 6px; background: #fff; color: #101010; font: inherit; font-weight: 700; cursor: pointer; }
+.field input:focus-visible, .field textarea:focus-visible { outline: 2px solid #FFC400; outline-offset: 1px; }
 .hint { margin: 0; font-size: 12px; color: #999; }
+.dangerRow { display: flex; justify-content: flex-end; }
+.danger { border-color: #6b3a3a; color: #e08a8a; }
+@media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.filter select { min-height: 40px; padding: 0 12px; background: #0b0b0b; color: #fff; border: 1px solid #333; border-radius: 8px; font: inherit; font-size: 13px; }
+.filter select:focus-visible { outline: 2px solid #FFC400; outline-offset: 1px; }

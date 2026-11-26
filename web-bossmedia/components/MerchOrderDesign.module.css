@@ -1,0 +1,20 @@
+/* Ordered design card: 3D stage plus the list of logo placements. */
+.card { display: grid; gap: 14px; padding: 18px; background: #101010; border: 1px solid rgba(255,255,255,0.09); border-radius: 12px; font-size: 13px; color: #ccc; min-width: 0; }
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.title { margin: 0; font-size: 15px; font-weight: 800; color: #fff; }
+.hint { color: #777; font-size: 12px; }
+.loading { margin: 0; padding: 16px; color: #999; font-size: 13px; }
+.stage { height: clamp(340px, 56vh, 540px); border-radius: 10px; }
+.placements { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.placement { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 8px 12px; background: #141414; border: 1px solid #2c2c2c; border-radius: 10px; color: #fff; font: inherit; text-align: left; cursor: pointer; transition: border-color 150ms ease-out, background 150ms ease-out, transform 150ms ease-out; }
+.placement:active { transform: scale(0.98); }
+.placement[aria-pressed='true'] { border-color: #FFC400; background: rgba(255, 196, 0, 0.06); }
+.placement:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .placement:hover { border-color: #666; } }
+.num { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: #262626; color: #ddd; font-size: 12px; font-weight: 800; }
+.placement[aria-pressed='true'] .num { background: #FFC400; color: #101010; }
+.text { display: grid; gap: 1px; min-width: 0; }
+.text strong { font-size: 13px; }
+.text small { color: #999; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) { .placements { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .placement { transition: none; } .placement:active { transform: none; } }

@@ -1,12 +1,14 @@
 'use client';
-// Admin > Merch orders: newest orders, the buyer's design and artwork, and
-// the art proof step. Sending a proof moves the order to proof_sent and
+// Admin > Merch orders: the order list, and each order on its own page with
+// the buyer's design in 3D, artwork and the art proof step. Sending a proof moves the order to proof_sent and
 // emails the buyer, who approves it or asks for changes on their order page.
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useNotify } from './Toaster';
 import SmartImage from './SmartImage';
+import MerchOrderDesign from './MerchOrderDesign';
 import { nzdc, studio, studioFetch } from '../lib/studio';
-import { merchPositions } from '../lib/merch.mjs';
+import { merchColorName, merchProduct } from '../lib/merch.mjs';
 import { API } from '../lib/api';
 import s from './AdminMerchOrders.module.css';
 
@@ -25,107 +27,160 @@ const FULFILMENT_STEPS = {
 };
 const statusName = (st) => st.charAt(0).toUpperCase() + st.slice(1).replace(/_/g, ' ');
 const day = (d) => new Date(d).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' });
-const logoName = (v) => (String(v).startsWith('club:') ? 'Club logo' : String(v).startsWith('mlogo:') ? 'Buyer upload'
-  : String(v).startsWith('my:') ? 'Buyer saved logo' : 'Sponsor logo');
+
+// What the admin does next, per status (the list's "Next" column and the
+// detail page's action card). `act` marks a step waiting on us.
+const NEXT = {
+  submitted: { text: 'Send proof', act: true },
+  artwork_review: { text: 'Send proof', act: true },
+  changes_requested: { text: 'Send new proof', act: true },
+  proof_sent: { text: 'Waiting for buyer to approve' },
+  approved: { text: 'Waiting for payment' },
+  paid: { text: 'Start production', act: true },
+  in_production: { text: 'Ship or hand over', act: true },
+  shipped: { text: 'Confirm delivered', act: true },
+};
+const orderHref = (ref) => `/studio/admin/merch/orders/${encodeURIComponent(ref)}`;
 
 export default function AdminMerchOrders() {
   const notify = useNotify();
   const [status, setStatus] = useState('');
   const [rows, setRows] = useState(null);
-  const [open, setOpen] = useState(null);
   const load = useCallback(() => {
     studio.get(`/admin/merch/orders${status ? `?status=${status}` : ''}`).then((r) => setRows(r || [])).catch((e) => notify(e.message, true));
   }, [status, notify]);
   useEffect(() => { load(); }, [load]);
+  const todo = (rows || []).filter((r) => NEXT[r.status]?.act).length;
 
   return (
     <>
-      <div className="st-filters" style={{ marginBottom: 12 }}>
+      <div className={s.toolbar}>
         <label className={s.filter}><span>Status</span>
-          <select value={status} onChange={(e) => { setOpen(null); setStatus(e.target.value); }}>
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">All orders</option>
             {STATUSES.map((st) => <option key={st} value={st}>{statusName(st)}</option>)}
           </select>
         </label>
+        {rows?.length > 0 && <span className={s.summary}>{rows.length} order{rows.length === 1 ? '' : 's'}{todo ? ` · ${todo} need${todo === 1 ? 's' : ''} you` : ''}</span>}
       </div>
       {rows === null && <p className="empty-note">Loading…</p>}
       {rows?.length === 0 && <p className="empty-note">No orders{status ? ` with status ${statusName(status).toLowerCase()}` : ''}.</p>}
       {rows?.length > 0 && (
         <div className="st-card" style={{ padding: '6px 22px' }}>
-          <div className="table-scroll"><table className="st-table">
-            <thead><tr><th>Order</th><th>Buyer</th><th>Product</th><th>Items</th><th>Total</th><th>Status</th><th /></tr></thead>
+          <div className="table-scroll"><table className={`st-table ${s.table}`}>
+            <thead><tr><th>Order</th><th>Buyer</th><th>Product</th><th>Items</th><th>Total</th><th>Status</th><th>Next</th><th /></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.ref}>
-                  <td><strong>{r.ref}</strong><br /><small className={s.muted}>{day(r.created_at)}</small></td>
+                  <td><Link className={s.refLink} href={orderHref(r.ref)}>{r.ref}</Link><br /><small className={s.muted}>{day(r.created_at)}</small></td>
                   <td>{r.buyer_name}<br /><small className={s.muted}>{r.buyer_email}{r.club_name ? ` · ${r.club_name}` : ''}</small></td>
                   <td>{r.product_label || r.product_id}</td>
                   <td>{r.units}</td>
-                  <td>{nzdc(r.total_cents)}</td>
+                  <td className={s.num}>{nzdc(r.total_cents)}</td>
                   <td><span className={s.status} data-status={r.status}>{statusName(r.status)}</span></td>
-                  <td>
-                    <button className="st-btn-ghost" style={{ minHeight: 36 }} aria-expanded={open === r.ref}
-                      onClick={() => setOpen(open === r.ref ? null : r.ref)}>{open === r.ref ? 'Close' : 'Open'}</button>
-                  </td>
+                  <td><span className={s.next} data-act={NEXT[r.status]?.act ? 'true' : undefined}>{NEXT[r.status]?.text || '—'}</span></td>
+                  <td><Link className="st-btn-ghost" style={{ minHeight: 36 }} href={orderHref(r.ref)} aria-label={`Open order ${r.ref}`}>Open →</Link></td>
                 </tr>
               ))}
             </tbody>
           </table></div>
         </div>
       )}
-      {open && <OrderDetail key={open} orderRef={open} onChanged={load} />}
     </>
   );
 }
 
-function OrderDetail({ orderRef, onChanged }) {
+// One order on its own page (/studio/admin/merch/orders/<ref>): the design
+// in 3D, the next step, buyer, delivery, money and history.
+export function AdminMerchOrderDetail({ orderRef }) {
   const notify = useNotify();
   const [o, setO] = useState(null);
+  const [missing, setMissing] = useState(false);
   const load = useCallback(() => {
-    studio.get(`/api/merch/orders/${orderRef}`).then(setO).catch((e) => notify(e.message, true));
+    studio.get(`/api/merch/orders/${encodeURIComponent(orderRef)}`).then(setO).catch((e) => { setMissing(true); notify(e.message, true); });
   }, [orderRef, notify]);
   useEffect(() => { load(); }, [load]);
 
-  if (!o) return <p className="empty-note">Loading {orderRef}…</p>;
-  const slots = merchPositions(o.productId).filter((p) => o.design?.slots?.[p.id]);
-  return (
-    <div className="st-card" style={{ padding: 18, marginTop: 16 }}>
-      <h3 className={s.h3}>{o.ref} · {o.quote?.product?.label || o.productId} · {o.quote?.product?.colorName || o.color}</h3>
-      <div className={s.grid}>
-        <dl className={s.facts}>
-          <div><dt>Status</dt><dd>{statusName(o.status)}</dd></div>
-          <div><dt>Sizes</dt><dd>{o.lines.map((l) => `${l.size} × ${l.qty}`).join(', ')}</dd></div>
-          {slots.map((p) => <div key={p.id}><dt>{p.label}</dt><dd>{logoName(o.design.slots[p.id])}</dd></div>)}
-          <div><dt>Buyer</dt><dd>{o.contact.name} · <a href={`mailto:${o.contact.email}`}>{o.contact.email}</a>{o.contact.phone ? ` · ${o.contact.phone}` : ''}</dd></div>
-          <div><dt>Delivery</dt><dd>{o.delivery === 'pickup' ? `Club pickup, ${o.contact.club}` : [o.address?.line1, o.address?.line2, o.address?.city, o.address?.postcode].filter(Boolean).join(', ')}</dd></div>
-          {o.notes && <div><dt>Buyer notes</dt><dd>{o.notes}</dd></div>}
-          <div><dt>Total</dt><dd>{nzdc(o.totalCents)}</dd></div>
-          {o.artwork?.length > 0 && (
-            <div><dt>Artwork</dt><dd className={s.links}>
-              {o.artwork.map((a, i) => a.url
-                ? <a key={a.id} href={a.url} target="_blank" rel="noreferrer">Upload {i + 1} ({a.width}×{a.height}px)</a>
-                : <span key={a.id}>Upload {i + 1} unavailable</span>)}
-            </dd></div>
-          )}
-        </dl>
-        <ol className={s.timeline} aria-label="Order history">
-          {o.events.map((e) => (
-            <li key={e.id}>
-              <strong>{statusName(e.status)}</strong> <small className={s.muted}>{day(e.at)}</small>
-              {e.note && <p className={s.note}>{e.note}</p>}
-              {e.proofPath && (
-                <a href={`${API}${e.proofPath}`} target="_blank" rel="noreferrer" className={s.thumbLink}>
-                  <SmartImage src={`${API}${e.proofPath}`} alt={`Proof sent ${day(e.at)}`} className={s.thumb} width={160} height={120} unoptimized />
-                </a>
-              )}
-            </li>
-          ))}
-        </ol>
+  const back = <Link href="/studio/admin?section=orders" className={s.back}>← Merch orders</Link>;
+  if (missing && !o) return <div className={s.page}>{back}<p className="empty-note">Order {orderRef} not found.</p></div>;
+  if (!o) return <div className={s.page}>{back}<p className="empty-note">Loading {orderRef}…</p></div>;
+  const q = o.quote || {};
+  const units = o.lines.reduce((n, l) => n + l.qty, 0);
+  const label = q.product?.label || merchProduct(o.productId)?.label || o.productId;
+  const colour = q.product?.colorName || merchColorName(o.productId, o.color);
+  const next = NEXT[o.status];
+  const artwork = (o.artwork || []).length > 0 && (
+    <div className={s.artwork}>
+      <span className={s.label}>Buyer artwork (original files)</span>
+      <div className={s.links}>
+        {o.artwork.map((a, i) => a.url
+          ? <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className={s.fileLink}>↓ Upload {i + 1} <small>{a.width}×{a.height}px</small></a>
+          : <span key={a.id} className={s.muted}>Upload {i + 1} unavailable</span>)}
       </div>
-      {PROOF_FROM.includes(o.status) && <SendProof orderRef={o.ref} resend={o.status === 'proof_sent'} onSent={() => { load(); onChanged(); }} />}
-      {FULFILMENT_STEPS[o.status] && <NextStep order={o} onMoved={() => { load(); onChanged(); }} />}
-      {o.status === 'approved' && <p className="st-csub" style={{ marginTop: 12 }}>Proof approved. Waiting for the buyer to pay.</p>}
-      {CANCEL_FROM.includes(o.status) && <CancelOrder order={o} onCancelled={() => { load(); onChanged(); }} />}
+    </div>
+  );
+  return (
+    <div className={s.page}>
+      {back}
+      <header className={s.head}>
+        <div className={s.headRow}>
+          <h2 className={s.title}>{o.ref}</h2>
+          <span className={s.status} data-status={o.status}>{statusName(o.status)}</span>
+        </div>
+        <p className={s.sub}>{label} · {colour} · {units} item{units === 1 ? '' : 's'} · placed {day(o.createdAt)} · {nzdc(o.totalCents)}</p>
+      </header>
+      <div className={s.layout}>
+        {merchProduct(o.productId)
+          ? <MerchOrderDesign order={o} title="Design" hint="View only · drag to turn" extra={artwork} />
+          : <div className="st-card">{artwork}</div>}
+        <aside className={s.side}>
+          <section className={`${s.panel} ${next?.act ? s.panelAct : ''}`} aria-label="Next step">
+            <span className={s.label}>Next step</span>
+            <p className={s.nextTitle}>{next?.text || 'Nothing to do'}</p>
+            {PROOF_FROM.includes(o.status) && <SendProof orderRef={o.ref} resend={o.status === 'proof_sent'} onSent={load} />}
+            {FULFILMENT_STEPS[o.status] && <NextStep order={o} onMoved={load} />}
+            {o.status === 'approved' && <p className={s.hint}>Proof approved. The buyer pays on their order page.</p>}
+          </section>
+          <section className={s.panel} aria-label="Buyer">
+            <span className={s.label}>Buyer</span>
+            <dl className={s.facts}>
+              <div><dt>Name</dt><dd>{o.contact.name}</dd></div>
+              <div><dt>Email</dt><dd><a href={`mailto:${o.contact.email}`}>{o.contact.email}</a></dd></div>
+              {o.contact.phone && <div><dt>Phone</dt><dd><a href={`tel:${o.contact.phone.replace(/\s/g, '')}`}>{o.contact.phone}</a></dd></div>}
+              {o.contact.club && <div><dt>Club</dt><dd>{o.contact.club}</dd></div>}
+              <div><dt>{o.delivery === 'pickup' ? 'Pickup' : 'Deliver to'}</dt><dd>{o.delivery === 'pickup' ? `Club pickup, ${o.contact.club}` : [o.address?.line1, o.address?.line2, o.address?.city, o.address?.postcode].filter(Boolean).join(', ')}</dd></div>
+              {o.notes && <div><dt>Notes</dt><dd>{o.notes}</dd></div>}
+            </dl>
+          </section>
+          <section className={s.panel} aria-label="Order">
+            <span className={s.label}>Order</span>
+            <dl className={s.facts}>
+              <div><dt>Sizes</dt><dd>{o.lines.map((l) => `${l.size} × ${l.qty}`).join(', ')}</dd></div>
+              <div><dt>Goods</dt><dd>{nzdc((q.goodsCents || 0) + (q.discountCents || 0))}</dd></div>
+              {q.discountCents > 0 && <div><dt>Sponsor discount</dt><dd>−{nzdc(q.discountCents)}</dd></div>}
+              <div><dt>{o.delivery === 'pickup' ? 'Pickup' : 'Courier'}</dt><dd>{q.shippingCents ? nzdc(q.shippingCents) : 'Free'}</dd></div>
+              <div className={s.totalRow}><dt>Total</dt><dd>{nzdc(o.totalCents)}</dd></div>
+            </dl>
+          </section>
+          <section className={s.panel} aria-label="History">
+            <span className={s.label}>History</span>
+            <ol className={s.timeline}>
+              {[...o.events].reverse().map((e) => (
+                <li key={e.id}>
+                  <strong>{statusName(e.status)}</strong> <small className={s.muted}>{day(e.at)}</small>
+                  {e.note && <p className={s.note}>{e.note}</p>}
+                  {e.proofPath && (
+                    <a href={`${API}${e.proofPath}`} target="_blank" rel="noreferrer" className={s.thumbLink}>
+                      <SmartImage src={`${API}${e.proofPath}`} alt={`Proof sent ${day(e.at)}`} className={s.thumb} width={160} height={120} unoptimized />
+                    </a>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </section>
+          {CANCEL_FROM.includes(o.status) && <CancelOrder order={o} onCancelled={load} />}
+        </aside>
+      </div>
     </div>
   );
 }
@@ -145,10 +200,10 @@ function CancelOrder({ order, onCancelled }) {
     } catch (err) { notify(err.message, true); setBusy(false); }
   }
   if (!asking) {
-    return <div style={{ marginTop: 12 }}><button className="st-btn-ghost" type="button" onClick={() => setAsking(true)}>Cancel order</button></div>;
+    return <div className={s.dangerRow}><button className={`st-btn-ghost ${s.danger}`} type="button" onClick={() => setAsking(true)}>Cancel order</button></div>;
   }
   return (
-    <form className={s.send} onSubmit={cancel}>
+    <form className={`${s.panel} ${s.send}`} onSubmit={cancel}>
       <h4 className={s.h4}>Cancel {order.ref}</h4>
       <label className={s.field}><span>Reason, shown on the order (optional)</span>
         <input type="text" maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. No reply to the proof for two weeks" />
@@ -190,7 +245,7 @@ function SendProof({ orderRef, resend, onSent }) {
 
   return (
     <form className={s.send} onSubmit={send}>
-      <h4 className={s.h4}>{resend ? 'Send a new proof (replaces the waiting one)' : 'Send the art proof'}</h4>
+      {resend && <p className={s.hint}>A proof is already waiting for the buyer. A new one replaces it.</p>}
       <label className={s.field}><span>Proof image (PNG, JPEG or WebP, up to 15 MB)</span>
         <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setFile(e.target.files?.[0] || null)} />
       </label>
@@ -225,7 +280,6 @@ function NextStep({ order, onMoved }) {
 
   return (
     <form className={s.send} onSubmit={move}>
-      <h4 className={s.h4}>Next step</h4>
       {step.note && (
         <label className={s.field}><span>{pickup ? 'Pickup details for the buyer (optional)' : 'Courier and tracking number (optional)'}</span>
           <input type="text" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)}

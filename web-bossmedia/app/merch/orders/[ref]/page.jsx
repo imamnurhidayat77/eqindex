@@ -1,13 +1,12 @@
 'use client';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
+import { useCallback, useEffect, useState } from 'react';
+import MerchOrderDesign from '../../../../components/MerchOrderDesign';
 import { SiteFooter, SiteHeader } from '../../../../components/figma';
 import SmartImage from '../../../../components/SmartImage';
 import { API } from '../../../../lib/api';
-import { isHorseProduct, merchColorName, merchPositions, merchProduct } from '../../../../lib/merch.mjs';
-import stage from '../../../../components/MerchClient.module.css';
+import { merchColorName, merchProduct } from '../../../../lib/merch.mjs';
 import { ORDER_STEPS, orderStatusLabel, orderStepIndex } from '../../../../lib/merch-order-status.mjs';
 import { useDocumentTitle } from '../../../../lib/use-document-title';
 import s from '../orders.module.css';
@@ -18,8 +17,6 @@ const PAID_STATUSES = ['paid', 'in_production', 'shipped', 'delivered'];
 const CANCEL_FROM = ['submitted', 'artwork_review', 'changes_requested', 'proof_sent'];
 const day = (d) => new Date(d).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' });
 const linkToken = () => new URLSearchParams(window.location.search).get('t') || '';
-const Merch3D = dynamic(() => import('../../../../components/Merch3D'), { ssr: false, loading: () => <p className={s.muted}>Loading 3D preview…</p> });
-const logoName = (v) => (String(v).startsWith('club:') ? 'Club logo' : String(v).startsWith('mlogo:') ? 'Your logo' : 'Sponsor logo');
 
 // One merch order, opened from the emailed link (?t=token) or by a
 // logged-in owner. The buyer answers the artwork proof here; payment comes later.
@@ -76,7 +73,7 @@ export default function MerchOrderPage() {
           {o && <ProofCard order={o} onAnswered={reload} />}
           {o && (
             <div className={s.orderGrid}>
-              {product ? <DesignPreview order={o} /> : <div />}
+              {product ? <MerchOrderDesign order={o} token={linkToken()} /> : <div />}
               <aside className={s.side}>
                 <div className={s.card}>
                   <h2 className={s.h2}>Summary</h2>
@@ -264,61 +261,5 @@ function PayCard({ order, onConfirmed }) {
           </>
         )}
     </div>
-  );
-}
-
-// The product as ordered, on the same 3D view as the designer (view only).
-// Own artwork (mlogo:) loads through the order's own logo route, with the
-// link token when the page was opened from an email. Picking a placement
-// in the list turns the model to face it.
-function DesignPreview({ order }) {
-  const stageRef = useRef(null);
-  const design = order.design || {};
-  const placed = merchPositions(order.productId).filter((p) => design.slots?.[p.id]);
-  // Start on the first placement: Merch3D only turns to a slot when the
-  // selection changes from one slot to another.
-  const [selected, setSelected] = useState(() => placed[0]?.id || null);
-  const slots = useMemo(() => {
-    const t = linkToken();
-    const out = {};
-    for (const [pos, v] of Object.entries(design.slots || {})) {
-      const id = String(v);
-      out[pos] = id.startsWith('mlogo:')
-        ? `upload:${API}/api/merch/orders/${encodeURIComponent(order.ref)}/logos/${id.slice(6)}${t ? `?t=${encodeURIComponent(t)}` : ''}`
-        : id;
-    }
-    return out;
-  }, [design.slots, order.ref]);
-  const zoom = useMemo(() => Object.fromEntries(Object.entries(design.slotZoom || {}).map(([k, v]) => [k, Number(v) / 100])), [design.slotZoom]);
-  // Logo names as quoted at order time ("Left chest: Pak'nSave").
-  const names = useMemo(() => Object.fromEntries((order.quote?.item?.lines || [])
-    .filter((l) => l.slot && ['sponsor', 'club', 'upload'].includes(l.kind))
-    .map((l) => [l.slot, String(l.label).split(': ').slice(1).join(': ').replace(/ \(.*\)$|, no discount$/, '')])), [order.quote]);
-  return (
-    <section className={`${s.card} ${s.designCard}`} aria-label="Your design">
-      <div className={s.cardHead}>
-        <h2 className={s.h2}>Your design</h2>
-        <span className={s.hint}>Drag to turn · the proof is final</span>
-      </div>
-      <div className={`${stage.stage}${isHorseProduct(order.productId) ? ` ${stage.stageDark}` : ''} ${s.designStage}`} ref={stageRef}>
-        <Merch3D productId={order.productId} color={order.color} slots={slots} zoom={zoom} shift={design.slotShift || {}}
-          selectedPos={selected} switching={false} stageRef={stageRef} clean={false} />
-      </div>
-      {placed.length > 0 && (
-        <ul className={s.placements} aria-label="Logo placements">
-          {placed.map((p, i) => (
-            <li key={p.id}>
-              <button type="button" className={s.placement} aria-pressed={selected === p.id} onClick={() => setSelected(p.id)}>
-                <span className={s.placementNum} aria-hidden="true">{i + 1}</span>
-                <span className={s.placementText}>
-                  <strong>{p.label}</strong>
-                  <small>{names[p.id] || logoName(design.slots[p.id])}</small>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   );
 }
