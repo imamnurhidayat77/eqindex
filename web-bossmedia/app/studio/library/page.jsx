@@ -11,7 +11,7 @@ export default async function LibraryPage(props) {
   return (
     <LibraryClient
       events={data || []}
-      initial={{ status: searchParams?.status || '', event_id: searchParams?.event_id || '', kind: searchParams?.kind || '', untagged: searchParams?.untagged === '1' }}
+      initial={{ q: searchParams?.q || '', status: searchParams?.status || '', event_id: searchParams?.event_id || '', kind: searchParams?.kind || '', untagged: searchParams?.untagged === '1' }}
     />
   );
 }

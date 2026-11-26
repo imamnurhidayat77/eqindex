@@ -1,59 +1,89 @@
 'use client';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import StudioShell, { Chip, Pager } from './studio';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import StudioShell, { Chip } from './studio';
 import { useNotify } from './Toaster';
 import ConfirmModal from './ConfirmModal';
 import SearchSelect from './SearchSelect';
 import TagModal from './TagModal';
 import SmartImage from './SmartImage';
-import { studio } from '../lib/studio';
+import { studio, studioFetch } from '../lib/studio';
+import { writeQuery } from '../lib/url-state.mjs';
+import { uniqueById } from '../lib/unique-by-id.mjs';
 import styles from './StudioLibrary.module.css';
 
 const STATUSES = ['', 'draft', 'published', 'archived'];
 const KINDS = ['', 'photo', 'reel'];
-const LIMIT = 24;
+const PAGE_SIZE = 48;
+const SEARCH_DEBOUNCE_MS = 300;
 
 export default function LibraryClient({ events, initial }) {
   const notify = useNotify();
   const [items, setItems] = useState(null);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [drafts, setDrafts] = useState(0);
   const [tiers, setTiers] = useState([]);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(initial.q);
+  const [term, setTerm] = useState(initial.q);
   const [status, setStatus] = useState(initial.status);
   const [eventId, setEventId] = useState(initial.event_id);
   const [kind, setKind] = useState(initial.kind);
   const [untagged, setUntagged] = useState(initial.untagged);
   const [selected, setSelected] = useState(new Set());
-  const [offset, setOffset] = useState(0);
   const [editingId, setEditingId] = useState(null);
   const editing = (items || []).find((m) => m.id === editingId) || null;
   const [busy, setBusy] = useState(false);
 
-  const load = useCallback(() => {
-    const p = new URLSearchParams({ limit: '200' });
+  useEffect(() => {
+    const t = setTimeout(() => setTerm(q.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  // Server does search, filters and paging (keyset cursor), so every asset is
+  // reachable no matter how many a studio has. Filters mirror into the URL.
+  const query = useMemo(() => {
+    const p = new URLSearchParams({ limit: String(PAGE_SIZE) });
     // Photographer's own shop assets only — community moments live in
-    // Studio → Moments, never here (P3 source gate, enforced client-side).
+    // Studio → Moments, never here (P3 source gate).
     p.set('source', 'studio');
+    if (term) p.set('q', term);
     if (status) p.set('status', status);
     if (eventId) p.set('event_id', eventId);
     if (kind) p.set('kind', kind);
     if (untagged) p.set('untagged', '1');
-    studio.get(`/admin/media?${p}`).then((r) => { setItems(r || []); setSelected(new Set()); }).catch((e) => notify(e.message, true));
-  }, [status, eventId, kind, untagged, notify]);
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { setOffset(0); }, [q, status, eventId, kind, untagged]);
+    return p.toString();
+  }, [term, status, eventId, kind, untagged]);
+
+  const queryRef = useRef(query);
+  queryRef.current = query;
+
+  const load = useCallback(() => {
+    writeQuery({ q: term, status, event_id: eventId, kind, untagged: untagged ? '1' : '' });
+    let live = true;
+    setItems(null);
+    studioFetch(`/admin/media?${query}`).then((j) => {
+      if (!live) return;
+      setItems(j.data || []); setNextCursor(j.next_cursor || null); setSelected(new Set());
+    }).catch((e) => notify(e.message, true));
+    studio.get('/admin/media/stats').then((st) => live && setDrafts(st?.drafts || 0)).catch(() => {});
+    return () => { live = false; };
+  }, [query, term, status, eventId, kind, untagged, notify]);
+  useEffect(() => load(), [load]);
   useEffect(() => { studio.get('/admin/license-tiers').then((r) => setTiers(r || [])).catch(() => {}); }, []);
 
-  const visible = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return items || [];
-    return (items || []).filter((m) =>
-      [m.horse, m.rider, m.event_name, m.class_name].filter(Boolean).some((v) => String(v).toLowerCase().includes(s)));
-  }, [items, q]);
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const j = await studioFetch(`/admin/media?${query}&cursor=${encodeURIComponent(nextCursor)}`);
+      if (queryRef.current !== query) return; // filters changed mid-request
+      setItems((xs) => uniqueById([...(xs || []), ...(j.data || [])]));
+      setNextCursor(j.next_cursor || null);
+    } catch (e) { notify(e.message, true); } finally { setLoadingMore(false); }
+  }
 
-  const drafts = (items || []).filter((m) => m.status === 'draft').length;
-  const safeOffset = Math.min(offset, Math.max(0, (Math.ceil(visible.length / LIMIT) - 1) * LIMIT));
-  const pageItems = visible.slice(safeOffset, safeOffset + LIMIT);
+  const visible = items || [];
 
   async function patchOne(id, body) {
     const updated = await studio.patch(`/admin/media/${id}`, body);
@@ -85,13 +115,12 @@ export default function LibraryClient({ events, initial }) {
     if (label === 'delete') load();
   }
 
-  // Select-all covers the page you can see. Selecting hidden pages is an explicit second step,
-  // so a bulk Delete never touches assets the photographer did not look at.
-  const allOnPage = pageItems.length > 0 && pageItems.every((m) => selected.has(m.id));
-  const allVisible = visible.length > 0 && visible.every((m) => selected.has(m.id));
+  // Select-all covers only what is loaded on screen, so a bulk Delete never
+  // touches assets the photographer did not look at.
+  const allLoaded = visible.length > 0 && visible.every((m) => selected.has(m.id));
   const toggleAll = () => {
     if (busy) return;
-    setSelected(allOnPage ? new Set() : new Set(pageItems.map((m) => m.id)));
+    setSelected(allLoaded ? new Set() : new Set(visible.map((m) => m.id)));
   };
 
   return (
@@ -113,12 +142,7 @@ export default function LibraryClient({ events, initial }) {
         </label>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 6 }}>
-        <button className="st-btn-ghost" onClick={toggleAll} disabled={busy || !pageItems.length}>{busy ? 'Working…' : allOnPage ? 'Clear selection' : `Select this page (${pageItems.length})`}</button>
-        {allOnPage && !allVisible && visible.length > pageItems.length && (
-          <button className="st-link" style={{ background: 'none', border: 0, padding: 0, color: '#bbb', fontSize: 12, textDecoration: 'underline', cursor: 'pointer' }} onClick={() => setSelected(new Set(visible.map((m) => m.id)))} disabled={busy}>
-            Select all {visible.length} across pages
-          </button>
-        )}
+        <button className="st-btn-ghost" onClick={toggleAll} disabled={busy || !visible.length}>{busy ? 'Working…' : allLoaded ? 'Clear selection' : `Select all loaded (${visible.length})`}</button>
         <button className="st-btn-ghost" disabled={!selected.size || busy} onClick={() => bulk({ status: 'published' }, 'publish')}>Publish ({selected.size})</button>
         <button className="st-btn-ghost" disabled={!selected.size || busy} onClick={() => bulk({ status: 'archived' }, 'archive')}>Archive</button>
         <button className="st-btn-ghost st-btn-danger" disabled={!selected.size || busy} onClick={() => selected.size && setConfirmDelete(true)}>Delete</button>
@@ -128,9 +152,7 @@ export default function LibraryClient({ events, initial }) {
           busy={busy}
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => { setConfirmDelete(false); bulk(null, 'delete'); }} />
-        <span style={{ color: '#9a9a9a', fontSize: 12 }}>{items === null ? 'Loading…' : `${selected.size ? `${selected.size} selected · ` : ''}${visible.length} shown`}</span>
-        {/* shortcut: the list loads the newest 200 only, move search + paging server-side when a studio passes that */}
-        {items?.length === 200 && <span style={{ color: '#e0b96a', fontSize: 12 }}>Showing the newest 200. Use the filters to find older items.</span>}
+        <span style={{ color: '#9a9a9a', fontSize: 12 }}>{items === null ? 'Loading…' : `${selected.size ? `${selected.size} selected · ` : ''}${visible.length} shown${nextCursor ? ', more below' : ''}`}</span>
       </div>
       {items !== null && !visible.length ? (
         <div className="event-media-empty">
@@ -140,7 +162,7 @@ export default function LibraryClient({ events, initial }) {
         </div>
       ) : (
         <div className="st-media-grid">
-          {pageItems.map((m) => (
+          {visible.map((m) => (
             <ItemCard
               key={m.id} m={m}
               checked={selected.has(m.id)}
@@ -151,7 +173,13 @@ export default function LibraryClient({ events, initial }) {
           ))}
         </div>
       )}
-      <Pager total={visible.length} limit={LIMIT} offset={safeOffset} onPage={setOffset} />
+      {nextCursor && items !== null && (
+        <div style={{ display: 'flex', justifyContent: 'center', margin: '24px 0' }}>
+          <button type="button" className="st-btn-ghost" onClick={loadMore} disabled={loadingMore || busy} aria-busy={loadingMore}>
+            {loadingMore ? 'Loading…' : `Load ${PAGE_SIZE} more`}
+          </button>
+        </div>
+      )}
       {editing && (
         <TagModal key={editing.id} m={editing} events={events} tiers={tiers} notify={notify}
           onClose={() => setEditingId(null)}

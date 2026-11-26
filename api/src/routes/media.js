@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const multer = require('multer');
 const sharp = require('sharp');
 const mediaStore = require('../lib/mediaStore');
+const { cursorTsSql, readCursor, keysetCond, keysetPage, likeTerm } = require('../lib/http');
 
 const stripe = () => {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -32,6 +33,25 @@ const upload = multer({
 
 const PHOTO_MIMES = ['image/jpeg', 'image/png', 'image/webp'];
 const REEL_MIMES = ['video/mp4', 'video/quicktime', 'video/webm'];
+
+// Server-side gallery search: horse, rider, event, other people in frame
+// (and class where the query joins classes as c). Returns null for no term.
+function mediaSearchCond(raw, params, withClass = false) {
+  const term = likeTerm(raw);
+  if (!term) return null;
+  params.push(term);
+  const n = `$${params.length}`;
+  return `(h.name ILIKE ${n} OR r.name ILIKE ${n} OR e.name ILIKE ${n} OR m.other_people ILIKE ${n}${withClass ? ` OR c.name ILIKE ${n}` : ''})`;
+}
+
+// Shared by paged media lists: 400 on a malformed cursor, else the WHERE
+// fragment (or nothing on page 1).
+function pushCursor(req, res, conds, params) {
+  const cursor = readCursor(req.query.cursor);
+  if (cursor === false) { res.status(400).json({ error: 'bad cursor' }); return false; }
+  if (cursor) conds.push(keysetCond('m.created_at', 'm.id', cursor, params));
+  return true;
+}
 
 const escXml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 // Brand tile for community moments (free, never for sale): every public
@@ -496,24 +516,29 @@ module.exports = function mountMediaRoutes(app) {
       if (srcs.length) { params.push(srcs); conds.push(`m.source = ANY($${params.length})`); }
     }
     if (req.query.untagged === '1') conds.push('(m.horse_id IS NULL OR m.rider_id IS NULL)');
+    const search = mediaSearchCond(req.query.q, params, true);
+    if (search) conds.push(search);
+    if (!pushCursor(req, res, conds, params)) return;
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
-    params.push(limit);
-    const { rows } = await pool.query(
-      `SELECT m.*, e.name AS event_name, h.name AS horse, r.name AS rider, c.name AS class_name
+    params.push(limit + 1);
+    const { rows: fetched } = await pool.query(
+      `SELECT m.*, e.name AS event_name, h.name AS horse, r.name AS rider, c.name AS class_name,
+          ${cursorTsSql('m.created_at')}
         FROM media m LEFT JOIN events e ON e.id = m.event_id
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
         LEFT JOIN classes c ON c.id = m.class_id
         ${conds.length ? 'WHERE ' + conds.join(' AND ') : ''}
-        ORDER BY m.created_at DESC LIMIT $${params.length}`,
+        ORDER BY m.created_at DESC, m.id DESC LIMIT $${params.length}`,
       params
     );
+    const { data: rows, next_cursor } = keysetPage(fetched, limit);
     for (const r of rows) {
       try {
         if (r.preview_key) r.preview_url = mediaStore.publicUrlOrPassthrough(r.preview_key);
         if (r.thumb_key) r.thumb_url = mediaStore.publicUrlOrPassthrough(r.thumb_key);
       } catch { /* R2 public base unconfigured — URLs resolve after setup */ }
     }
-    res.json({ data: rows });
+    res.json({ data: rows, next_cursor });
   }));
 
   app.patch('/admin/media/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
@@ -1169,27 +1194,52 @@ module.exports = function mountMediaRoutes(app) {
       params.push(ids);
       conds.push(`m.id = ANY($${params.length}::UUID[])`);
     }
+    if (req.query.moment) push('m.moment = ?', String(req.query.moment).slice(0, 100));
+    const search = mediaSearchCond(req.query.q, params);
+    if (search) conds.push(search);
+    // ?cursor= is keyset (galleries, "Load more"); ?offset= stays for old callers.
+    if (!pushCursor(req, res, conds, params)) return;
     const limit = Math.min(parseInt(req.query.limit, 10) || 48, 200);
-    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
-    params.push(limit, offset);
-    const { rows } = await pool.query(
+    const offset = req.query.cursor ? 0 : Math.max(parseInt(req.query.offset, 10) || 0, 0);
+    params.push(limit + 1, offset);
+    const { rows: fetched } = await pool.query(
       `SELECT m.id, m.kind, m.event_id, m.class_id, m.horse_id, m.rider_id,
           m.thumb_key, m.preview_key, m.width, m.height, m.taken_at,
           COALESCE(pp.price_cents, t.price_cents) AS price_cents, m.license_default, m.moment, m.created_at,
           m.other_people,
           e.name AS event_name, h.name AS horse, r.name AS rider,
-          p.name AS photographer
+          p.name AS photographer, ${cursorTsSql('m.created_at')}
         FROM media m LEFT JOIN events e ON e.id = m.event_id
         LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
         JOIN photographers p ON p.id = m.photographer_id
         LEFT JOIN license_tiers t ON t.id = COALESCE(m.license_default, CASE WHEN m.kind = 'reel' THEN 'reel' ELSE 'web' END)
           LEFT JOIN photographer_prices pp ON pp.photographer_id = m.photographer_id AND pp.tier_id = t.id
         WHERE ${conds.join(' AND ')}
-        ORDER BY m.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        ORDER BY m.created_at DESC, m.id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
+    const { data: rows, next_cursor } = keysetPage(fetched, limit);
     withUrls(rows);
-    res.json({ data: rows });
+    res.json({ data: rows, next_cursor });
+  }));
+
+  // Filter options + tab counts for one event's gallery, so the page can
+  // offer every rider/horse/moment without loading every photo. Riders and
+  // horses come as {id, name} for the /photos rider_id/horse_id filters.
+  app.get('/photos/facets', asyncH(async (req, res) => {
+    const evid = await resolveId('events', req.query.event_id, res);
+    if (!evid) return;
+    const { rows } = await pool.query(
+      `SELECT COALESCE(jsonb_agg(DISTINCT jsonb_build_object('id', r.id, 'name', r.name)) FILTER (WHERE r.id IS NOT NULL), '[]') AS riders,
+          COALESCE(jsonb_agg(DISTINCT jsonb_build_object('id', h.id, 'name', h.name)) FILTER (WHERE h.id IS NOT NULL), '[]') AS horses,
+          COALESCE(array_agg(DISTINCT m.moment) FILTER (WHERE m.moment IS NOT NULL), '{}') AS moments,
+          COUNT(*) FILTER (WHERE m.kind <> 'reel')::INT AS photos,
+          COUNT(*) FILTER (WHERE m.kind = 'reel')::INT AS reels
+        FROM media m LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        WHERE m.event_id = $1 AND m.status = 'published' AND m.source = 'studio' AND ${ORDER_PRIVATE_SQL}
+          AND NOT (COALESCE(h.photo_hidden, FALSE) OR COALESCE(r.photo_hidden, FALSE))`,
+      [evid]);
+    res.json({ data: rows[0] });
   }));
 
   // NOTE: static sub-paths must be registered BEFORE '/photos/:id',
@@ -1364,24 +1414,26 @@ module.exports = function mountMediaRoutes(app) {
       push('m.rider_id = ?', rid);
     }
     if (req.query.kind) push('m.kind = ?', String(req.query.kind));
+    if (!pushCursor(req, res, conds, params)) return;
     const limit = Math.min(parseInt(req.query.limit, 10) || 48, 100);
-    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
-    params.push(limit, offset);
-    const { rows } = await pool.query(
+    const offset = req.query.cursor ? 0 : Math.max(0, parseInt(req.query.offset, 10) || 0);
+    params.push(limit + 1, offset);
+    const { rows: fetched } = await pool.query(
       `SELECT m.id, m.kind, m.event_id, m.horse_id, m.rider_id, m.class_id,
-              m.width, m.height, m.created_at, m.thumb_key, m.preview_key,
+              m.width, m.height, m.created_at, m.thumb_key, m.preview_key, ${cursorTsSql('m.created_at')},
               e.name AS event_name, c.name AS class_name,
               h.name AS horse, r.name AS rider
          FROM media m LEFT JOIN events e ON e.id = m.event_id
          LEFT JOIN classes c ON c.id = m.class_id
          LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
         WHERE ${conds.join(' AND ')}
-        ORDER BY m.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        ORDER BY m.created_at DESC, m.id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
+    const { data: rows, next_cursor } = keysetPage(fetched, limit);
     withUrls(rows);
     for (const r of rows) { delete r.thumb_key; delete r.preview_key; }
-    res.json({ data: rows });
+    res.json({ data: rows, next_cursor });
   }));
 
   app.get('/api/moments/:id', asyncH(async (req, res) => {

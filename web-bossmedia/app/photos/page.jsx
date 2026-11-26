@@ -22,11 +22,13 @@ export default async function PhotosPage(props) {
   for (const k of ['kind', 'horse', 'rider', 'event']) {
     if (sp[k]) p.set(k === 'horse' ? 'horse_id' : k === 'rider' ? 'rider_id' : k === 'event' ? 'event_id' : k, sp[k]);
   }
+  // Search runs on the server so it covers every photo, not just this page.
+  // shortcut: numbered pages use OFFSET (fine for a few thousand published rows), switch to the /photos cursor if deep pages get slow.
+  const q = (sp.q || '').trim();
+  if (q) p.set('q', q);
   const { data } = await getJSON(`/photos?${p}`).catch(() => ({ data: [] }));
   let rows = data || [];
-  const q = (sp.q || '').trim().toLowerCase();
-  if (q) rows = rows.filter((x) => [x.horse, x.rider, x.event_name, x.other_people].filter(Boolean).some((v) => v.toLowerCase().includes(q)));
-  const hasNext = !q && rows.length > LIMIT;
+  const hasNext = rows.length > LIMIT;
   if (hasNext) rows = rows.slice(0, LIMIT);
   const base = { ...(sp.q ? { q: sp.q } : {}), ...(sp.kind ? { kind: sp.kind } : {}) };
   const hrefFor = (n) => `/photos?${new URLSearchParams({ ...base, ...(n > 1 ? { page: String(n) } : {}) })}`;
