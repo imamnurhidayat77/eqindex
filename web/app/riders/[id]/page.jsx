@@ -103,12 +103,15 @@ function groupBest(rows, keyFn, labelFn) {
   return arr;
 }
 
-export async function generateMetadata({ params }) {
+export async function generateMetadata(props) {
+  const params = await props.params;
   const p = await getJSON(`/riders/${params.id}`).catch(() => null);
   return { title: p?.data?.name || 'Rider' };
 }
 
-export default async function RiderProfile({ params, searchParams }) {
+export default async function RiderProfile(props) {
+  const params = await props.params;
+  const searchParams = await props.searchParams;
   const [p, allRiders, allHorses, heightStats, splits, mbBoard, fg, scoring] = await Promise.all([
     getEntityJSON(`/riders/${params.id}`),
     getJSON('/rankings/riders?limit=100').catch(() => ({ data: [] })),

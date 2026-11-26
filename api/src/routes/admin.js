@@ -975,7 +975,7 @@ module.exports = function mountAdminRoutes(app) {
       }
       await client.query('COMMIT');
       captureSnapshots();
-      bustCache('/events');
+      bustPublic();
       res.status(201).json({ data: { dry_run: false, rows: out, summary, batch_id: batchId } });
     } catch (e) {
       try { await client.query('ROLLBACK'); } catch { /* noop */ }
@@ -1006,7 +1006,7 @@ module.exports = function mountAdminRoutes(app) {
     const judged = await recordVerdicts(toJudge, req.authUser?.id, req.body?.note || null);
     for (const it of toTag) audit(req, 'series.tag', 'class', it.class_id || it.name, { series_key: it.series_key });
     if (toJudge.length) audit(req, 'series.judge', 'series', 'non_series', { names: toJudge });
-    bustCache('/events');
+    bustPublic();
     res.json({ data: { tagged, judged } });
   }));
 
@@ -1033,7 +1033,7 @@ module.exports = function mountAdminRoutes(app) {
     const { applyHeightSpecs } = require('../lib/seriesVerify');
     const out = await applyHeightSpecs();
     audit(req, 'series.height.apply', 'series', 'all', out.bySeries);
-    bustCache('/events');
+    bustPublic();
     res.json({ data: out });
   }));
 
@@ -1198,7 +1198,7 @@ module.exports = function mountAdminRoutes(app) {
         [ev.event_id, cid, hid, rid, jf ?? 0, tf ?? 0, tot, ts, place,
          st === 'finished' && tot === 0, st, notes || null]);
       audit(req, 'result.create', 'result', rows[0].id, { class_id: cid, place });
-      bustCache('/events');
+      bustPublic();
       res.status(201).json({ data: rows[0] });
     } catch (e) {
       return res.status(e.status || 500).json({ error: e.status ? e.message : 'internal error' });
@@ -1242,7 +1242,6 @@ module.exports = function mountAdminRoutes(app) {
       await client.query('COMMIT');
       audit(req, 'import.undo', 'import_batch', req.params.id, summary);
       captureSnapshots();
-      bustCache('/events');
       bustPublic();
       res.json({ data: { dry_run: false, ...summary } });
     } catch (e) {

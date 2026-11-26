@@ -74,12 +74,15 @@ const divRange = (d) => {
   return `${(lo / 100).toFixed(2)}–${(hi / 100).toFixed(2)}m`;
 };
 
-export async function generateMetadata({ params }) {
+export async function generateMetadata(props) {
+  const params = await props.params;
   const p = await getJSON(`/horses/${params.id}`).catch(() => null);
   return { title: p?.data?.name || 'Horse' };
 }
 
-export default async function HorseProfile({ params, searchParams }) {
+export default async function HorseProfile(props) {
+  const params = await props.params;
+  const searchParams = await props.searchParams;
   const hBand = (searchParams && searchParams.h) || '';
   const [p, mbBoard, fg, scoring] = await Promise.all([
     getEntityJSON(`/horses/${params.id}`),

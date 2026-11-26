@@ -27,11 +27,14 @@ const divisionFor = (heightCm, divs) => {
 
 const HORSES_PER_PAGE = 25;
 
-export function generateMetadata({ params }) {
+export async function generateMetadata(props) {
+  const params = await props.params;
   return { title: `${decodeURIComponent(params.name)} · Breeder` };
 }
 
-export default async function BreederProfile({ params, searchParams }) {
+export default async function BreederProfile(props) {
+  const params = await props.params;
+  const searchParams = await props.searchParams;
   const name = decodeURIComponent(params.name);
   const [res, scoring] = await Promise.all([
     getEntityJSON(`/breeders/${encodeURIComponent(name)}`),

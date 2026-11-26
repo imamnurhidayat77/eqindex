@@ -43,7 +43,7 @@ const GROUPS = [
 ];
 
 export default async function AdminOverview() {
-  const token = cookies().get('eq_session')?.value;
+  const token = (await cookies()).get('eq_session')?.value;
   let d = null;
   // Photographers work in Boss Media studio now (overview APIs stay
   // admin-only, so they'd only see "unavailable" here).

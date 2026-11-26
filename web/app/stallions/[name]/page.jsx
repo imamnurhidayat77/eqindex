@@ -8,11 +8,14 @@ export const revalidate = 30;
 
 const OFFSPRING_PER_PAGE = 25;
 
-export function generateMetadata({ params }) {
+export async function generateMetadata(props) {
+  const params = await props.params;
   return { title: `${decodeURIComponent(params.name)} · Stallion` };
 }
 
-export default async function StallionProfile({ params, searchParams }) {
+export default async function StallionProfile(props) {
+  const params = await props.params;
+  const searchParams = await props.searchParams;
   const name = decodeURIComponent(params.name);
   const res = await getEntityJSON(`/stallions/${encodeURIComponent(name)}`);
   if (!res || !res.data) notFound();

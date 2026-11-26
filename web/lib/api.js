@@ -7,8 +7,12 @@ export const API = typeof window === 'undefined'
 // NOTE: no shared demo user — user-scoped reads use the session (getPrivateJSON
 // server-side, first-party cookies client-side). Never reintroduce ?user_id=.
 
+// Every cached public read carries this tag; the API flushes it after
+// imports, merges and result edits via POST /api/revalidate.
+export const PUBLIC_DATA_TAG = 'public-data';
+
 export async function getJSON(path, { revalidate = 30 } = {}) {
-  const res = await fetch(`${API}${path}`, { next: { revalidate } });
+  const res = await fetch(`${API}${path}`, { next: { revalidate, tags: [PUBLIC_DATA_TAG] } });
   if (!res.ok) throw new Error(`API ${path}: ${res.status}`);
   return res.json();
 }

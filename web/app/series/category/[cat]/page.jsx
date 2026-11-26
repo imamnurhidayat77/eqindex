@@ -20,7 +20,8 @@ const DESCRIPTIONS = {
   pony: 'Pony-mounted riders across heights.',
 };
 
-export default async function SeriesCategory({ params }) {
+export default async function SeriesCategory(props) {
+  const params = await props.params;
   const slug = params.cat;
   if (LEGACY_SLUGS[slug]) redirect(`/series/category/${LEGACY_SLUGS[slug]}`);
   let master = null;

@@ -12,7 +12,7 @@ import { PUBLIC_PATHS } from '../lib/public-paths';
 // Minimal header for logged-out visitors: logo + Join only.
 // While /auth/me is still loading, show the app nav when the visitor is
 // almost certainly signed in, so it doesn't pop in on every page load:
-//  - gated pages: middleware already turned away anyone without a session
+//  - gated pages: proxy already turned away anyone without a session
 //  - public pages: the "signed in last visit" hint from AuthProvider
 function useLandingHidden() {
   const { user, loading, hint } = useAuth();
