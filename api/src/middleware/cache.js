@@ -1,3 +1,5 @@
+const { revalidateWeb } = require('../lib/webRevalidate');
+
 // ---- Public GET cache (60s, anonymous only): repeat page loads skip Postgres.
 // Never caches admin/auth/user-scoped routes; logged-in traffic always bypasses.
 const CACHE_TTL = 60 * 1000;
@@ -33,8 +35,13 @@ function bustCache(prefix) {
   }
 }
 
+// Prefixes without a trailing slash: bustCache('/riders') clears '/riders/x'.
+const PUBLIC_PREFIXES = ['/rankings', '/classes', '/trends', '/stats', '/arenas', '/venues', '/series', '/events', '/horses', '/riders', '/comparison', '/news'];
+
+// Public data changed: drop this API's cache and the web app's fetch cache.
 function bustPublic() {
-  for (const p of ['/rankings', '/classes', '/trends/', '/stats/', '/arenas', '/venues/', '/series', '/events/', '/horses/', '/riders/', '/comparison', '/news']) bustCache(p);
+  for (const p of PUBLIC_PREFIXES) bustCache(p);
+  revalidateWeb();
 }
 
 module.exports = { mountCache, bustCache, bustPublic };

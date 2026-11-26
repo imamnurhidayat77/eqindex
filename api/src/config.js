@@ -26,6 +26,10 @@ module.exports = {
   UPLOAD_MAX_FILES: Math.max(1, parseInt(process.env.UPLOAD_MAX_FILES || '5', 10) || 5),
   UPLOAD_MAX_BYTES: Math.max(1024, parseInt(process.env.UPLOAD_MAX_BYTES || '20971520', 10) || 20971520),
   INBOUND_WEBHOOK_SECRET: process.env.INBOUND_WEBHOOK_SECRET || '',
+  // Web app cache flush after imports/merges (web/app/api/revalidate).
+  // Both unset = no-op, the web cache then expires on its own revalidate timer.
+  WEB_REVALIDATE_URL: process.env.WEB_REVALIDATE_URL || '',
+  REVALIDATE_SECRET: process.env.REVALIDATE_SECRET || '',
   // Dev-only escape hatch: when email has no API key, log auth links to the
   // server console and let the flow succeed instead of 503ing. NEVER set in
   // production — the emailed link IS the ownership proof for guest claims.

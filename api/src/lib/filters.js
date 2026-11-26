@@ -1,5 +1,4 @@
 const pool = require('../db');
-const { bustCache } = require('../middleware/cache');
 
 // Shared round-level filters: ?season=&region=&arena=&height_min=&height_max=&since=YYYY-MM-DD
 // Aliases expected in query: rr (round_results), c (classes), e (events).
@@ -52,8 +51,5 @@ async function roundFiltersVis(q) {
     conds.push(`NOT (c.class_type = ANY ($${params.length}))`);
   }
   return { clause: 'WHERE ' + conds.join(' AND '), params };
-}
-function bustPublic() {
-  for (const p of ['/rankings', '/classes', '/trends/', '/stats/', '/arenas', '/venues', '/series', '/events/', '/horses/', '/riders/', '/comparison']) bustCache(p);
 }
 module.exports = { roundFilters, roundFiltersVis, visSql, excludedClassTypes, bustVisibility };
