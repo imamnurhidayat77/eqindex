@@ -19,7 +19,7 @@
     "recharts": "^2.15.4"
   },
   "devDependencies": {
-    "autoprefixer": "^10.6.1",
+    "autoprefixer": "^10.6.2",
     "postcss": "^8.5.28",
     "tailwindcss": "^3.4.19"
   }
