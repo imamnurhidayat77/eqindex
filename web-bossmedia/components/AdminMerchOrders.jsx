@@ -165,15 +165,22 @@ export function AdminMerchOrderDetail({ orderRef }) {
           <section className={s.panel} aria-label="History">
             <span className={s.label}>History</span>
             <ol className={s.timeline}>
-              {[...o.events].reverse().map((e) => (
-                <li key={e.id}>
-                  <strong>{statusName(e.status)}</strong> <small className={s.muted}>{day(e.at)}</small>
-                  {e.note && <p className={s.note}>{e.note}</p>}
-                  {e.proofPath && (
-                    <a href={`${API}${e.proofPath}`} target="_blank" rel="noreferrer" className={s.thumbLink}>
-                      <SmartImage src={`${API}${e.proofPath}`} alt={`Proof sent ${day(e.at)}`} className={s.thumb} width={160} height={120} unoptimized />
-                    </a>
-                  )}
+              {[...o.events].reverse().map((e, i) => (
+                <li key={e.id} className={s.event} data-latest={i === 0 ? 'true' : undefined}>
+                  <span className={s.eventDot} aria-hidden="true" />
+                  <div className={s.eventBody}>
+                    <div className={s.eventHead}>
+                      <strong>{statusName(e.status)}</strong>
+                      <time className={s.muted} dateTime={e.at}>{day(e.at)}</time>
+                    </div>
+                    {e.note && <p className={s.note}>{e.note}</p>}
+                    {e.proofPath && (
+                      <a href={`${API}${e.proofPath}`} target="_blank" rel="noreferrer" className={s.thumbLink} aria-label={`Open the proof sent ${day(e.at)}`}>
+                        <SmartImage src={`${API}${e.proofPath}`} alt={`Proof sent ${day(e.at)}`} className={s.thumb} width={320} height={240} unoptimized />
+                        <span className={s.thumbHint}>View full size ↗</span>
+                      </a>
+                    )}
+                  </div>
                 </li>
               ))}
             </ol>
