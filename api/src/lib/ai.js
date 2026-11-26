@@ -1,39 +1,12 @@
-// AI fallback for the Import Assistant — Muse Spark via the Go
-// subscription (server-to-server; the key never reaches the browser).
-// Used ONLY when deterministic rules can't map an organiser file.
-// Every AI-mapped row still goes through dry-run preview + human Commit.
-const KEY = process.env.OPENCODE_GO_API_KEY || process.env.ZEN_API_KEY || '';
-const BASE = 'https://opencode.ai/zen/go/v1';
-const MODEL = process.env.AI_MODEL || 'muse-spark-1.3-contributor';
-
-function extractText(j) {
-  if (typeof j.output_text === 'string' && j.output_text) return j.output_text;
-  const parts = [];
-  for (const item of j.output || []) {
-    for (const c of item.content || []) {
-      if (typeof c.text === 'string') parts.push(c.text);
-    }
-  }
-  return parts.join('\n');
-}
+// AI fallback for the Import Assistant (server-to-server; the key never
+// reaches the browser). Used ONLY when deterministic rules can't map an
+// organiser file; every AI-mapped row still goes through dry-run preview +
+// human Commit. The provider (OpenCode Go by default, or Anthropic, OpenAI,
+// Gemini, any OpenAI-compatible server) is env config — see lib/aiProvider.js.
+const { complete, aiConfigured, promptLimit } = require('./aiProvider');
 
 async function aiJsonArray({ input, maxTokens = 4000, session }) {
-  if (!KEY) throw new Error('AI not configured — set OPENCODE_GO_API_KEY on the API service');
-  const res = await fetch(`${BASE}/responses`, {
-    method: 'POST',
-    headers: {
-      'User-Agent': 'eqindex-import/1.0',
-      Authorization: `Bearer ${KEY}`,
-      'Content-Type': 'application/json',
-      'x-opencode-session': session || `import-${Date.now().toString(36)}`,
-    },
-    body: JSON.stringify({ model: MODEL, input, reasoning: { effort: 'low' }, max_output_tokens: maxTokens }),
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    throw new Error(`AI request failed (${res.status}) ${t.slice(0, 120)}`);
-  }
-  let text = extractText(await res.json());
+  let { text } = await complete({ prompt: input, maxTokens, session, json: true });
   // Tolerate chatty models: strip code fences, then locate the JSON payload.
   text = String(text || '').replace(/```(?:json)?/gi, '```').replace(/```/g, '');
   const a = text.indexOf('['), b = text.lastIndexOf(']');
@@ -64,44 +37,10 @@ async function aiJsonArray({ input, maxTokens = 4000, session }) {
   fail('AI returned malformed JSON');
 }
 
-async function aiResponses({ input, tools, maxTokens = 3000, session, model }) {
-  if (!KEY) throw new Error('AI not configured — set OPENCODE_GO_API_KEY on the API service');
-  const body = {
-    model: model || MODEL,
-    input,
-    reasoning: { effort: 'low' },
-    max_output_tokens: maxTokens,
-  };
-  if (tools?.length) body.tools = tools;
-  const res = await fetch(`${BASE}/responses`, {
-    method: 'POST',
-    headers: {
-      'User-Agent': 'eqindex-import/1.0',
-      Authorization: `Bearer ${KEY}`,
-      'Content-Type': 'application/json',
-      'x-opencode-session': session || `chat-${Date.now().toString(36)}`,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    throw new Error(`AI request failed (${res.status}) ${t.slice(0, 120)}`);
-  }
-  const j = await res.json();
-  const calls = [];
-  for (const item of j.output || []) {
-    if (item.type === 'function_call' && item.name) {
-      calls.push({ name: item.name, args: item.arguments || '{}' });
-    }
-  }
-  return { text: extractText(j).trim(), calls };
-}
-
-const PROMPT_MAX_CHARS = 15000;
-
 // Fit a prompt under max chars: the head (system prompt) is always kept
 // whole, the tail keeps its END (newest turns) — never the other way round.
-function fitPrompt(head, tail, max = PROMPT_MAX_CHARS) {
+// The limit is the active provider's (lib/aiProvider.js).
+function fitPrompt(head, tail, max = promptLimit()) {
   const sep = '\n\n';
   const room = Math.max(0, max - head.length - sep.length);
   return `${head}${sep}${tail.length > room ? tail.slice(tail.length - room) : tail}`;
@@ -110,9 +49,12 @@ function fitPrompt(head, tail, max = PROMPT_MAX_CHARS) {
 const renderTurns = (messages) => messages
   .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n');
 
+// The system prompt goes to the provider separately; the transcript gets
+// what is left of the provider's prompt budget, newest turns kept.
+const fitTurns = (system, transcript) => fitPrompt('', transcript, Math.max(0, promptLimit() - system.length)).trimStart();
+
 async function aiChat({ system, messages, maxTokens = 3000, session }) {
-  const input = fitPrompt(system, `${renderTurns(messages)}\n\nAssistant:`);
-  const { text } = await aiResponses({ input, maxTokens, session });
+  const { text } = await complete({ system, prompt: fitTurns(system, `${renderTurns(messages)}\n\nAssistant:`), maxTokens, session });
   if (!text) throw new Error('AI returned an empty reply — try again');
   return text;
 }
@@ -121,17 +63,17 @@ async function aiChat({ system, messages, maxTokens = 3000, session }) {
 // tools + lookups; nothing here writes). Transcript-based: each round the
 // model either answers or emits function calls, whose results are pasted
 // back as text. Bounded by maxIter so interactive chats stay fast.
-async function aiAgent({ system, messages, tools, runTool, toolCtx, maxIter = 2, maxTokens = 3000, session, model }) {
+async function aiAgent({ system, messages, tools, runTool, toolCtx, maxIter = 2, maxTokens = 3000, session }) {
   let transcript = renderTurns(messages);
   const toolUses = [];
   const cache = new Map(); // same tool+args twice → serve cached, don't re-run
   for (let i = 0; i <= maxIter; i++) {
     const last = i === maxIter;
-    const { text, calls } = await aiResponses({
-      input: fitPrompt(system, `${transcript}\n\nAssistant:`),
+    const { text, calls } = await complete({
+      system,
+      prompt: fitTurns(system, `${transcript}\n\nAssistant:`),
       tools: last ? undefined : tools,
       maxTokens, session: `${session || `agent-${Date.now().toString(36)}`}-r${i}`,
-      model,
     });
     const valid = (calls || []).slice(0, 3);
     if (!valid.length) {
@@ -155,7 +97,7 @@ async function aiAgent({ system, messages, tools, runTool, toolCtx, maxIter = 2,
     }
     transcript += '\nContinue. Answer concisely once you have what you need.';
   }
-  const { text } = await aiResponses({ input: fitPrompt(system, `${transcript}\n\nAssistant:`), maxTokens, session, model });
+  const { text } = await complete({ system, prompt: fitTurns(system, `${transcript}\n\nAssistant:`), maxTokens, session });
   if (!text) throw new Error('AI returned an empty reply — try again');
   return { reply: text, toolUses };
 }
@@ -312,4 +254,4 @@ async function aiMapRecords({ text, hint, session, onChunk }) {
   return { records: kept, dropped: dropped.length, prose, truncated };
 }
 
-module.exports = { aiMapRecords, aiChat, aiAgent, aiResponses, cleanRecord, fitPrompt, aiAvailable: () => !!KEY };
+module.exports = { aiMapRecords, aiChat, aiAgent, cleanRecord, fitPrompt, aiAvailable: () => aiConfigured() };
