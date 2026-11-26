@@ -138,3 +138,22 @@
 @media (max-width: 420px) { .proofActions { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .viewerTab, .viewerTab::after { transition: none; } }
 @media (max-width: 560px) { .viewerMeta { display: none; } }
+/* Proof gallery: big view + label, arrows, thumbnail strip */
+.gallery { display: grid; gap: 10px; min-width: 0; }
+.galleryStage { position: relative; min-width: 0; }
+.viewLabel { position: absolute; top: 12px; left: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.75); color: #fff; font-size: 12px; font-weight: 800; pointer-events: none; }
+.counter { position: absolute; top: 12px; right: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.75); color: #ddd; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; pointer-events: none; }
+.navBtn { position: absolute; top: 50%; display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid rgba(255,255,255,0.15); border-radius: 50%; background: rgba(12, 12, 12, 0.8); color: #fff; font-size: 24px; line-height: 1; cursor: pointer; transform: translateY(-50%); transition: background 150ms ease-out, transform 150ms ease-out; }
+.navPrev { left: 12px; }
+.navNext { right: 12px; }
+.navBtn:active { transform: translateY(-50%) scale(0.94); }
+.navBtn:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .navBtn:hover { background: #1f1f1f; } }
+.strip { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px; }
+.stripItem { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 3; padding: 4px; border: 1.5px solid #2c2c2c; border-radius: 8px; background: #161616; cursor: pointer; overflow: hidden; transition: border-color 150ms ease-out; }
+.stripItem[aria-current] { border-color: #FFC400; }
+.stripItem:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .stripItem:not([aria-current]):hover { border-color: #666; } }
+.stripLabel { position: absolute; left: 4px; right: 4px; bottom: 4px; padding: 1px 6px; border-radius: 999px; background: rgba(0, 0, 0, 0.75); color: #fff; font-size: 10px; font-weight: 700; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stripPdf { display: grid; place-items: center; width: 32px; height: 40px; border-radius: 5px; background: #e5484d; color: #fff; font-size: 10px; font-weight: 900; }
+@media (prefers-reduced-motion: reduce) { .navBtn, .stripItem { transition: none; } .navBtn:active { transform: translateY(-50%); } }

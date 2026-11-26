@@ -199,3 +199,15 @@ test('fulfilment moves one step at a time', () => {
   assert.ok(parseFulfilment('delivered', { status: 'shipped' }).error, 'no going back');
 });
 
+
+test('proof upload: 1 to 8 files, 40 MB in all, short labels', () => {
+  const { parseProofUpload } = require('./src/routes/merch.js');
+  const file = (n = 10) => ({ buffer: Buffer.alloc(n, 1) });
+  assert.match(parseProofUpload([], []).error, /at least one/);
+  assert.match(parseProofUpload(Array.from({ length: 9 }, () => file()), []).error, /at most 8/);
+  assert.match(parseProofUpload([file(), { buffer: Buffer.alloc(0) }], []).error, /empty/);
+  assert.match(parseProofUpload([file(21 * 1024 * 1024), file(20 * 1024 * 1024)], []).error, /40 MB/);
+  const ok = parseProofUpload([file(), file(), file()], JSON.stringify(['Front', 'x'.repeat(50)]));
+  assert.deepEqual(ok.labels, ['Front', 'x'.repeat(30), '']);
+  assert.deepEqual(parseProofUpload([file()], 'not json').labels, ['']);
+});

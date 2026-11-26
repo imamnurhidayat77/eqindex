@@ -297,15 +297,17 @@ function merchOrderLinks({ orders }) {
 
 // Art proof ready for the buyer. The thumbnail is a convenience only: many
 // inboxes block images, so the button and text carry the whole message.
-function merchProofReady({ name, ref, productLabel, note, link, proofUrl }) {
+function merchProofReady({ name, ref, productLabel, note, link, proofUrl, views = 1 }) {
+  // Several files: say how many views wait on the order page.
+  const more = views > 1 ? ` It has ${views} views (for example front, back and sides): see them all on your order page.` : '';
   return {
     subject: `Your artwork proof is ready — order ${ref}`,
-    text: `Hi ${name || 'there'},\n\nYour artwork proof for the ${productLabel} order is ready.${note ? `\n\nNote from us: ${note}` : ''}\n\nCheck it and approve it, or ask for changes: ${link}\n\nYou pay only after you approve the proof.\n\nReference: ${ref}`,
+    text: `Hi ${name || 'there'},\n\nYour artwork proof for the ${productLabel} order is ready.${more}${note ? `\n\nNote from us: ${note}` : ''}\n\nCheck it and approve it, or ask for changes: ${link}\n\nYou pay only after you approve the proof.\n\nReference: ${ref}`,
     html: layout({
       preheader: 'Approve it, or tell us what to change.',
       eyebrow: `ORDER ${escHtml(ref)}`,
       title: 'Your artwork proof is ready.',
-      body: p(`Hi ${escHtml(firstName(name))}, here is the proof for your ${escHtml(productLabel)} order.`) +
+      body: p(`Hi ${escHtml(firstName(name))}, here is the proof for your ${escHtml(productLabel)} order.${escHtml(more)}`) +
         (proofUrl ? `<a href="${link}"><img src="${proofUrl}" width="540" alt="Artwork proof for order ${escHtml(ref)}" style="display:block;width:100%;max-width:540px;height:auto;border:1px solid #dddddd;border-radius:8px;margin:8px 0;"></a>` : '') +
         (note ? p(`<strong>Note from us:</strong> ${escHtml(note)}`) : '') +
         p('Approve it, or tell us what to change. <strong>You pay only after you approve it.</strong>') +

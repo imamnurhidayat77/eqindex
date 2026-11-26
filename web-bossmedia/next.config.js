@@ -61,7 +61,7 @@ module.exports = {
     }, {
       // A merch proof (PDF) is shown inside its own order page, so only this
       // path may be framed, and only by this site. Later rules win.
-      source: '/api/merch/orders/:ref/proofs/:eventId',
+      source: '/api/merch/orders/:ref/proofs/:path*',
       headers: [
         { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
         { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },

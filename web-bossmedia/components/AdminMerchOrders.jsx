@@ -174,18 +174,21 @@ export function AdminMerchOrderDetail({ orderRef }) {
                       <time className={s.muted} dateTime={e.at}>{day(e.at)}</time>
                     </div>
                     {e.note && <p className={s.note}>{e.note}</p>}
-                    {e.proofPath && e.proofKind === 'pdf' && (
-                      <a href={`${API}${e.proofPath}`} target="_blank" rel="noreferrer" className={s.pdfCard}>
-                        <span className={s.pdfBadge} aria-hidden="true">PDF</span>
-                        <span>Proof {o.ref}<small className={s.muted}>Open in a new tab ↗</small></span>
-                      </a>
-                    )}
-                    {e.proofPath && e.proofKind !== 'pdf' && (
-                      <a href={`${API}${e.proofPath}`} target="_blank" rel="noreferrer" className={s.thumbLink} aria-label={`Open the proof sent ${day(e.at)}`}>
-                        <SmartImage src={`${API}${e.proofPath}`} alt={`Proof sent ${day(e.at)}`} className={s.thumb} width={320} height={240} unoptimized
-                          style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                        <span className={s.thumbHint}>View full size ↗</span>
-                      </a>
+                    {e.proofFiles?.length > 0 && (
+                      <ul className={s.proofThumbs} aria-label="Proof files">
+                        {e.proofFiles.map((f, n) => (
+                          <li key={f.path}>
+                            <a href={`${API}${f.path}`} target="_blank" rel="noreferrer" className={s.thumbLink}
+                              aria-label={`Open ${f.label || `file ${n + 1}`} of the proof sent ${day(e.at)}`}>
+                              {f.kind === 'pdf'
+                                ? <span className={s.pdfBadge} aria-hidden="true">PDF</span>
+                                : <SmartImage src={`${API}${f.path}`} alt={f.label || `Proof file ${n + 1}`} className={s.thumb} width={f.width || 320} height={f.height || 240} unoptimized
+                                  style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+                              {f.label && <span className={s.thumbLabel}>{f.label}</span>}
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
                 </li>
@@ -236,86 +239,123 @@ function CancelOrder({ order, onCancelled }) {
 // Drop or pick the proof, see it before it goes to the buyer. The server
 // re-checks type and size; this only saves a round trip.
 const PROOF_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+const PROOF_MAX_FILES = 8; // same limits as the API (merch.js)
+const PROOF_MAX_TOTAL = 40 * 1024 * 1024;
+// Labels offered in order, so four files dropped at once read as the four views.
+const VIEW_LABELS = ['Front', 'Back', 'Left', 'Right', 'Detail'];
 const mb = (n) => `${(n / 1024 / 1024).toFixed(n < 1024 * 1024 ? 2 : 1)} MB`;
+let fileSeq = 0;
 
+// Drop or pick one or more proof files (front, back, sides…), label and
+// order them, and see each before it goes to the buyer. The server re-checks
+// every file; these checks only save a round trip.
 function SendProof({ orderRef, resend, onSent }) {
   const notify = useNotify();
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null); // { url, w, h }
+  const [items, setItems] = useState([]); // { id, file, url, pdf, w, h, label }
   const [error, setError] = useState('');
   const [over, setOver] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const inputRef = useRef(null);
-  useEffect(() => () => { if (preview?.url) URL.revokeObjectURL(preview.url); }, [preview]);
+  const urls = useRef(new Set());
+  useEffect(() => () => { urls.current.forEach((u) => URL.revokeObjectURL(u)); }, []);
 
-  function pick(f) {
-    if (!f) return;
-    if (!PROOF_TYPES.includes(f.type)) { setError('Use a PDF, PNG, JPEG or WebP file.'); return; }
-    if (f.size > PROOF_MAX_BYTES) { setError(`That file is ${mb(f.size)}. The proof must be 15 MB or smaller.`); return; }
-    setError('');
-    setFile(f);
-    const url = URL.createObjectURL(f);
-    if (f.type === 'application/pdf') { setPreview({ url, pdf: true }); return; }
-    const img = new Image();
-    img.onload = () => setPreview({ url, w: img.naturalWidth, h: img.naturalHeight });
-    img.onerror = () => { URL.revokeObjectURL(url); setFile(null); setError('That image could not be read. Try another file.'); };
-    img.src = url;
-  }
-  function clear() {
-    setFile(null);
-    setPreview(null);
+  function add(list) {
+    const files = [...(list || [])];
+    if (!files.length) return;
+    const room = PROOF_MAX_FILES - items.length;
+    const problems = [];
+    const ok = [];
+    for (const f of files) {
+      if (ok.length >= room) { problems.push(`At most ${PROOF_MAX_FILES} files per proof.`); break; }
+      if (!PROOF_TYPES.includes(f.type)) { problems.push(`${f.name}: use a PDF, PNG, JPEG or WebP file.`); continue; }
+      if (f.size > PROOF_MAX_BYTES) { problems.push(`${f.name} is ${mb(f.size)}, 15 MB at most.`); continue; }
+      ok.push(f);
+    }
+    const total = [...items.map((x) => x.file), ...ok].reduce((n, f) => n + f.size, 0);
+    if (total > PROOF_MAX_TOTAL) { setError(`All files together are ${mb(total)}, 40 MB at most.`); return; }
+    setError(problems.join(' '));
+    const next = ok.map((f, i) => {
+      const url = URL.createObjectURL(f);
+      urls.current.add(url);
+      return { id: ++fileSeq, file: f, url, pdf: f.type === 'application/pdf', w: 0, h: 0, label: VIEW_LABELS[items.length + i] || '' };
+    });
+    setItems((cur) => [...cur, ...next]);
+    for (const it of next.filter((x) => !x.pdf)) {
+      const img = new Image();
+      img.onload = () => setItems((cur) => cur.map((x) => (x.id === it.id ? { ...x, w: img.naturalWidth, h: img.naturalHeight } : x)));
+      img.onerror = () => { setItems((cur) => cur.filter((x) => x.id !== it.id)); setError(`${it.file.name} could not be read.`); };
+      img.src = it.url;
+    }
     if (inputRef.current) inputRef.current.value = '';
   }
+  const patch = (id, p) => setItems((cur) => cur.map((x) => (x.id === id ? { ...x, ...p } : x)));
+  const remove = (id) => setItems((cur) => cur.filter((x) => x.id !== id));
+  const move = (i, by) => setItems((cur) => {
+    const j = i + by;
+    if (j < 0 || j >= cur.length) return cur;
+    const next = [...cur];
+    [next[i], next[j]] = [next[j], next[i]];
+    return next;
+  });
 
   async function send(e) {
     e.preventDefault();
-    if (!file) { setError('Add the proof image first.'); return; }
+    if (!items.length) { setError('Add at least one proof file.'); return; }
     const form = new FormData();
-    form.append('proof', file);
+    for (const it of items) form.append('proof', it.file);
+    form.append('labels', JSON.stringify(items.map((it) => it.label.trim())));
     form.append('note', note);
     setBusy(true);
     try {
       const j = await studioFetch(`/admin/merch/orders/${orderRef}/proof`, { method: 'POST', form });
       notify(j.data?.mailed ? 'Proof sent, the buyer has been emailed' : 'Proof saved, but the email failed. Send the buyer their order link.', !j.data?.mailed);
-      clear();
+      setItems([]);
       setNote('');
       onSent();
     } catch (err) { notify(err.message, true); }
     setBusy(false);
   }
 
+  const inputId = `proof-${orderRef}`;
   return (
     <form className={s.send} onSubmit={send}>
       {resend && <p className={s.hint}>A proof is already waiting for the buyer. A new one replaces it.</p>}
-      <input ref={inputRef} id={`proof-${orderRef}`} type="file" accept={PROOF_TYPES.join(',')} className={s.srOnly}
-        onChange={(e) => pick(e.target.files?.[0])} />
-      {preview ? (
-        <div className={s.proofPreview}>
-          {preview.pdf ? (
-            <iframe src={preview.url} title="PDF proof to send" className={s.proofPdf} />
-          ) : (
-            <a href={preview.url} target="_blank" rel="noreferrer" className={s.proofImgLink} aria-label="Open the proof full size">
-              <SmartImage src={preview.url} alt="Proof to send" width={preview.w} height={preview.h} unoptimized className={s.proofImg} />
-            </a>
-          )}
-          <div className={s.proofMeta}>
-            <span className={s.proofName} title={file.name}>{file.name}</span>
-            <small className={s.muted}>{preview.pdf ? 'PDF' : `${preview.w}×${preview.h}px`} · {mb(file.size)}</small>
-            <div className={s.proofActions}>
-              <label htmlFor={`proof-${orderRef}`} className={s.smallBtn}>Replace</label>
-              <button type="button" className={s.smallBtn} onClick={clear}>Remove</button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <label htmlFor={`proof-${orderRef}`} className={s.drop} data-over={over ? 'true' : undefined}
+      <input ref={inputRef} id={inputId} type="file" multiple accept={PROOF_TYPES.join(',')} className={s.srOnly}
+        onChange={(e) => add(e.target.files)} />
+      {items.length > 0 && (
+        <ol className={s.files} aria-label="Proof files, in the order the buyer sees them">
+          {items.map((it, i) => (
+            <li key={it.id} className={s.fileCard}>
+              <a href={it.url} target="_blank" rel="noreferrer" className={s.fileThumb} aria-label={`Open ${it.file.name}`}>
+                {it.pdf
+                  ? <span className={s.pdfBadge} aria-hidden="true">PDF</span>
+                  : <SmartImage src={it.url} alt={`Proof file ${i + 1}`} width={it.w || 400} height={it.h || 300} unoptimized style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+                <span className={s.fileNum} aria-hidden="true">{i + 1}</span>
+              </a>
+              <input className={s.fileLabel} value={it.label} maxLength={30} list="proof-views" placeholder="Label, e.g. Front"
+                aria-label={`Label for file ${i + 1}`} onChange={(e) => patch(it.id, { label: e.target.value })} />
+              <div className={s.fileRow}>
+                <small className={s.muted} title={`${it.file.name} · ${it.pdf ? 'PDF' : `${it.w}×${it.h}px`} · ${mb(it.file.size)}`}>{mb(it.file.size)}</small>
+                <span className={s.fileTools}>
+                  <button type="button" className={s.iconBtn} onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move file ${i + 1} earlier`}>←</button>
+                  <button type="button" className={s.iconBtn} onClick={() => move(i, 1)} disabled={i === items.length - 1} aria-label={`Move file ${i + 1} later`}>→</button>
+                  <button type="button" className={s.iconBtn} onClick={() => remove(it.id)} aria-label={`Remove file ${i + 1}`}>×</button>
+                </span>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+      <datalist id="proof-views">{VIEW_LABELS.map((v) => <option key={v} value={v} />)}</datalist>
+      {items.length < PROOF_MAX_FILES && (
+        <label htmlFor={inputId} className={s.drop} data-over={over ? 'true' : undefined} data-compact={items.length ? 'true' : undefined}
           onDragOver={(e) => { e.preventDefault(); setOver(true); }}
           onDragLeave={() => setOver(false)}
-          onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files?.[0]); }}>
-          <span className={s.dropIcon} aria-hidden="true">↑</span>
-          <span className={s.dropTitle}>Drop the proof here or <u>browse</u></span>
-          <small className={s.muted}>PDF, PNG, JPEG or WebP, up to 15 MB</small>
+          onDrop={(e) => { e.preventDefault(); setOver(false); add(e.dataTransfer.files); }}>
+          <span className={s.dropIcon} aria-hidden="true">{items.length ? '+' : '↑'}</span>
+          <span className={s.dropTitle}>{items.length ? <>Add more views or <u>browse</u></> : <>Drop the proof files here or <u>browse</u></>}</span>
+          <small className={s.muted}>Front, back, sides, details · PDF, PNG, JPEG or WebP · up to {PROOF_MAX_FILES} files</small>
         </label>
       )}
       {error && <p className={s.err} role="alert">{error}</p>}
@@ -323,7 +363,9 @@ function SendProof({ orderRef, resend, onSent }) {
         <textarea rows={2} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)}
           placeholder="e.g. We moved the club logo up 2 cm so it clears the zip" />
       </label>
-      <div><button className="st-btn" type="submit" disabled={busy || !file}>{busy ? 'Sending…' : 'Send proof to buyer'}</button></div>
+      <div><button className="st-btn" type="submit" disabled={busy || !items.length}>
+        {busy ? 'Sending…' : items.length > 1 ? `Send ${items.length} views to buyer` : 'Send proof to buyer'}
+      </button></div>
     </form>
   );
 }

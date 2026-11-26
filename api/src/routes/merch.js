@@ -252,6 +252,10 @@ const PROOF_MIMES = ['image/png', 'image/jpeg', 'image/webp'];
 // re-encoded to a bounded JPEG.
 const PROOF_PDF = 'application/pdf';
 const PROOF_MAX_PX = 2400;
+// One proof can show several views (front, back, left, right, detail).
+const PROOF_MAX_FILES = 8;
+const PROOF_MAX_TOTAL = 40 * 1024 * 1024; // all files of one proof, held in memory
+const PROOF_LABEL_MAX = 30;
 const NOTE_MAX = 1000;
 const CHANGE_NOTE_MIN = 3;
 const ARTWORK_LINK_SECONDS = 15 * 60;
@@ -266,10 +270,30 @@ const canCancel = (status, isAdmin) => (isAdmin ? ADMIN_CANCEL_FROM : BUYER_CANC
 // budget on at most this many unpaid orders at once (H5: anonymous orders
 // could lock every merch budget without paying).
 const MAX_OPEN_SPONSOR_ORDERS = 3;
-const proofKey = (orderId, eventId, kind = 'image') => `merch/proofs/${orderId}/${eventId}.${kind === 'pdf' ? 'pdf' : 'jpg'}`;
-// Whether a proof event holds a PDF (no column for it: the stored key says).
+const ext = (kind) => (kind === 'pdf' ? 'pdf' : 'jpg');
+// Proofs sent before migration 119 hold one file at <event>.<ext>; later
+// ones one file per view at <event>/<position>.<ext> (merch_proof_files).
+const proofKey = (orderId, eventId, kind = 'image') => `merch/proofs/${orderId}/${eventId}.${ext(kind)}`;
+const proofFileKey = (orderId, eventId, position, kind) => `merch/proofs/${orderId}/${eventId}/${position}.${ext(kind)}`;
+// Whether a single-file (pre-119) proof is a PDF: the stored key says.
 const proofKind = async (orderId, eventId) => ((await mediaStore.headKey(proofKey(orderId, eventId, 'pdf'))) ? 'pdf' : 'image');
 const proofPath = (ref, eventId, token) => `/api/merch/orders/${ref}/proofs/${eventId}?t=${token}`;
+const proofFilePath = (ref, eventId, position, token) => `/api/merch/orders/${ref}/proofs/${eventId}/files/${position}?t=${token}`;
+
+// Shape check of a proof upload (files from multer, labels from the form):
+// 1 to PROOF_MAX_FILES files, PROOF_MAX_TOTAL bytes in all, short labels.
+// File contents are checked by type sniffing in the route.
+function parseProofUpload(files, rawLabels) {
+  const list = Array.isArray(files) ? files : [];
+  if (!list.length) return { error: 'add at least one proof file' };
+  if (list.length > PROOF_MAX_FILES) return { error: `a proof can have at most ${PROOF_MAX_FILES} files` };
+  if (list.some((f) => !f?.buffer?.length)) return { error: 'a proof file is empty' };
+  if (list.reduce((n, f) => n + f.buffer.length, 0) > PROOF_MAX_TOTAL) return { error: 'the proof files are 40 MB at most in all' };
+  let labels = rawLabels;
+  if (typeof labels === 'string') { try { labels = JSON.parse(labels); } catch { labels = []; } }
+  labels = Array.isArray(labels) ? labels : [];
+  return { files: list, labels: list.map((_, i) => str(labels[i], PROOF_LABEL_MAX)) };
+}
 
 // Link token for mails sent after the order (the buyer's own token is only
 // stored hashed). Keyed on that stored hash: only someone with the database
@@ -304,15 +328,26 @@ function parseProofResponse(body) {
   return { decision, note };
 }
 
-// Timeline for the order page. Proof events carry their file link and
-// kind ('image' or 'pdf', from kinds[eventId]).
-function publicEvents(o, events, kinds = {}) {
+// Timeline for the order page. Proof events carry their files:
+// files[eventId] = [{ position, label, kind, width, height }] for proofs
+// with several views; older single-file proofs give kinds[eventId] instead.
+// proofPath stays the first file (emails and older pages use it).
+function publicEvents(o, events, { files = {}, kinds = {} } = {}) {
   const token = mailToken(o);
-  return events.map((e) => ({
-    id: String(e.id), status: e.status, note: e.note, at: e.created_at,
-    proofPath: e.status === 'proof_sent' ? proofPath(o.ref, e.id, token) : null,
-    proofKind: e.status === 'proof_sent' ? kinds[String(e.id)] || 'image' : null,
-  }));
+  return events.map((e) => {
+    const id = String(e.id);
+    const proof = e.status === 'proof_sent';
+    const rows = files[id] || [];
+    const proofFiles = !proof ? null : rows.length
+      ? rows.map((f) => ({ label: f.label, kind: f.kind, width: f.width, height: f.height, path: proofFilePath(o.ref, id, f.position, token) }))
+      : [{ label: '', kind: kinds[id] || 'image', width: null, height: null, path: proofPath(o.ref, id, token) }];
+    return {
+      id, status: e.status, note: e.note, at: e.created_at,
+      proofPath: proof ? proofPath(o.ref, id, token) : null,
+      proofKind: proof ? proofFiles[0].kind : null,
+      proofFiles,
+    };
+  });
 }
 
 // Payment (F4): after the proof is approved the buyer pays the total they
@@ -749,8 +784,16 @@ module.exports = function mountMerchRoutes(app) {
       pool.query('SELECT id, status, note, created_at FROM merch_order_events WHERE order_id = $1 ORDER BY created_at, id', [o.id]),
     ]);
     const proofs = events.rows.filter((e) => e.status === 'proof_sent');
-    const kinds = Object.fromEntries(await Promise.all(proofs.map(async (e) => [String(e.id), await proofKind(o.id, e.id)])));
-    const data = { ...publicOrder(o, lines.rows), events: publicEvents(o, events.rows, kinds) };
+    const files = {};
+    if (proofs.length) {
+      const r = await pool.query(
+        `SELECT event_id, position, label, kind, width, height FROM merch_proof_files WHERE event_id = ANY($1::BIGINT[]) ORDER BY event_id, position`,
+        [proofs.map((e) => e.id)]);
+      for (const f of r.rows) (files[String(f.event_id)] ||= []).push(f);
+    }
+    const legacy = proofs.filter((e) => !files[String(e.id)]);
+    const kinds = Object.fromEntries(await Promise.all(legacy.map(async (e) => [String(e.id), await proofKind(o.id, e.id)])));
+    const data = { ...publicOrder(o, lines.rows), events: publicEvents(o, events.rows, { files, kinds }) };
     if (isAdmin) {
       const logos = await pool.query(`SELECT id, r2_key, width, height FROM merch_order_logos WHERE order_id = $1 AND r2_key <> ''`, [o.id]);
       data.artwork = await Promise.all(logos.rows.map(async (l) => ({
@@ -808,23 +851,30 @@ module.exports = function mountMerchRoutes(app) {
     res.json(sent);
   }));
 
-  // A proof image of an order, for the same viewers as the order itself
-  // (the emailed thumbnail uses the order's mail token).
-  app.get('/api/merch/orders/:ref/proofs/:eventId', asyncH(async (req, res) => {
+  // A proof file of an order, for the same viewers as the order itself
+  // (the emailed thumbnail uses the order's mail token). Without a position:
+  // the first file (single-file proofs from before 119 live at their own key).
+  async function sendProofFile(req, res, position) {
     const found = await viewableOrder(req, { admin: true });
     const eventId = String(req.params.eventId || '');
-    if (!found || !/^\d{1,18}$/.test(eventId)) return res.status(404).json({ error: 'proof not found' });
+    if (!found || !/^\d{1,18}$/.test(eventId) || !(position == null || /^[0-7]$/.test(position))) return res.status(404).json({ error: 'proof not found' });
     const ev = await pool.query(`SELECT id FROM merch_order_events WHERE id = $1 AND order_id = $2 AND status = 'proof_sent'`, [eventId, found.o.id]);
     if (!ev.rowCount) return res.status(404).json({ error: 'proof not found' });
-    const kind = await proofKind(found.o.id, eventId);
+    const row = (await pool.query(
+      `SELECT position, kind FROM merch_proof_files WHERE event_id = $1 AND position = $2`, [eventId, position ?? 0])).rows[0];
+    if (!row && position != null && position !== '0') return res.status(404).json({ error: 'proof not found' });
+    const kind = row ? row.kind : await proofKind(found.o.id, eventId);
+    const key = row ? proofFileKey(found.o.id, eventId, row.position, kind) : proofKey(found.o.id, eventId, kind);
     let obj;
-    try { obj = await mediaStore.getStream(proofKey(found.o.id, eventId, kind)); } catch { return res.status(404).json({ error: 'proof not found' }); }
+    try { obj = await mediaStore.getStream(key); } catch { return res.status(404).json({ error: 'proof not found' }); }
     res.setHeader('Content-Type', kind === 'pdf' ? PROOF_PDF : 'image/jpeg');
-    if (kind === 'pdf') res.setHeader('Content-Disposition', `inline; filename="${found.o.ref}-proof.pdf"`);
+    if (kind === 'pdf') res.setHeader('Content-Disposition', `inline; filename="${found.o.ref}-proof-${Number(row?.position || 0) + 1}.pdf"`);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, max-age=3600');
     obj.stream.pipe(res);
-  }));
+  }
+  app.get('/api/merch/orders/:ref/proofs/:eventId', asyncH((req, res) => sendProofFile(req, res, null)));
+  app.get('/api/merch/orders/:ref/proofs/:eventId/files/:position', asyncH((req, res) => sendProofFile(req, res, String(req.params.position || ''))));
 
   // Buyer answers the latest proof: approve it, or ask for changes with a
   // note. Only the buyer (link token or owner account), only while a proof
@@ -991,22 +1041,30 @@ module.exports = function mountMerchRoutes(app) {
   // Admin: send a proof. The image is re-encoded to a JPEG (max 2400 px,
   // metadata stripped) and kept privately under the event's id. Allowed
   // until the buyer approves; sending again replaces the waiting proof.
-  const proofUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: PROOF_MAX_BYTES, files: 1 } });
-  app.post('/admin/merch/orders/:ref/proof', needRole('ADMIN'), proofUpload.single('proof'), asyncH(async (req, res) => {
+  const proofUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: PROOF_MAX_BYTES, files: PROOF_MAX_FILES } });
+  app.post('/admin/merch/orders/:ref/proof', needRole('ADMIN'), proofUpload.array('proof', PROOF_MAX_FILES), asyncH(async (req, res) => {
     const ref = String(req.params.ref || '').toUpperCase();
     const o = REF_RE.test(ref) ? (await pool.query('SELECT * FROM merch_orders WHERE ref = $1', [ref])).rows[0] : null;
     if (!o) return res.status(404).json({ error: 'order not found' });
     if (!canSendProof(o.status)) return res.status(409).json({ error: `a proof cannot be sent while the order is ${o.status}` });
-    const f = req.file;
-    if (!f?.buffer?.length) return res.status(400).json({ error: 'choose a PDF, PNG, JPEG or WebP proof up to 15 MB' });
+    const up = parseProofUpload(req.files, req.body?.labels);
+    if (up.error) return res.status(400).json({ error: up.error });
     const { fileTypeFromBuffer } = await import('file-type');
-    const real = (await fileTypeFromBuffer(f.buffer).catch(() => null))?.mime || '';
-    const kind = real === PROOF_PDF ? 'pdf' : 'image';
-    if (kind === 'image' && !PROOF_MIMES.includes(real)) return res.status(400).json({ error: 'proof must be a real PDF, PNG, JPEG or WebP file' });
-    const body = kind === 'pdf' ? f.buffer : await require('sharp')(f.buffer).rotate()
-      .resize(PROOF_MAX_PX, PROOF_MAX_PX, { fit: 'inside', withoutEnlargement: true })
-      .flatten({ background: '#ffffff' }).jpeg({ quality: 86 }).toBuffer().catch(() => null);
-    if (!body) return res.status(400).json({ error: 'proof image could not be read' });
+    const sharp = require('sharp');
+    // Every file checked by its bytes: PDFs are kept as sent, images
+    // re-encoded to a bounded JPEG (drops metadata and anything hidden).
+    const ready = [];
+    for (const [i, f] of up.files.entries()) {
+      const real = (await fileTypeFromBuffer(f.buffer).catch(() => null))?.mime || '';
+      const kind = real === PROOF_PDF ? 'pdf' : 'image';
+      if (kind === 'image' && !PROOF_MIMES.includes(real)) return res.status(400).json({ error: `file ${i + 1} must be a real PDF, PNG, JPEG or WebP file` });
+      if (kind === 'pdf') { ready.push({ kind, body: f.buffer, width: null, height: null, label: up.labels[i] }); continue; }
+      const out = await sharp(f.buffer).rotate()
+        .resize(PROOF_MAX_PX, PROOF_MAX_PX, { fit: 'inside', withoutEnlargement: true })
+        .flatten({ background: '#ffffff' }).jpeg({ quality: 86 }).toBuffer({ resolveWithObject: true }).catch(() => null);
+      if (!out) return res.status(400).json({ error: `file ${i + 1} could not be read` });
+      ready.push({ kind, body: out.data, width: out.info.width, height: out.info.height, label: up.labels[i] });
+    }
     const note = str(req.body?.note, NOTE_MAX) || null;
 
     const client = await pool.connect();
@@ -1020,8 +1078,15 @@ module.exports = function mountMerchRoutes(app) {
       eventId = (await client.query(
         `INSERT INTO merch_order_events (order_id, status, note, actor_user_id) VALUES ($1, 'proof_sent', $2, $3) RETURNING id`,
         [o.id, note, req.authUser?.id || null])).rows[0].id;
+      for (const [position, f] of ready.entries()) {
+        await client.query(
+          `INSERT INTO merch_proof_files (event_id, position, label, kind, width, height) VALUES ($1, $2, $3, $4, $5, $6)`,
+          [eventId, position, f.label, f.kind, f.width, f.height]);
+      }
       try {
-        await mediaStore.putBuffer(proofKey(o.id, eventId, kind), body, kind === 'pdf' ? PROOF_PDF : 'image/jpeg');
+        for (const [position, f] of ready.entries()) {
+          await mediaStore.putBuffer(proofFileKey(o.id, eventId, position, f.kind), f.body, f.kind === 'pdf' ? PROOF_PDF : 'image/jpeg');
+        }
       } catch {
         const e = new Error('proof storage unavailable, try again shortly'); e.status = 502; throw e;
       }
@@ -1040,15 +1105,17 @@ module.exports = function mountMerchRoutes(app) {
     try {
       const t = require('../lib/emailTemplates').merchProofReady({
         name: o.buyer_name, ref: o.ref, productLabel: o.quote?.product?.label || o.product_id, note, link,
-        // Inboxes cannot show a PDF inline: the button carries a PDF proof.
-        proofUrl: kind === 'pdf' ? null : `${APP_URL}/api${proofPath(o.ref, eventId, token)}`,
+        // Inboxes cannot show a PDF inline: the first image (if any) is the thumbnail.
+        proofUrl: ready.some((f) => f.kind === 'image')
+          ? `${APP_URL}/api${proofFilePath(o.ref, eventId, ready.findIndex((f) => f.kind === 'image'), token)}` : null,
+        views: ready.length,
       });
       await require('../lib/mailer').sendMail({ to: o.buyer_email, subject: t.subject, text: t.text, html: t.html });
     } catch (e) {
       mailed = false;
       console.error('[merch.proof] buyer mail failed:', e.message);
     }
-    audit(req, 'merch.proof.send', 'merch_order', o.id, { ref: o.ref, event_id: String(eventId) });
+    audit(req, 'merch.proof.send', 'merch_order', o.id, { ref: o.ref, event_id: String(eventId), files: ready.length });
     res.status(201).json({ data: { status: 'proof_sent', eventId: String(eventId), mailed } });
   }));
 
@@ -1069,6 +1136,7 @@ module.exports.parseProofResponse = parseProofResponse;
 module.exports.canSendProof = canSendProof;
 module.exports.tokenOpens = tokenOpens;
 module.exports.mailToken = mailToken;
+module.exports.parseProofUpload = parseProofUpload;
 module.exports.paymentProblem = paymentProblem;
 module.exports.markMerchOrderPaid = markMerchOrderPaid;
 module.exports.markMerchOrderRefunded = markMerchOrderRefunded;

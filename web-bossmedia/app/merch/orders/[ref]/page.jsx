@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import MerchOrderDesign from '../../../../components/MerchOrderDesign';
 import { SiteFooter, SiteHeader } from '../../../../components/figma';
 import SmartImage from '../../../../components/SmartImage';
@@ -218,6 +218,71 @@ function latestProof(order) {
   return { proof: events[at], answer: events.slice(at + 1).find((e) => e.status === 'approved' || e.status === 'changes_requested') };
 }
 
+// The proof's files (front, back, sides…): one large view with its label,
+// arrows and a thumbnail strip; arrow keys and a swipe also move. A PDF
+// shows in the browser's own viewer, with a new-tab link for phones.
+const SWIPE_PX = 40;
+function ProofGallery({ files, orderRef }) {
+  const [i, setI] = useState(0);
+  const touch = useRef(null);
+  const n = files.length;
+  const at = Math.min(i, n - 1);
+  const f = files[at];
+  const src = `${API}${f.path}`;
+  const go = (by) => setI((cur) => (cur + by + n) % n);
+  const onKey = (e) => {
+    if (n < 2) return;
+    if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+  };
+  return (
+    <div className={s.gallery} onKeyDown={onKey}>
+      <div className={s.galleryStage}
+        onTouchStart={(e) => { touch.current = e.touches[0].clientX; }}
+        onTouchEnd={(e) => {
+          const dx = e.changedTouches[0].clientX - (touch.current ?? e.changedTouches[0].clientX);
+          if (n > 1 && Math.abs(dx) > SWIPE_PX) go(dx < 0 ? 1 : -1);
+          touch.current = null;
+        }}>
+        {f.kind === 'pdf' ? (
+          <iframe key={src} src={src} title={`${f.label || 'Artwork proof'} for order ${orderRef} (PDF)`} className={s.proofPdf} />
+        ) : (
+          <a href={src} target="_blank" rel="noreferrer" className={s.proofLink} aria-label={`Open ${f.label || 'the proof'} full size`}>
+            <SmartImage key={src} src={src} alt={`${f.label || 'Artwork proof'} for order ${orderRef}`} className={s.proofImg}
+              width={f.width || 1200} height={f.height || 900} unoptimized priority={at === 0}
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </a>
+        )}
+        {f.label && <span className={s.viewLabel}>{f.label}</span>}
+        {n > 1 && (
+          <>
+            <button type="button" className={`${s.navBtn} ${s.navPrev}`} onClick={() => go(-1)} aria-label="Previous view">‹</button>
+            <button type="button" className={`${s.navBtn} ${s.navNext}`} onClick={() => go(1)} aria-label="Next view">›</button>
+            <span className={s.counter} aria-live="polite">{at + 1} / {n}</span>
+          </>
+        )}
+      </div>
+      {n > 1 && (
+        <ul className={s.strip} aria-label="All views">
+          {files.map((x, k) => (
+            <li key={x.path}>
+              <button type="button" className={s.stripItem} aria-current={k === at ? 'true' : undefined} onClick={() => setI(k)}
+                aria-label={`Show ${x.label || `view ${k + 1}`}`}>
+                {x.kind === 'pdf'
+                  ? <span className={s.stripPdf} aria-hidden="true">PDF</span>
+                  : <SmartImage src={`${API}${x.path}`} alt={x.label || `View ${k + 1}`} width={x.width || 320} height={x.height || 240} unoptimized
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
+                <span className={s.stripLabel}>{x.label || `View ${k + 1}`}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <a href={src} target="_blank" rel="noreferrer" className={s.proofOpen}>{f.kind === 'pdf' ? 'Open the PDF in a new tab ↗' : 'View full size ↗'}</a>
+    </div>
+  );
+}
+
 // Left column: the artwork proof and the 3D design in one panel with tabs
 // (proof first while one exists), so the decision panel beside it lines up.
 function OrderViewer({ order }) {
@@ -225,8 +290,6 @@ function OrderViewer({ order }) {
   const [tab, setTab] = useState(latest ? 'proof' : 'design');
   if (!latest) return <MerchOrderDesign order={order} token={linkToken()} />;
   const { proof } = latest;
-  const src = `${API}${proof.proofPath}`;
-  const pdf = proof.proofKind === 'pdf';
   return (
     <section className={`${s.card} ${s.viewer}`} aria-label="Your order">
       <div className={s.viewerTabs} role="tablist" aria-label="Show">
@@ -237,15 +300,7 @@ function OrderViewer({ order }) {
         <span className={s.viewerMeta}>{tab === 'proof' ? `Sent ${day(proof.at)}` : 'Drag to turn'}</span>
       </div>
       <div id="panel-proof" role="tabpanel" aria-labelledby="tab-proof" hidden={tab !== 'proof'} className={s.viewerBody}>
-        {pdf ? (
-          <iframe src={src} title={`Artwork proof for order ${order.ref} (PDF)`} className={s.proofPdf} />
-        ) : (
-          <a href={src} target="_blank" rel="noreferrer" className={s.proofLink} aria-label="Open the proof full size">
-            <SmartImage src={src} alt={`Artwork proof for order ${order.ref}`} className={s.proofImg}
-              width={1200} height={900} unoptimized priority style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-          </a>
-        )}
-        <a href={src} target="_blank" rel="noreferrer" className={s.proofOpen}>{pdf ? 'Open the PDF in a new tab ↗' : 'View full size ↗'}</a>
+        <ProofGallery files={proof.proofFiles?.length ? proof.proofFiles : [{ path: proof.proofPath, kind: proof.proofKind, label: '' }]} orderRef={order.ref} />
       </div>
       {tab === 'design' && (
         <div id="panel-design" role="tabpanel" aria-labelledby="tab-design" className={s.viewerBody}>
