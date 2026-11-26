@@ -237,6 +237,7 @@ function publicOrder(o, lines) {
     totalCents: o.total_cents, currency: o.currency, createdAt: o.created_at, updatedAt: o.updated_at,
     contact: { name: o.buyer_name, email: o.buyer_email, phone: o.buyer_phone, club: o.club_name },
     lines: lines.map((l) => ({ size: l.size, qty: l.qty })),
+    shipment: o.shipping_carrier ? { carrier: o.shipping_carrier, carrierName: o.shipping_carrier_name, tracking: o.tracking_code } : null,
   };
 }
 
@@ -532,6 +533,20 @@ function parseFulfilment(from, body) {
   const to = String(body?.status || '');
   if (FULFILMENT_NEXT[from] !== to) return { error: `an order that is ${from} cannot move to ${to || 'that status'}` };
   return { to, note: str(body?.note, TRACKING_MAX) || null };
+}
+
+// Courier and tracking number for a courier order being marked shipped.
+// courierIds / trackingRe come from lib/merch-order-status.mjs (shared with
+// the web). A known courier needs a tracking number; 'other' needs its name.
+function parseShipment(body, { courierIds, trackingRe }) {
+  const carrier = String(body?.carrier || '');
+  if (!courierIds.includes(carrier)) return { error: 'choose the courier' };
+  const tracking = str(body?.tracking, 40).replace(/\s+/g, ' ');
+  if (tracking && !trackingRe.test(tracking)) return { error: 'tracking number: letters, digits, spaces or dashes, 4 to 40 long' };
+  if (carrier !== 'other' && !tracking) return { error: 'enter the tracking number' };
+  const carrierName = carrier === 'other' ? str(body?.carrierName, 40) : null;
+  if (carrier === 'other' && (carrierName || '').length < 2) return { error: 'enter the courier name' };
+  return { shipment: { carrier, carrierName, tracking: tracking || null } };
 }
 
 module.exports = function mountMerchRoutes(app) {
@@ -1028,6 +1043,13 @@ module.exports = function mountMerchRoutes(app) {
     if (!o) return res.status(404).json({ error: 'order not found' });
     const { to, note, error } = parseFulfilment(o.status, req.body);
     if (error) return res.status(409).json({ error });
+    const status = await import('../lib/merch/merch-order-status.mjs');
+    let shipment = null;
+    if (to === 'shipped' && o.delivery === 'courier') {
+      const sh = parseShipment(req.body, { courierIds: status.COURIERS.map((c) => c.id), trackingRe: status.TRACKING_RE });
+      if (sh.error) return res.status(400).json({ error: sh.error });
+      shipment = sh.shipment;
+    }
     const client = await pool.connect();
     let moved;
     try {
@@ -1037,6 +1059,10 @@ module.exports = function mountMerchRoutes(app) {
       if (moved.rowCount) {
         await client.query('INSERT INTO merch_order_events (order_id, status, note, actor_user_id) VALUES ($1, $2, $3, $4)',
           [o.id, to, note, req.authUser?.id || null]);
+        if (shipment) {
+          await client.query('UPDATE merch_orders SET shipping_carrier = $2, shipping_carrier_name = $3, tracking_code = $4 WHERE id = $1',
+            [o.id, shipment.carrier, shipment.carrierName, shipment.tracking]);
+        }
       }
       await client.query('COMMIT');
     } catch (e) {
@@ -1050,9 +1076,11 @@ module.exports = function mountMerchRoutes(app) {
     if (to === 'shipped') {
       mailed = true;
       try {
+        const info = shipment ? status.shipmentInfo(shipment) : null;
         const t = require('../lib/emailTemplates').merchOrderShipped({
           name: o.buyer_name, ref: o.ref, productLabel: productLabelOf(o), pickup: o.delivery === 'pickup',
-          club: o.club_name, tracking: note, link: `${APP_URL}/merch/orders/${o.ref}?t=${mailToken(o)}`,
+          club: o.club_name, tracking: info ? info.tracking : note, courier: info?.courier || null, trackUrl: info?.url || null,
+          note: info ? note : null, link: `${APP_URL}/merch/orders/${o.ref}?t=${mailToken(o)}`,
         });
         await require('../lib/mailer').sendMail({ to: o.buyer_email, subject: t.subject, text: t.text, html: t.html });
       } catch (e) {
@@ -1173,5 +1201,6 @@ module.exports.perItemSponsorCaps = perItemSponsorCaps;
 module.exports.splitSponsorDiscount = splitSponsorDiscount;
 module.exports.MERCH_BUDGET_LEFT_SQL = MERCH_BUDGET_LEFT_SQL;
 module.exports.parseFulfilment = parseFulfilment;
+module.exports.parseShipment = parseShipment;
 module.exports.canCancel = canCancel;
 module.exports.MAX_OPEN_SPONSOR_ORDERS = MAX_OPEN_SPONSOR_ORDERS;

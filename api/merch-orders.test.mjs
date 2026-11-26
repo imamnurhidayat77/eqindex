@@ -211,3 +211,23 @@ test('proof upload: 1 to 8 files, 40 MB in all, short labels', () => {
   assert.deepEqual(ok.labels, ['Front', 'x'.repeat(30), '']);
   assert.deepEqual(parseProofUpload([file()], 'not json').labels, ['']);
 });
+
+test('shipment: known courier needs a tracking number, other needs a name', () => {
+  const { parseShipment } = require('./src/routes/merch.js');
+  const opts = { courierIds: ['nzpost', 'other'], trackingRe: /^[A-Za-z0-9][A-Za-z0-9 -]{3,39}$/ };
+  assert.match(parseShipment({}, opts).error, /courier/);
+  assert.match(parseShipment({ carrier: 'nzpost' }, opts).error, /tracking number/);
+  assert.match(parseShipment({ carrier: 'nzpost', tracking: '<b>x</b>' }, opts).error, /letters, digits/);
+  assert.deepEqual(parseShipment({ carrier: 'nzpost', tracking: ' AB  1234 NZ ' }, opts).shipment, { carrier: 'nzpost', carrierName: null, tracking: 'AB 1234 NZ' });
+  assert.match(parseShipment({ carrier: 'other' }, opts).error, /courier name/);
+  assert.deepEqual(parseShipment({ carrier: 'other', carrierName: 'Local van' }, opts).shipment, { carrier: 'other', carrierName: 'Local van', tracking: null });
+});
+
+test('shipped email names the courier and links the tracking page', () => {
+  const t = require('./src/lib/emailTemplates.js');
+  const m = t.merchOrderShipped({ name: 'Sam', ref: 'BM-ABC234', productLabel: 'Jacket', pickup: false, tracking: 'AB123', courier: 'NZ Post <b>', trackUrl: 'https://www.nzpost.co.nz/tools/tracking?trackid=AB123', link: 'http://x/o' });
+  assert.ok(m.text.includes('Courier: NZ Post') && m.text.includes('Tracking number: AB123') && m.text.includes('trackid=AB123'));
+  assert.ok(m.html.includes('Track my parcel') && !m.html.includes('<b>'), 'escaped, with a tracking button');
+  const pick = t.merchOrderShipped({ name: 'Sam', ref: 'BM-ABC234', productLabel: 'Jacket', pickup: true, club: 'Demo', tracking: 'Office, Sat 9-12', link: 'http://x/o' });
+  assert.ok(pick.text.includes('Pickup details: Office, Sat 9-12') && !pick.html.includes('Track my parcel'));
+});

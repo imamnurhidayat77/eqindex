@@ -160,3 +160,20 @@
 .linkBtn { justify-self: start; min-height: 32px; padding: 0; border: 0; background: none; color: #bbb; font: inherit; font-size: 12px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .linkBtn:hover { color: #FFC400; }
 .linkBtn:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+/* Shipment card (right column, top once shipped) */
+.ship { gap: 12px; }
+.shipFacts { display: grid; gap: 10px; margin: 0; }
+.shipFacts div { display: grid; gap: 4px; }
+.shipFacts dt { color: #888; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.shipFacts dd { margin: 0; color: #fff; font-size: 15px; font-weight: 700; }
+.trackRow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.trackCode { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 8px; background: #161616; border: 1px solid #2c2c2c; color: #fff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; letter-spacing: 0.03em; overflow-wrap: anywhere; user-select: all; }
+.copyBtn { flex: none; min-height: 38px; min-width: 72px; padding: 0 12px; border: 1px solid #444; border-radius: 8px; background: none; color: #fff; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; transition: border-color 150ms ease-out, transform 120ms ease-out; }
+.copyBtn:active { transform: scale(0.97); }
+.copyBtn:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .copyBtn:hover { border-color: #888; } }
+.trackBtn { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 16px; border-radius: 8px; background: #FFC400; color: #101010; font-weight: 800; font-size: 14px; text-decoration: none; transition: background 150ms ease-out, transform 120ms ease-out; }
+.trackBtn:hover { background: #ffd24d; }
+.trackBtn:active { transform: scale(0.98); }
+.trackBtn:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .copyBtn, .trackBtn { transition: none; } .copyBtn:active, .trackBtn:active { transform: none; } }

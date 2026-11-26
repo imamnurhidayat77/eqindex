@@ -7,7 +7,7 @@ import { SiteFooter, SiteHeader } from '../../../../components/figma';
 import SmartImage from '../../../../components/SmartImage';
 import { API } from '../../../../lib/api';
 import { merchColorName, merchProduct } from '../../../../lib/merch.mjs';
-import { orderComplete, orderStatusLabel, orderStepIndex, orderSteps } from '../../../../lib/merch-order-status.mjs';
+import { orderComplete, orderStatusLabel, orderStepIndex, orderSteps, shipmentInfo } from '../../../../lib/merch-order-status.mjs';
 import { useDocumentTitle } from '../../../../lib/use-document-title';
 import s from '../orders.module.css';
 
@@ -77,6 +77,7 @@ export default function MerchOrderPage() {
             <div className={s.orderGrid}>
               {product ? <OrderViewer order={o} /> : <div />}
               <aside className={s.side}>
+                {shipped && <ShipmentCard order={o} shipped={shipped} />}
                 <ProofDecision order={o} onAnswered={reload} />
                 <div className={s.card}>
                   <h2 className={s.h2}>Summary</h2>
@@ -92,7 +93,6 @@ export default function MerchOrderPage() {
                     <div><dt>Sizes</dt><dd>{o.lines.map((l) => `${l.size} × ${l.qty}`).join(', ')}</dd></div>
                     <div><dt>{o.delivery === 'pickup' ? 'Pickup' : 'Deliver to'}</dt><dd>{o.delivery === 'pickup' ? `Club pickup${o.contact.club ? `, ${o.contact.club}` : ''}` : [o.address?.line1, o.address?.line2, o.address?.city, o.address?.postcode].filter(Boolean).join(', ')}</dd></div>
                     {o.notes && <div><dt>Notes</dt><dd>{o.notes}</dd></div>}
-                    {shipped && <div><dt>{o.delivery === 'pickup' ? 'Ready' : 'Shipped'}</dt><dd>{day(shipped.at)}{shipped.note ? `, ${shipped.note}` : ''}</dd></div>}
                   </dl>
                   {CANCEL_FROM.includes(o.status) && <CancelOrder order={o} onCancelled={reload} />}
                 </div>
@@ -217,6 +217,54 @@ const CONFIRM_EVERY_MS = 4000;
 const confirmPayment = (ref) => fetch(`${API}/api/merch/orders/${encodeURIComponent(ref)}/confirm-payment`, {
   method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t: linkToken() }),
 }).catch(() => null);
+// Where the parcel is: courier, tracking number (copyable) and a tracking
+// link; for club pickup, where and when to collect.
+function ShipmentCard({ order, shipped }) {
+  const pickup = order.delivery === 'pickup';
+  const info = order.shipment ? shipmentInfo(order.shipment) : null;
+  const delivered = order.status === 'delivered';
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try { await navigator.clipboard.writeText(info.tracking); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* clipboard blocked: the number stays selectable */ }
+  }
+  return (
+    <section className={`${s.card} ${s.ship}`} aria-label={pickup ? 'Pickup' : 'Shipment'}>
+      <p className={s.proofEyebrow}>{pickup ? 'Pickup' : 'Shipment'} · {pickup ? 'ready' : 'sent'} {day(shipped.at)}</p>
+      <h2 className={s.proofTitle} data-state={delivered ? 'approved' : 'waiting'}>
+        {pickup ? (delivered ? 'Collected' : 'Ready to collect') : (delivered ? 'Delivered' : 'On its way')}
+      </h2>
+      {pickup ? (
+        <>
+          {order.contact.club && <p className={s.muted}>At {order.contact.club}.</p>}
+          {shipped.note && <p className={s.note}><strong>Pickup details</strong>{shipped.note}</p>}
+        </>
+      ) : (
+        <>
+          {info && (
+            <dl className={s.shipFacts}>
+              <div><dt>Courier</dt><dd>{info.courier}</dd></div>
+              {info.tracking && (
+                <div><dt>Tracking number</dt><dd className={s.trackRow}>
+                  <code className={s.trackCode}>{info.tracking}</code>
+                  <button type="button" className={s.copyBtn} onClick={copy} aria-label="Copy tracking number">{copied ? 'Copied' : 'Copy'}</button>
+                </dd></div>
+              )}
+            </dl>
+          )}
+          {info?.url && (
+            <a href={info.url} target="_blank" rel="noreferrer" className={s.trackBtn}>
+              Track parcel on {info.courier} ↗
+            </a>
+          )}
+          {info?.url && !info.codeInLink && <p className={s.fine}>Paste the tracking number on the {info.courier} page.</p>}
+          {!info && shipped.note && <p className={s.note}><strong>Tracking</strong>{shipped.note}</p>}
+          {info && shipped.note && <p className={s.note}><strong>Note from us</strong>{shipped.note}</p>}
+        </>
+      )}
+    </section>
+  );
+}
+
 // The newest proof and the buyer's answer to it (null before any proof).
 function latestProof(order) {
   const events = order.events || [];

@@ -369,18 +369,24 @@ function merchOrderPaidAdmin({ ref, buyerName, productLabel, totalText, link }) 
 }
 
 // Merch order shipped (courier) or ready to collect (club pickup).
-function merchOrderShipped({ name, ref, productLabel, pickup, club, tracking, link }) {
+function merchOrderShipped({ name, ref, productLabel, pickup, club, tracking, courier = null, trackUrl = null, note = null, link }) {
   const where = pickup ? `ready to collect${club ? ` from ${club}` : ''}` : 'on its way';
+  // Courier orders: courier name, tracking number and a tracking link when
+  // the courier has one. Pickup orders: the admin's pickup details.
+  const lines = pickup
+    ? (tracking ? [['Pickup details', tracking]] : [])
+    : [courier && ['Courier', courier], tracking && ['Tracking number', tracking], note && ['Note', note]].filter(Boolean);
   return {
     subject: pickup ? `Order ${ref} is ready to collect` : `Order ${ref} has shipped`,
-    text: `Hi ${name || 'there'},\n\nYour ${productLabel} order is ${where}.${tracking ? `\n\n${pickup ? 'Pickup details' : 'Tracking'}: ${tracking}` : ''}\n\nOrder details: ${link}\n\nReference: ${ref}`,
+    text: `Hi ${name || 'there'},\n\nYour ${productLabel} order is ${where}.${lines.map(([k, v]) => `\n${k}: ${v}`).join('')}${trackUrl ? `\nTrack your parcel: ${trackUrl}` : ''}\n\nOrder details: ${link}\n\nReference: ${ref}`,
     html: layout({
       preheader: pickup ? 'Your order is ready to collect.' : 'Your order is on its way.',
       eyebrow: `ORDER ${escHtml(ref)}`,
       title: pickup ? 'Ready to collect.' : 'Your order has shipped.',
       body: p(`Hi ${escHtml(firstName(name))}, your ${escHtml(productLabel)} order is ${escHtml(where)}.`) +
-        (tracking ? p(`<strong>${pickup ? 'Pickup details' : 'Tracking'}:</strong> ${escHtml(tracking)}`) : '') +
-        btn(link, 'View my order') +
+        lines.map(([k, v]) => p(`<strong>${escHtml(k)}:</strong> ${escHtml(v)}`)).join('') +
+        (trackUrl ? btn(trackUrl, 'Track my parcel') : '') +
+        (trackUrl ? p(`<a href="${link}">View my order</a>`) : btn(link, 'View my order')) +
         fallbackLink(link),
     }),
   };

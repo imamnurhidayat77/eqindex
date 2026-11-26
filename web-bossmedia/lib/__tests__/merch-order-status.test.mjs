@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { ORDER_STEPS, orderComplete, orderStatusLabel, orderStepIndex, orderSteps } from '../merch-order-status.mjs';
+import { COURIERS, ORDER_STEPS, TRACKING_RE, orderComplete, orderStatusLabel, orderStepIndex, orderSteps, shipmentInfo } from '../merch-order-status.mjs';
 
 const MIGRATION = new URL('../../../db/migrations/108_merch_orders.sql', import.meta.url);
 test('every db status has a buyer label', { skip: !existsSync(MIGRATION) && 'db folder not next to web-bossmedia' }, () => {
@@ -32,4 +32,19 @@ test('pickup tracker says ready to collect and collected', () => {
   const labels = orderSteps('pickup').map((st) => st.label);
   assert.deepEqual(labels.slice(-2), ['Ready to collect', 'Collected']);
   assert.deepEqual(orderSteps('courier').slice(-2).map((st) => st.label), ['On its way', 'Delivered']);
+});
+
+test('shipment info: courier name, tracking number and a safe tracking link', () => {
+  const nz = shipmentInfo({ carrier: 'nzpost', tracking: 'AB 1234 5678 NZ' });
+  assert.equal(nz.courier, 'NZ Post');
+  assert.equal(nz.url, 'https://www.nzpost.co.nz/tools/tracking?trackid=AB12345678NZ');
+  assert.ok(nz.codeInLink);
+  const mf = shipmentInfo({ carrier: 'mainfreight', tracking: 'X123' });
+  assert.equal(mf.url, 'https://www.mainfreight.com/en-nz/tracking');
+  assert.ok(!mf.codeInLink, 'the buyer pastes the code there');
+  assert.deepEqual(shipmentInfo({ carrier: 'other', carrierName: 'Local van', tracking: 'R-77' }), { courier: 'Local van', tracking: 'R-77', url: null, codeInLink: false });
+  assert.equal(shipmentInfo({ carrier: 'nzpost' }).url, null, 'no number, no link');
+  assert.equal(shipmentInfo({ carrier: 'nope' }), null);
+  assert.ok(TRACKING_RE.test('AB 1234-5678') && !TRACKING_RE.test('<script>') && !TRACKING_RE.test('ab'));
+  for (const c of COURIERS) assert.ok(!c.track || c.track.startsWith('https://'), c.id);
 });

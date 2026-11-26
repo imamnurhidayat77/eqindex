@@ -9,6 +9,7 @@ import SmartImage from './SmartImage';
 import MerchOrderDesign from './MerchOrderDesign';
 import { nzdc, studio, studioFetch } from '../lib/studio';
 import { merchColorName, merchProduct } from '../lib/merch.mjs';
+import { COURIERS, shipmentInfo } from '../lib/merch-order-status.mjs';
 import { API } from '../lib/api';
 import s from './AdminMerchOrders.module.css';
 
@@ -112,6 +113,7 @@ export function AdminMerchOrderDetail({ orderRef }) {
   const label = q.product?.label || merchProduct(o.productId)?.label || o.productId;
   const colour = q.product?.colorName || merchColorName(o.productId, o.color);
   const next = NEXT[o.status];
+  const ship = o.shipment ? shipmentInfo(o.shipment) : null;
   const artwork = (o.artwork || []).length > 0 && (
     <div className={s.artwork}>
       <span className={s.label}>Buyer artwork (original files)</span>
@@ -153,6 +155,7 @@ export function AdminMerchOrderDetail({ orderRef }) {
               {o.contact.club && <div><dt>Club</dt><dd>{o.contact.club}</dd></div>}
               <div><dt>{o.delivery === 'pickup' ? 'Pickup' : 'Deliver to'}</dt><dd>{o.delivery === 'pickup' ? `Club pickup, ${o.contact.club}` : [o.address?.line1, o.address?.line2, o.address?.city, o.address?.postcode].filter(Boolean).join(', ')}</dd></div>
               {o.notes && <div><dt>Notes</dt><dd>{o.notes}</dd></div>}
+              {ship && <div><dt>Shipment</dt><dd>{ship.courier}{ship.tracking ? ` · ${ship.tracking}` : ''}{ship.url && <> · <a href={ship.url} target="_blank" rel="noreferrer">track ↗</a></>}</dd></div>}
             </dl>
           </section>
           <section className={s.panel} aria-label="Order">
@@ -377,17 +380,25 @@ function NextStep({ order, onMoved }) {
   const notify = useNotify();
   const step = FULFILMENT_STEPS[order.status];
   const pickup = order.delivery === 'pickup';
+  // A courier order marked shipped carries its courier and tracking number.
+  const shipping = step.to === 'shipped' && !pickup;
   const [note, setNote] = useState('');
+  const [carrier, setCarrier] = useState('nzpost');
+  const [carrierName, setCarrierName] = useState('');
+  const [tracking, setTracking] = useState('');
   const [busy, setBusy] = useState(false);
+  const preview = shipping ? shipmentInfo({ carrier, carrierName, tracking }) : null;
 
   async function move(e) {
     e.preventDefault();
     setBusy(true);
     try {
-      const j = await studioFetch(`/admin/merch/orders/${order.ref}/status`, { method: 'POST', body: { status: step.to, note } });
+      const body = { status: step.to, note, ...(shipping ? { carrier, carrierName, tracking } : {}) };
+      const j = await studioFetch(`/admin/merch/orders/${order.ref}/status`, { method: 'POST', body });
       if (j.data?.mailed === false) notify('Status saved, but the email failed. Let the buyer know yourself.', true);
       else notify(j.data?.mailed ? 'Status saved, the buyer has been emailed' : 'Status saved');
       setNote('');
+      setTracking('');
       onMoved();
     } catch (err) { notify(err.message, true); }
     setBusy(false);
@@ -395,10 +406,31 @@ function NextStep({ order, onMoved }) {
 
   return (
     <form className={s.send} onSubmit={move}>
+      {shipping && (
+        <>
+          <div className={s.shipRow}>
+            <label className={s.field}><span>Courier</span>
+              <select value={carrier} onChange={(e) => setCarrier(e.target.value)} className={s.select}>
+                {COURIERS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            </label>
+            <label className={s.field}><span>Tracking number{carrier === 'other' ? ' (optional)' : ''}</span>
+              <input type="text" maxLength={40} value={tracking} required={carrier !== 'other'} autoComplete="off" spellCheck={false}
+                onChange={(e) => setTracking(e.target.value)} placeholder="e.g. AB123456789NZ" className={s.mono} />
+            </label>
+          </div>
+          {carrier === 'other' && (
+            <label className={s.field}><span>Courier name</span>
+              <input type="text" maxLength={40} value={carrierName} required onChange={(e) => setCarrierName(e.target.value)} placeholder="e.g. Post Haste" />
+            </label>
+          )}
+          {preview?.url && <p className={s.hint}>Buyer gets a tracking link: <a href={preview.url} target="_blank" rel="noreferrer" className={s.inlineLink}>test it ↗</a></p>}
+        </>
+      )}
       {step.note && (
-        <label className={s.field}><span>{pickup ? 'Pickup details for the buyer (optional)' : 'Courier and tracking number (optional)'}</span>
+        <label className={s.field}><span>{pickup ? 'Pickup details for the buyer (optional)' : 'Note for the buyer (optional)'}</span>
           <input type="text" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)}
-            placeholder={pickup ? 'e.g. At the club office, Saturdays 9 to 12' : 'e.g. NZ Post, tracking AB123456789NZ'} />
+            placeholder={pickup ? 'e.g. At the club office, Saturdays 9 to 12' : 'e.g. Signature needed on delivery'} />
         </label>
       )}
       {step.note && <p className={s.hint}>The buyer is emailed when you save this step.</p>}
