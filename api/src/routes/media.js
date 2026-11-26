@@ -7,6 +7,7 @@ const { audit } = require('../lib/audit');
 const { recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds, cappedSponsorDiscount, SPONSOR_BUDGET_LIVE_SQL, notOwnSponsorSql, PHOTO_BUDGET_LEFT_SQL, reserveSponsorDiscounts, reversePurchase } = require('../lib/wallet');
 const { resolveId } = require('../lib/resolve');
 const { sendMail } = require('../lib/mailer');
+const { notifyPurchases } = require('../lib/orderNotify');
 const { APP_URL } = require('../config');
 const crypto = require('crypto');
 const multer = require('multer');
@@ -1717,6 +1718,13 @@ module.exports = function mountMediaRoutes(app) {
   // Guest claim email: password-less buyers get a one-time access link
   // (password reset) so they can reach their downloads. Idempotent per
   // buyer — skipped when they already have a password or a live link.
+  // Every paid checkout tells the buyer and the admins (lib/orderNotify).
+  async function markPaidAndNotify(ids, opts) {
+    const rows = await markPurchasesPaid(pool, ids, opts);
+    if (rows.length) await notifyPurchases(rows.map((r) => r.id), 'paid');
+    return rows;
+  }
+
   // Failures never break the webhook (payment already succeeded).
   async function sendGuestClaimEmails(purchaseIds) {
     try {
@@ -2273,7 +2281,7 @@ module.exports = function mountMediaRoutes(app) {
     }
     // Fully covered by balance: no Stripe session — complete inline.
     if (stripeAmount <= 0) {
-      const paid = await markPurchasesPaid(pool, [purchaseId], {
+      const paid = await markPaidAndNotify([purchaseId], {
         auditFn: (rows) => audit(req, 'media.purchase.balance', 'purchase', purchaseId, { balance_used_cents: useBalance }),
       });
       if (!paid.length) return res.status(409).json({ error: 'checkout expired — try again' });
@@ -2761,7 +2769,7 @@ module.exports = function mountMediaRoutes(app) {
     const stripeTotal = splits.reduce((s, p) => s + p.stripe, 0);
     // Fully covered by balance: no Stripe session — complete inline.
     if (stripeTotal <= 0) {
-      const paid = await markPurchasesPaid(pool, ids, {
+      const paid = await markPaidAndNotify(ids, {
         auditFn: (rows) => audit(req, 'media.purchase.batch.balance', 'purchase', rows.map((r) => r.id).join(','), { balance_used_cents: useBalance }),
       });
       if (!paid.length) return res.status(409).json({ error: 'checkout expired — try again' });
@@ -2967,7 +2975,7 @@ module.exports = function mountMediaRoutes(app) {
     const stripeTotal = splits.reduce((s, p) => s + p.stripe, 0);
     // Fully covered by balance: no Stripe session — complete inline.
     if (stripeTotal <= 0) {
-      const paid = await markPurchasesPaid(pool, ids, {
+      const paid = await markPaidAndNotify(ids, {
         auditFn: (rows) => audit(req, 'media.purchase.combined.balance', 'purchase', rows.map((r) => r.id).join(','), { balance_used_cents: useBalance }),
       });
       if (!paid.length) return res.status(409).json({ error: 'checkout expired — try again' });
@@ -3053,7 +3061,7 @@ module.exports = function mountMediaRoutes(app) {
           await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = ANY($1::UUID[])', [batchIds, session.id]).catch(() => {});
           return ok();
         }
-        await markPurchasesPaid(pool, batchIds, {
+        await markPaidAndNotify(batchIds, {
           paymentIntent: session.payment_intent || null,
           auditFn: (rows) => audit(req, 'media.purchase.batch', 'purchase', rows.map((r) => r.id).join(','), { session: session.id, count: rows.length }),
         });
@@ -3081,7 +3089,7 @@ module.exports = function mountMediaRoutes(app) {
         await pool.query('UPDATE purchases SET stripe_session_id = $2 WHERE id = $1', [purchaseId, session.id]).catch(() => {});
         return ok();
       }
-      await markPurchasesPaid(pool, [purchaseId], {
+      await markPaidAndNotify([purchaseId], {
         paymentIntent: session.payment_intent || null,
         auditFn: (rows) => audit(req, 'media.purchase', 'purchase', purchaseId, { session: session.id }),
       });
@@ -3099,7 +3107,7 @@ module.exports = function mountMediaRoutes(app) {
         audit(req, 'media.refund.partial', 'payment', String(pi), { refunded, total });
         return ok();
       }
-      await revokePayment(req, pi, { reason: `stripe refund ${pi}`, returnBalance: true });
+      await revokePayment(req, pi, { reason: `stripe refund ${pi}`, returnBalance: true, notice: 'refunded' });
       return ok();
     }
     // Chargeback: the bank takes the money the moment a dispute opens, so
@@ -3108,7 +3116,7 @@ module.exports = function mountMediaRoutes(app) {
     if (event.type === 'charge.dispute.created') {
       const d = event.data.object || {};
       if (!d.payment_intent) return ok();
-      await revokePayment(req, d.payment_intent, { reason: `stripe dispute ${d.id || ''}`.trim(), returnBalance: false });
+      await revokePayment(req, d.payment_intent, { reason: `stripe dispute ${d.id || ''}`.trim(), returnBalance: false, notice: 'disputed' });
       return ok();
     }
     if (event.type === 'charge.dispute.closed') {
@@ -3123,7 +3131,7 @@ module.exports = function mountMediaRoutes(app) {
   // Revoke everything a Stripe payment bought (refund or dispute): flip its
   // purchases paid -> refunded, freeze service rows, undo organizer share,
   // sponsor spend and wallet use. Merch orders take their own path.
-  async function revokePayment(req, pi, { reason, returnBalance }) {
+  async function revokePayment(req, pi, { reason, returnBalance, notice }) {
     let sessionId = null;
     try {
       const sessions = await stripe().checkout.sessions.list({ payment_intent: String(pi), limit: 1 });
@@ -3159,6 +3167,7 @@ module.exports = function mountMediaRoutes(app) {
           audit(req, 'media.refund.reverse_failed', 'purchase', id, { pi: String(pi), err: e.message });
         }
       }
+      await notifyPurchases(ids, notice);
     }
   }
 

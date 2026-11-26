@@ -386,9 +386,27 @@ function merchOrderShipped({ name, ref, productLabel, pickup, club, tracking, li
   };
 }
 
+// Any other order or sale status change (buyer or admin): one short
+// message and a button. Callers pass plain text, it is escaped here.
+function orderUpdate({ name, eyebrow, title, body, link, label }) {
+  const hi = name ? `Hi ${name},\n\n` : '';
+  return {
+    subject: title,
+    text: `${hi}${body}${link ? `\n\n${label || 'Open'}: ${link}` : ''}`,
+    html: layout({
+      preheader: body,
+      eyebrow,
+      title,
+      body: p(`${name ? `Hi ${escHtml(firstName(name))}, ` : ''}${escHtml(body)}`) +
+        (link ? btn(link, label || 'Open') + fallbackLink(link) : ''),
+    }),
+  };
+}
+
 module.exports = {
   verifyEmail,
   claimAccount, resetPassword, unknownEvent, noAttachments, overLimits,
   verifySender, acceptedIntake, momentsReject, momentsLive, purchaseClaim,
   sponsorGift, merchOrderReceived, merchOrderLinks, merchProofReady, merchProofAnswered, merchOrderPaid, merchOrderPaidAdmin, merchOrderShipped,
+  orderUpdate,
 };

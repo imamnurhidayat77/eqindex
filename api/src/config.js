@@ -1,5 +1,7 @@
 require('dotenv').config();
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // Central environment config — every tunable lives here so route and
 // middleware modules never read process.env directly.
 module.exports = {
@@ -7,7 +9,7 @@ module.exports = {
   SESSION_COOKIE: 'eq_session',
   SESSION_DAYS: 30,
   WEB_ORIGINS: (process.env.WEB_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean),
-  EMAIL_RE: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+  EMAIL_RE,
   RESEND_API_KEY: process.env.RESEND_API_KEY || '',
   MAIL_FROM: process.env.MAIL_FROM || 'Boss Media <hello@bossmedia.nz>',
   // resend | smtp | console (DEV_MAIL_SKIP=1 forces console). SMTP covers
@@ -21,6 +23,9 @@ module.exports = {
     pass: process.env.SMTP_PASS || '',
   },
   APP_URL: (process.env.APP_URL || '').replace(/\/$/, ''),
+  // Who gets order and sale alerts (comma separated). Empty = every ADMIN user.
+  ORDER_ALERT_EMAILS: (process.env.ORDER_ALERT_EMAILS || '').split(',').map((s) => s.trim().toLowerCase())
+    .filter((s) => EMAIL_RE.test(s)),
   // Community moments intake: single inbox, email-to-upload (migration 100).
   UPLOAD_EMAIL: (process.env.UPLOAD_EMAIL || '').toLowerCase(),
   UPLOAD_MAX_FILES: Math.max(1, parseInt(process.env.UPLOAD_MAX_FILES || '5', 10) || 5),

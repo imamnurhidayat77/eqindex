@@ -6,8 +6,8 @@ import { useFocusTrap } from '../lib/focus-trap';
 import { Icon } from './figma';
 import s from './NotificationBell.module.css';
 
-// Header bell: unread in-app notifications written by the publish hook
-// (new photos of followed riders, horses and events).
+// Header bell: unread in-app notifications (new photos of followed riders,
+// horses and events, plus order and payment updates from api lib/orderNotify).
 export default function NotificationBell() {
   const [items, setItems] = useState([]);
   const [unread, setUnread] = useState(0);

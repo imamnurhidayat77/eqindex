@@ -14,6 +14,7 @@ const { throttled } = require('../lib/ratelimit');
 const mediaStore = require('../lib/mediaStore');
 const { notOwnSponsorSql } = require('../lib/wallet');
 const { APP_URL } = require('../config');
+const { adminEmails, notifyMerch } = require('../lib/orderNotify');
 
 let merchLib = null;
 const lib = () => (merchLib ||= Promise.all([import('../lib/merch/merch.mjs'), import('../lib/merch/merch-config.mjs')])
@@ -299,6 +300,7 @@ function parseProofUpload(files, rawLabels) {
 // stored hashed). Keyed on that stored hash: only someone with the database
 // can make one, and it opens exactly this order.
 const mailToken = (o) => crypto.createHmac('sha256', o.access_hash).update(`merch-order-link:${o.ref}`).digest('base64url');
+const orderLink = (o) => `${APP_URL}/merch/orders/${o.ref}?t=${mailToken(o)}`;
 const sameText = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
 function tokenOpens(o, token) {
   const t = String(token || '').slice(0, 128);
@@ -364,10 +366,6 @@ const stripe = () => {
 };
 const nzdText = (cents) => `NZ$${(Number(cents) / 100).toFixed(2)}`;
 const productLabelOf = (o) => o.quote?.product?.label || o.product_id;
-
-async function adminEmails() {
-  return (await pool.query(`SELECT email FROM users WHERE role = 'ADMIN'`)).rows.map((r) => r.email);
-}
 
 // Whether a completed Checkout session really pays this order. Returns
 // null when it does, or the reason it is rejected.
@@ -502,6 +500,7 @@ async function markMerchOrderPaid(req, session) {
     const mail = t.merchOrderPaidAdmin({ ...facts, buyerName: o.buyer_name, link: `${APP_URL}/studio/admin` });
     for (const to of await adminEmails()) await sendMail({ to, subject: mail.subject, text: mail.text, html: mail.html });
   } catch (e) { console.error('[merch.pay] admin mail failed:', e.message); }
+  await notifyMerch(o, 'paid', { buyerMailed: true, adminMailed: true });
 }
 
 // A full refund of a merch payment (charge.refunded, called from media.js).
@@ -513,12 +512,13 @@ async function markMerchOrderRefunded(req, paymentIntentId) {
   if (!REF_RE.test(ref)) return;
   const r = await pool.query(
     `UPDATE merch_orders SET status = 'refunded', updated_at = NOW()
-      WHERE ref = $1 AND status IN ('paid', 'in_production', 'shipped', 'delivered') RETURNING id`, [ref]);
+      WHERE ref = $1 AND status IN ('paid', 'in_production', 'shipped', 'delivered') RETURNING *`, [ref]);
   if (!r.rowCount) return;
   await pool.query(`INSERT INTO merch_order_events (order_id, status, note) VALUES ($1, 'refunded', $2)`,
     [r.rows[0].id, `Stripe ${paymentIntentId}`]);
   await releaseSponsorSpend(r.rows[0].id);
   audit(req, 'merch.order.refunded', 'merch_order', r.rows[0].id, { ref, pi: String(paymentIntentId) });
+  await notifyMerch(r.rows[0], 'refunded', { link: orderLink(r.rows[0]) });
 }
 
 // Fulfilment (F5): after payment the admin moves the order forward one
@@ -769,6 +769,7 @@ module.exports = function mountMerchRoutes(app) {
     } catch (e) {
       console.error('[merch.order] confirmation mail failed:', e.message);
     }
+    await notifyMerch(order, 'submitted', { link, buyerMailed: true });
     audit(req, 'merch.order.submit', 'merch_order', order.id, { ref: order.ref, units: quote.units, total_cents: quote.totalCents });
     res.status(201).json({ data: { ref: order.ref, token: secret, quote } });
   }));
@@ -923,6 +924,7 @@ module.exports = function mountMerchRoutes(app) {
     } catch (e) {
       console.error('[merch.proof] admin mail failed:', e.message);
     }
+    await notifyMerch(o, decision, { note, link: orderLink(o), adminMailed: true });
     audit(req, `merch.proof.${decision}`, 'merch_order', o.id, { ref: o.ref });
     res.json({ data: { status: decision } });
   }));
@@ -938,6 +940,7 @@ module.exports = function mountMerchRoutes(app) {
       return res.status(409).json({ error: 'the order changed, reload and try again' });
     }
     audit(req, 'merch.order.cancelled', 'merch_order', o.id, { ref: o.ref, by: 'buyer' });
+    await notifyMerch(o, 'cancelled', { link: orderLink(o) });
     res.json({ data: { status: 'cancelled' } });
   }));
 
@@ -952,6 +955,7 @@ module.exports = function mountMerchRoutes(app) {
       return res.status(409).json({ error: 'the order changed, reload and try again' });
     }
     audit(req, 'merch.order.cancelled', 'merch_order', o.id, { ref: o.ref, by: 'admin' });
+    await notifyMerch(o, 'cancelled', { note, link: orderLink(o) });
     res.json({ data: { status: 'cancelled' } });
   }));
 
@@ -1057,6 +1061,8 @@ module.exports = function mountMerchRoutes(app) {
       }
     }
     audit(req, `merch.order.${to}`, 'merch_order', o.id, { ref: o.ref });
+    // Shipped already has its own buyer email above (with tracking).
+    await notifyMerch(o, to, { note, link: orderLink(o), buyerMailed: to === 'shipped' });
     res.json({ data: { status: to, mailed } });
   }));
 
@@ -1138,6 +1144,7 @@ module.exports = function mountMerchRoutes(app) {
       console.error('[merch.proof] buyer mail failed:', e.message);
     }
     audit(req, 'merch.proof.send', 'merch_order', o.id, { ref: o.ref, event_id: String(eventId), files: ready.length });
+    await notifyMerch(o, 'proof_sent', { note, link, buyerMailed: true });
     res.status(201).json({ data: { status: 'proof_sent', eventId: String(eventId), mailed } });
   }));
 

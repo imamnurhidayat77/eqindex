@@ -25,6 +25,7 @@ const samples = {
   merchOrderPaid: [{ name: 'Sam', ref: 'BM-ABC234', productLabel: 'Jacket', totalText: 'NZ$600.00', link: 'http://x/merch/orders/BM-ABC234?t=a' }],
   merchOrderPaidAdmin: [{ ref: 'BM-ABC234', buyerName: 'Sam', productLabel: 'Jacket', totalText: 'NZ$600.00', link: 'http://x/studio/admin' }],
   merchProofAnswered: [{ ref: 'BM-ABC234', buyerName: 'Sam', productLabel: 'Jacket', approved: false, note: 'bigger logo', link: 'http://x/studio/admin' }],
+  orderUpdate: [{ name: 'Sam Rider', eyebrow: 'ORDER BM-ABC234', title: 'In production · BM-ABC234', body: 'Logo <b>x</b>', link: 'http://x/o', label: 'View my order' }],
   merchOrderLinks: [{ orders: [{ ref: 'BM-ABC234', productLabel: 'Jacket <b>', statusText: 'Shipped', link: 'http://x/merch/orders/BM-ABC234?t=a' }] }],
 };
 
@@ -67,3 +68,10 @@ test('merch shipped mail reads right for courier and pickup', () => {
   assert.ok(pickup.text.includes('from Demo Club') && !pickup.text.includes('Tracking'));
 });
 
+
+test('order update mail escapes text and works without a name or link', () => {
+  const m = t.orderUpdate(...samples.orderUpdate);
+  assert.ok(!m.html.includes('<b>x</b>') && m.html.includes('Hi Sam,'), 'escaped, first name');
+  const bare = t.orderUpdate({ eyebrow: 'PHOTO SALE', title: 'Photo sale', body: 'Paid' });
+  assert.ok(!bare.text.includes('Hi ') && !bare.html.includes('Button not working'), 'no greeting, no button');
+});
