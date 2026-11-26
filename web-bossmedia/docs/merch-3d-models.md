@@ -8,9 +8,10 @@ a developer: every generated file so far needed fixing before it looked right.
 
 | Folder | What | Served |
 | --- | --- | --- |
-| `public/models/rider/` | Rider tops and cap, one GLB per product + `LICENSE-*.md` | yes |
+| `public/models/rider/` | Rider tops and cap, one GLB per product | yes |
 | `public/models/horse/` | `horse-client.glb`, the gear files the app loads (`*-studio.glb`, `*-on-horse.glb`, `horse-<gear>.glb`) | yes |
 | `models-src/horse/` | The client's untouched Tripo exports, input for the scripts | no |
+| `models-src/licenses/` | `LICENSE-*.md` for every model (kept out of `public/` so they are not served) | no |
 | `public/merch/<product-id>/` | `cutout.png` (storefront) and `front/side-left/side-right/back.jpg` | yes |
 
 Never put a source or test file under `public/`: everything there is
