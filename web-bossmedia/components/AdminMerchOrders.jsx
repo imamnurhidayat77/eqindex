@@ -176,7 +176,8 @@ export function AdminMerchOrderDetail({ orderRef }) {
                     {e.note && <p className={s.note}>{e.note}</p>}
                     {e.proofPath && (
                       <a href={`${API}${e.proofPath}`} target="_blank" rel="noreferrer" className={s.thumbLink} aria-label={`Open the proof sent ${day(e.at)}`}>
-                        <SmartImage src={`${API}${e.proofPath}`} alt={`Proof sent ${day(e.at)}`} className={s.thumb} width={320} height={240} unoptimized />
+                        <SmartImage src={`${API}${e.proofPath}`} alt={`Proof sent ${day(e.at)}`} className={s.thumb} width={320} height={240} unoptimized
+                          style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                         <span className={s.thumbHint}>View full size ↗</span>
                       </a>
                     )}

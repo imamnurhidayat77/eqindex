@@ -96,7 +96,7 @@
 .eventHead strong { color: #fff; }
 .eventHead time { font-size: 12px; white-space: nowrap; }
 .note { margin: 0; padding: 8px 10px; border-radius: 8px; background: #161616; color: #bbb; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.thumbLink { position: relative; display: block; width: 100%; max-width: 220px; aspect-ratio: 4 / 3; overflow: hidden; border: 1px solid #333; border-radius: 8px; background: #fff; }
+.thumbLink { position: relative; display: block; width: 100%; max-width: 260px; aspect-ratio: 4 / 3; padding: 6px; overflow: hidden; border: 1px solid #333; border-radius: 10px; background: #161616; }
 .thumbLink:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
 .thumb { display: block; width: 100%; height: 100%; object-fit: contain; }
 .thumbHint { position: absolute; left: 6px; bottom: 6px; padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.72); color: #fff; font-size: 11px; font-weight: 700; opacity: 0; transition: opacity 150ms ease-out; }
