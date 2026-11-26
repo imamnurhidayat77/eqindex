@@ -70,11 +70,11 @@ export default function MerchOrderPage() {
             </ol>
           )}
           {o?.status === 'approved' && <PayCard order={o} onConfirmed={reload} />}
-          {o && <ProofCard order={o} onAnswered={reload} />}
           {o && (
             <div className={s.orderGrid}>
-              {product ? <MerchOrderDesign order={o} token={linkToken()} /> : <div />}
+              {product ? <OrderViewer order={o} /> : <div />}
               <aside className={s.side}>
+                <ProofDecision order={o} onAnswered={reload} />
                 <div className={s.card}>
                   <h2 className={s.h2}>Summary</h2>
                   <div className={s.row}><span>{units} item{units === 1 ? '' : 's'}</span><span>{nzd((q.goodsCents || 0) + (q.discountCents || 0))}</span></div>
@@ -138,16 +138,14 @@ function CancelOrder({ order, onCancelled }) {
 
 // The latest artwork proof and the buyer's answer to it. Shown once a
 // proof exists; buttons only while it waits for an answer.
-function ProofCard({ order, onAnswered }) {
-  const events = order.events || [];
-  const proofAt = events.map((e) => e.status).lastIndexOf('proof_sent');
+function ProofDecision({ order, onAnswered }) {
+  const latest = latestProof(order);
   const [asking, setAsking] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  if (proofAt < 0) return null;
-  const proof = events[proofAt];
-  const answer = events.slice(proofAt + 1).find((e) => e.status === 'approved' || e.status === 'changes_requested');
+  if (!latest) return null;
+  const { proof, answer } = latest;
   const waiting = order.status === 'proof_sent';
 
   async function send(decision) {
@@ -168,58 +166,41 @@ function ProofCard({ order, onAnswered }) {
     setBusy(false);
   }
 
-  const src = `${API}${proof.proofPath}`;
-  const pdf = proof.proofKind === 'pdf';
   const title = answer?.status === 'approved' ? 'Proof approved'
     : answer?.status === 'changes_requested' ? 'Changes requested'
       : 'Check your artwork proof';
   return (
-    <section className={`${s.card} ${s.proof}`} aria-label="Artwork proof">
-      <div className={s.proofView}>
-        {pdf ? (
-          <iframe src={src} title={`Artwork proof for order ${order.ref} (PDF)`} className={s.proofPdf} />
-        ) : (
-          <a href={src} target="_blank" rel="noreferrer" className={s.proofLink} aria-label="Open the proof full size">
-            <SmartImage src={src} alt={`Artwork proof for order ${order.ref}`} className={s.proofImg}
-              width={1200} height={900} unoptimized priority style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-          </a>
-        )}
-        <a href={src} target="_blank" rel="noreferrer" className={s.proofOpen}>
-          {pdf ? 'Open the PDF in a new tab ↗' : 'View full size ↗'}
-        </a>
-      </div>
-      <div className={s.proofSide}>
-        <p className={s.proofEyebrow}>Artwork proof · sent {day(proof.at)}</p>
-        <h2 className={s.proofTitle} data-state={answer?.status || (waiting ? 'waiting' : '')}>{title}</h2>
-        <p className={s.muted}>This is exactly how your logos will be printed. Check names, colours and positions.</p>
-        {proof.note && <p className={s.note}><strong>Note from us</strong>{proof.note}</p>}
-        {answer?.status === 'approved' && <p className={s.ok}>You approved this proof on {day(answer.at)}.</p>}
-        {answer?.status === 'changes_requested' && (
-          <>
-            <p className={s.note}><strong>You asked for</strong>{answer.note}</p>
-            <p className={s.muted}>We will send you a new proof by email.</p>
-          </>
-        )}
-        {waiting && (
-          <div className={s.answer}>
-            {asking && (
-              <label className={s.field}>
-                <span>What should we change?</span>
-                <textarea rows={4} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} autoFocus
-                  placeholder="e.g. Make the back logo bigger and move the club name lower" />
-              </label>
-            )}
-            {error && <p className={s.err} role="alert">{error}</p>}
-            <div className={s.proofActions}>
-              {!asking && <button type="button" className={s.primary} disabled={busy} onClick={() => send('approve')}>{busy ? 'Sending…' : 'Approve proof'}</button>}
-              {!asking && <button type="button" className={s.ghost} disabled={busy} onClick={() => setAsking(true)}>Request changes</button>}
-              {asking && <button type="button" className={s.primary} disabled={busy} onClick={() => send('changes')}>{busy ? 'Sending…' : 'Send change request'}</button>}
-              {asking && <button type="button" className={s.ghost} disabled={busy} onClick={() => { setAsking(false); setError(''); }}>Cancel</button>}
-            </div>
-            <p className={s.fine}>Approving locks the design for printing. You pay only after approving.</p>
+    <section className={`${s.card} ${s.decision}`} aria-label="Artwork proof decision" data-waiting={waiting ? 'true' : undefined}>
+      <p className={s.proofEyebrow}>Artwork proof · sent {day(proof.at)}</p>
+      <h2 className={s.proofTitle} data-state={answer?.status || (waiting ? 'waiting' : '')}>{title}</h2>
+      <p className={s.muted}>This is exactly how your logos will be printed. Check names, colours and positions.</p>
+      {proof.note && <p className={s.note}><strong>Note from us</strong>{proof.note}</p>}
+      {answer?.status === 'approved' && <p className={s.ok}>You approved this proof on {day(answer.at)}.</p>}
+      {answer?.status === 'changes_requested' && (
+        <>
+          <p className={s.note}><strong>You asked for</strong>{answer.note}</p>
+          <p className={s.muted}>We will send you a new proof by email.</p>
+        </>
+      )}
+      {waiting && (
+        <div className={s.answer}>
+          {asking && (
+            <label className={s.field}>
+              <span>What should we change?</span>
+              <textarea rows={4} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} autoFocus
+                placeholder="e.g. Make the back logo bigger and move the club name lower" />
+            </label>
+          )}
+          {error && <p className={s.err} role="alert">{error}</p>}
+          <div className={s.proofActions}>
+            {!asking && <button type="button" className={s.primary} disabled={busy} onClick={() => send('approve')}>{busy ? 'Sending…' : 'Approve proof'}</button>}
+            {!asking && <button type="button" className={s.ghost} disabled={busy} onClick={() => setAsking(true)}>Request changes</button>}
+            {asking && <button type="button" className={s.primary} disabled={busy} onClick={() => send('changes')}>{busy ? 'Sending…' : 'Send change request'}</button>}
+            {asking && <button type="button" className={s.ghost} disabled={busy} onClick={() => { setAsking(false); setError(''); }}>Cancel</button>}
           </div>
-        )}
-      </div>
+          <p className={s.fine}>Approving locks the design for printing. You pay only after approving.</p>
+        </div>
+      )}
     </section>
   );
 }
@@ -229,6 +210,52 @@ function ProofCard({ order, onAnswered }) {
 // a few times before asking the buyer to refresh later.
 const CONFIRM_TRIES = 5;
 const CONFIRM_EVERY_MS = 2000;
+// The newest proof and the buyer's answer to it (null before any proof).
+function latestProof(order) {
+  const events = order.events || [];
+  const at = events.map((e) => e.status).lastIndexOf('proof_sent');
+  if (at < 0) return null;
+  return { proof: events[at], answer: events.slice(at + 1).find((e) => e.status === 'approved' || e.status === 'changes_requested') };
+}
+
+// Left column: the artwork proof and the 3D design in one panel with tabs
+// (proof first while one exists), so the decision panel beside it lines up.
+function OrderViewer({ order }) {
+  const latest = latestProof(order);
+  const [tab, setTab] = useState(latest ? 'proof' : 'design');
+  if (!latest) return <MerchOrderDesign order={order} token={linkToken()} />;
+  const { proof } = latest;
+  const src = `${API}${proof.proofPath}`;
+  const pdf = proof.proofKind === 'pdf';
+  return (
+    <section className={`${s.card} ${s.viewer}`} aria-label="Your order">
+      <div className={s.viewerTabs} role="tablist" aria-label="Show">
+        {[['proof', 'Artwork proof'], ['design', '3D design']].map(([id, label]) => (
+          <button key={id} type="button" role="tab" id={`tab-${id}`} aria-controls={`panel-${id}`} aria-selected={tab === id}
+            className={s.viewerTab} onClick={() => setTab(id)}>{label}</button>
+        ))}
+        <span className={s.viewerMeta}>{tab === 'proof' ? `Sent ${day(proof.at)}` : 'Drag to turn'}</span>
+      </div>
+      <div id="panel-proof" role="tabpanel" aria-labelledby="tab-proof" hidden={tab !== 'proof'} className={s.viewerBody}>
+        {pdf ? (
+          <iframe src={src} title={`Artwork proof for order ${order.ref} (PDF)`} className={s.proofPdf} />
+        ) : (
+          <a href={src} target="_blank" rel="noreferrer" className={s.proofLink} aria-label="Open the proof full size">
+            <SmartImage src={src} alt={`Artwork proof for order ${order.ref}`} className={s.proofImg}
+              width={1200} height={900} unoptimized priority style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </a>
+        )}
+        <a href={src} target="_blank" rel="noreferrer" className={s.proofOpen}>{pdf ? 'Open the PDF in a new tab ↗' : 'View full size ↗'}</a>
+      </div>
+      {tab === 'design' && (
+        <div id="panel-design" role="tabpanel" aria-labelledby="tab-design" className={s.viewerBody}>
+          <MerchOrderDesign order={order} token={linkToken()} bare />
+        </div>
+      )}
+    </section>
+  );
+}
+
 function PayCard({ order, onConfirmed }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

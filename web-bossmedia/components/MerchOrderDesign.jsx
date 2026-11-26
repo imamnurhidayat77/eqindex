@@ -15,7 +15,7 @@ const Merch3D = dynamic(() => import('./Merch3D'), { ssr: false, loading: () => 
 const fallbackName = (v) => (String(v).startsWith('club:') ? 'Club logo' : String(v).startsWith('mlogo:') ? 'Uploaded logo'
   : String(v).startsWith('my:') ? 'Saved logo' : 'Sponsor logo');
 
-export default function MerchOrderDesign({ order, token = '', title = 'Your design', hint = 'Drag to turn · the proof is final', extra = null }) {
+export default function MerchOrderDesign({ order, token = '', title = 'Your design', hint = 'Drag to turn · the proof is final', extra = null, bare = false }) {
   const stageRef = useRef(null);
   const design = order.design || {};
   const placed = merchPositions(order.productId).filter((p) => design.slots?.[p.id]);
@@ -38,11 +38,14 @@ export default function MerchOrderDesign({ order, token = '', title = 'Your desi
     .filter((l) => l.slot && ['sponsor', 'club', 'upload'].includes(l.kind))
     .map((l) => [l.slot, String(l.label).split(': ').slice(1).join(': ').replace(/ \(.*\)$|, no discount$/, '')])), [order.quote]);
   return (
-    <section className={s.card} aria-label={title}>
-      <div className={s.head}>
-        <h2 className={s.title}>{title}</h2>
-        <span className={s.hint}>{hint}</span>
-      </div>
+    // bare: inside another panel (the order page's tabs), no card or heading.
+    <section className={bare ? s.bare : s.card} aria-label={title}>
+      {!bare && (
+        <div className={s.head}>
+          <h2 className={s.title}>{title}</h2>
+          <span className={s.hint}>{hint}</span>
+        </div>
+      )}
       <div className={`${stage.stage}${isHorseProduct(order.productId) ? ` ${stage.stageDark}` : ''} ${s.stage}`} ref={stageRef}>
         <Merch3D productId={order.productId} color={order.color} slots={slots} zoom={zoom} shift={design.slotShift || {}}
           selectedPos={selected} switching={false} stageRef={stageRef} clean={false} />

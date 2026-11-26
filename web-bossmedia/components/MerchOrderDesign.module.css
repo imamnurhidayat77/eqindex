@@ -18,3 +18,4 @@
 .text small { color: #999; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 560px) { .placements { grid-template-columns: minmax(0, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .placement { transition: none; } .placement:active { transform: none; } }
+.bare { display: grid; gap: 14px; min-width: 0; }
