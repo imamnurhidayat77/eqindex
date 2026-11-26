@@ -64,3 +64,27 @@
 @media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } }
 .filter select { min-height: 40px; padding: 0 12px; background: #0b0b0b; color: #fff; border: 1px solid #333; border-radius: 8px; font: inherit; font-size: 13px; }
 .filter select:focus-visible { outline: 2px solid #FFC400; outline-offset: 1px; }
+/* Proof upload: drop zone, then a preview before sending */
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.drop { display: grid; justify-items: center; gap: 6px; padding: 26px 16px; border: 1.5px dashed #444; border-radius: 12px; background: #0b0b0b; text-align: center; cursor: pointer; transition: border-color 150ms ease-out, background 150ms ease-out; }
+@media (hover: hover) and (pointer: fine) { .drop:hover { border-color: #777; } }
+.drop[data-over] { border-color: #FFC400; background: rgba(255, 196, 0, 0.06); }
+.srOnly:focus-visible + .drop { outline: 2px solid #FFC400; outline-offset: 2px; }
+.dropIcon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #1c1c1c; color: #FFC400; font-size: 18px; font-weight: 800; }
+.dropTitle { color: #fff; font-size: 14px; font-weight: 700; }
+.dropTitle u { color: #FFC400; text-underline-offset: 3px; }
+.proofPreview { display: grid; gap: 12px; padding: 10px; border: 1px solid #333; border-radius: 12px; background: #0b0b0b; animation: proofIn 180ms ease-out; }
+@keyframes proofIn { from { opacity: 0; } }
+.proofImgLink { display: block; width: 100%; height: clamp(200px, 32vh, 300px); overflow: hidden; border-radius: 8px; background: #fff; }
+.proofImgLink:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+.proofImg { display: block; width: 100%; height: 100%; object-fit: contain; }
+.proofMeta { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'name actions' 'info actions'; column-gap: 12px; row-gap: 2px; align-items: center; min-width: 0; }
+.proofMeta > .proofName { grid-area: name; }
+.proofMeta > small { grid-area: info; }
+.proofName { color: #fff; font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proofActions { grid-area: actions; display: flex; gap: 8px; }
+.smallBtn { display: inline-flex; align-items: center; min-height: 32px; padding: 0 12px; border: 1px solid #444; border-radius: 8px; background: none; color: #fff; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+@media (hover: hover) and (pointer: fine) { .smallBtn:hover { border-color: #777; } }
+.smallBtn:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
+.err { margin: 0; color: #e08a8a; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .drop { transition: none; } .proofPreview { animation: none; } }

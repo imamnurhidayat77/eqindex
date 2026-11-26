@@ -2,7 +2,7 @@
 // Admin > Merch orders: the order list, and each order on its own page with
 // the buyer's design in 3D, artwork and the art proof step. Sending a proof moves the order to proof_sent and
 // emails the buyer, who approves it or asks for changes on their order page.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useNotify } from './Toaster';
 import SmartImage from './SmartImage';
@@ -219,16 +219,43 @@ function CancelOrder({ order, onCancelled }) {
   );
 }
 
+// Drop or pick the proof, see it before it goes to the buyer. The server
+// re-checks type and size; this only saves a round trip.
+const PROOF_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const mb = (n) => `${(n / 1024 / 1024).toFixed(n < 1024 * 1024 ? 2 : 1)} MB`;
+
 function SendProof({ orderRef, resend, onSent }) {
   const notify = useNotify();
   const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null); // { url, w, h }
+  const [error, setError] = useState('');
+  const [over, setOver] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const inputRef = useRef(null);
+  useEffect(() => () => { if (preview?.url) URL.revokeObjectURL(preview.url); }, [preview]);
+
+  function pick(f) {
+    if (!f) return;
+    if (!PROOF_TYPES.includes(f.type)) { setError('Use a PNG, JPEG or WebP image.'); return; }
+    if (f.size > PROOF_MAX_BYTES) { setError(`That file is ${mb(f.size)}. The proof must be 15 MB or smaller.`); return; }
+    setError('');
+    setFile(f);
+    const url = URL.createObjectURL(f);
+    const img = new Image();
+    img.onload = () => setPreview({ url, w: img.naturalWidth, h: img.naturalHeight });
+    img.onerror = () => { URL.revokeObjectURL(url); setFile(null); setError('That image could not be read. Try another file.'); };
+    img.src = url;
+  }
+  function clear() {
+    setFile(null);
+    setPreview(null);
+    if (inputRef.current) inputRef.current.value = '';
+  }
 
   async function send(e) {
     e.preventDefault();
-    if (!file) return notify('Choose the proof image first.', true);
-    if (file.size > PROOF_MAX_BYTES) return notify('The proof must be 15 MB or smaller.', true);
+    if (!file) { setError('Add the proof image first.'); return; }
     const form = new FormData();
     form.append('proof', file);
     form.append('note', note);
@@ -236,7 +263,7 @@ function SendProof({ orderRef, resend, onSent }) {
     try {
       const j = await studioFetch(`/admin/merch/orders/${orderRef}/proof`, { method: 'POST', form });
       notify(j.data?.mailed ? 'Proof sent, the buyer has been emailed' : 'Proof saved, but the email failed. Send the buyer their order link.', !j.data?.mailed);
-      setFile(null);
+      clear();
       setNote('');
       onSent();
     } catch (err) { notify(err.message, true); }
@@ -246,14 +273,38 @@ function SendProof({ orderRef, resend, onSent }) {
   return (
     <form className={s.send} onSubmit={send}>
       {resend && <p className={s.hint}>A proof is already waiting for the buyer. A new one replaces it.</p>}
-      <label className={s.field}><span>Proof image (PNG, JPEG or WebP, up to 15 MB)</span>
-        <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-      </label>
+      <input ref={inputRef} id={`proof-${orderRef}`} type="file" accept={PROOF_TYPES.join(',')} className={s.srOnly}
+        onChange={(e) => pick(e.target.files?.[0])} />
+      {preview ? (
+        <div className={s.proofPreview}>
+          <a href={preview.url} target="_blank" rel="noreferrer" className={s.proofImgLink} aria-label="Open the proof full size">
+            <SmartImage src={preview.url} alt="Proof to send" width={preview.w} height={preview.h} unoptimized className={s.proofImg} />
+          </a>
+          <div className={s.proofMeta}>
+            <span className={s.proofName} title={file.name}>{file.name}</span>
+            <small className={s.muted}>{preview.w}×{preview.h}px · {mb(file.size)}</small>
+            <div className={s.proofActions}>
+              <label htmlFor={`proof-${orderRef}`} className={s.smallBtn}>Replace</label>
+              <button type="button" className={s.smallBtn} onClick={clear}>Remove</button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <label htmlFor={`proof-${orderRef}`} className={s.drop} data-over={over ? 'true' : undefined}
+          onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(e) => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files?.[0]); }}>
+          <span className={s.dropIcon} aria-hidden="true">↑</span>
+          <span className={s.dropTitle}>Drop the proof here or <u>browse</u></span>
+          <small className={s.muted}>PNG, JPEG or WebP, up to 15 MB</small>
+        </label>
+      )}
+      {error && <p className={s.err} role="alert">{error}</p>}
       <label className={s.field}><span>Note to the buyer (optional)</span>
         <textarea rows={2} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)}
           placeholder="e.g. We moved the club logo up 2 cm so it clears the zip" />
       </label>
-      <div><button className="st-btn" type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send proof to buyer'}</button></div>
+      <div><button className="st-btn" type="submit" disabled={busy || !file}>{busy ? 'Sending…' : 'Send proof to buyer'}</button></div>
     </form>
   );
 }
