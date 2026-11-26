@@ -53,3 +53,15 @@
 .primary:disabled, .ghost:disabled { opacity: 0.55; cursor: default; }
 .primary:focus-visible, .ghost:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .primary, .ghost { transition: none; } .primary:active, .ghost:active { transform: none; } }
+/* Resend order links */
+.resend { max-width: 760px; margin-top: 20px; }
+.resendRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+.field input { width: 100%; min-height: 44px; padding: 0 12px; background: #141414; color: #fff; border: 1px solid #333; border-radius: 8px; font: inherit; font-size: 16px; }
+.field input:focus-visible { outline: 2px solid #FFC400; outline-offset: 1px; }
+.field input[aria-invalid='true'] { border-color: #b35b5b; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 560px) { .resendRow { grid-template-columns: 1fr; } }
+/* Ordered design, 3D (view only) */
+.design { max-width: none; margin-bottom: 16px; }
+.designHead { display: grid; gap: 4px; }
+.designStage { height: clamp(320px, 52vh, 520px); border-radius: 10px; }

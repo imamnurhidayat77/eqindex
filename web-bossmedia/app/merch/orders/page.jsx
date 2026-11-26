@@ -62,9 +62,51 @@ export default function MyMerchOrdersPage() {
               ))}
             </ul>
           )}
+          <ResendLinks />
         </section>
       </main>
       <SiteFooter />
     </div>
+  );
+}
+
+// Lost link (other browser, deleted email): we email the links to every
+// recent order on that address. The answer never says whether it has any.
+function ResendLinks() {
+  const [email, setEmail] = useState('');
+  const [state, setState] = useState({ busy: false, sent: false, error: '' });
+  async function send(e) {
+    e.preventDefault();
+    if (state.busy) return;
+    setState({ busy: true, sent: false, error: '' });
+    try {
+      const r = await fetch(`${API}/api/merch/orders/resend-links`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim() }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'Could not send right now, try again later.');
+      setState({ busy: false, sent: true, error: '' });
+    } catch (err) {
+      setState({ busy: false, sent: false, error: err.message });
+    }
+  }
+  return (
+    <form className={`${s.card} ${s.resend}`} onSubmit={send} noValidate>
+      <h2 className={s.h2}>Can't find an order?</h2>
+      <p className={s.muted}>Enter the email you ordered with and we will send you the links to your orders.</p>
+      {state.sent ? (
+        <p className={s.ok} role="status">If there are orders on {email.trim()}, the links are on their way. Check your inbox and spam folder.</p>
+      ) : (
+        <div className={s.resendRow}>
+          <label className={s.field}>
+            <span className={s.srOnly}>Email</span>
+            <input type="email" inputMode="email" autoComplete="email" required maxLength={254} value={email}
+              placeholder="you@example.com" onChange={(e) => setEmail(e.target.value)} aria-invalid={state.error ? 'true' : undefined} />
+          </label>
+          <button type="submit" className={s.primary} disabled={state.busy || !email.trim()}>{state.busy ? 'Sending…' : 'Email my order links'}</button>
+        </div>
+      )}
+      {state.error && <p className={s.err} role="alert">{state.error}</p>}
+    </form>
   );
 }

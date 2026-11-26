@@ -1,11 +1,13 @@
 'use client';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { SiteFooter, SiteHeader } from '../../../../components/figma';
 import SmartImage from '../../../../components/SmartImage';
 import { API } from '../../../../lib/api';
-import { merchPositions, merchProduct } from '../../../../lib/merch.mjs';
+import { isHorseProduct, merchColorName, merchPositions, merchProduct } from '../../../../lib/merch.mjs';
+import stage from '../../../../components/MerchClient.module.css';
 import { ORDER_STEPS, orderStatusLabel, orderStepIndex } from '../../../../lib/merch-order-status.mjs';
 import { useDocumentTitle } from '../../../../lib/use-document-title';
 import s from '../orders.module.css';
@@ -16,6 +18,7 @@ const PAID_STATUSES = ['paid', 'in_production', 'shipped', 'delivered'];
 const CANCEL_FROM = ['submitted', 'artwork_review', 'changes_requested', 'proof_sent'];
 const day = (d) => new Date(d).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' });
 const linkToken = () => new URLSearchParams(window.location.search).get('t') || '';
+const Merch3D = dynamic(() => import('../../../../components/Merch3D'), { ssr: false, loading: () => <p className={s.muted}>Loading 3D preview…</p> });
 const logoName = (v) => (String(v).startsWith('club:') ? 'Club logo' : String(v).startsWith('mlogo:') ? 'Your logo' : 'Sponsor logo');
 
 // One merch order, opened from the emailed link (?t=token) or by a
@@ -56,6 +59,7 @@ export default function MerchOrderPage() {
           )}
           {o?.status === 'approved' && <PayCard order={o} onConfirmed={reload} />}
           {o && <ProofCard order={o} onAnswered={reload} />}
+          {o && product && <DesignPreview order={o} />}
           {o && (
             <div className={s.layout}>
               <div className={s.card}>
@@ -255,5 +259,37 @@ function PayCard({ order, onConfirmed }) {
           </>
         )}
     </div>
+  );
+}
+
+// The product as ordered, on the same 3D view as the designer (view only).
+// Own artwork (mlogo:) loads through the order's own logo route, with the
+// link token when the page was opened from an email.
+function DesignPreview({ order }) {
+  const stageRef = useRef(null);
+  const design = order.design || {};
+  const slots = useMemo(() => {
+    const t = linkToken();
+    const out = {};
+    for (const [pos, v] of Object.entries(design.slots || {})) {
+      const id = String(v);
+      out[pos] = id.startsWith('mlogo:')
+        ? `upload:${API}/api/merch/orders/${encodeURIComponent(order.ref)}/logos/${id.slice(6)}${t ? `?t=${encodeURIComponent(t)}` : ''}`
+        : id;
+    }
+    return out;
+  }, [design.slots, order.ref]);
+  const zoom = useMemo(() => Object.fromEntries(Object.entries(design.slotZoom || {}).map(([k, v]) => [k, Number(v) / 100])), [design.slotZoom]);
+  return (
+    <section className={`${s.card} ${s.design}`} aria-label="Your design">
+      <div className={s.designHead}>
+        <h2 className={s.h2}>Your design</h2>
+        <p className={s.muted}>{merchProduct(order.productId)?.label} in {merchColorName(order.productId, order.color)}. Drag to turn it. The artwork proof is the final word on placement.</p>
+      </div>
+      <div className={`${stage.stage}${isHorseProduct(order.productId) ? ` ${stage.stageDark}` : ''} ${s.designStage}`} ref={stageRef}>
+        <Merch3D productId={order.productId} color={order.color} slots={slots} zoom={zoom} shift={design.slotShift || {}}
+          selectedPos={null} switching={false} stageRef={stageRef} clean={false} />
+      </div>
+    </section>
   );
 }

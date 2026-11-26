@@ -277,6 +277,24 @@ function merchOrderReceived({ name, ref, productLabel, units, totalText, link })
   };
 }
 
+// The buyer asked for their order links again (lost the email, other
+// browser). One mail lists their recent orders, each with its own link.
+function merchOrderLinks({ orders }) {
+  const rows = orders.map((o) => `${o.ref}: ${o.productLabel} (${o.statusText})`);
+  return {
+    subject: 'Your Boss Media merch orders',
+    text: `Hi there,\n\nHere are the links to your merch orders:\n\n${orders.map((o, i) => `${rows[i]}\n${o.link}`).join('\n\n')}\n\nIf you did not ask for this, you can ignore this email.`,
+    html: layout({
+      preheader: 'Open any order to see its proof, payment and delivery.',
+      eyebrow: 'MERCH ORDERS',
+      title: 'Your order links.',
+      body: p('Here are the links to your merch orders. Each one opens the order with its proof, payment and delivery.') +
+        orders.map((o) => p(`<strong>${escHtml(o.ref)}</strong> · ${escHtml(o.productLabel)} · ${escHtml(o.statusText)}<br><a href="${o.link}">Open order ${escHtml(o.ref)}</a>`)).join('') +
+        p('If you did not ask for this, you can ignore this email.'),
+    }),
+  };
+}
+
 // Art proof ready for the buyer. The thumbnail is a convenience only: many
 // inboxes block images, so the button and text carry the whole message.
 function merchProofReady({ name, ref, productLabel, note, link, proofUrl }) {
@@ -370,5 +388,5 @@ module.exports = {
   verifyEmail,
   claimAccount, resetPassword, unknownEvent, noAttachments, overLimits,
   verifySender, acceptedIntake, momentsReject, momentsLive, purchaseClaim,
-  sponsorGift, merchOrderReceived, merchProofReady, merchProofAnswered, merchOrderPaid, merchOrderPaidAdmin, merchOrderShipped,
+  sponsorGift, merchOrderReceived, merchOrderLinks, merchProofReady, merchProofAnswered, merchOrderPaid, merchOrderPaidAdmin, merchOrderShipped,
 };

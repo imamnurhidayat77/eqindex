@@ -597,7 +597,9 @@ function useGarmentDrag(anchors, { refW, selectedPos, onSelectPos, onShift, onDr
     return hits.length ? m.worldToLocal(hits[0].point.clone()) : null;
   };
   const showTip = (clientX, clientY, hit) => {
-    const { tipRef, posLabels, place } = live.current;
+    const { tipRef, posLabels, place, onShift, moveSlot } = live.current;
+    // View-only stage (an order page): no hints, nothing to grab.
+    if (!onShift && !moveSlot && !place) return;
     if (place) {
       // Admin placing a slot: the whole surface is a target.
       document.body.style.cursor = hit ? 'crosshair' : '';
@@ -754,7 +756,7 @@ function useGarmentDrag(anchors, { refW, selectedPos, onSelectPos, onShift, onDr
           const { selectedPos, onSelectPos, onDragging, refW: rw } = live.current;
           if (hit.pos !== selectedPos) onSelectPos?.(hit.pos);
           if (live.current.moveSlot) { startSlotMove(e, hit.pos); return; }
-          if (!hit.id) return; // empty slot: selected, nothing to drag
+          if (!hit.id || !live.current.onShift) return; // empty slot or view-only: nothing to drag
           e.stopPropagation();
           if (controls) controls.enabled = false;
           onDragging?.(hit.pos);
@@ -1240,7 +1242,7 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
         <div className={s.dock} role="group" aria-label="Camera controls">
           <button type="button" className={s.dockBtn} onClick={() => bumpZoom(1)} aria-label="Zoom in">+</button>
           <button type="button" className={s.dockBtn} onClick={() => bumpZoom(-1)} aria-label="Zoom out">−</button>
-          {!clean && (
+          {!clean && onUndo && (
             <>
               <button type="button" className={s.dockBtn} onClick={onUndo} disabled={!canUndo} aria-label="Undo change">↩</button>
               <button type="button" className={s.dockBtn} onClick={onRedo} disabled={!canRedo} aria-label="Redo change">↪</button>

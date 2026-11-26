@@ -173,6 +173,7 @@ export function SiteHeader({ transparent = false }) {
                     {sponsor && <Link href="/sponsor" role="menuitem" onClick={() => setAcctOpen(false)}>Sponsor dashboard</Link>}
                     <Link href="/account" role="menuitem" onClick={() => setAcctOpen(false)}>My account</Link>
                     <Link href="/media" role="menuitem" onClick={() => setAcctOpen(false)}>My media</Link>
+                    <Link href="/merch/orders" role="menuitem" onClick={() => setAcctOpen(false)}>My merch orders</Link>
                     <button type="button" role="menuitem" className="acct-signout" onClick={signOut}>Sign out</button>
                   </div>
                 </>
@@ -200,6 +201,8 @@ export function SiteHeader({ transparent = false }) {
               ...(organizer ? [{ href: '/organizer', label: 'My events' }] : []),
               ...(sponsor ? [{ href: '/sponsor', label: 'Sponsor dashboard' }] : []),
               ...(me ? [{ href: '/account', label: 'My account' }, { href: '/media', label: 'My media' }, { href: '/favourites', label: `Favourites${favs ? ` (${favs})` : ''}` }] : [{ href: '/login', label: 'Sign in' }]),
+              // Guests too: the page lists this browser's orders and resends lost links.
+              { href: '/merch/orders', label: 'Merch orders' },
               { href: '/cart', label: 'Cart' },
             ].map((l, i) => (
               <Link key={l.href} href={l.href} onClick={() => setMenuOpen(false)}>
@@ -237,6 +240,7 @@ export function SiteFooter() {
           <Link href="/reels">Reels</Link>
           <Link href="/moments">Community moments</Link>
           <Link href="/merch">Merchandise</Link>
+          <Link href="/merch/orders">Track a merch order</Link>
         </div>
         <div>
           <p>Information</p>

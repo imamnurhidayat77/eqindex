@@ -71,7 +71,7 @@ test('uploaded artwork prices as an upload, not as a sponsor', () => {
 });
 
 test('pricing copy is identical to the web designer', { skip: !existsSync(join(root, '../web-bossmedia/lib/merch.mjs')) }, () => {
-  for (const f of ['merch.mjs', 'merch-config.mjs']) {
+  for (const f of ['merch.mjs', 'merch-config.mjs', 'merch-order-status.mjs']) {
     assert.equal(
       readFileSync(join(root, 'src/lib/merch', f), 'utf8'),
       readFileSync(join(root, '../web-bossmedia/lib', f), 'utf8'),

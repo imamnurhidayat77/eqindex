@@ -25,6 +25,7 @@ const samples = {
   merchOrderPaid: [{ name: 'Sam', ref: 'BM-ABC234', productLabel: 'Jacket', totalText: 'NZ$600.00', link: 'http://x/merch/orders/BM-ABC234?t=a' }],
   merchOrderPaidAdmin: [{ ref: 'BM-ABC234', buyerName: 'Sam', productLabel: 'Jacket', totalText: 'NZ$600.00', link: 'http://x/studio/admin' }],
   merchProofAnswered: [{ ref: 'BM-ABC234', buyerName: 'Sam', productLabel: 'Jacket', approved: false, note: 'bigger logo', link: 'http://x/studio/admin' }],
+  merchOrderLinks: [{ orders: [{ ref: 'BM-ABC234', productLabel: 'Jacket <b>', statusText: 'Shipped', link: 'http://x/merch/orders/BM-ABC234?t=a' }] }],
 };
 
 test('every template renders subject + text + branded html without leaks', () => {

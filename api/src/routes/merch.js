@@ -24,6 +24,11 @@ const LOGO_MAX_BYTES = 10 * 1024 * 1024; // print artwork, larger than photo log
 const LOGO_MIMES = ['image/png', 'image/jpeg'];
 const REF_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
 const NZ_POSTCODE_RE = /^\d{4}$/;
+// Resend order links: 5 asks per IP per 10 min, 3 mails per address per hour.
+const RESEND_PER_IP = 5;
+const RESEND_PER_EMAIL = 3;
+const RESEND_WINDOW_MS = 60 * 60 * 1000;
+const RESEND_MAX_ORDERS = 10;
 const sha256 = (v) => crypto.createHash('sha256').update(String(v)).digest('hex');
 const newRef = () => `BM-${Array.from({ length: 6 }, () => REF_ALPHABET[crypto.randomInt(REF_ALPHABET.length)]).join('')}`;
 const newSecret = () => crypto.randomBytes(24).toString('base64url');
@@ -746,6 +751,52 @@ module.exports = function mountMerchRoutes(app) {
     }
     res.setHeader('Cache-Control', 'private, no-store');
     res.json({ data });
+  }));
+
+  // A buyer's own uploaded artwork, for the 3D preview on their order page.
+  // Same viewers as the order (link token, owner, admin); never public.
+  app.get('/api/merch/orders/:ref/logos/:logoId', asyncH(async (req, res) => {
+    const found = await viewableOrder(req, { admin: true });
+    const logoId = String(req.params.logoId || '');
+    if (!found || !UUID_RE.test(logoId)) return res.status(404).json({ error: 'logo not found' });
+    const r = await pool.query(`SELECT r2_key, mime FROM merch_order_logos WHERE id = $1 AND order_id = $2 AND r2_key <> ''`, [logoId, found.o.id]);
+    if (!r.rowCount) return res.status(404).json({ error: 'logo not found' });
+    let obj;
+    try { obj = await mediaStore.getStream(r.rows[0].r2_key); } catch { return res.status(404).json({ error: 'logo not found' }); }
+    res.setHeader('Content-Type', LOGO_MIMES.includes(r.rows[0].mime) ? r.rows[0].mime : 'image/png');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    obj.stream.pipe(res);
+  }));
+
+  // Lost order link: email the buyer links to their recent orders. Same
+  // answer whether or not the address has orders, so it reveals nothing;
+  // throttled per IP and per address so it cannot be used to spam an inbox.
+  app.post('/api/merch/orders/resend-links', asyncH(async (req, res) => {
+    const email = str(req.body?.email, 254).toLowerCase();
+    if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'enter the email you ordered with' });
+    if (await throttled(pool, req.ip, 'merch-resend-ip', RESEND_PER_IP)) return res.status(429).json({ error: 'too many tries, try again later' });
+    const sent = { data: { ok: true } };
+    if (await throttled(pool, sha256(email), 'merch-resend-email', RESEND_PER_EMAIL, RESEND_WINDOW_MS)) return res.json(sent);
+    const { rows } = await pool.query(
+      `SELECT ref, access_hash, product_id, status, delivery, quote FROM merch_orders
+        WHERE lower(buyer_email) = $1 ORDER BY created_at DESC LIMIT $2`, [email, RESEND_MAX_ORDERS]);
+    if (rows.length) {
+      const { orderStatusLabel } = await import('../lib/merch/merch-order-status.mjs');
+      try {
+        const t = require('../lib/emailTemplates').merchOrderLinks({
+          orders: rows.map((o) => ({
+            ref: o.ref,
+            productLabel: o.quote?.product?.label || o.product_id,
+            statusText: orderStatusLabel(o.status, o.delivery),
+            link: `${APP_URL}/merch/orders/${o.ref}?t=${mailToken(o)}`,
+          })),
+        });
+        await require('../lib/mailer').sendMail({ to: email, subject: t.subject, text: t.text, html: t.html });
+      } catch (e) {
+        console.error('[merch.resend] mail failed:', e.message);
+      }
+    }
+    res.json(sent);
   }));
 
   // A proof image of an order, for the same viewers as the order itself
