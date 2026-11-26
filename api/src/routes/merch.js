@@ -957,6 +957,28 @@ module.exports = function mountMerchRoutes(app) {
 
   // Buyer pays an approved order: a Stripe Checkout session for the total
   // they approved. Clicking twice reuses the same session (idempotency key).
+  // Safety net next to the webhook: the order page calls this when the buyer
+  // comes back from Stripe. Nothing from the browser is trusted: the API asks
+  // Stripe for this order's succeeded payment and runs the same checks and
+  // update as the webhook (markMerchOrderPaid is idempotent).
+  app.post('/api/merch/orders/:ref/confirm-payment', asyncH(async (req, res) => {
+    if (await throttled(pool, req.ip, 'merch-confirm', 30)) return res.status(429).json({ error: 'too many tries, try again later' });
+    const found = await viewableOrder(req, { admin: true });
+    if (!found) return res.status(404).json({ error: 'order not found' });
+    const { o } = found;
+    if (o.status === 'approved') {
+      const hits = await stripe().paymentIntents.search({
+        query: `metadata['merch_order_ref']:'${o.ref}' AND status:'succeeded'`, limit: 5,
+      }).catch((e) => { console.error('[merch.confirm] search failed:', e.message); return { data: [] }; });
+      for (const pi of hits.data) {
+        const sessions = await stripe().checkout.sessions.list({ payment_intent: pi.id, limit: 1 }).catch(() => ({ data: [] }));
+        if (sessions.data[0]) await markMerchOrderPaid(req, sessions.data[0]);
+      }
+    }
+    const now = (await pool.query('SELECT status FROM merch_orders WHERE id = $1', [o.id])).rows[0];
+    res.json({ data: { status: now?.status || o.status } });
+  }));
+
   app.post('/api/merch/orders/:ref/checkout', asyncH(async (req, res) => {
     if (await throttled(pool, req.ip, 'merch-checkout', 20)) return res.status(429).json({ error: 'too many tries, try again later' });
     const found = await viewableOrder(req, { admin: false });

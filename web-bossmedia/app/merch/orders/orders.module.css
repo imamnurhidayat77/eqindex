@@ -157,3 +157,6 @@
 .stripLabel { position: absolute; left: 4px; right: 4px; bottom: 4px; padding: 1px 6px; border-radius: 999px; background: rgba(0, 0, 0, 0.75); color: #fff; font-size: 10px; font-weight: 700; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stripPdf { display: grid; place-items: center; width: 32px; height: 40px; border-radius: 5px; background: #e5484d; color: #fff; font-size: 10px; font-weight: 900; }
 @media (prefers-reduced-motion: reduce) { .navBtn, .stripItem { transition: none; } .navBtn:active { transform: translateY(-50%); } }
+.linkBtn { justify-self: start; min-height: 32px; padding: 0; border: 0; background: none; color: #bbb; font: inherit; font-size: 12px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.linkBtn:hover { color: #FFC400; }
+.linkBtn:focus-visible { outline: 2px solid #FFC400; outline-offset: 2px; }

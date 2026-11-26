@@ -206,10 +206,14 @@ function ProofDecision({ order, onAnswered }) {
 }
 
 // Pay the approved total through Stripe Checkout. Back from Stripe
-// (?paid=1) the webhook may still be on its way, so the order is re-read
-// a few times before asking the buyer to refresh later.
-const CONFIRM_TRIES = 5;
-const CONFIRM_EVERY_MS = 2000;
+// (?paid=1) the webhook may still be on its way, so the page asks the API
+// to check the payment with Stripe (confirm-payment) and re-reads the order
+// a few times. Stripe's payment search can lag up to a minute.
+const CONFIRM_TRIES = 10;
+const CONFIRM_EVERY_MS = 4000;
+const confirmPayment = (ref) => fetch(`${API}/api/merch/orders/${encodeURIComponent(ref)}/confirm-payment`, {
+  method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ t: linkToken() }),
+}).catch(() => null);
 // The newest proof and the buyer's answer to it (null before any proof).
 function latestProof(order) {
   const events = order.events || [];
@@ -315,17 +319,23 @@ function PayCard({ order, onConfirmed }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('paid') !== '1') return undefined;
+  const [checked, setChecked] = useState(false); // a check ran and found no payment yet
+  const check = useCallback(() => {
     setConfirming(true);
+    setChecked(false);
     let tries = 0;
-    const timer = setInterval(() => {
+    const timer = setInterval(async () => {
       tries += 1;
+      await confirmPayment(order.ref);
       onConfirmed();
-      if (tries >= CONFIRM_TRIES) { clearInterval(timer); setConfirming(false); }
+      if (tries >= CONFIRM_TRIES) { clearInterval(timer); setConfirming(false); setChecked(true); }
     }, CONFIRM_EVERY_MS);
     return () => clearInterval(timer);
-  }, [onConfirmed]);
+  }, [order.ref, onConfirmed]);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('paid') !== '1') return undefined;
+    return check();
+  }, [check]);
 
   async function pay() {
     setBusy(true);
@@ -357,6 +367,8 @@ function PayCard({ order, onConfirmed }) {
               <button type="button" className={s.primary} disabled={busy} onClick={pay}>{busy ? 'Opening payment…' : `Pay ${nzd(order.totalCents)}`}</button>
             </div>
             <p className={s.muted}>Secure card payment by Stripe.</p>
+            {checked && <p className={s.muted}>We could not see your payment yet. If you paid, it shows here within a few minutes.</p>}
+            <button type="button" className={s.linkBtn} onClick={check}>Already paid? Check payment</button>
           </>
         )}
     </div>
