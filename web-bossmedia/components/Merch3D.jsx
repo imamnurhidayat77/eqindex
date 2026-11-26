@@ -1217,6 +1217,9 @@ export default function Merch3D({ productId, color, slots, zoom, shift, onShift,
           <OrbitControls
             makeDefault
             enablePan={false}
+            // View-only stage (order page): the wheel scrolls the page, the
+            // + and − buttons zoom.
+            enableZoom={Boolean(onShift || onMoveSlot || onPlace)}
             minDistance={1.2}
             maxDistance={isHorse ? 14 : 9}
             minPolarAngle={0.45}

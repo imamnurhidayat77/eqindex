@@ -46,52 +46,57 @@ export default function MerchOrderPage() {
   const step = o ? orderStepIndex(o.status) : -1;
   const q = o?.quote || {};
   const shipped = o?.events?.findLast((e) => e.status === 'shipped');
+  const units = o ? o.lines.reduce((n, l) => n + l.qty, 0) : 0;
   return (
     <div className="gallery-page">
       <SiteHeader />
       <main>
         <section className={`events-section gallery-browser section-gutter ${s.page}`} data-page-top>
           <p className={s.eyebrow}><Link href="/merch/orders">← My merch orders</Link></p>
-          <h1 className={s.title}>Order {ref}</h1>
+          <div className={s.headRow}>
+            <h1 className={s.title}>Order {ref}</h1>
+            {o && <span className={s.pill} data-tone={PAID_STATUSES.includes(o.status) ? 'good' : o.status === 'cancelled' ? 'off' : 'wait'}>{orderStatusLabel(o.status, o.delivery)}</span>}
+          </div>
+          {o && <p className={s.sub}>Placed {day(o.createdAt)} · {product?.label || o.productId} in {merchColorName(o.productId, o.color)} · {units} item{units === 1 ? '' : 's'}</p>}
           {state.loading && <p className={s.muted}>Loading order…</p>}
           {!state.loading && !o && (
             <p className={s.muted}>We could not find this order. Open it from the link in your confirmation email, or log in with the account you ordered with.</p>
           )}
+          {o && step >= 0 && (
+            <ol className={s.track} aria-label="Order progress">
+              {ORDER_STEPS.map((st, i) => (
+                <li key={st.id} data-state={i < step ? 'done' : i === step ? 'now' : 'todo'} aria-current={i === step ? 'step' : undefined}>
+                  <span className={s.trackDot} aria-hidden="true">{i < step ? '✓' : i + 1}</span>
+                  <span className={s.trackLabel}>{st.label}</span>
+                </li>
+              ))}
+            </ol>
+          )}
           {o?.status === 'approved' && <PayCard order={o} onConfirmed={reload} />}
           {o && <ProofCard order={o} onAnswered={reload} />}
-          {o && product && <DesignPreview order={o} />}
           {o && (
-            <div className={s.layout}>
-              <div className={s.card}>
-                <p className={s.status}>{orderStatusLabel(o.status, o.delivery)}</p>
-                {step >= 0 && (
-                  <ol className={s.steps} aria-label="Order progress">
-                    {ORDER_STEPS.map((st, i) => (
-                      <li key={st.id} data-state={i < step ? 'done' : i === step ? 'now' : 'todo'} aria-current={i === step ? 'step' : undefined}>{st.label}</li>
-                    ))}
-                  </ol>
-                )}
-                <dl className={s.facts}>
-                  <div><dt>Product</dt><dd>{product?.label || o.productId}</dd></div>
-                  <div><dt>Sizes</dt><dd>{o.lines.map((l) => `${l.size} × ${l.qty}`).join(', ')}</dd></div>
-                  {merchPositions(o.productId).filter((p) => o.design?.slots?.[p.id]).map((p) => (
-                    <div key={p.id}><dt>{p.label}</dt><dd>{logoName(o.design.slots[p.id])}</dd></div>
-                  ))}
-                  <div><dt>Delivery</dt><dd>{o.delivery === 'pickup' ? `Club pickup${o.contact.club ? `, ${o.contact.club}` : ''}` : [o.address?.line1, o.address?.line2, o.address?.city, o.address?.postcode].filter(Boolean).join(', ')}</dd></div>
-                  {o.notes && <div><dt>Notes</dt><dd>{o.notes}</dd></div>}
-                  {shipped && <div><dt>{o.delivery === 'pickup' ? 'Ready' : 'Shipped'}</dt><dd>{day(shipped.at)}{shipped.note ? `, ${shipped.note}` : ''}</dd></div>}
-                  <div><dt>Placed</dt><dd>{day(o.createdAt)}</dd></div>
-                </dl>
-              </div>
-              <div className={s.card}>
-                <h2 className={s.h2}>Quote</h2>
-                <div className={s.row}><span>{q.units} items</span><span>{nzd((q.goodsCents || 0) + (q.discountCents || 0))}</span></div>
-                {q.discountCents > 0 && <div className={s.row}><span>Sponsor discount</span><span className={s.gold}>−{nzd(q.discountCents)}</span></div>}
-                <div className={s.row}><span>{o.delivery === 'pickup' ? 'Club pickup' : 'Courier'}</span><span>{q.shippingCents ? nzd(q.shippingCents) : 'Free'}</span></div>
-                <div className={`${s.row} ${s.total}`}><span>Total</span><span>{nzd(o.totalCents)}</span></div>
-                <p className={s.muted}>Includes {nzd(q.gstCents)} GST. {PAID_STATUSES.includes(o.status) ? 'Paid in full.' : 'Nothing is charged until you approve the artwork proof.'}</p>
-                {CANCEL_FROM.includes(o.status) && <CancelOrder order={o} onCancelled={reload} />}
-              </div>
+            <div className={s.orderGrid}>
+              {product ? <DesignPreview order={o} /> : <div />}
+              <aside className={s.side}>
+                <div className={s.card}>
+                  <h2 className={s.h2}>Summary</h2>
+                  <div className={s.row}><span>{units} item{units === 1 ? '' : 's'}</span><span>{nzd((q.goodsCents || 0) + (q.discountCents || 0))}</span></div>
+                  {q.discountCents > 0 && <div className={s.row}><span>Sponsor discount</span><span className={s.gold}>−{nzd(q.discountCents)}</span></div>}
+                  <div className={s.row}><span>{o.delivery === 'pickup' ? 'Club pickup' : 'Courier'}</span><span>{q.shippingCents ? nzd(q.shippingCents) : 'Free'}</span></div>
+                  <div className={`${s.row} ${s.total}`}><span>Total</span><span>{nzd(o.totalCents)}</span></div>
+                  <p className={s.muted}>Includes {nzd(q.gstCents)} GST. {PAID_STATUSES.includes(o.status) ? 'Paid in full.' : 'Nothing is charged until you approve the artwork proof.'}</p>
+                </div>
+                <div className={s.card}>
+                  <h2 className={s.h2}>Details</h2>
+                  <dl className={s.facts}>
+                    <div><dt>Sizes</dt><dd>{o.lines.map((l) => `${l.size} × ${l.qty}`).join(', ')}</dd></div>
+                    <div><dt>{o.delivery === 'pickup' ? 'Pickup' : 'Deliver to'}</dt><dd>{o.delivery === 'pickup' ? `Club pickup${o.contact.club ? `, ${o.contact.club}` : ''}` : [o.address?.line1, o.address?.line2, o.address?.city, o.address?.postcode].filter(Boolean).join(', ')}</dd></div>
+                    {o.notes && <div><dt>Notes</dt><dd>{o.notes}</dd></div>}
+                    {shipped && <div><dt>{o.delivery === 'pickup' ? 'Ready' : 'Shipped'}</dt><dd>{day(shipped.at)}{shipped.note ? `, ${shipped.note}` : ''}</dd></div>}
+                  </dl>
+                  {CANCEL_FROM.includes(o.status) && <CancelOrder order={o} onCancelled={reload} />}
+                </div>
+              </aside>
             </div>
           )}
         </section>
@@ -264,10 +269,15 @@ function PayCard({ order, onConfirmed }) {
 
 // The product as ordered, on the same 3D view as the designer (view only).
 // Own artwork (mlogo:) loads through the order's own logo route, with the
-// link token when the page was opened from an email.
+// link token when the page was opened from an email. Picking a placement
+// in the list turns the model to face it.
 function DesignPreview({ order }) {
   const stageRef = useRef(null);
   const design = order.design || {};
+  const placed = merchPositions(order.productId).filter((p) => design.slots?.[p.id]);
+  // Start on the first placement: Merch3D only turns to a slot when the
+  // selection changes from one slot to another.
+  const [selected, setSelected] = useState(() => placed[0]?.id || null);
   const slots = useMemo(() => {
     const t = linkToken();
     const out = {};
@@ -280,16 +290,35 @@ function DesignPreview({ order }) {
     return out;
   }, [design.slots, order.ref]);
   const zoom = useMemo(() => Object.fromEntries(Object.entries(design.slotZoom || {}).map(([k, v]) => [k, Number(v) / 100])), [design.slotZoom]);
+  // Logo names as quoted at order time ("Left chest: Pak'nSave").
+  const names = useMemo(() => Object.fromEntries((order.quote?.item?.lines || [])
+    .filter((l) => l.slot && ['sponsor', 'club', 'upload'].includes(l.kind))
+    .map((l) => [l.slot, String(l.label).split(': ').slice(1).join(': ').replace(/ \(.*\)$|, no discount$/, '')])), [order.quote]);
   return (
-    <section className={`${s.card} ${s.design}`} aria-label="Your design">
-      <div className={s.designHead}>
+    <section className={`${s.card} ${s.designCard}`} aria-label="Your design">
+      <div className={s.cardHead}>
         <h2 className={s.h2}>Your design</h2>
-        <p className={s.muted}>{merchProduct(order.productId)?.label} in {merchColorName(order.productId, order.color)}. Drag to turn it. The artwork proof is the final word on placement.</p>
+        <span className={s.hint}>Drag to turn · the proof is final</span>
       </div>
       <div className={`${stage.stage}${isHorseProduct(order.productId) ? ` ${stage.stageDark}` : ''} ${s.designStage}`} ref={stageRef}>
         <Merch3D productId={order.productId} color={order.color} slots={slots} zoom={zoom} shift={design.slotShift || {}}
-          selectedPos={null} switching={false} stageRef={stageRef} clean={false} />
+          selectedPos={selected} switching={false} stageRef={stageRef} clean={false} />
       </div>
+      {placed.length > 0 && (
+        <ul className={s.placements} aria-label="Logo placements">
+          {placed.map((p, i) => (
+            <li key={p.id}>
+              <button type="button" className={s.placement} aria-pressed={selected === p.id} onClick={() => setSelected(p.id)}>
+                <span className={s.placementNum} aria-hidden="true">{i + 1}</span>
+                <span className={s.placementText}>
+                  <strong>{p.label}</strong>
+                  <small>{names[p.id] || logoName(design.slots[p.id])}</small>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
