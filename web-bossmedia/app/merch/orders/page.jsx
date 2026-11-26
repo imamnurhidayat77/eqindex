@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { SiteFooter, SiteHeader } from '../../../components/figma';
 import { ORDERS_KEY } from '../../../components/MerchOrderForm';
 import { API } from '../../../lib/api';
-import { merchProduct } from '../../../lib/merch.mjs';
-import { orderStatusLabel } from '../../../lib/merch-order-status.mjs';
+import SmartImage from '../../../components/SmartImage';
+import { merchColorName, merchCutoutSrc, merchProduct } from '../../../lib/merch.mjs';
+import { ORDER_STEPS, orderStatusLabel, orderStepIndex } from '../../../lib/merch-order-status.mjs';
 import { useDocumentTitle } from '../../../lib/use-document-title';
 import s from './orders.module.css';
 
@@ -25,7 +26,7 @@ export default function MyMerchOrdersPage() {
     const guest = Promise.all(saved.map((o) => fetch(`${API}/api/merch/orders/${encodeURIComponent(o.ref)}?t=${encodeURIComponent(o.token)}`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => (j?.data ? {
-        ref: j.data.ref, status: j.data.status, delivery: j.data.delivery, product_id: j.data.productId, total_cents: j.data.totalCents,
+        ref: j.data.ref, status: j.data.status, delivery: j.data.delivery, product_id: j.data.productId, color: j.data.color, total_cents: j.data.totalCents,
         created_at: j.data.createdAt, units: j.data.lines.reduce((n, l) => n + l.qty, 0), token: o.token,
       } : null))
       .catch(() => null)));
@@ -44,29 +45,81 @@ export default function MyMerchOrdersPage() {
       <main>
         <section className={`events-section gallery-browser section-gutter ${s.page}`} data-page-top>
           <p className={s.eyebrow}><Link href="/merch">← All merchandise</Link></p>
-          <h1 className={s.title}>My merch orders</h1>
-          {!rows && <p className={s.muted}>Loading orders…</p>}
-          {rows && !rows.length && (
-            <p className={s.muted}>No orders yet. Orders placed while logged in, or from this browser, show up here. <Link href="/merch" className={s.link}>Design your merch →</Link></p>
-          )}
-          {rows?.length > 0 && (
-            <ul className={s.list}>
-              {rows.map((r) => (
-                <li key={r.ref}>
-                  <Link className={s.item} href={`/merch/orders/${r.ref}${r.token ? `?t=${encodeURIComponent(r.token)}` : ''}`}>
-                    <span><strong>{r.ref}</strong><small>{merchProduct(r.product_id)?.label || r.product_id} · {r.units} items</small></span>
-                    <span className={s.itemStatus}>{orderStatusLabel(r.status, r.delivery)}</span>
-                    <span className={s.itemTotal}>{nzd(r.total_cents)}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-          <ResendLinks />
+          <div className={s.headRow}>
+            <h1 className={s.title}>My merch orders</h1>
+            {rows?.length > 0 && <span className={s.count}>{rows.length} order{rows.length === 1 ? '' : 's'}</span>}
+          </div>
+          <p className={s.sub}>Track your proof, payment and delivery. Open an order to see your design in 3D.</p>
+          <div className={s.listGrid}>
+            <div className={s.orders}>
+              {!rows && <p className={s.muted}>Loading orders…</p>}
+              {rows && !rows.length && (
+                <div className={`${s.card} ${s.empty}`}>
+                  <span className={s.emptyIcon} aria-hidden="true">◇</span>
+                  <h2 className={s.h2}>No orders here yet</h2>
+                  <p className={s.muted}>Orders placed while logged in, or from this browser, show up here. Ordered somewhere else? Use the form to get your links by email.</p>
+                  <Link href="/merch" className={s.primaryLink}>Design your merch</Link>
+                </div>
+              )}
+              {rows?.length > 0 && (
+                <ul className={s.list}>
+                  {rows.map((r) => <OrderRow key={r.ref} row={r} />)}
+                </ul>
+              )}
+            </div>
+            <aside className={s.helpCol}>
+              <ResendLinks />
+              <div className={`${s.card} ${s.helpCard}`}>
+                <h2 className={s.h2}>How it works</h2>
+                <ol className={s.howList}>
+                  <li><strong>Artwork check.</strong> We check your logos and send a proof.</li>
+                  <li><strong>Approve.</strong> You approve the proof or ask for changes.</li>
+                  <li><strong>Pay.</strong> Nothing is charged before you approve.</li>
+                  <li><strong>Made and sent.</strong> We produce it and courier it, or it waits at your club.</li>
+                </ol>
+              </div>
+            </aside>
+          </div>
         </section>
       </main>
       <SiteFooter />
     </div>
+  );
+}
+
+// One order: product cutout, reference and status, a thin progress bar, total.
+function OrderRow({ row: r }) {
+  const product = merchProduct(r.product_id);
+  const step = orderStepIndex(r.status);
+  const tone = ['paid', 'in_production', 'shipped', 'delivered'].includes(r.status) ? 'good' : r.status === 'cancelled' ? 'off' : 'wait';
+  const units = Number(r.units) || 0;
+  return (
+    <li>
+      <Link className={s.order} href={`/merch/orders/${r.ref}${r.token ? `?t=${encodeURIComponent(r.token)}` : ''}`}>
+        <span className={s.thumb}>
+          <SmartImage src={merchCutoutSrc(r.product_id)} alt={product?.label || r.product_id} width={160} height={160} unoptimized
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        </span>
+        <span className={s.orderMain}>
+          <span className={s.orderTop}>
+            <strong className={s.orderRef}>{r.ref}</strong>
+            <span className={s.pill} data-tone={tone}>{orderStatusLabel(r.status, r.delivery)}</span>
+          </span>
+          <span className={s.orderMeta}>
+            {product?.label || r.product_id}{r.color ? ` · ${merchColorName(r.product_id, r.color)}` : ''} · {units} item{units === 1 ? '' : 's'} · {new Date(r.created_at).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </span>
+          {step >= 0 && r.status !== 'cancelled' && (
+            <span className={s.bar} role="img" aria-label={`Step ${step + 1} of ${ORDER_STEPS.length}`}>
+              {ORDER_STEPS.map((st, i) => <span key={st.id} data-on={i <= step ? 'true' : undefined} />)}
+            </span>
+          )}
+        </span>
+        <span className={s.orderEnd}>
+          <span className={s.orderTotal}>{nzd(r.total_cents)}</span>
+          <span className={s.chev} aria-hidden="true">→</span>
+        </span>
+      </Link>
+    </li>
   );
 }
 
@@ -93,7 +146,7 @@ function ResendLinks() {
   return (
     <form className={`${s.card} ${s.resend}`} onSubmit={send} noValidate>
       <h2 className={s.h2}>Can't find an order?</h2>
-      <p className={s.muted}>Enter the email you ordered with and we will send you the links to your orders.</p>
+      <p className={s.muted}>Enter the email you ordered with. We send you a link to each of your recent orders.</p>
       {state.sent ? (
         <p className={s.ok} role="status">If there are orders on {email.trim()}, the links are on their way. Check your inbox and spam folder.</p>
       ) : (
