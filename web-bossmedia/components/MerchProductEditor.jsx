@@ -387,7 +387,7 @@ function Editor({ id, isNew, saved, notify, router, onSaved }) {
               <div className={s.block}>
                 <div className={s.blockHead}>
                   <span className={s.label}>Print area</span>
-                  {SLOT_SIZES_PROVISIONAL && <span className={s.tag} title="Until Paladin confirms the real print sizes">Provisional</span>}
+                  {SLOT_SIZES_PROVISIONAL && <span className={s.tag} title="Until the real print sizes are confirmed">Provisional</span>}
                 </div>
                 <MerchAreaSizer label={sel.label} widthMm={sel.widthMm} heightMm={sel.heightMm}
                   onChange={(w, h) => setSlot(sel.id, { widthMm: w, heightMm: h }, `drag:size:${sel.id}`)} onCommit={endGroup} />

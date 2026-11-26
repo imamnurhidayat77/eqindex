@@ -49,7 +49,7 @@ export default function MerchPage() {
           {/* Compact hero so the products start above the fold. Price notes
               stay factual: no discount figure until sponsor deals are real. */}
           <header className={s.hero}>
-            <p className={s.eyebrow}>{club ? `${club.name} store${club.placeholder ? ' · placeholder' : ''}` : 'Paladin × Boss Media'}</p>
+            <p className={s.eyebrow}>{club ? `${club.name} store${club.placeholder ? ' · placeholder' : ''}` : 'Boss Media merch'}</p>
             <h1>Club gear with <em>your logos</em></h1>
             <p className={s.sub}>
               {club

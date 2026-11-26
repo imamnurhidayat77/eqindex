@@ -195,7 +195,7 @@ function PriceLines({ quote }) {
       <div className={`${s.row} ${s.total}`}><span>Per item</span><span>{nzd(quote.totalCents)}</span></div>
       <p className={s.est}>
         Live estimate. Checkout re-quotes on the server.
-        {MERCH_PRICING_RULES.placeholder ? ' Pricing rules are placeholders until confirmed with Paladin.' : ''}
+        {MERCH_PRICING_RULES.placeholder ? ' Prices are provisional and confirmed on your proof.' : ''}
       </p>
     </div>
   );
