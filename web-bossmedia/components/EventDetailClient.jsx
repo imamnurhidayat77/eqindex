@@ -1,47 +1,85 @@
 'use client';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon, SiteFooter, SiteHeader } from './figma';
 import SmartImage from './SmartImage';
-import GalleryPager from './GalleryPager';
 import MomentsStrip from './MomentsStrip';
 import FollowButton from './FollowButton';
 import SaveButton from './SaveButton';
 import SearchSelect from './SearchSelect';
+import { API } from '../lib/api';
+import { uniqueById } from '../lib/unique-by-id.mjs';
 import d from './EventDetail.module.css';
 
-const LIMIT = 24;
+export const GALLERY_PAGE_SIZE = 48;
+const SEARCH_DEBOUNCE_MS = 300;
+const KIND_PARAM = { Photo: 'photo', Reel: 'reel' };
 
 const MOMENT_LABELS = { win: 'Win', pb: 'Personal best', clear: 'Clear round', debut: 'Debut' };
 const momentLabel = (m) => MOMENT_LABELS[m] || m;
 
-export default function EventDetailClient({ event, media }) {
+// Search, filters and paging run on the server (/photos with a keyset
+// cursor), so every photo of a big event is reachable. Filter options and
+// tab counts come from /photos/facets, not from the loaded page.
+export default function EventDetailClient({ event, initial, facets }) {
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
-  const [rider, setRider] = useState('All riders');
-  const [horse, setHorse] = useState('All horses');
-  const [moment, setMoment] = useState('All moments');
-  const [page, setPage] = useState(1);
+  const [term, setTerm] = useState('');
+  const [rider, setRider] = useState('');
+  const [horse, setHorse] = useState('');
+  const [moment, setMoment] = useState('');
+  const [items, setItems] = useState(initial?.data || []);
+  const [nextCursor, setNextCursor] = useState(initial?.next_cursor || null);
+  const [loading, setLoading] = useState(false);
 
-  const riders = useMemo(() => [...new Set(media.map((m) => m.rider).filter(Boolean))].sort(), [media]);
-  const horses = useMemo(() => [...new Set(media.map((m) => m.horse).filter(Boolean))].sort(), [media]);
-  const moments = useMemo(() => [...new Set(media.map((m) => m.moment).filter(Boolean))].sort(), [media]);
+  const riders = [...(facets?.riders || [])].sort((a, b) => a.name.localeCompare(b.name));
+  const horses = [...(facets?.horses || [])].sort((a, b) => a.name.localeCompare(b.name));
+  const moments = [...(facets?.moments || [])].sort();
+  const photoCount = facets?.photos ?? items.filter((m) => m.kind !== 'reel').length;
+  const reelCount = facets?.reels ?? items.filter((m) => m.kind === 'reel').length;
 
-  const visible = useMemo(() => media.filter((m) => {
-    const kind = m.kind === 'reel' ? 'Reel' : 'Photo';
-    const q = `${m.rider || ''} ${m.horse || ''} ${m.class_name || ''} ${m.event_name || ''}`.toLowerCase();
-    return q.includes(search.toLowerCase())
-      && (filter === 'All' || kind === filter)
-      && (rider === 'All riders' || m.rider === rider)
-      && (horse === 'All horses' || m.horse === horse)
-      && (moment === 'All moments' || m.moment === moment);
-  }), [media, filter, search, rider, horse, moment]);
-  const pages = Math.max(1, Math.ceil(visible.length / LIMIT));
-  const safePage = Math.min(page, pages);
-  const pageItems = visible.slice((safePage - 1) * LIMIT, safePage * LIMIT);
+  useEffect(() => {
+    const t = setTimeout(() => setTerm(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  const photoCount = media.filter((m) => m.kind !== 'reel').length;
-  const reelCount = media.filter((m) => m.kind === 'reel').length;
+  const p = new URLSearchParams({ event_id: event.id, limit: String(GALLERY_PAGE_SIZE) });
+  if (term) p.set('q', term);
+  if (KIND_PARAM[filter]) p.set('kind', KIND_PARAM[filter]);
+  if (rider) p.set('rider_id', rider);
+  if (horse) p.set('horse_id', horse);
+  if (moment) p.set('moment', moment);
+  const query = p.toString();
+  const queryRef = useRef(query);
+  const firstQuery = useRef(query);
+  queryRef.current = query;
+
+  // Refetch page 1 when filters change; the server already sent the default view.
+  useEffect(() => {
+    if (query === firstQuery.current) { firstQuery.current = null; return; }
+    let live = true;
+    setLoading(true);
+    fetch(`${API}/photos?${query}`).then((r) => (r.ok ? r.json() : Promise.reject())).then((j) => {
+      if (!live) return;
+      setItems(j.data || []); setNextCursor(j.next_cursor || null);
+    }).catch(() => {}).finally(() => live && setLoading(false));
+    return () => { live = false; };
+  }, [query]);
+
+  async function loadMore() {
+    if (!nextCursor || loading) return;
+    const asked = query;
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/photos?${asked}&cursor=${encodeURIComponent(nextCursor)}`);
+      const j = r.ok ? await r.json() : null;
+      if (!j || queryRef.current !== asked) return; // filters changed mid-request
+      setItems((xs) => uniqueById([...xs, ...(j.data || [])]));
+      setNextCursor(j.next_cursor || null);
+    } finally { setLoading(false); }
+  }
+
+  const clearAll = () => { setSearch(''); setTerm(''); setRider(''); setHorse(''); setMoment(''); setFilter('All'); };
 
   return (
     <div className="event-detail-page">
@@ -64,39 +102,39 @@ export default function EventDetailClient({ event, media }) {
             <label className="detail-media-search">
               <Icon name="search" />
               <span className="sr-only">Search rider, horse or media</span>
-              <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search rider, horse or media" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search rider, horse or media" />
             </label>
             <label className="detail-media-filter">
               <span>Rider</span>
-              <SearchSelect options={['All riders', ...riders].map((r) => ({ id: r, label: r }))} value={rider}
-                onChange={(id) => { setRider(id); setPage(1); }} placeholder="Rider" clearable={false} />
+              <SearchSelect options={[{ id: '', label: 'All riders' }, ...riders.map((r) => ({ id: r.id, label: r.name }))]} value={rider}
+                onChange={(id) => setRider(id || '')} placeholder="Rider" clearable={false} />
             </label>
             <label className="detail-media-filter">
               <span>Horse</span>
-              <SearchSelect options={['All horses', ...horses].map((h) => ({ id: h, label: h }))} value={horse}
-                onChange={(id) => { setHorse(id); setPage(1); }} placeholder="Horse" clearable={false} />
+              <SearchSelect options={[{ id: '', label: 'All horses' }, ...horses.map((h) => ({ id: h.id, label: h.name }))]} value={horse}
+                onChange={(id) => setHorse(id || '')} placeholder="Horse" clearable={false} />
             </label>
             {moments.length > 0 && (
               <label className="detail-media-filter">
                 <span>Moment</span>
-                <SearchSelect options={['All moments', ...moments].map((m) => ({ id: m, label: momentLabel(m) }))} value={moment}
-                  onChange={(id) => { setMoment(id); setPage(1); }} placeholder="Moment" clearable={false} />
+                <SearchSelect options={[{ id: '', label: 'All moments' }, ...moments.map((m) => ({ id: m, label: momentLabel(m) }))]} value={moment}
+                  onChange={(id) => setMoment(id || '')} placeholder="Moment" clearable={false} />
               </label>
             )}
           </div>
           <div className="event-media-tools">
             <div className="media-tabs" role="group" aria-label="Media type">
-              {[['All', media.length], ['Photo', photoCount], ['Reel', reelCount]].map(([t, n]) => (
-                <button key={t} aria-pressed={filter === t} className={filter === t ? 'active' : ''} onClick={() => { setFilter(t); setPage(1); }}>
+              {[['All', photoCount + reelCount], ['Photo', photoCount], ['Reel', reelCount]].map(([t, n]) => (
+                <button key={t} aria-pressed={filter === t} className={filter === t ? 'active' : ''} onClick={() => setFilter(t)}>
                   {t}<span>{n}</span>
                 </button>
               ))}
             </div>
-            <p>{visible.length} items</p>
+            <p aria-live="polite">{loading && !items.length ? 'Loading…' : `${items.length}${nextCursor ? '+' : ''} items`}</p>
           </div>
-          {visible.length ? (
+          {items.length ? (
             <div className="event-media-grid">
-              {pageItems.map((m) => {
+              {items.map((m) => {
                 const isReel = m.kind === 'reel';
                 return (
                   <article className={`event-media-card ${isReel ? 'reel' : 'photo'}`} key={m.id}>
@@ -121,12 +159,16 @@ export default function EventDetailClient({ event, media }) {
             <div className="event-media-empty">
               <p className="eyebrow">No media found</p>
               <h3>Try another rider or horse.</h3>
-              <button onClick={() => { setSearch(''); setRider('All riders'); setHorse('All horses'); setMoment('All moments'); setFilter('All'); setPage(1); }}>
+              <button onClick={clearAll}>
                 Clear all filters
               </button>
             </div>
           )}
-          <GalleryPager page={safePage} pages={pages} onPage={setPage} />
+          {nextCursor && (
+            <button type="button" className={`load-more ${d.loadMore}`} onClick={loadMore} disabled={loading} aria-busy={loading}>
+              {loading ? 'Loading…' : 'Load more'}
+            </button>
+          )}
         </section>
         <MomentsStrip eventId={event.id} />
       </main>

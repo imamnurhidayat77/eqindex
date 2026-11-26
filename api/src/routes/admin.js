@@ -2,7 +2,7 @@ const { randomUUID } = require('node:crypto');
 const pool = require('../db');
 const privacy = require('../privacy');
 const { asyncH } = require('../lib/async');
-const { paging } = require('../lib/http');
+const { paging, likeTerm } = require('../lib/http');
 const { audit } = require('../lib/audit');
 const { needRole } = require('../lib/auth');
 const { bustCache, bustPublic } = require('../middleware/cache');
@@ -1583,15 +1583,32 @@ module.exports = function mountAdminRoutes(app) {
   }));
 
   // ---- Users management ----
+  // Server-paged: ?q= name/email, ?role=, ?limit= (max 100), ?offset=.
+  // role_counts follows the search (not the role filter) so the role tabs
+  // can show how many each would list.
   app.get('/admin/users', needRole('ADMIN'), asyncH(async (req, res) => {
-    const q = `%${String(req.query.q || '').trim()}%`;
-    const { rows } = await pool.query(
-      `SELECT u.id, u.name, u.email, u.role, u.email_verified_at, u.created_at,
-         (SELECT COUNT(*)::INT FROM sessions s WHERE s.user_id = u.id AND s.expires_at > NOW()) AS active_sessions
-       FROM users u ${req.query.q ? 'WHERE u.name ILIKE $1 OR u.email ILIKE $1' : ''}
-       ORDER BY u.created_at DESC LIMIT 100`,
-      req.query.q ? [q] : []);
-    res.json({ data: rows });
+    const term = likeTerm(req.query.q);
+    const role = String(req.query.role || '').slice(0, 20);
+    const searchSql = term ? 'WHERE (u.name ILIKE $1 OR u.email ILIKE $1)' : '';
+    const base = term ? [term] : [];
+    const params = [...base];
+    let where = searchSql;
+    if (role) { params.push(role); where = `${searchSql ? `${searchSql} AND` : 'WHERE'} u.role = $${params.length}`; }
+    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 100);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+    params.push(limit, offset);
+    const [{ rows }, counts] = await Promise.all([
+      pool.query(
+        `SELECT u.id, u.name, u.email, u.role, u.email_verified_at, u.created_at,
+           (SELECT COUNT(*)::INT FROM sessions s WHERE s.user_id = u.id AND s.expires_at > NOW()) AS active_sessions
+         FROM users u ${where}
+         ORDER BY u.created_at DESC, u.id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+        params),
+      pool.query(`SELECT u.role, COUNT(*)::INT AS n FROM users u ${searchSql} GROUP BY u.role`, base),
+    ]);
+    const role_counts = Object.fromEntries(counts.rows.map((r) => [r.role, r.n]));
+    const total = role ? (role_counts[role] || 0) : counts.rows.reduce((s, r) => s + r.n, 0);
+    res.json({ data: rows, total, role_counts });
   }));
 
   app.patch('/admin/users/:id', needRole('ADMIN'), asyncH(async (req, res) => {

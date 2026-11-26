@@ -1,3 +1,10 @@
 /* Event name is the page h1; sized like the old generic h2 it replaces. */
 .title { margin: 15px 0 0; font-size: clamp(40px, 4.6vw, 62px); line-height: .96; font-weight: 500; letter-spacing: -.055em; overflow-wrap: anywhere; }
 @media (max-width: 900px) { .title { font-size: 38px; } }
+
+/* Dark page: the global .load-more is ink-on-white. */
+.loadMore { color: #fff; border-color: #999; }
+.loadMore:disabled { opacity: .6; cursor: progress; }
+@media (hover: hover) and (pointer: fine) {
+  .loadMore:not(:disabled):hover { color: var(--ink); background: #fff; }
+}

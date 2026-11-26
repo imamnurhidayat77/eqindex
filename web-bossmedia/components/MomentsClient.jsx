@@ -10,7 +10,8 @@ import { useConfirm } from './ConfirmModal';
 import SearchSelect from './SearchSelect';
 import TagModal from './TagModal';
 import SmartImage from './SmartImage';
-import { studio, useStudioUser, dayOf } from '../lib/studio';
+import { studio, studioFetch, useStudioUser, dayOf } from '../lib/studio';
+import { uniqueById } from '../lib/unique-by-id.mjs';
 import { searchSubjects } from '../lib/search-subjects';
 import s from './MomentsClient.module.css';
 
@@ -52,7 +53,10 @@ export default function MomentsClient() {
   const [bulkHorse, setBulkHorse] = useState('');
   const [bulkRider, setBulkRider] = useState('');
   const [tab, setTab] = useState('queue'); // queue | live | removed
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
   const [history, setHistory] = useState(null);
+  const [historyCursor, setHistoryCursor] = useState(null);
   const [pageByIntake, setPageByIntake] = useState({});
 
   const load = useCallback(() => {
@@ -63,9 +67,23 @@ export default function MomentsClient() {
   useEffect(() => {
     if (tab === 'queue') return;
     setHistory(null);
-    studio.get(`/admin/media?source=email,admin&status=${tab === 'live' ? 'published' : 'archived'}&limit=200`)
-      .then((r) => setHistory(r || [])).catch((e) => notify(e.message, true));
+    setHistoryCursor(null);
+    let live = true;
+    studioFetch(historyPath(tab))
+      .then((j) => { if (live) { setHistory(j.data || []); setHistoryCursor(j.next_cursor || null); } })
+      .catch((e) => notify(e.message, true));
+    return () => { live = false; };
   }, [tab, notify]);
+  // Older history pages come from the server cursor, appended to the list.
+  async function loadMoreHistory() {
+    const askedTab = tab;
+    try {
+      const j = await studioFetch(`${historyPath(askedTab)}&cursor=${encodeURIComponent(historyCursor)}`);
+      if (tabRef.current !== askedTab) return;
+      setHistory((xs) => uniqueById([...(xs || []), ...(j.data || [])]));
+      setHistoryCursor(j.next_cursor || null);
+    } catch (e) { notify(e.message, true); }
+  }
   useEffect(() => {
     studio.get('/events?limit=200').then((r) => setEvents(r || [])).catch(() => {});
     studio.get('/admin/license-tiers').then((r) => setTiers(r || [])).catch(() => {});
@@ -392,7 +410,7 @@ export default function MomentsClient() {
       )}
       </>
       ) : (
-        <HistoryList rows={history} live={tab === 'live'}
+        <HistoryList rows={history} live={tab === 'live'} onMore={historyCursor ? loadMoreHistory : null}
           onFlip={(id) => flipStatus(id, tab === 'live' ? 'draft' : 'published')}
           onDelete={removeOne} />
       )}
@@ -411,10 +429,13 @@ export default function MomentsClient() {
 // Same card language as the studio Library: overlay checkbox, status chip,
 // name, meta, underlined action.
 const HIST_LIMIT = 24;
+const HISTORY_FETCH = 200;
+const historyPath = (tab) => `/admin/media?source=email,admin&status=${tab === 'live' ? 'published' : 'archived'}&limit=${HISTORY_FETCH}`;
 const QUEUE_LIMIT = 12;
 
-function HistoryList({ rows, live, onFlip, onDelete }) {
+function HistoryList({ rows, live, onMore, onFlip, onDelete }) {
   const [offset, setOffset] = useState(0);
+  const [more, setMore] = useState(false);
   useEffect(() => { setOffset(0); }, [live, rows === null]);
   if (rows === null) return <p className="empty-note">Loading…</p>;
   if (!rows.length) {
@@ -450,6 +471,14 @@ function HistoryList({ rows, live, onFlip, onDelete }) {
         ))}
       </div>
       <Pager total={rows.length} limit={HIST_LIMIT} offset={safe} onPage={setOffset} />
+      {onMore && (
+        <div style={{ display: 'flex', justifyContent: 'center', margin: '16px 0' }}>
+          <button type="button" className="st-btn-ghost" disabled={more} aria-busy={more}
+            onClick={async () => { setMore(true); try { await onMore(); } finally { setMore(false); } }}>
+            {more ? 'Loading…' : 'Load older moments'}
+          </button>
+        </div>
+      )}
     </>
   );
 }

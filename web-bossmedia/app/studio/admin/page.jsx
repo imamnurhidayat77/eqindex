@@ -11,6 +11,7 @@ import AdminMerchOrders from '../../../components/AdminMerchOrders';
 import { nzdc, studio, studioFetch, useStudioUser } from '../../../lib/studio';
 import { fmtDay, payoutBreakdown } from '../../../lib/studio-format.mjs';
 import { useDocumentTitle } from '../../../lib/use-document-title';
+import { readQuery, writeQuery } from '../../../lib/url-state.mjs';
 import formRow from '../../../components/FormRow.module.css';
 
 const SECTIONS = [['commission', 'Commission'], ['orders', 'Merch orders'], ['merch', 'Merch pricing & delivery'], ['catalog', 'Merch catalog'], ['users', 'Users'], ['applications', 'Requests'], ['events', 'Events'], ['sponsors', 'Sponsors']];
@@ -69,7 +70,7 @@ function AdminBody() {
       <div className="st-filters" role="group" aria-label="Admin sections">
         {SECTIONS.map(([key, label]) => (
           <button key={key} className="st-btn-ghost" style={section === key ? { borderColor: '#fff' } : undefined}
-            onClick={() => setSection(key)}>{label}</button>
+            onClick={() => { setSection(key); writeQuery({ section: key, q: '', role: '', page: 0 }); }}>{label}</button>
         ))}
       </div>
       {section === 'commission' && <Commission />}
@@ -253,25 +254,37 @@ function MerchSettings() {
   );
 }
 
-/* ---------- users: search, role change, session revoke ---------- */
+/* ---------- users: server-paged search, role filter, role change, session revoke ---------- */
+const USERS_PAGE = 25;
 function Users({ selfId }) {
   const notify = useNotify();
   const [confirmUI, dialog] = useConfirm();
-  const [q, setQ] = useState('');
-  const [rows, setRows] = useState(null);
+  // Filters live in the URL (?q=&role=&page=) so refresh and back keep the view.
+  const [view, setView] = useState(() => {
+    const p = readQuery();
+    return { q: p.get('q') || '', role: p.get('role') || '', page: Math.max(0, (parseInt(p.get('page'), 10) || 1) - 1) };
+  });
+  const [draft, setDraft] = useState(view.q);
+  const [res, setRes] = useState(null); // { data, total, role_counts }
 
-  const search = useCallback((term) => {
-    studio.get(`/admin/users${term.trim() ? `?q=${encodeURIComponent(term.trim())}` : ''}`)
-      .then(setRows).catch((e) => notify(e.message, true));
-  }, [notify]);
-  useEffect(() => { search(''); }, [search]);
+  useEffect(() => {
+    writeQuery({ q: view.q, role: view.role, page: view.page ? view.page + 1 : 0 });
+    const p = new URLSearchParams({ limit: String(USERS_PAGE), offset: String(view.page * USERS_PAGE) });
+    if (view.q) p.set('q', view.q);
+    if (view.role) p.set('role', view.role);
+    let live = true;
+    studioFetch(`/admin/users?${p}`).then((j) => { if (live) setRes(j); }).catch((e) => notify(e.message, true));
+    return () => { live = false; };
+  }, [view, notify]);
+
+  const patchRow = (id, patch) => setRes((r) => r && { ...r, data: r.data.map((x) => (x.id === id ? { ...x, ...patch } : x)) });
 
   async function setRole(u, role) {
     if (role === u.role) return;
     if (!await dialog.confirm({ title: `Set ${u.email} to ${role}?`, message: role === 'ADMIN' ? 'Admins can approve photographers and change money settings.' : undefined, danger: role === 'ADMIN' })) return;
     try {
       const updated = await studio.patch(`/admin/users/${u.id}`, { role });
-      setRows((xs) => (xs || []).map((x) => (x.id === u.id ? { ...x, role: updated.role } : x)));
+      patchRow(u.id, { role: updated.role });
       notify(`Role → ${updated.role}`);
     } catch (e) { notify(e.message, true); }
   }
@@ -280,44 +293,28 @@ function Users({ selfId }) {
     if (!await dialog.confirm({ title: `Sign out ${u.email} everywhere?`, danger: true })) return;
     try {
       const r = await studio.del(`/admin/users/${u.id}/sessions`);
-      setRows((xs) => (xs || []).map((x) => (x.id === u.id ? { ...x, active_sessions: 0 } : x)));
+      patchRow(u.id, { active_sessions: 0 });
       notify(`Revoked ${r.revoked} session(s)`);
     } catch (e) { notify(e.message, true); }
   }
 
+  const counts = res?.role_counts || {};
+  const all = Object.values(counts).reduce((s, n) => s + n, 0);
   return (
     <>
-      <form className="st-form" style={{ marginBottom: 16 }} onSubmit={(e) => { e.preventDefault(); search(q); }}>
+      <form className="st-form" style={{ marginBottom: 16 }} onSubmit={(e) => { e.preventDefault(); setView({ ...view, q: draft.trim(), page: 0 }); }}>
         <label><span>Search name or email</span>
-          <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Type to search…" autoComplete="off" /></label>
+          <input type="search" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Type and press Enter…" autoComplete="off" /></label>
       </form>
-      {rows === null ? <p className="empty-note">Loading…</p> : !rows.length ? (
-        <p className="empty-note">No users found.</p>
-      ) : (
-        <UserTable rows={rows} selfId={selfId} setRole={setRole} revoke={revoke} />
-      )}
-      {confirmUI}
-    </>
-  );
-}
-
-const ROLE_FILTERS = [['', 'All'], ['PHOTOGRAPHER', 'Photographers'], ['ORGANIZER', 'Organizers'], ['ADMIN', 'Admins']];
-
-function UserTable({ rows, selfId, setRole, revoke }) {
-  const [offset, setOffset] = useState(0);
-  const [roleFilter, setRoleFilter] = useState('');
-  const PAGE = 15;
-  const list = roleFilter ? rows.filter((u) => u.role === roleFilter) : rows;
-  const safe = Math.min(offset, Math.max(0, (Math.ceil(list.length / PAGE) - 1) * PAGE));
-  return (
+      {res === null ? <p className="empty-note">Loading…</p> : (
         <div className="st-card" style={{ padding: '6px 22px' }}>
           <div className="st-filters" role="group" aria-label="Filter by role" style={{ margin: '14px 0 4px' }}>
             {ROLE_FILTERS.map(([v, label]) => {
-              const n = v ? rows.filter((u) => u.role === v).length : rows.length;
+              const n = v ? counts[v] || 0 : all;
               return (
-                <button key={v} aria-pressed={roleFilter === v} className="st-btn-ghost"
-                  style={{ minHeight: 34, ...(roleFilter === v ? { borderColor: '#fff' } : undefined) }}
-                  onClick={() => { setRoleFilter(v); setOffset(0); }}>
+                <button key={v} aria-pressed={view.role === v} className="st-btn-ghost"
+                  style={{ minHeight: 34, ...(view.role === v ? { borderColor: '#fff' } : undefined) }}
+                  onClick={() => setView({ ...view, role: v, page: 0 })}>
                   {label + (n > 0 ? ' (' + n + ')' : '')}
                 </button>
               );
@@ -326,7 +323,7 @@ function UserTable({ rows, selfId, setRole, revoke }) {
           <div className="table-scroll"><table className="st-table">
             <thead><tr><th>User</th><th>Role</th><th>Sessions</th><th>Joined</th><th></th></tr></thead>
             <tbody>
-              {list.slice(safe, safe + PAGE).map((u) => (
+              {res.data.map((u) => (
                 <tr key={u.id}>
                   <td><div style={{ fontWeight: 600 }}>{u.name}</div>
                     <div style={{ color: '#777', fontSize: 11 }}>{u.email}</div>
@@ -347,14 +344,20 @@ function UserTable({ rows, selfId, setRole, revoke }) {
               ))}
             </tbody>
           </table></div>
-          {!list.length && <p className="empty-note">No users with this role.</p>}
-          <Pager total={list.length} limit={PAGE} offset={safe} onPage={setOffset} />
-            <p style={{ color: '#777', fontSize: 12, padding: '0 0 12px' }}>
-              PHOTOGRAPHER and ORGANIZER are granted only by approving an application — they can’t be picked here.
-            </p>
+          {!res.data.length && <p className="empty-note">{view.q || view.role ? 'No users match these filters.' : 'No users yet.'}</p>}
+          <Pager total={res.total} limit={USERS_PAGE} offset={view.page * USERS_PAGE} onPage={(o) => setView({ ...view, page: o / USERS_PAGE })} />
+          <p style={{ color: '#777', fontSize: 12, padding: '0 0 12px' }}>
+            PHOTOGRAPHER and ORGANIZER are granted only by approving an application — they can’t be picked here.
+          </p>
         </div>
+      )}
+      {confirmUI}
+    </>
   );
 }
+
+const ROLE_FILTERS = [['', 'All'], ['PHOTOGRAPHER', 'Photographers'], ['ORGANIZER', 'Organizers'], ['ADMIN', 'Admins']];
+
 
 /* ---------- applications: photographer queue (corrections entity_type 'other') ---------- */
 // Photographer applications follow a fixed template (see PhotographerRegisterClient);
