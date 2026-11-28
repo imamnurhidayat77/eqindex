@@ -21,6 +21,7 @@ export default function LibraryClient({ events, initial }) {
   const notify = useNotify();
   const [items, setItems] = useState(null);
   const [nextCursor, setNextCursor] = useState(null);
+  const [total, setTotal] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [drafts, setDrafts] = useState(0);
   const [tiers, setTiers] = useState([]);
@@ -64,7 +65,7 @@ export default function LibraryClient({ events, initial }) {
     setItems(null);
     studioFetch(`/admin/media?${query}`).then((j) => {
       if (!live) return;
-      setItems(j.data || []); setNextCursor(j.next_cursor || null); setSelected(new Set());
+      setItems(j.data || []); setNextCursor(j.next_cursor || null); setTotal(j.total ?? null); setSelected(new Set());
     }).catch((e) => notify(e.message, true));
     studio.get('/admin/media/stats').then((st) => live && setDrafts(st?.drafts || 0)).catch(() => {});
     return () => { live = false; };
@@ -152,7 +153,7 @@ export default function LibraryClient({ events, initial }) {
           busy={busy}
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => { setConfirmDelete(false); bulk(null, 'delete'); }} />
-        <span style={{ color: '#9a9a9a', fontSize: 12 }}>{items === null ? 'Loading…' : `${selected.size ? `${selected.size} selected · ` : ''}${visible.length} shown${nextCursor ? ', more below' : ''}`}</span>
+        <span style={{ color: '#9a9a9a', fontSize: 12 }}>{items === null ? 'Loading…' : `${selected.size ? `${selected.size} selected · ` : ''}${total != null ? `${visible.length} of ${total}` : visible.length} shown${nextCursor ? ', more below' : ''}`}</span>
       </div>
       {items !== null && !visible.length ? (
         <div className="event-media-empty">
@@ -184,7 +185,7 @@ export default function LibraryClient({ events, initial }) {
         <TagModal key={editing.id} m={editing} events={events} tiers={tiers} notify={notify}
           onClose={() => setEditingId(null)}
           onSaved={(u) => setItems((xs) => (xs || []).map((x) => (x.id === editing.id ? { ...x, ...u } : x)))}
-          onDeleted={() => { setItems((xs) => (xs || []).filter((x) => x.id !== editing.id)); setEditingId(null); }} />
+          onDeleted={() => { setItems((xs) => (xs || []).filter((x) => x.id !== editing.id)); setTotal((t) => (t == null ? t : t - 1)); setEditingId(null); }} />
       )}
     </StudioShell>
   );
