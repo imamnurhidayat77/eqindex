@@ -87,7 +87,6 @@ export const MERCH_ORDER_RULES = {
   defaults: {
     courierCents: 1200, // NZ courier, flat
     freeOverCents: 25000, // courier free from this order value (0 = never)
-    pickupEnabled: true, // free collection from the club
     sponsorCapCents: 30000, // most sponsor discount one order can take
   },
 };

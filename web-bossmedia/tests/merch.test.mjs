@@ -237,25 +237,27 @@ test('order quote: per-unit price, discount cap, delivery and GST share', async 
   assert.equal(one.shippingCents, R.courierCents);
   assert.equal(one.totalCents, 14900 - 1200 + R.courierCents);
   assert.equal(one.gstCents, Math.round((one.totalCents * 0.15) / 1.15));
-  const many = quoteMerchOrder('jacket', slots, [{ size: 'M', qty: 30 }, { size: 'L', qty: 20 }], { discountFor: () => 1200, strict: true }, 'pickup');
+  const many = quoteMerchOrder('jacket', slots, [{ size: 'M', qty: 30 }, { size: 'L', qty: 20 }], { discountFor: () => 1200, strict: true }, 'courier');
   assert.equal(many.units, 50);
   assert.equal(many.discountCents, R.sponsorCapCents);
   assert.ok(many.discountCapped);
-  assert.equal(many.shippingCents, 0);
+  assert.equal(many.shippingCents, 0); // over the free courier threshold
   assert.equal(many.totalCents, 14900 * 50 - R.sponsorCapCents);
 });
 
 test('order quote: strict mode gives no unfunded sponsor discount', async () => {
   const { quoteMerchOrder } = await import('../lib/merch.mjs');
-  const q = quoteMerchOrder('tee', { 'chest-left': 'logo-a' }, [{ size: 'M', qty: 2 }], { discountFor: () => 0, strict: true }, 'pickup');
+  const q = quoteMerchOrder('tee', { 'chest-left': 'logo-a' }, [{ size: 'M', qty: 2 }], { discountFor: () => 0, strict: true }, 'courier');
   assert.equal(q.discountCents, 0);
-  assert.equal(quoteMerchOrder('tee', {}, [], {}, 'pickup'), null);
+  assert.equal(quoteMerchOrder('tee', {}, [], {}, 'courier'), null);
   assert.equal(quoteMerchOrder('tee', {}, [{ size: 'M', qty: 1 }], {}, 'drone'), null);
 });
 
-test('order settings: admin values win, bad values fall back, pickup can be off', async () => {
+test('order settings: admin values win, bad values fall back, club pickup is never offered', async () => {
   const { merchOrderSettings, quoteMerchOrder } = await import('../lib/merch.mjs');
-  const s = merchOrderSettings({ courierCents: 900, freeOverCents: 0, pickupEnabled: false, sponsorCapCents: -5 });
+  // An old stored pickupEnabled: true must not bring pickup back.
+  const s = merchOrderSettings({ courierCents: 900, freeOverCents: 0, pickupEnabled: true, sponsorCapCents: -5 });
+  assert.equal('pickupEnabled' in s, false);
   assert.equal(s.courierCents, 900);
   assert.equal(s.freeOverCents, 0);
   assert.equal(s.sponsorCapCents, merchOrderSettings().sponsorCapCents);
@@ -418,7 +420,7 @@ test('admin price rules drive every quote and fall back when stored values are b
   assert.equal(quoteMerch('jacket', { 'chest-left': 'a' }).discountCents, 300);
   // A quote can still pass its own settings (the server does).
   assert.equal(quoteMerch('jacket', { 'chest-left': 'a' }, { settings: merchOrderSettings() }).discountCents, SPONSOR_DISCOUNT_CENTS);
-  assert.equal(quoteMerchOrder('jacket', { back: 'upload:blob:x' }, [{ size: 'M', qty: 2 }], {}, 'pickup').goodsCents, 2 * (14900 + 250));
+  assert.equal(quoteMerchOrder('jacket', { back: 'upload:blob:x' }, [{ size: 'M', qty: 2 }], {}, 'courier').goodsCents, 2 * (14900 + 250));
   const bad = setMerchSettings({ maxDiscountPct: 95, uploadLogoCents: -1, sponsorDiscountOncePerItem: 'yes' });
   assert.deepEqual([bad.maxDiscountPct, bad.uploadLogoCents, bad.sponsorDiscountOncePerItem], [40, 0, true]);
   setMerchSettings({});

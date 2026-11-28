@@ -129,17 +129,15 @@ function parseOrderInput(body, m) {
   if (!EMAIL_RE.test(email)) errors.push('a valid email is required');
   if (phone && !/^[+\d][\d\s()-]{5,29}$/.test(phone)) errors.push('phone number looks wrong');
 
-  const delivery = b.delivery === 'pickup' ? 'pickup' : b.delivery === 'courier' ? 'courier' : null;
-  if (!delivery) errors.push('choose courier or club pickup');
-  let address = null;
-  if (delivery === 'courier') {
-    const a = b.address || {};
-    address = { line1: str(a.line1, 120), line2: str(a.line2, 120), city: str(a.city, 60), postcode: str(a.postcode, 4) };
-    if (address.line1.length < 3) errors.push('street address is required');
-    if (address.city.length < 2) errors.push('town or city is required');
-    if (!NZ_POSTCODE_RE.test(address.postcode)) errors.push('NZ postcode must be 4 digits');
-  }
-  if (delivery === 'pickup' && !club) errors.push('club name is required for club pickup');
+  // Courier is the only delivery option. Club pickup was dropped, older
+  // orders may still carry it and keep their pickup wording.
+  const delivery = 'courier';
+  if (b.delivery !== delivery) errors.push('delivery is by courier only');
+  const a = b.address || {};
+  const address = { line1: str(a.line1, 120), line2: str(a.line2, 120), city: str(a.city, 60), postcode: str(a.postcode, 4) };
+  if (address.line1.length < 3) errors.push('street address is required');
+  if (address.city.length < 2) errors.push('town or city is required');
+  if (!NZ_POSTCODE_RE.test(address.postcode)) errors.push('NZ postcode must be 4 digits');
 
   const claims = Array.isArray(b.uploads) ? b.uploads.slice(0, 20)
     .filter((u) => UUID_RE.test(String(u?.id || '')) && typeof u?.secret === 'string')
@@ -556,7 +554,7 @@ module.exports = function mountMerchRoutes(app) {
     res.json({ data: await loadSettings(m) });
   }));
 
-  // Admin only: delivery prices, pickup on/off, sponsor cap per order, and
+  // Admin only: delivery prices, sponsor cap per order, and
   // the price rules every quote uses (discount limit, fallback sponsor
   // discount, own-logo charge, one discount per sponsor per item).
   app.put('/admin/merch/settings', needRole('ADMIN'), asyncH(async (req, res) => {
@@ -577,10 +575,8 @@ module.exports = function mountMerchRoutes(app) {
     if (!Number.isInteger(next.maxDiscountPct) || next.maxDiscountPct < 0 || next.maxDiscountPct > m.MERCH_MAX_DISCOUNT_PCT) {
       errors.push(`maxDiscountPct must be a whole number, 0 to ${m.MERCH_MAX_DISCOUNT_PCT}`);
     }
-    for (const k of ['pickupEnabled', 'sponsorDiscountOncePerItem']) {
-      if (typeof b[k] !== 'boolean') errors.push(`${k} must be true or false`);
-      next[k] = b[k];
-    }
+    if (typeof b.sponsorDiscountOncePerItem !== 'boolean') errors.push('sponsorDiscountOncePerItem must be true or false');
+    next.sponsorDiscountOncePerItem = b.sponsorDiscountOncePerItem;
     if (errors.length) return res.status(400).json({ error: errors.join('; ') });
     await pool.query(
       `INSERT INTO admin_settings (key, value, updated_at) VALUES ($1, $2, NOW())

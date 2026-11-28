@@ -13,6 +13,8 @@ export const ORDER_FORM_ID = 'merch-order-form';
 export const ORDERS_KEY = 'bossmedia:merch-orders';
 // Contact and delivery details survive Back/Next and the next order.
 const CONTACT_KEY = 'bossmedia:merch-contact';
+// Courier is the only delivery option (club pickup was dropped).
+const DELIVERY = 'courier';
 const nzd = (c) => `NZ$${(Number(c || 0) / 100).toFixed(2)}`;
 
 export function rememberOrder(ref, token) {
@@ -37,7 +39,6 @@ export default function MerchOrderForm({
   const [settings, setSettings] = useState(() => currentMerchSettings());
   const [lines, setLines] = useState([{ key: 'l0', size, qty: 1 }]);
   const [contact, setContact] = useState({ name: '', email: '', phone: '', club: clubName || '' });
-  const [delivery, setDelivery] = useState('courier');
   const [address, setAddress] = useState({ line1: '', line2: '', city: '', postcode: '' });
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -52,17 +53,16 @@ export default function MerchOrderForm({
       const d = JSON.parse(localStorage.getItem(CONTACT_KEY) || 'null');
       if (d?.contact) setContact((v) => ({ ...v, ...d.contact, club: d.contact.club || v.club }));
       if (d?.address) setAddress((v) => ({ ...v, ...d.address }));
-      if (d?.delivery === 'pickup' || d?.delivery === 'courier') setDelivery(d.delivery);
     } catch { /* ignore */ }
     setRestored(true);
   }, []);
   useEffect(() => {
     if (!restored) return;
     const t = setTimeout(() => {
-      try { localStorage.setItem(CONTACT_KEY, JSON.stringify({ contact, address, delivery })); } catch { /* ignore */ }
+      try { localStorage.setItem(CONTACT_KEY, JSON.stringify({ contact, address })); } catch { /* ignore */ }
     }, 300);
     return () => clearTimeout(t);
-  }, [restored, contact, address, delivery]);
+  }, [restored, contact, address]);
 
   useEffect(() => {
     let live = true;
@@ -70,11 +70,10 @@ export default function MerchOrderForm({
       .then((j) => { if (live && j?.data) setSettings(merchOrderSettings(j.data)); }).catch(() => {});
     return () => { live = false; };
   }, []);
-  useEffect(() => { if (!settings.pickupEnabled && delivery === 'pickup') setDelivery('courier'); }, [settings, delivery]);
 
   const quote = useMemo(
-    () => quoteMerchOrder(product.id, slots, lines, quoteCtx, delivery, settings),
-    [product.id, slots, lines, quoteCtx, delivery, settings],
+    () => quoteMerchOrder(product.id, slots, lines, quoteCtx, DELIVERY, settings),
+    [product.id, slots, lines, quoteCtx, settings],
   );
   useEffect(() => { onState?.({ busy: !!busy, done: !!done, totalCents: quote?.totalCents ?? null }); }, [busy, done, quote, onState]);
 
@@ -119,7 +118,7 @@ export default function MerchOrderForm({
       const body = {
         productId: product.id, color, slots: sent, slotZoom, slotShift, notes,
         lines: lines.map(({ size: z, qty }) => ({ size: z, qty: Number(qty) })),
-        contact, delivery, address: delivery === 'courier' ? address : null, uploads: used,
+        contact, delivery: DELIVERY, address, uploads: used,
       };
       const r = await fetch(`${API}/api/merch/orders`, {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -178,32 +177,19 @@ export default function MerchOrderForm({
           <label className={s.label}><span>Name</span><input className={s.input} required minLength={2} maxLength={100} autoComplete="name" value={contact.name} onChange={onContact('name')} /></label>
           <label className={s.label}><span>Email</span><input className={s.input} type="email" required maxLength={254} autoComplete="email" value={contact.email} onChange={onContact('email')} /></label>
           <label className={s.label}><span>Phone <small>optional</small></span><input className={s.input} type="tel" maxLength={30} autoComplete="tel" value={contact.phone} onChange={onContact('phone')} /></label>
-          <label className={s.label}><span>Club or team <small>{delivery === 'pickup' ? 'required for pickup' : 'optional'}</small></span><input className={s.input} maxLength={100} required={delivery === 'pickup'} value={contact.club} onChange={onContact('club')} /></label>
+          <label className={s.label}><span>Club or team <small>optional</small></span><input className={s.input} maxLength={100} value={contact.club} onChange={onContact('club')} /></label>
         </div>
       </fieldset>
 
       <fieldset className={s.group} disabled={!!busy}>
         <legend>Delivery <small>New Zealand only</small></legend>
-        <div className={s.options}>
-          <label className={s.option}>
-            <input type="radio" name="delivery" value="courier" checked={delivery === 'courier'} onChange={() => setDelivery('courier')} />
-            <span><strong>Courier</strong><small>{nzd(settings.courierCents)} flat{free ? `, free over ${nzd(settings.freeOverCents)}` : ''}</small></span>
-          </label>
-          {settings.pickupEnabled && (
-            <label className={s.option}>
-              <input type="radio" name="delivery" value="pickup" checked={delivery === 'pickup'} onChange={() => setDelivery('pickup')} />
-              <span><strong>Club pickup</strong><small>Free, delivered with your club&apos;s batch</small></span>
-            </label>
-          )}
+        <p className={s.note}>Courier, {nzd(settings.courierCents)} flat{free ? `, free over ${nzd(settings.freeOverCents)}` : ''}.</p>
+        <div className={s.grid}>
+          <label className={`${s.label} ${s.wide}`}><span>Street address</span><input className={s.input} required minLength={3} maxLength={120} autoComplete="address-line1" value={address.line1} onChange={onAddress('line1')} /></label>
+          <label className={`${s.label} ${s.wide}`}><span>Suburb, unit or RD <small>optional</small></span><input className={s.input} maxLength={120} autoComplete="address-line2" value={address.line2} onChange={onAddress('line2')} /></label>
+          <label className={s.label}><span>Town or city</span><input className={s.input} required minLength={2} maxLength={60} autoComplete="address-level2" value={address.city} onChange={onAddress('city')} /></label>
+          <label className={s.label}><span>Postcode</span><input className={s.input} required inputMode="numeric" pattern="\d{4}" maxLength={4} autoComplete="postal-code" value={address.postcode} onChange={onAddress('postcode')} /></label>
         </div>
-        {delivery === 'courier' && (
-          <div className={s.grid}>
-            <label className={`${s.label} ${s.wide}`}><span>Street address</span><input className={s.input} required minLength={3} maxLength={120} autoComplete="address-line1" value={address.line1} onChange={onAddress('line1')} /></label>
-            <label className={`${s.label} ${s.wide}`}><span>Suburb, unit or RD <small>optional</small></span><input className={s.input} maxLength={120} autoComplete="address-line2" value={address.line2} onChange={onAddress('line2')} /></label>
-            <label className={s.label}><span>Town or city</span><input className={s.input} required minLength={2} maxLength={60} autoComplete="address-level2" value={address.city} onChange={onAddress('city')} /></label>
-            <label className={s.label}><span>Postcode</span><input className={s.input} required inputMode="numeric" pattern="\d{4}" maxLength={4} autoComplete="postal-code" value={address.postcode} onChange={onAddress('postcode')} /></label>
-          </div>
-        )}
       </fieldset>
 
       <div className={s.summary} aria-live="polite">
@@ -212,7 +198,7 @@ export default function MerchOrderForm({
           {quote.discountCents > 0 && (
             <div className={s.row}><span>Sponsor discount{quote.discountCapped ? ` (capped at ${nzd(settings.sponsorCapCents)} per order)` : ''}</span><span className={s.gold}>−{nzd(quote.discountCents)}</span></div>
           )}
-          <div className={s.row}><span>{delivery === 'pickup' ? 'Club pickup' : 'Courier'}</span><span>{quote.shippingCents ? nzd(quote.shippingCents) : 'Free'}</span></div>
+          <div className={s.row}><span>Courier</span><span>{quote.shippingCents ? nzd(quote.shippingCents) : 'Free'}</span></div>
           <div className={`${s.row} ${s.total}`}><span>Order total</span><span>{nzd(quote.totalCents)}</span></div>
           <p className={s.note}>Includes {nzd(quote.gstCents)} GST. Estimate only, the server confirms the price. You pay after approving the artwork proof.</p>
         </>) : <p className={s.note}>Add a quantity to see the order total.</p>}

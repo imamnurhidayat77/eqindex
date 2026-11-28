@@ -46,13 +46,12 @@ test('rejects unknown product, sizes, slots, bad qty and duplicate sizes', () =>
   assert.ok(errors.some((e) => e.includes('bad logo in back')));
 });
 
-test('courier needs a NZ address, pickup needs a club', () => {
+test('courier needs a NZ address, club pickup is refused', () => {
   const noAddr = parseOrderInput({ ...good(), address: { line1: '', city: '', postcode: '12' } }, m).errors;
   assert.ok(noAddr.includes('NZ postcode must be 4 digits'));
   assert.ok(noAddr.includes('street address is required'));
-  const pickup = parseOrderInput({ ...good(), delivery: 'pickup', contact: { ...good().contact, club: '' } }, m).errors;
-  assert.ok(pickup.includes('club name is required for club pickup'));
-  assert.ok(parseOrderInput({ ...good(), delivery: 'drone' }, m).errors.includes('choose courier or club pickup'));
+  assert.ok(parseOrderInput({ ...good(), delivery: 'pickup', contact: { ...good().contact, club: 'Demo' } }, m).errors.includes('delivery is by courier only'));
+  assert.ok(parseOrderInput({ ...good(), delivery: 'drone' }, m).errors.includes('delivery is by courier only'));
 });
 
 test('an uploaded logo needs its secret key', () => {

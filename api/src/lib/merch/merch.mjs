@@ -752,7 +752,6 @@ export function merchOrderSettings(stored = {}) {
   return {
     courierCents: cents(s.courierCents, d.courierCents),
     freeOverCents: cents(s.freeOverCents, d.freeOverCents),
-    pickupEnabled: flag(s.pickupEnabled, d.pickupEnabled),
     sponsorCapCents: cents(s.sponsorCapCents, d.sponsorCapCents),
     maxDiscountPct: whole(s.maxDiscountPct, p.maxDiscountPct, MERCH_MAX_DISCOUNT_PCT),
     fallbackSponsorDiscountCents: whole(s.fallbackSponsorDiscountCents, p.fallbackSponsorDiscountCents, 100000),
@@ -774,13 +773,13 @@ export function currentMerchSettings() {
 
 // Whole-order quote: the per-item quote times the units ordered, the
 // per-order sponsor cap, delivery and the GST share of the total.
-// lines: [{ size, qty }]. delivery: 'courier' | 'pickup'. settings: from
-// merchOrderSettings. Returns null for an unknown product, a delivery that
-// is not offered, or an empty order.
+// lines: [{ size, qty }]. delivery: only 'courier' is offered (orders
+// placed earlier may still say 'pickup'). settings: from merchOrderSettings.
+// Returns null for an unknown product, a delivery that is not offered, or
+// an empty order.
 export function quoteMerchOrder(productId, slots, lines, ctx = {}, delivery = 'courier', settings = currentMerchSettings()) {
   const item = quoteMerch(productId, slots, { ...ctx, settings });
-  const offered = delivery === 'courier' || (delivery === 'pickup' && settings.pickupEnabled);
-  if (!item || !offered) return null;
+  if (!item || delivery !== 'courier') return null;
   const units = (lines || []).reduce((n, l) => n + (Number(l.qty) || 0), 0);
   if (units < 1) return null;
   const fullCents = (item.baseCents + item.premiumCents) * units;
@@ -788,7 +787,7 @@ export function quoteMerchOrder(productId, slots, lines, ctx = {}, delivery = 'c
   const discountCents = Math.min(rawDiscount, settings.sponsorCapCents);
   const goodsCents = fullCents - discountCents;
   const free = settings.freeOverCents > 0 && goodsCents >= settings.freeOverCents;
-  const shippingCents = delivery === 'courier' && !free ? settings.courierCents : 0;
+  const shippingCents = free ? 0 : settings.courierCents;
   const totalCents = goodsCents + shippingCents;
   const r = MERCH_ORDER_RULES.gstRate;
   return {
