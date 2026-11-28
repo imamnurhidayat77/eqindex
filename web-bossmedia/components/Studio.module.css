@@ -10,6 +10,11 @@
 .page :global(.st-bar-row > span:last-child) { font-variant-numeric: tabular-nums; }
 .page :global(.st-kval) { font-variant-numeric: tabular-nums; }
 
+/* Overview header: still the studio's title, but not a marketing hero. */
+.overviewHero { padding-top: 48px; }
+.overviewHero h1 { margin: 12px 0 10px; font-size: clamp(40px, 4vw, 54px); }
+.overviewHero p { color: #bdbdbd; }
+
 /* Compact header for every tab except Overview. */
 .compact { padding-top: 36px; }
 .compact h1 { margin: 10px 0 0; font-size: 32px; line-height: 1; font-weight: 600; letter-spacing: -.04em; }

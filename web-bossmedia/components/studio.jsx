@@ -98,14 +98,14 @@ export default function StudioShell({ active, kpis, children }) {
     <div className={`studio-page ${styles.page}`}>
       <SiteHeader />
       <main className="section-gutter">
-        <div className={`st-hero ${isOverview ? '' : styles.compact}`}>
+        <div className={`st-hero ${isOverview ? styles.overviewHero : styles.compact}`}>
           <div className="st-hero-row">
             <div>
               <p className="eyebrow">{eyebrow}</p>
               {isOverview ? (
                 <>
                   <h1>My studio.</h1>
-                  <p>Kia ora, {user?.name?.split(' ')[0] || 'photographer'} — shoot, tag, publish, get paid.</p>
+                  <p>Kia ora, {user?.name?.split(' ')[0] || 'photographer'}. Here is how the studio is doing today.</p>
                 </>
               ) : <h1>{current[1]}</h1>}
             </div>
