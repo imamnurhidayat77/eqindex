@@ -55,3 +55,20 @@ export function payoutBreakdown(s) {
   const payout = Number(s.payout_cents || 0);
   return { gross, fee, organizer, cardFees: gross - fee - organizer - payout, payout };
 }
+
+// How long an order has been waiting, short enough for a table cell: "40 min", "5 h", "3 d".
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+export function waitedFor(iso, now = Date.now()) {
+  const t = iso ? new Date(iso).getTime() : NaN;
+  if (!Number.isFinite(t)) return '—';
+  const ms = Math.max(0, now - t);
+  if (ms < HOUR_MS) return `${Math.max(1, Math.floor(ms / MINUTE_MS))} min`;
+  if (ms < DAY_MS) return `${Math.floor(ms / HOUR_MS)} h`;
+  return `${Math.floor(ms / DAY_MS)} d`;
+}
+export const daysSince = (iso, now = Date.now()) => {
+  const t = iso ? new Date(iso).getTime() : NaN;
+  return Number.isFinite(t) ? Math.max(0, now - t) / DAY_MS : 0;
+};
