@@ -519,9 +519,16 @@ module.exports = function mountMediaRoutes(app) {
     if (req.query.untagged === '1') conds.push('(m.horse_id IS NULL OR m.rider_id IS NULL)');
     const search = mediaSearchCond(req.query.q, params, true);
     if (search) conds.push(search);
+    // Total for the filtered set, first page only (later pages keep it).
+    const countWhere = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
+    const countParams = params.slice();
     if (!pushCursor(req, res, conds, params)) return;
     const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
     params.push(limit + 1);
+    const total = req.query.cursor ? undefined : (await pool.query(
+      `SELECT COUNT(*)::INT AS n FROM media m LEFT JOIN events e ON e.id = m.event_id
+        LEFT JOIN horses h ON h.id = m.horse_id LEFT JOIN riders r ON r.id = m.rider_id
+        LEFT JOIN classes c ON c.id = m.class_id ${countWhere}`, countParams)).rows[0].n;
     const { rows: fetched } = await pool.query(
       `SELECT m.*, e.name AS event_name, h.name AS horse, r.name AS rider, c.name AS class_name,
           ${cursorTsSql('m.created_at')}
@@ -539,7 +546,7 @@ module.exports = function mountMediaRoutes(app) {
         if (r.thumb_key) r.thumb_url = mediaStore.publicUrlOrPassthrough(r.thumb_key);
       } catch { /* R2 public base unconfigured — URLs resolve after setup */ }
     }
-    res.json({ data: rows, next_cursor });
+    res.json({ data: rows, next_cursor, total });
   }));
 
   app.patch('/admin/media/:id', needRole('PHOTOGRAPHER'), asyncH(async (req, res) => {
