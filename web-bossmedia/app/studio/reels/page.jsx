@@ -95,7 +95,7 @@ export default function ReelsPage() {
     if (o.media_id) {
       await studio.patch(`/admin/reel-orders/${o.id}`, { media_id: mediaId });
       patchOrder(o.id, { media_id: mediaId });
-      notify('Reel changed');
+      notify(o.status === 'delivered' ? 'New version sent. The buyer was emailed.' : 'Reel changed');
     } else {
       const u = await studio.patch(`/admin/reel-orders/${o.id}`, { status: 'ready', media_id: mediaId });
       patchOrder(o.id, { ...(u.data || u), status: 'ready', media_id: mediaId });
@@ -161,6 +161,19 @@ function OrderRow({ o, busy, onAdvance, onPickReel }) {
   const details = [o.class_name, o.ring && `Ring ${o.ring}`, o.back_number && `No. ${o.back_number}`].filter(Boolean).join(' · ');
   const paid = o.payment_status === 'paid';
 
+  // The buyer already has a delivered reel, so say what swapping it does first.
+  async function changeReel() {
+    if (o.status === 'delivered') {
+      const ok = await dialog.confirm({
+        title: `Send a new version to ${o.horse_name ? `${o.horse_name}'s buyer` : 'the buyer'}?`,
+        message: 'The buyer downloads the new file from the same place, and the old one stops downloading. They get an email and a bell notice that their reel was updated.',
+        confirmLabel: 'Choose new reel',
+      });
+      if (!ok) return;
+    }
+    onPickReel();
+  }
+
   async function cancel() {
     const ok = await dialog.confirm({
       title: `Cancel ${o.product_name} for ${o.horse_name || 'this buyer'}?`,
@@ -212,8 +225,8 @@ function OrderRow({ o, busy, onAdvance, onPickReel }) {
               </button>
             )
           ))}
-          {o.media_id && !['delivered', 'cancelled'].includes(o.status) && (
-            <button type="button" className="st-btn-ghost" disabled={busy} onClick={onPickReel}>Change reel</button>
+          {o.media_id && o.status !== 'cancelled' && (
+            <button type="button" className="st-btn-ghost" disabled={busy} onClick={changeReel}>Change reel</button>
           )}
           {(FLOW[o.status] || []).includes('cancelled') && (
             <button type="button" className={s.cancel} disabled={busy} onClick={cancel}>Cancel order</button>

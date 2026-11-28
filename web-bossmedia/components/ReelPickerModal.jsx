@@ -143,7 +143,7 @@ export default function ReelPickerModal({ order, onClose, onSave }) {
       <div className={s.dialog} role="document">
         <header className={s.dialogHead}>
           <div>
-            <p className="eyebrow">{changing ? 'Change reel' : 'Link reel'}</p>
+            <p className="eyebrow">{order.status === 'delivered' ? 'Change delivered reel' : changing ? 'Change reel' : 'Link reel'}</p>
             <h3 id="reel-picker-title">Choose the reel for {order.horse_name || 'this order'}</h3>
             {context && <p className={s.context}>{context}</p>}
           </div>
@@ -208,7 +208,7 @@ export default function ReelPickerModal({ order, onClose, onSave }) {
           <button type="button" className="st-btn-ghost" onClick={onClose}>Cancel</button>
           <button type="button" className="st-btn" onClick={save}
             disabled={!picked || saving || picked.id === order.media_id}>
-            {saving ? 'Saving…' : picked && picked.id === order.media_id ? 'Already linked' : changing ? 'Change to this reel' : 'Link reel and mark ready'}
+            {saving ? 'Saving…' : picked && picked.id === order.media_id ? 'Already linked' : order.status === 'delivered' ? 'Send this version to buyer' : changing ? 'Change to this reel' : 'Link reel and mark ready'}
           </button>
         </footer>
       </div>

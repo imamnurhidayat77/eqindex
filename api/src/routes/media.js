@@ -7,7 +7,8 @@ const { audit } = require('../lib/audit');
 const { recordPurchaseSplit, markPurchasesPaid, reserveBalance, releaseHold, expireHolds, cappedSponsorDiscount, SPONSOR_BUDGET_LIVE_SQL, notOwnSponsorSql, PHOTO_BUDGET_LEFT_SQL, reserveSponsorDiscounts, reversePurchase } = require('../lib/wallet');
 const { resolveId } = require('../lib/resolve');
 const { sendMail } = require('../lib/mailer');
-const { notifyPurchases } = require('../lib/orderNotify');
+const { notifyPurchases, notifyReelUpdated } = require('../lib/orderNotify');
+const { reelMediaError } = require('../lib/reelOrders');
 const { APP_URL } = require('../config');
 const crypto = require('crypto');
 const multer = require('multer');
@@ -5113,6 +5114,9 @@ module.exports = function mountMediaRoutes(app) {
     // Showcase consent flag (set with buyer consent; independent of flow state).
     if (b.showcase !== undefined) set('showcase', !!b.showcase);
     if (b.media_id !== undefined) {
+      // The buyer's download follows media_id: swap allowed, removal and cancelled orders refused.
+      const mediaErr = reelMediaError(b.status || from, b.media_id);
+      if (mediaErr) return res.status(409).json({ error: mediaErr });
       if (b.media_id) {
         if (!UUID_RE.test(String(b.media_id))) return res.status(400).json({ error: 'bad media_id' });
         const m = await pool.query(`SELECT id FROM media WHERE id = $1 AND kind = 'reel'`, [String(b.media_id)]);
@@ -5124,7 +5128,9 @@ module.exports = function mountMediaRoutes(app) {
     vals.push(req.params.id);
     const { rows } = await pool.query(
       `UPDATE reel_orders SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals);
-    audit(req, 'reelorder.edit', 'reel_order', req.params.id, { from, to: b.status || from });
+    const replaced = from === 'delivered' && b.media_id && String(b.media_id) !== String(cur.rows[0].media_id);
+    audit(req, 'reelorder.edit', 'reel_order', req.params.id, { from, to: b.status || from, ...(replaced ? { replaced_media: cur.rows[0].media_id } : {}) });
+    if (replaced) await notifyReelUpdated(req.params.id);
     res.json({ data: rows[0] });
   }));
 

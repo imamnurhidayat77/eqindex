@@ -8,6 +8,7 @@ const pool = require('../db');
 const { sendMail } = require('./mailer');
 const { orderUpdate } = require('./emailTemplates');
 const { APP_URL, ORDER_ALERT_EMAILS } = require('../config');
+const { reelUpdatedCopy } = require('./reelOrders');
 
 const nzd = (cents) => `NZ$${(Number(cents || 0) / 100).toFixed(2)}`;
 const ADMIN_MERCH_PATH = (ref) => `/studio/admin/merch/orders/${ref}`;
@@ -173,4 +174,23 @@ async function notifyPurchases(ids, status) {
   });
 }
 
-module.exports = { notifyMerch, notifyPurchases, merchCopy, adminEmails };
+// A delivered pre-book reel was replaced: tell the buyer to download it again.
+async function notifyReelUpdated(orderId) {
+  await safely('reel updated', async () => {
+    const { rows } = await pool.query(
+      `SELECT ro.id, ro.buyer_user_id, ro.buyer_email, ro.horse_name, rp.name AS product_name,
+          e.name AS event_name, u.name AS buyer_name
+         FROM reel_orders ro JOIN reel_products rp ON rp.id = ro.product_id
+         LEFT JOIN events e ON e.id = ro.event_id
+         LEFT JOIN users u ON u.id = ro.buyer_user_id
+        WHERE ro.id = $1`, [orderId]);
+    const o = rows[0];
+    if (!o) return;
+    const msg = reelUpdatedCopy(o);
+    const path = '/media';
+    await safely('reel buyer bell', () => bell([o.buyer_user_id], `reel:${o.id}`, msg, path));
+    await safely('reel buyer mail', () => mail(o.buyer_email, { name: o.buyer_name, eyebrow: 'PRE-BOOK REEL', ...msg }, `${APP_URL}${path}`, 'Open My media'));
+  });
+}
+
+module.exports = { notifyMerch, notifyPurchases, notifyReelUpdated, merchCopy, adminEmails };
