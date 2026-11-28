@@ -12,6 +12,15 @@
 .tab[aria-pressed='true'] .count { background: #101010; color: #fff; }
 @media (hover: hover) and (pointer: fine) { .tab[aria-pressed='false']:hover { color: #fff; } }
 .summary { margin: 0; color: #a3a3a3; font-size: 13px; }
+.find { flex: 1 1 260px; max-width: 360px; margin-left: auto; }
+.find input { width: 100%; min-height: 44px; padding: 0 14px; box-sizing: border-box; background: #0b0b0b; color: #fff; border: 1px solid #3a3a3a; font: inherit; font-size: 14px; outline: 0; transition: border-color 150ms ease-out; }
+.find input::placeholder { color: #8a8a8a; }
+.find input:focus-visible { border-color: #888; outline: 2px solid #fff; outline-offset: 1px; }
+.clear { min-height: 40px; padding: 0 16px; border: 1px solid #3a3a3a; background: none; color: #ddd; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.clear:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .clear:hover { border-color: #777; color: #fff; } }
+.capNote { margin: 12px 0 0; color: #8a8a8a; font-size: 12px; }
+@media (max-width: 720px) { .find { flex-basis: 100%; max-width: none; margin-left: 0; } }
 .summary strong { color: #fff; }
 
 /* Table */

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reelMatch, suggestedReels } from '../reel-match.mjs';
+import { orderMatches, reelMatch, suggestedReels } from '../reel-match.mjs';
 import { waitedFor, daysSince } from '../studio-format.mjs';
 
 const order = { event_id: 'e1', horse_name: '  BMW  Sharpshooter ' };
@@ -31,4 +31,13 @@ test('waitedFor gives a short age', () => {
   assert.equal(waitedFor('2026-11-25T11:00:00Z', now), '3 d');
   assert.equal(waitedFor(null, now), '—');
   assert.equal(Math.round(daysSince('2026-11-25T12:00:00Z', now)), 3);
+});
+
+test('orderMatches finds an order by any field, all words required', () => {
+  const o = { product_name: 'Event edit', buyer_email: 'media@eqindex.app', horse_name: 'BMW Sharpshooter', event_name: 'Hawkes Bay A&P', back_number: 42 };
+  assert.equal(orderMatches(o, ''), true);
+  assert.equal(orderMatches(o, '  sharpSHOOTER '), true);
+  assert.equal(orderMatches(o, 'hawkes edit'), true);
+  assert.equal(orderMatches(o, '42'), true);
+  assert.equal(orderMatches(o, 'hawkes raw'), false);
 });

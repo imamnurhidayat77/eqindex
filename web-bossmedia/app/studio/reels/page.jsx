@@ -6,11 +6,15 @@ import ReelPickerModal from '../../../components/ReelPickerModal';
 import { useNotify } from '../../../components/Toaster';
 import { useConfirm } from '../../../components/ConfirmModal';
 import { studio } from '../../../lib/studio';
+import { orderMatches } from '../../../lib/reel-match.mjs';
+import { readQuery, writeQuery } from '../../../lib/url-state.mjs';
 import { daysSince, fmtDay, nzdc, statusLabel, waitedFor } from '../../../lib/studio-format.mjs';
 import { useDocumentTitle } from '../../../lib/use-document-title';
 import s from '../../../components/ReelOrders.module.css';
 
 const LIMIT = 20;
+// GET /admin/reel-orders returns at most this many, newest first.
+const API_CAP = 200;
 // A paid order untouched this long is flagged so it does not slip.
 const LATE_AFTER_DAYS = 3;
 
@@ -39,21 +43,37 @@ export default function ReelsPage() {
   const notify = useNotify();
   const [orders, setOrders] = useState(null);
   const [filter, setFilter] = useState('');
+  const [q, setQ] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [offset, setOffset] = useState(0);
   const [picking, setPicking] = useState(null);
+  const [restored, setRestored] = useState(false);
 
   const load = useCallback(() => { studio.get('/admin/reel-orders').then((r) => setOrders(r || [])).catch((e) => notify(e.message, true)); }, [notify]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setOffset(0); }, [filter]);
 
+  // Search, status and page live in the URL so a refresh or shared link keeps the view.
+  useEffect(() => {
+    const p = readQuery();
+    setQ(p.get('q') || '');
+    setFilter(ORDER.includes(p.get('status')) ? p.get('status') : '');
+    setOffset(Math.max(0, (parseInt(p.get('page'), 10) || 1) - 1) * LIMIT);
+    setRestored(true);
+  }, []);
+  useEffect(() => {
+    if (restored) writeQuery({ q: q.trim(), status: filter, page: offset ? offset / LIMIT + 1 : 0 });
+  }, [restored, q, filter, offset]);
+
+  const matched = useMemo(() => (orders || []).filter((o) => orderMatches(o, q)), [orders, q]);
   const counts = useMemo(() => {
     const c = {};
-    for (const o of orders || []) c[o.status] = (c[o.status] || 0) + 1;
+    for (const o of matched) c[o.status] = (c[o.status] || 0) + 1;
     return c;
-  }, [orders]);
+  }, [matched]);
 
-  const visible = (orders || []).filter((o) => !filter || o.status === filter);
+  const changeFilter = (st) => { setFilter(st); setOffset(0); };
+  const changeQuery = (v) => { setQ(v); setOffset(0); };
+  const visible = matched.filter((o) => !filter || o.status === filter);
   const safeOffset = Math.min(offset, Math.max(0, (Math.ceil(visible.length / LIMIT) - 1) * LIMIT));
   const pageOrders = visible.slice(safeOffset, safeOffset + LIMIT);
   const queue = (orders || []).filter((o) => NEEDS_ADMIN.includes(o.status)).length;
@@ -89,15 +109,19 @@ export default function ReelsPage() {
     <StudioShell active="reels" kpis={{ reels: queue }}>
       <div className={s.toolbar}>
         <div className={s.tabs} role="group" aria-label="Filter by status">
-          <button type="button" className={s.tab} aria-pressed={!filter} onClick={() => setFilter('')}>
-            All <span className={s.count}>{(orders || []).length}</span>
+          <button type="button" className={s.tab} aria-pressed={!filter} onClick={() => changeFilter('')}>
+            All <span className={s.count}>{matched.length}</span>
           </button>
-          {ORDER.filter((st) => counts[st]).map((st) => (
-            <button type="button" key={st} className={s.tab} aria-pressed={filter === st} onClick={() => setFilter(filter === st ? '' : st)}>
-              {statusLabel(st)} <span className={s.count}>{counts[st]}</span>
+          {ORDER.filter((st) => counts[st] || filter === st).map((st) => (
+            <button type="button" key={st} className={s.tab} aria-pressed={filter === st} onClick={() => changeFilter(filter === st ? '' : st)}>
+              {statusLabel(st)} <span className={s.count}>{counts[st] || 0}</span>
             </button>
           ))}
         </div>
+        <label className={s.find}>
+          <span className={s.srOnly}>Search pre-book orders</span>
+          <input type="search" value={q} onChange={(e) => changeQuery(e.target.value)} placeholder="Search buyer, horse, event…" autoComplete="off" />
+        </label>
         {orders?.length > 0 && (
           <p className={s.summary}>{queue ? <><strong>{queue}</strong> order{queue === 1 ? '' : 's'} need{queue === 1 ? 's' : ''} you</> : 'Nothing waiting on you'}</p>
         )}
@@ -105,8 +129,10 @@ export default function ReelsPage() {
       {orders === null ? <p className="empty-note">Loading…</p> : !visible.length ? (
         <div className="event-media-empty">
           <p className="eyebrow">No pre-book orders</p>
-          <h3>{filter ? 'Nothing in this state.' : 'The queue is empty.'}</h3>
-          <Link href="/studio/pricing" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 12, color: '#bbb' }}>Check reel products are published</Link>
+          <h3>{q.trim() ? `No orders match "${q.trim()}".` : filter ? 'Nothing in this state.' : 'The queue is empty.'}</h3>
+          {q.trim() ? (
+            <button type="button" className={s.clear} onClick={() => changeQuery('')}>Clear search</button>
+          ) : <Link href="/studio/pricing" style={{ paddingBottom: 5, borderBottom: '1px solid #666', fontSize: 12, color: '#bbb' }}>Check reel products are published</Link>}
         </div>
       ) : (
         <div className={`st-card ${s.card}`}>
@@ -120,6 +146,7 @@ export default function ReelsPage() {
           </table></div>
         </div>
       )}
+      {orders?.length >= API_CAP && <p className={s.capNote}>Showing the latest {API_CAP} orders. Search covers these only.</p>}
       <Pager total={visible.length} limit={LIMIT} offset={safeOffset} onPage={setOffset} />
       {picking && <ReelPickerModal order={picking} onClose={closePicker} onSave={(id) => saveReel(picking, id)} />}
     </StudioShell>

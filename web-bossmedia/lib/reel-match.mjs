@@ -27,3 +27,12 @@ export function suggestedReels(reels, order) {
 }
 
 export const MATCH_LABEL = { both: 'Same event and horse', event: 'Same event', horse: 'Same horse' };
+
+// Pre-book queue search: every word must appear in one of the order's fields.
+const ORDER_FIELDS = ['product_name', 'buyer_email', 'phone', 'horse_name', 'event_name', 'class_name', 'ring', 'back_number'];
+export function orderMatches(order, term) {
+  const words = norm(term).split(' ').filter(Boolean);
+  if (!words.length) return true;
+  const text = norm(ORDER_FIELDS.map((f) => order[f]).filter((v) => v != null).join(' '));
+  return words.every((w) => text.includes(w));
+}
